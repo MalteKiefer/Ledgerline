@@ -12,8 +12,14 @@ class ContactSyncRemoteCard extends Model
 {
     protected $guarded = [];
 
-    protected function casts(): array { return ['remote_deleted_at' => 'datetime']; }
+    protected function casts(): array
+    {
+        return ['remote_deleted_at' => 'datetime'];
+    }
 
     /** @return BelongsTo<ContactSyncSource, $this> */
-    public function source(): BelongsTo { return $this->belongsTo(ContactSyncSource::class, 'source_id'); }
+    public function source(): BelongsTo
+    {
+        return $this->belongsTo(ContactSyncSource::class, 'source_id');
+    }
 }

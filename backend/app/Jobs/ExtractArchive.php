@@ -139,7 +139,7 @@ class ExtractArchive implements ShouldQueue
     /**
      * Create (or reuse) the folder chain for a relative dir under the destination.
      *
-     * @param array<string, int|null> $cache
+     * @param  array<string, int|null>  $cache
      */
     private function ensureFolderPath(string $dir, array &$cache): ?int
     {

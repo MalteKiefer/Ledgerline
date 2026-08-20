@@ -7,6 +7,7 @@ namespace App\Services\Contacts;
 use App\Models\ContactSyncSource;
 use App\Support\OutboundUrl;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -17,6 +18,7 @@ use RuntimeException;
 final class CardDavReplicaClient
 {
     private const MAX_REDIRECTS = 3;
+
     private const MAX_XML_BYTES = 5_000_000;
 
     /** @return list<array{uri:string,etag:?string,vcard:string}> */
@@ -113,7 +115,7 @@ final class CardDavReplicaClient
 
     /** Send one authenticated CardDAV request with bounded, SSRF-guarded redirects. */
     /** @param array<string, string> $headers */
-    private function request(ContactSyncSource $source, string $method, string $url, ?string $body = null, array $headers = []): \Illuminate\Http\Client\Response
+    private function request(ContactSyncSource $source, string $method, string $url, ?string $body = null, array $headers = []): Response
     {
         for ($attempt = 0; $attempt <= self::MAX_REDIRECTS; $attempt++) {
             if (! OutboundUrl::safe($url)) {

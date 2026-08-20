@@ -153,7 +153,7 @@ final class HistoricInvoicePdfParser
     }
 
     /**
-     * @param list<string> $pendingDescription
+     * @param  list<string>  $pendingDescription
      * @return array{0: string, 1: string}
      */
     private function splitPendingDescription(array $pendingDescription): array

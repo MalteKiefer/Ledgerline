@@ -385,7 +385,7 @@ final class Archiver
      * failure into a bare "7z failed:" with nothing after the colon — no help to
      * the owner reading the notification, and none when debugging.
      *
-     * @param array{ok: bool, out: string, err: string, exit: int|null} $r
+     * @param  array{ok: bool, out: string, err: string, exit: int|null}  $r
      */
     private static function reason(array $r): string
     {

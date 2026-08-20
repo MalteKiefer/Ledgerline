@@ -12,6 +12,7 @@ use Illuminate\Console\Command;
 class SyncContactSources extends Command
 {
     protected $signature = 'contacts:sync-sources';
+
     protected $description = 'Dispatch enabled external CardDAV contact replicas';
 
     public function handle(): int

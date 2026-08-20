@@ -15,6 +15,7 @@ use Symfony\Component\Mime\Crypto\SMimeEncrypter;
 use Symfony\Component\Mime\Crypto\SMimeSigner;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Message;
+use Symfony\Component\Mime\Part\AbstractPart;
 
 /**
  * Builds RFC 3156 OpenPGP/MIME and S/MIME wire messages without letting secret
@@ -26,7 +27,7 @@ final class SecureMailComposer
     public function __construct(private readonly FileCipher $cipher) {}
 
     /**
-     * @param list<CryptoRecipient> $recipients
+     * @param  list<CryptoRecipient>  $recipients
      */
     public function compose(ComposedMessage $composed, MailPgpKey $ownKey, array $recipients): Message
     {
@@ -70,17 +71,40 @@ final class SecureMailComposer
         $email = (new Email)
             ->from(new Address($composed->fromEmail, $composed->fromName ?? ''))
             ->subject($composed->subject);
-        foreach ($composed->to as $address) $email->addTo(new Address($address['email'], $address['name'] ?? ''));
-        foreach ($composed->cc as $address) $email->addCc(new Address($address['email'], $address['name'] ?? ''));
-        foreach ($composed->bcc as $address) $email->addBcc(new Address($address['email'], $address['name'] ?? ''));
-        if ($composed->text !== null) $email->text($composed->text, 'utf-8');
-        if ($composed->html !== null && $composed->html !== '') $email->html($composed->html, 'utf-8');
-        if ($composed->messageId !== null) $email->getHeaders()->addIdHeader('Message-ID', $composed->messageId);
-        if ($composed->inReplyTo !== null && $composed->inReplyTo !== '') $email->getHeaders()->addTextHeader('In-Reply-To', $composed->inReplyTo);
-        if ($composed->references !== []) $email->getHeaders()->addTextHeader('References', implode(' ', $composed->references));
-        if ($composed->readReceipt) $email->getHeaders()->addTextHeader('Disposition-Notification-To', $composed->fromEmail);
-        if ($composed->highPriority) { $email->getHeaders()->addTextHeader('X-Priority', '1 (Highest)'); $email->getHeaders()->addTextHeader('Importance', 'high'); }
-        foreach ($composed->attachments as $attachment) $email->attach($attachment['bytes'], $attachment['filename'], $attachment['mime']);
+        foreach ($composed->to as $address) {
+            $email->addTo(new Address($address['email'], $address['name'] ?? ''));
+        }
+        foreach ($composed->cc as $address) {
+            $email->addCc(new Address($address['email'], $address['name'] ?? ''));
+        }
+        foreach ($composed->bcc as $address) {
+            $email->addBcc(new Address($address['email'], $address['name'] ?? ''));
+        }
+        if ($composed->text !== null) {
+            $email->text($composed->text, 'utf-8');
+        }
+        if ($composed->html !== null && $composed->html !== '') {
+            $email->html($composed->html, 'utf-8');
+        }
+        if ($composed->messageId !== null) {
+            $email->getHeaders()->addIdHeader('Message-ID', $composed->messageId);
+        }
+        if ($composed->inReplyTo !== null && $composed->inReplyTo !== '') {
+            $email->getHeaders()->addTextHeader('In-Reply-To', $composed->inReplyTo);
+        }
+        if ($composed->references !== []) {
+            $email->getHeaders()->addTextHeader('References', implode(' ', $composed->references));
+        }
+        if ($composed->readReceipt) {
+            $email->getHeaders()->addTextHeader('Disposition-Notification-To', $composed->fromEmail);
+        }
+        if ($composed->highPriority) {
+            $email->getHeaders()->addTextHeader('X-Priority', '1 (Highest)');
+            $email->getHeaders()->addTextHeader('Importance', 'high');
+        }
+        foreach ($composed->attachments as $attachment) {
+            $email->attach($attachment['bytes'], $attachment['filename'], $attachment['mime']);
+        }
 
         return $email;
     }
@@ -89,7 +113,9 @@ final class SecureMailComposer
     {
         $body = $this->body($message);
         $signature = $this->cipher->signPgpMime($body->toString(), (string) $key->private_key, $key->passphrase);
-        if ($signature === null) throw new RuntimeException('mail PGP signing failed');
+        if ($signature === null) {
+            throw new RuntimeException('mail PGP signing failed');
+        }
 
         return new Message($message->getHeaders(), new PgpSignedPart($body, $signature));
     }
@@ -98,9 +124,13 @@ final class SecureMailComposer
     private function encryptPgp(Message $message, MailPgpKey $ownKey, array $recipients): Message
     {
         $keys = [(string) $ownKey->public_key];
-        foreach ($recipients as $recipient) $keys[] = (string) $recipient->public_key;
+        foreach ($recipients as $recipient) {
+            $keys[] = (string) $recipient->public_key;
+        }
         $payload = $this->cipher->encryptPgpMime($this->body($message)->toString(), $keys);
-        if ($payload === null) throw new RuntimeException('mail PGP encryption failed');
+        if ($payload === null) {
+            throw new RuntimeException('mail PGP encryption failed');
+        }
 
         return new Message($message->getHeaders(), new PgpEncryptedPart($payload));
     }
@@ -114,13 +144,15 @@ final class SecureMailComposer
     private function encryptSmime(Message $message, MailPgpKey $ownKey, array $recipients): Message
     {
         return $this->withSmimeFiles($ownKey, function (string $cert, string $_private) use ($message, $recipients): Message {
-            $dir = dirname($cert); $certificatePaths = [$cert];
+            $dir = dirname($cert);
+            $certificatePaths = [$cert];
             foreach ($recipients as $index => $recipient) {
                 $path = $dir.'/recipient-'.$index.'.pem';
                 file_put_contents($path, (string) $recipient->cert_pem);
                 @chmod($path, 0600);
                 $certificatePaths[] = $path;
             }
+
             return (new SMimeEncrypter($certificatePaths))->encrypt($message);
         });
     }
@@ -128,24 +160,39 @@ final class SecureMailComposer
     /** @param callable(string,string):Message $callback */
     private function withSmimeFiles(MailPgpKey $key, callable $callback): Message
     {
-        if (! $this->cipher->smimeAvailable() || trim((string) $key->cert_pem) === '' || trim((string) $key->private_key) === '') throw new RuntimeException('mail S/MIME is unavailable');
+        if (! $this->cipher->smimeAvailable() || trim((string) $key->cert_pem) === '' || trim((string) $key->private_key) === '') {
+            throw new RuntimeException('mail S/MIME is unavailable');
+        }
         $dir = sys_get_temp_dir().'/ll-mail-smime-'.bin2hex(random_bytes(12));
-        if (! @mkdir($dir, 0700, true) && ! is_dir($dir)) throw new RuntimeException('mail S/MIME temporary directory failed');
+        if (! @mkdir($dir, 0700, true) && ! is_dir($dir)) {
+            throw new RuntimeException('mail S/MIME temporary directory failed');
+        }
         try {
-            $cert = $dir.'/certificate.pem'; $private = $dir.'/private.pem';
-            file_put_contents($cert, (string) $key->cert_pem); file_put_contents($private, (string) $key->private_key);
-            @chmod($cert, 0600); @chmod($private, 0600);
+            $cert = $dir.'/certificate.pem';
+            $private = $dir.'/private.pem';
+            file_put_contents($cert, (string) $key->cert_pem);
+            file_put_contents($private, (string) $key->private_key);
+            @chmod($cert, 0600);
+            @chmod($private, 0600);
+
             return $callback($cert, $private);
         } finally {
-            foreach (scandir($dir) ?: [] as $file) if ($file !== '.' && $file !== '..') @unlink($dir.'/'.$file);
+            foreach (scandir($dir) ?: [] as $file) {
+                if ($file !== '.' && $file !== '..') {
+                    @unlink($dir.'/'.$file);
+                }
+            }
             @rmdir($dir);
         }
     }
 
-    private function body(Message $message): \Symfony\Component\Mime\Part\AbstractPart
+    private function body(Message $message): AbstractPart
     {
         $body = $message->getBody();
-        if ($body === null) throw new RuntimeException('mail crypto message body is missing');
+        if ($body === null) {
+            throw new RuntimeException('mail crypto message body is missing');
+        }
+
         return $body;
     }
 }

@@ -14,5 +14,8 @@ class ContactVersion extends Model
 
     protected $guarded = [];
 
-    protected function casts(): array { return ['metadata' => 'array']; }
+    protected function casts(): array
+    {
+        return ['metadata' => 'array'];
+    }
 }

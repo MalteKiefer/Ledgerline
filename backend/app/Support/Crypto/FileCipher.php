@@ -48,7 +48,10 @@ final class FileCipher
                 $pass = $home.'/pass';
                 file_put_contents($pass, $passphrase);
                 @chmod($pass, 0600);
-                $argv[] = '--pinentry-mode'; $argv[] = 'loopback'; $argv[] = '--passphrase-file'; $argv[] = $pass;
+                $argv[] = '--pinentry-mode';
+                $argv[] = 'loopback';
+                $argv[] = '--passphrase-file';
+                $argv[] = $pass;
             }
             $argv[] = $input;
             BinaryProcess::run($argv, self::TIMEOUT);
@@ -56,6 +59,7 @@ final class FileCipher
 
             return is_string($signature) && $signature !== '' ? $signature : null;
         });
+
         return is_string($result) ? $result : null;
     }
 
@@ -68,11 +72,14 @@ final class FileCipher
         }
 
         $result = $this->inHome(function (string $home) use ($mime, $recipientPublicKeys): ?string {
-            $input = $home.'/message.mime'; $output = $home.'/message.asc';
+            $input = $home.'/message.mime';
+            $output = $home.'/message.asc';
             file_put_contents($input, $mime);
             $fingerprints = [];
             foreach ($recipientPublicKeys as $index => $material) {
-                if (! is_string($material) || trim($material) === '') continue;
+                if (! is_string($material) || trim($material) === '') {
+                    continue;
+                }
                 $path = $home.'/public-'.$index.'.asc';
                 file_put_contents($path, $material);
                 BinaryProcess::run($this->base($home, ['--import', $path]), self::TIMEOUT);
@@ -80,18 +87,29 @@ final class FileCipher
             $colons = BinaryProcess::run($this->base($home, ['--with-colons', '--list-keys']), self::TIMEOUT);
             foreach (explode("\n", (string) $colons) as $line) {
                 $fields = explode(':', $line);
-                if (($fields[0] ?? '') === 'fpr' && ($fields[9] ?? '') !== '') $fingerprints[] = $fields[9];
+                if (($fields[0] ?? '') === 'fpr' && ($fields[9] ?? '') !== '') {
+                    $fingerprints[] = $fields[9];
+                }
             }
             $fingerprints = array_values(array_unique($fingerprints));
-            if ($fingerprints === []) return null;
+            if ($fingerprints === []) {
+                return null;
+            }
             $argv = $this->base($home, ['--batch', '--yes', '--armor']);
-            foreach ($fingerprints as $fingerprint) { $argv[] = '--recipient'; $argv[] = $fingerprint; }
-            $argv[] = '--output'; $argv[] = $output; $argv[] = '--encrypt'; $argv[] = $input;
+            foreach ($fingerprints as $fingerprint) {
+                $argv[] = '--recipient';
+                $argv[] = $fingerprint;
+            }
+            $argv[] = '--output';
+            $argv[] = $output;
+            $argv[] = '--encrypt';
+            $argv[] = $input;
             BinaryProcess::run($argv, self::TIMEOUT);
             $encrypted = is_file($output) ? file_get_contents($output) : false;
 
             return is_string($encrypted) && $encrypted !== '' ? $encrypted : null;
         });
+
         return is_string($result) ? $result : null;
     }
 

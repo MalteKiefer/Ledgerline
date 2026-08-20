@@ -16,7 +16,10 @@ final class PgpSignedPart extends AbstractMultipartPart
         parent::__construct($signed, new PgpMimePart('application/pgp-signature', $signature));
     }
 
-    public function getMediaSubtype(): string { return 'signed'; }
+    public function getMediaSubtype(): string
+    {
+        return 'signed';
+    }
 
     public function getPreparedHeaders(): Headers
     {

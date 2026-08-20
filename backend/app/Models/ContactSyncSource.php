@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * A writable external CardDAV replica; Ledgerline remains canonical.
@@ -29,12 +30,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $oauth_client_id
  * @property string|null $oauth_client_secret
  * @property string|null $oauth_state_hash
- * @property \Illuminate\Support\Carbon|null $access_token_expires_at
+ * @property Carbon|null $access_token_expires_at
  * @property bool $enabled
  * @property bool $propagate_deletes
  * @property string $status
  * @property string|null $last_error
- * @property \Illuminate\Support\Carbon|null $last_synced_at
+ * @property Carbon|null $last_synced_at
  */
 #[Fillable([
     'user_id', 'address_book_id', 'name', 'provider', 'endpoint', 'auth_type', 'username',
@@ -59,8 +60,14 @@ class ContactSyncSource extends Model
     }
 
     /** @return BelongsTo<AddressBook, $this> */
-    public function addressBook(): BelongsTo { return $this->belongsTo(AddressBook::class); }
+    public function addressBook(): BelongsTo
+    {
+        return $this->belongsTo(AddressBook::class);
+    }
 
     /** @return HasMany<ContactSyncRemoteCard, $this> */
-    public function remoteCards(): HasMany { return $this->hasMany(ContactSyncRemoteCard::class, 'source_id'); }
+    public function remoteCards(): HasMany
+    {
+        return $this->hasMany(ContactSyncRemoteCard::class, 'source_id');
+    }
 }

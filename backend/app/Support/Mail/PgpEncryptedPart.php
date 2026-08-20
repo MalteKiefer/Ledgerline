@@ -18,7 +18,10 @@ final class PgpEncryptedPart extends AbstractMultipartPart
         );
     }
 
-    public function getMediaSubtype(): string { return 'encrypted'; }
+    public function getMediaSubtype(): string
+    {
+        return 'encrypted';
+    }
 
     public function getPreparedHeaders(): Headers
     {

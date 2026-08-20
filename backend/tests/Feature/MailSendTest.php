@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\FileEntry;
+use App\Models\GalleryPhoto;
 use App\Models\MailAccount;
-use App\Models\MailSignature;
 use App\Models\MailAttachment;
 use App\Models\MailBlob;
 use App\Models\MailMessage;
-use App\Models\FileEntry;
-use App\Models\GalleryPhoto;
+use App\Models\MailSignature;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Mail\ComposedMessage;

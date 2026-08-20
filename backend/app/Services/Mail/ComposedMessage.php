@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Mail;
 
 use App\Mail\ComposedMail;
+use App\Models\CryptoRecipient;
+use App\Models\MailPgpKey;
 
 /**
  * An outbound message the user composed (compose / reply / forward), ready to be
@@ -46,8 +48,8 @@ final class ComposedMessage
         public ?int $signingKeyId = null,
         /** @var list<int> */
         public array $recipientKeyIds = [],
-        public ?\App\Models\MailPgpKey $signingKey = null,
-        /** @var list<\App\Models\CryptoRecipient> */
+        public ?MailPgpKey $signingKey = null,
+        /** @var list<CryptoRecipient> */
         public array $recipientKeys = [],
     ) {}
 

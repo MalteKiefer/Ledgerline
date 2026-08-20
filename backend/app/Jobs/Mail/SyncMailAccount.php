@@ -185,6 +185,7 @@ class SyncMailAccount implements ShouldQueue
             MailLogger::record($account, 'info', 'folder_fetched', $folder, count($files).' new message(s) to ingest.');
             if ($maxPerRun > 0 && $paged >= $maxPerRun) {
                 $continueBacklog = $continueBacklog || $files !== [];
+
                 continue;
             }
             if ($maxPerRun > 0 && $paged + count($files) > $maxPerRun) {

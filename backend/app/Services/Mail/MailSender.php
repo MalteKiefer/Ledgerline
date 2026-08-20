@@ -6,6 +6,7 @@ namespace App\Services\Mail;
 
 use App\Mail\ComposedMail;
 use App\Models\MailAccount;
+use App\Models\MailPgpKey;
 use App\Support\Mail\ImapAppender;
 use App\Support\OutboundUrl;
 use App\Support\Redactor;
@@ -99,7 +100,7 @@ class MailSender
                 $sent = Mail::mailer($mailerName)->send(new ComposedMail($composed));
                 $raw = $sent instanceof SentMessage ? $sent->getSymfonySentMessage()->getOriginalMessage()->toString() : null;
             } else {
-                if (! $composed->signingKey instanceof \App\Models\MailPgpKey) {
+                if (! $composed->signingKey instanceof MailPgpKey) {
                     throw new RuntimeException('mail crypto signing key is missing');
                 }
                 $wire = $this->secureComposer->compose($composed, $composed->signingKey, $composed->recipientKeys);
@@ -108,9 +109,13 @@ class MailSender
                     array_map(static fn (array $entry): Address => new Address($entry['email'], $entry['name'] ?? ''), [...$composed->to, ...$composed->cc, ...$composed->bcc]),
                 );
                 $transport = Mail::mailer($mailerName)->getSymfonyTransport();
-                if ($transport === null) throw new RuntimeException('mail crypto SMTP transport is unavailable');
+                if ($transport === null) {
+                    throw new RuntimeException('mail crypto SMTP transport is unavailable');
+                }
                 $secureSent = $transport->send($wire, $envelope);
-                if ($secureSent === null) throw new RuntimeException('mail crypto SMTP send failed');
+                if ($secureSent === null) {
+                    throw new RuntimeException('mail crypto SMTP send failed');
+                }
                 $raw = $secureSent->getOriginalMessage()->toString();
             }
 

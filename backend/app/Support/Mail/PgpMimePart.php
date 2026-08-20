@@ -15,9 +15,15 @@ final class PgpMimePart extends AbstractPart
         parent::__construct();
     }
 
-    public function getMediaType(): string { return explode('/', $this->type, 2)[0]; }
+    public function getMediaType(): string
+    {
+        return explode('/', $this->type, 2)[0];
+    }
 
-    public function getMediaSubtype(): string { return explode('/', $this->type, 2)[1]; }
+    public function getMediaSubtype(): string
+    {
+        return explode('/', $this->type, 2)[1];
+    }
 
     public function getPreparedHeaders(): Headers
     {
@@ -27,8 +33,14 @@ final class PgpMimePart extends AbstractPart
         return $headers;
     }
 
-    public function bodyToString(): string { return $this->body; }
+    public function bodyToString(): string
+    {
+        return $this->body;
+    }
 
     /** @return iterable<string> */
-    public function bodyToIterable(): iterable { yield $this->body; }
+    public function bodyToIterable(): iterable
+    {
+        yield $this->body;
+    }
 }

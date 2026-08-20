@@ -10,10 +10,10 @@ use App\Models\AuditLog;
 use App\Models\FileEntry;
 use App\Models\MailAttachment;
 use App\Support\BlobStore;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -149,13 +149,11 @@ class VirusTotalController extends Controller
             ->get('https://www.virustotal.com/api/v3/files/'.$hash);
     }
 
-    /** @param mixed $value */
     private function integer(mixed $value): int
     {
         return is_int($value) ? $value : (is_numeric($value) ? (int) $value : 0);
     }
 
-    /** @param mixed $attributes */
     private function date(mixed $attributes): ?string
     {
         if (! is_array($attributes)) {

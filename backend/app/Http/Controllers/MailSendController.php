@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Models\MailAccount;
-use App\Models\MailAttachment;
-use App\Models\MailMessage;
-use App\Models\MailSignature;
-use App\Models\MailPgpKey;
 use App\Models\CryptoRecipient;
 use App\Models\FileEntry;
 use App\Models\GalleryPhoto;
+use App\Models\MailAccount;
+use App\Models\MailAttachment;
+use App\Models\MailMessage;
+use App\Models\MailPgpKey;
+use App\Models\MailSignature;
 use App\Services\Mail\ComposedMessage;
 use App\Services\Mail\MailSender;
 use App\Support\BlobStore;
@@ -111,7 +111,9 @@ class MailSendController extends Controller
         if (! $composed->hasRecipient()) {
             return $this->fail('no_recipient');
         }
-        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) return $failure;
+        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) {
+            return $failure;
+        }
 
         return $this->dispatch($sender, $account, $composed);
     }
@@ -176,7 +178,9 @@ class MailSendController extends Controller
             readReceipt: $request->boolean('read_receipt'),
             highPriority: $request->boolean('high_priority'),
         );
-        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) return $failure;
+        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) {
+            return $failure;
+        }
 
         return $this->dispatch($sender, $account, $composed);
     }
@@ -228,7 +232,9 @@ class MailSendController extends Controller
             readReceipt: $request->boolean('read_receipt'),
             highPriority: $request->boolean('high_priority'),
         );
-        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) return $failure;
+        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) {
+            return $failure;
+        }
 
         return $this->dispatch($sender, $account, $composed);
     }
@@ -252,11 +258,15 @@ class MailSendController extends Controller
     {
         $modeInput = $request->input('crypto_mode');
         $mode = is_string($modeInput) ? $modeInput : 'none';
-        if ($mode === 'none') return null;
+        if ($mode === 'none') {
+            return null;
+        }
         $typeInput = $request->input('crypto_type');
         $type = is_string($typeInput) ? $typeInput : '';
         $key = MailPgpKey::query()->where('user_id', $userId)->whereKey($request->integer('signing_key_id'))->first();
-        if ($key === null || $key->type !== $type || ($key->expires_at !== null && $key->expires_at->isPast())) return $this->fail('crypto_key_invalid');
+        if ($key === null || $key->type !== $type || ($key->expires_at !== null && $key->expires_at->isPast())) {
+            return $this->fail('crypto_key_invalid');
+        }
         $rawIds = $request->input('recipient_key_ids', []);
         $ids = [];
         foreach (is_array($rawIds) ? $rawIds : [] as $value) {
@@ -268,8 +278,12 @@ class MailSendController extends Controller
         }
         $ids = array_values(array_unique($ids));
         $recipients = $ids === [] ? collect() : CryptoRecipient::query()->where('user_id', $userId)->where('type', $type)->whereIn('id', $ids)->get();
-        if (count($ids) !== $recipients->count()) return $this->fail('crypto_recipient_invalid');
-        if (in_array($mode, ['encrypt', 'sign_encrypt'], true) && $recipients->isEmpty()) return $this->fail('crypto_recipient_required');
+        if (count($ids) !== $recipients->count()) {
+            return $this->fail('crypto_recipient_invalid');
+        }
+        if (in_array($mode, ['encrypt', 'sign_encrypt'], true) && $recipients->isEmpty()) {
+            return $this->fail('crypto_recipient_required');
+        }
         /** @var 'sign'|'encrypt'|'sign_encrypt' $mode */
         $message->cryptoMode = $mode;
         /** @var 'pgp'|'smime' $type */

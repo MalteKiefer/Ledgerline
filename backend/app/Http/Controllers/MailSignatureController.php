@@ -83,8 +83,8 @@ class MailSignatureController extends Controller
     }
 
     /**
-     * @param list<int> $accounts
-     * @param list<int> $defaults
+     * @param  list<int>  $accounts
+     * @param  list<int>  $defaults
      */
     private function assign(MailSignature $signature, array $accounts, array $defaults, int $uid): void
     {
