@@ -12,6 +12,9 @@ export default defineConfig({
             'src/**/*.test.js',
             'src/**/*.test.ts',
         ],
+        // Most suites are pure logic and run fastest in node; the ones that touch
+        // the DOM (the Markdown sanitiser) opt in per file with
+        // `@vitest-environment jsdom`.
         environment: 'node',
     },
 });

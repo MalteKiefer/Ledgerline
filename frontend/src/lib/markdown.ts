@@ -1,6 +1,6 @@
 import { Marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
-import DOMPurify from 'dompurify';
+import createDOMPurify from 'dompurify';
 // Full highlight.js "common" build: ~190 languages registered out of the box
 // (with their aliases: js/ts/html/yml/sh/py…). Loaded only on the notes route
 // (this module is in the lazy Notes chunk).
@@ -23,6 +23,25 @@ const marked = new Marked(
   }),
 );
 marked.setOptions({ breaks: true, gfm: true });
+
+// Own DOMPurify instance, not the shared default export: the data-URI rule below
+// is registered as a hook, and a hook on the shared instance would silently apply
+// to every other caller (the mail reader export sanitises with its own config).
+const purify = createDOMPurify(window);
+
+// DOMPurify allows a data: URI on media tags (img/video/audio/source/track)
+// regardless of ALLOWED_URI_REGEXP, and that allowance cannot be narrowed by
+// config — ADD_DATA_URI_TAGS only ever widens it. Without this hook a note could
+// embed data:application/… or data:image/svg+xml, neither of which this module
+// intends to permit. Drop any data: URI that is not one of the four raster types.
+const ALLOWED_DATA_URI = /^data:image\/(?:png|jpe?g|gif|webp);/i;
+purify.addHook('uponSanitizeAttribute', (_node, data) => {
+  if ((data.attrName === 'src' || data.attrName === 'href')
+    && data.attrValue.trimStart().toLowerCase().startsWith('data:')
+    && !ALLOWED_DATA_URI.test(data.attrValue.trimStart())) {
+    data.keepAttr = false;
+  }
+});
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => (
@@ -48,7 +67,7 @@ function rewriteWikilinks(md: string, resolve: (title: string) => number | null)
 export function renderMarkdown(md: string, resolve?: (title: string) => number | null): string {
   const pre = resolve ? rewriteWikilinks(md ?? '', resolve) : (md ?? '');
   const raw = marked.parse(pre, { async: false }) as string;
-  return DOMPurify.sanitize(raw, {
+  return purify.sanitize(raw, {
     ALLOWED_TAGS: [
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'hr',
       'strong', 'em', 'del', 'blockquote', 'code', 'pre',
