@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Support\UserData\CalendarData;
 use App\Support\UserData\ContactsData;
 use App\Support\UserData\FilesData;

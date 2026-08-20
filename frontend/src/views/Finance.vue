@@ -478,7 +478,7 @@
               <div v-if="openPartnerRec.hourly_rate != null && openPartnerRec.hourly_rate !== ''"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_hourly_rate') }}</dt><dd class="tabular-nums">{{ fmtRate(openPartnerRec) }}</dd></div>
               <div v-if="openPartnerRec.currency"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_currency') }}</dt><dd>{{ openPartnerRec.currency }}</dd></div>
               <div v-if="openPartnerRec.phone"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_phone') }}</dt><dd class="tabular-nums">{{ openPartnerRec.phone }}</dd></div>
-              <div v-if="openPartnerRec.url"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_url') }}</dt><dd><a :href="openPartnerRec.url" target="_blank" rel="noopener" class="break-all text-primary-600 hover:underline dark:text-primary-300">{{ openPartnerRec.url }}</a></dd></div>
+              <div v-if="openPartnerRec.url"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_url') }}</dt><dd><a :href="safeHref(openPartnerRec.url)" target="_blank" rel="noopener noreferrer" class="break-all text-primary-600 hover:underline dark:text-primary-300">{{ openPartnerRec.url }}</a></dd></div>
               <div v-if="openPartnerRec.address"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_address') }}</dt><dd class="whitespace-pre-line">{{ openPartnerRec.address }}</dd></div>
               <div v-if="openPartnerRec.category"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.receipt_category') }}</dt><dd class="mt-0.5"><Badge tone="gray">{{ openPartnerRec.category }}</Badge></dd></div>
               <div v-if="openPartnerRec.note"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.receipt_note') }}</dt><dd class="whitespace-pre-line">{{ openPartnerRec.note }}</dd></div>
@@ -1215,7 +1215,7 @@
               <tr v-for="(l, i) in printInv.lines" :key="i" style="border-bottom:1px solid #eef0f4;">
                 <td style="padding:9px 8px 9px 0; font-weight:500; vertical-align:top; white-space:pre-line;">{{ l.desc }}</td>
                 <td style="padding:9px 8px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ fmtQty(l.qty, printInv.lang) + (l.unit ? ' ' + l.unit : '') }}</td>
-                <td style="padding:9px 8px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ pmoney(l.unitPrice, printInv.currency, printInv.lang) }}</td>
+                <td style="padding:9px 8px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ pmoney(Number(l.unitPrice), printInv.currency, printInv.lang) }}</td>
                 <td style="padding:9px 0 9px 8px; text-align:right; white-space:nowrap; font-weight:600; vertical-align:top;" class="tabular-nums">{{ pmoney(lineNet(l), printInv.currency, printInv.lang) }}</td>
               </tr>
             </tbody>
@@ -1277,7 +1277,7 @@
             <tr v-for="(l, i) in printInv.lines" :key="i" style="border-bottom:1px solid #ededed;">
               <td style="padding:9px 6px 9px 0; vertical-align:top; white-space:pre-line;">{{ l.desc }}</td>
               <td style="padding:9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ fmtQty(l.qty, printInv.lang) + (l.unit ? ' ' + l.unit : '') }}</td>
-              <td style="padding:9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ pmoney(l.unitPrice, printInv.currency, printInv.lang) }}</td>
+              <td style="padding:9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ pmoney(Number(l.unitPrice), printInv.currency, printInv.lang) }}</td>
               <td style="padding:9px 0 9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ pmoney(lineNet(l), printInv.currency, printInv.lang) }}</td>
             </tr>
           </tbody>
@@ -1338,7 +1338,7 @@
                 <tr v-for="(l, i) in printInv.lines" :key="i">
                   <td><div class="ie-d-title" style="white-space:pre-line;">{{ l.desc }}</div></td>
                   <td class="r num">{{ fmtQty(l.qty, printInv.lang) + (l.unit ? ' ' + l.unit : '') }}</td>
-                  <td class="r num">{{ pmoney(l.unitPrice, printInv.currency, printInv.lang) }}</td>
+                  <td class="r num">{{ pmoney(Number(l.unitPrice), printInv.currency, printInv.lang) }}</td>
                   <td class="r num ie-amt">{{ pmoney(lineNet(l), printInv.currency, printInv.lang) }}</td>
                 </tr>
               </tbody>
@@ -1410,7 +1410,7 @@
                 <td style="border:1px solid #cfcfcf; padding:6px 7px; vertical-align:top; white-space:pre-line;">{{ l.desc }}</td>
                 <td style="border:1px solid #cfcfcf; padding:6px 7px; text-align:right; vertical-align:top; white-space:nowrap;" class="tabular-nums">{{ fmtQty(l.qty, printInv.lang) }}</td>
                 <td style="border:1px solid #cfcfcf; padding:6px 7px; vertical-align:top; white-space:nowrap;">{{ l.unit || '' }}</td>
-                <td style="border:1px solid #cfcfcf; padding:6px 7px; text-align:right; vertical-align:top; white-space:nowrap;" class="tabular-nums">{{ pmoney(l.unitPrice, printInv.currency, printInv.lang) }}</td>
+                <td style="border:1px solid #cfcfcf; padding:6px 7px; text-align:right; vertical-align:top; white-space:nowrap;" class="tabular-nums">{{ pmoney(Number(l.unitPrice), printInv.currency, printInv.lang) }}</td>
                 <td style="border:1px solid #cfcfcf; padding:6px 7px; text-align:right; vertical-align:top; white-space:nowrap;" class="tabular-nums">{{ pmoney(lineNet(l), printInv.currency, printInv.lang) }}</td>
               </tr>
             </tbody>
@@ -1465,7 +1465,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick } from 'vue';
-import { fmtDate as libDate } from '@spa/lib/datetime';
+import { fmtDate as libDate, todayYmd } from '@spa/lib/datetime';
+import { safeHref } from '@spa/lib/url';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, SectionNav, type SectionNavItem } from '@spa/ui';
@@ -1902,7 +1903,7 @@ const partnerOptions = computed(() => f.partners.map((p) => ({ id: p.id, name: p
 function conflict() { void f.load(); error(t('common.error')); }
 
 function newInvoice() {
-  draft.value = { status: 'draft', currency: 'EUR', issue_date: new Date().toISOString().slice(0, 10), customer: {}, lines: [] };
+  draft.value = { status: 'draft', currency: 'EUR', issue_date: todayYmd(), customer: {}, lines: [] };
   lines.value = [{ desc: '', qty: 1, unitPrice: 0, vatRate: 19 }];
   loadCustomerFields(null);
   invDialog.value = true;
@@ -2092,7 +2093,7 @@ const assignTxCandidates = computed<BookingSuggestion[]>(() => {
   const matchesQuery = (t: BankTransaction) => !q || (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q);
   const amount = rForm.amount.trim() === '' ? null : Number(rForm.amount);
   if (amount != null && Number.isFinite(amount)) {
-    return suggestBookings({ total: amount, date: rForm.date || null }, unlinkedTransactions.value.filter(matchesQuery), { limit: 30 });
+    return suggestBookings({ total: amount, date: rForm.date || null, currency: rForm.currency || null }, unlinkedTransactions.value.filter(matchesQuery), { limit: 30, rates: f.fxRates });
   }
   return unlinkedTransactions.value
     .filter(matchesQuery)
@@ -2115,7 +2116,7 @@ interface TxForm {
 function blankTx(): TxForm {
   return {
     payment_method_id: bankAccount.value || (f.paymentMethods[0]?.id ?? null),
-    date: new Date().toISOString().slice(0, 10), amount: '', counterparty: '', counterparty_iban: '',
+    date: todayYmd(), amount: '', counterparty: '', counterparty_iban: '',
     bic: '', purpose: '', booking_text: '', vat_cat: '',
   };
 }

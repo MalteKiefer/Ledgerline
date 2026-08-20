@@ -187,7 +187,7 @@
                     <span v-if="typeLabel(p.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(p.type) }}</span>
                   </span>
                 </a>
-                <a v-for="(u, i) in arr(detail.urls)" :key="'u'+i" :href="u.value" target="_blank" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
+                <a v-for="(u, i) in arr(detail.urls)" :key="'u'+i" :href="safeHref(u.value)" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
                   <span class="w-5 shrink-0"></span>
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-sm">{{ u.value }}</span>
@@ -555,6 +555,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import AddressMiniMap from '@spa/components/AddressMiniMap.vue';
 import AvatarCropModal from '@spa/components/AvatarCropModal.vue';
 import { phoneCountry, formatPhone } from '@spa/lib/phone-country';
+import { safeHref } from '@spa/lib/url';
 import { fmtYmd } from '@spa/lib/datetime';
 import FlagIcon from '@spa/components/FlagIcon.vue';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';

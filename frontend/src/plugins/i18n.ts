@@ -5,13 +5,6 @@ import { i18nVue } from 'laravel-vue-i18n';
 // trans() semantics. Lazy per-locale via import.meta.glob.
 export const i18n = i18nVue;
 
-export function resolveLang(lang: string) {
-  const langs = import.meta.glob('../../../backend/lang/*.json');
-  const key = `../../../backend/lang/php_${lang}.json`;
-  const loader = langs[key];
-  return loader ? loader() : Promise.resolve({ default: {} });
-}
-
 const SUPPORTED = ['en', 'de', 'ru'];
 
 /**

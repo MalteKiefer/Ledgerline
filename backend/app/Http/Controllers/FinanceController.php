@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Console\Commands\FetchExchangeRates;
 use App\Mail\InvoiceMail;
 use App\Mail\InvoiceReminderMail;
 use App\Models\AppSettings;
@@ -25,6 +26,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -114,7 +116,30 @@ class FinanceController extends Controller
             'financeCategories' => FinanceCategory::query()->orderBy('name')->get(),
             'transactions' => BankTransaction::query()->orderByDesc('date')->orderByDesc('id')->get(),
             'standaloneReceipts' => FinanceReceipt::query()->orderByDesc('created_at')->orderByDesc('id')->get(),
+            // Foreign-currency receipts are matched against euro bookings, so the
+            // client needs today's rates. finance:fetch-fx refreshes this cache
+            // daily; the config values are the fallback until it first succeeds.
+            'fxRates' => $this->fxRates(),
         ];
+    }
+
+    /**
+     * X -> EUR rates for the client's receipt matching.
+     *
+     * @return array<string, float>
+     */
+    private function fxRates(): array
+    {
+        $cached = Cache::get(FetchExchangeRates::CACHE_KEY);
+        $rates = is_array($cached) && $cached !== [] ? $cached : config('finance.fx_default', []);
+        $out = [];
+        foreach (is_array($rates) ? $rates : [] as $code => $rate) {
+            if (is_string($code) && is_numeric($rate)) {
+                $out[strtoupper($code)] = (float) $rate;
+            }
+        }
+
+        return $out === [] ? ['EUR' => 1.0] : $out;
     }
 
     public function trash(): JsonResponse

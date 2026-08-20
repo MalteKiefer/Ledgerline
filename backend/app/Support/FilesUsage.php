@@ -6,7 +6,6 @@ namespace App\Support;
 
 use App\Models\FileEntry;
 use App\Models\FileVersion;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Storage-usage accounting for the plaintext-relational Files core (pivot). A
@@ -38,38 +37,6 @@ final class FilesUsage
     {
         return (int) FileEntry::query()->withoutGlobalScopes()->sum('size')
             + (int) FileVersion::query()->sum('size');
-    }
-
-    /**
-     * Per-user stored bytes (files + versions), keyed by user id. One grouped
-     * query per table so an admin listing does not run N queries.
-     *
-     * @return array<int, int>
-     */
-    public static function byUser(): array
-    {
-        $int = static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0;
-        $out = [];
-
-        $files = FileEntry::query()
-            ->withoutGlobalScopes()
-            ->groupBy('user_id')
-            ->selectRaw('user_id, SUM(size) AS bytes')
-            ->pluck('bytes', 'user_id');
-        foreach ($files as $uid => $bytes) {
-            $out[$int($uid)] = $int($bytes);
-        }
-
-        $versions = DB::table('file_versions')
-            ->join('files', 'file_versions.file_id', '=', 'files.id')
-            ->groupBy('files.user_id')
-            ->selectRaw('files.user_id AS user_id, SUM(file_versions.size) AS bytes')
-            ->pluck('bytes', 'user_id');
-        foreach ($versions as $uid => $bytes) {
-            $out[$int($uid)] = ($out[$int($uid)] ?? 0) + $int($bytes);
-        }
-
-        return $out;
     }
 
     private function __construct() {}

@@ -69,16 +69,21 @@ export const useFinanceStore = defineStore('finance', () => {
   const standaloneReceipts = ref<Receipt[]>([]);
   const transactions = ref<BankTransaction[]>([]);
   const financeCategories = ref<FinanceCategory[]>([]);
+  // X -> EUR, refreshed daily server-side (finance:fetch-fx). Used to match a
+  // foreign-currency receipt against euro bookings.
+  const fxRates = ref<Record<string, number>>({ EUR: 1 });
 
   async function load() {
     const r = await api.get<{
       invoices: Invoice[]; partners: Partner[]; paymentMethods: PaymentMethod[];
       projects: Project[]; standaloneReceipts: Receipt[];
       transactions?: BankTransaction[]; financeCategories?: FinanceCategory[];
+      fxRates?: Record<string, number>;
     }>('/api/v1/finance/data');
     invoices.value = r.invoices; partners.value = r.partners; paymentMethods.value = r.paymentMethods;
     projects.value = r.projects; standaloneReceipts.value = r.standaloneReceipts ?? [];
     transactions.value = r.transactions ?? []; financeCategories.value = r.financeCategories ?? [];
+    if (r.fxRates && Object.keys(r.fxRates).length) fxRates.value = r.fxRates;
   }
 
   // ---- Bank transactions ----
@@ -151,7 +156,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const deleteProject = (id: number) => api.delete(`/api/v1/finance/projects/${id}`);
 
   return {
-    invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories,
+    invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories, fxRates,
     load, reports, vatAdvance, euer, accountVat, duplicates, numberGaps, receiptMatches, categorySuggestions,
     createTransaction, updateTransaction, deleteTransaction, restoreTransaction, forceTransaction, bulkTransactions, loadTrash,
     attachTxReceipt, deleteTxReceipt, txReceiptUrl,

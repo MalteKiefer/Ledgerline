@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Support\Secret;
 
 return [
@@ -28,7 +30,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.692.5'),
+    'version' => env('APP_VERSION', '1.693.0'),
 
     /*
     |--------------------------------------------------------------------------

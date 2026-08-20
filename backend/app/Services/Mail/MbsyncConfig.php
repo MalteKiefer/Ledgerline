@@ -88,15 +88,6 @@ final class MbsyncConfig
     }
 
     /**
-     * The mbsync channel name this account's config uses (single channel per
-     * config file, selected wholesale by MbsyncRunner via `mbsync -a`).
-     */
-    public static function channelName(MailAccount $account): string
-    {
-        return 'll_'.$account->id;
-    }
-
-    /**
      * The PassCmd line: shells `php artisan mail:account-password {id}` so
      * mbsync obtains the decrypted password from that command's stdout at auth
      * time, never from a value written into this file.

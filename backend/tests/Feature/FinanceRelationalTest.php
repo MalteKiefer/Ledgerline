@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Console\Commands\FetchExchangeRates;
 use App\Models\BankTransaction;
 use App\Models\FinanceCategory;
 use App\Models\FinancePartner;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -573,5 +575,27 @@ class FinanceRelationalTest extends TestCase
         $this->actingAs(User::factory()->create());
         $this->get(route('finance.receipts.raw', $id))->assertNotFound();
         $this->putJson(route('finance.receipts.update', $id), ['category' => 'x'])->assertNotFound();
+    }
+
+    public function test_finance_data_carries_exchange_rates_for_receipt_matching(): void
+    {
+        $user = User::factory()->create();
+
+        // Without a fetched rate the configured fallback is served, so a
+        // foreign-currency receipt can still be matched on a fresh install.
+        Cache::forget(FetchExchangeRates::CACHE_KEY);
+        $this->actingAs($user)->getJson(route('api.finance.data'))
+            ->assertOk()
+            ->assertJsonPath('fxRates.EUR', 1)
+            ->assertJsonPath('fxRates.USD', 0.92);
+    }
+
+    public function test_finance_data_prefers_the_fetched_rates_over_the_fallback(): void
+    {
+        Cache::put(FetchExchangeRates::CACHE_KEY, ['usd' => 0.5]);
+
+        $this->actingAs(User::factory()->create())->getJson(route('api.finance.data'))
+            ->assertOk()
+            ->assertJsonPath('fxRates.USD', 0.5);
     }
 }

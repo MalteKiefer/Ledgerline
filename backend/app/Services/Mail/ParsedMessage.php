@@ -40,8 +40,4 @@ final readonly class ParsedMessage
         public array $attachments = [],
     ) {}
 
-    public function hasAttachment(): bool
-    {
-        return $this->attachmentCount > 0;
-    }
 }
