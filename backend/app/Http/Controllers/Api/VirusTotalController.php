@@ -140,7 +140,12 @@ class VirusTotalController extends Controller
 
     private function requestHash(string $key, string $hash): Response
     {
-        return Http::acceptJson()->withHeaders(['x-apikey' => $key])->timeout(12)
+        // The API key rides in a custom header, which a redirect-following
+        // client would carry to whatever host the response names (only
+        // Authorization/Cookie are dropped automatically). The origin is fixed,
+        // so there is no redirect worth following in the first place.
+        return Http::withOptions(['allow_redirects' => false])
+            ->acceptJson()->withHeaders(['x-apikey' => $key])->timeout(12)
             ->get('https://www.virustotal.com/api/v3/files/'.$hash);
     }
 
