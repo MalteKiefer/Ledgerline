@@ -224,6 +224,12 @@ final class HistoricInvoicePdfParser
                 ? str_replace('.', '', $value)
                 : str_replace(',', '', $value);
         }
+        // No comma at all, but dot-grouped in threes: a German thousands
+        // separator (1.071 / 1.234.567). Reading that as a decimal point turns
+        // an invoice amount into a thousandth of itself.
+        if (! str_contains($value, ',') && preg_match('/^-?[0-9]{1,3}(?:[.][0-9]{3})+$/', $value) === 1) {
+            $value = str_replace('.', '', $value);
+        }
         $value = str_replace(',', '.', $value);
 
         return is_numeric($value) ? (float) $value : null;

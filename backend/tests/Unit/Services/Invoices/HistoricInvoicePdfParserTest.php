@@ -150,4 +150,22 @@ TEXT;
             'unitPrice' => 45.0, 'vatRate' => 19.0, 'amount' => 112.5,
         ]], $rows);
     }
+
+    #[Test]
+    public function it_reads_a_german_thousands_separator_without_decimals(): void
+    {
+        // A dot grouped in threes and no comma is a thousands separator on a
+        // German invoice. Reading it as a decimal point would book 1.071 EUR
+        // where the document says 1071.
+        $text = <<<'TEXT'
+Pos Beschreibung                     Einzelpreis   Menge   Betrag
+1   Wartungspauschale Jahr           1.071,00 €    1 Stk   1.071,00 €
+2   Ersatzteile                      1.500 €       1 Stk   1.500 €
+TEXT;
+
+        $rows = (new HistoricInvoicePdfParser)->lines($text, 19);
+
+        $this->assertSame(1071.0, $rows[0]['amount']);
+        $this->assertSame(1500.0, $rows[1]['amount']);
+    }
 }
