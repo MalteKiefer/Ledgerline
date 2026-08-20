@@ -77,6 +77,46 @@ class ApiSurfaceGuardTest extends TestCase
      * file actually holds: every line closes the braces and brackets it opens.
      * That is what a dropped `}` breaks, and it is what nothing else catches.
      */
+    /**
+     * Every route of a toggleable module carries the module gate. Without it a
+     * user whose admin switched the module off keeps reaching its data — the gate
+     * is one forgotten group away from being decorative.
+     *
+     * The exceptions are deliberate and named: admin workspace settings, the
+     * crypto keyring (shared by Mail and Files, so gating it on Mail would lock
+     * out Files encryption), and token-addressed endpoints with no session to
+     * gate against.
+     */
+    public function test_module_routes_carry_the_module_gate(): void
+    {
+        $ungated = [];
+        foreach (Route::getRoutes() as $route) {
+            $action = (string) ($route->getAction('controller') ?? '');
+            $controller = class_basename(strtok($action, '@'));
+            if (! preg_match('/^(Notes|Files|Gallery|Contact|Calendar|Mail|Finance)[A-Za-z]*Controller$/', $controller)) {
+                continue;
+            }
+            $uri = $route->uri();
+            if (str_contains($uri, '/admin/')                        // workspace settings, admin-gated
+                || str_starts_with($uri, 'crypto/')                  // keyring shared by Mail + Files
+                || str_starts_with($uri, 'api/v1/crypto/')
+                || str_contains($uri, 'upload-link/')                // token is the credential, no session
+                || str_contains($uri, 'birthdays/')
+                || $uri === 'settings/files') {                      // personal preference, no module data
+                continue;
+            }
+            // The gate lives on the route group, so resolve the way route:list does.
+            $middleware = implode(' ', app('router')->gatherRouteMiddleware($route));
+            if (! str_contains($middleware, 'EnsureModule')) {
+                $ungated[] = $route->methods()[0].' '.$uri;
+            }
+        }
+
+        $this->assertSame([], $ungated,
+            'Route(s) of a toggleable module without the module gate. Add module:<key>, or — if the endpoint is '
+            .'deliberately reachable with the module off — list it here with the reason.');
+    }
+
     public function test_openapi_flow_mappings_are_balanced(): void
     {
         $lines = explode("\n", (string) file_get_contents(base_path('../openapi.yaml')));
