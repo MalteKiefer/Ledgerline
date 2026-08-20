@@ -266,8 +266,10 @@ final class MailHtmlSanitizer
      */
     private function sanitizeCss(string $css): string
     {
-        $css = preg_replace('#/\*.*?\*/#s', '', $css) ?? '';
-        $css = str_replace(chr(92), '', $css); // strip escapes so keyword filters cannot be spelled around
+        $css = $this->decodeCssEscapes($this->stripCssComments($css));
+        // A decoded escape can spell a comment sequence; strip once more so the
+        // keyword patterns below see the same text a browser tokenises.
+        $css = $this->stripCssComments($css);
         // Resource-loading at-rules, with or without a terminating semicolon,
         // and with or without a block body.
         $css = preg_replace('#@(?:import|namespace|charset)[^;{}]*(?:;|$)#i', '', $css) ?? '';
@@ -276,5 +278,32 @@ final class MailHtmlSanitizer
         $css = preg_replace('#(?:expression\s*\(|-moz-binding\s*:|behavior\s*:)#i', '', $css) ?? '';
 
         return trim(str_replace(['<', '>'], '', $css));
+    }
+
+    private function stripCssComments(string $css): string
+    {
+        return preg_replace('#/\*.*?(?:\*/|$)#s', '', $css) ?? '';
+    }
+
+    /**
+     * Resolve CSS escapes to the character a browser would see, so the keyword
+     * patterns cannot be spelled around: the hex form is the interesting one,
+     * since it can spell the "u" of url(. Anything outside ASCII cannot form a
+     * keyword and is dropped rather than re-encoded.
+     */
+    private function decodeCssEscapes(string $css): string
+    {
+        $hex = preg_replace_callback(
+            '/\x5c([0-9a-fA-F]{1,6})[ \t\r\n\f]?/',
+            static function (array $m): string {
+                $code = (int) hexdec($m[1]);
+
+                return $code > 0 && $code < 128 ? chr($code) : '';
+            },
+            $css,
+        ) ?? '';
+
+        // Any remaining escape stands for the character that follows it.
+        return preg_replace('/\x5c(.)/s', '$1', $hex) ?? '';
     }
 }
