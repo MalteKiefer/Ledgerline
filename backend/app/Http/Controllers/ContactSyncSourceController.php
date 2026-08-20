@@ -24,7 +24,7 @@ class ContactSyncSourceController extends Controller
     public function index(Request $request): JsonResponse
     {
         $userId = $this->requireUser($request)->id;
-        $sources = ContactSyncSource::query()->orderBy('name')->get()->map(fn (ContactSyncSource $source): array => $this->present($source));
+        $sources = ContactSyncSource::query()->where('user_id', $userId)->orderBy('name')->get()->map(fn (ContactSyncSource $source): array => $this->present($source));
 
         return response()->json(['sources' => $sources, 'versions' => ContactVersion::query()->where('user_id', $userId)->latest()->limit(50)->get(['id', 'contact_id', 'source_id', 'action', 'remote_uri', 'created_at'])]);
     }
@@ -48,6 +48,7 @@ class ContactSyncSourceController extends Controller
         }
         abort_if($endpoint === '', 422, 'A CardDAV endpoint is required.');
         abort_unless(OutboundUrl::safe($endpoint), 422, 'The CardDAV endpoint is not allowed.');
+        abort_unless($this->transportAcceptable($endpoint), 422, 'An external CardDAV endpoint must use https.');
         if ($provider === 'google') {
             abort_unless(is_string($data['oauth_client_id'] ?? null) && is_string($data['oauth_client_secret'] ?? null), 422, 'Google requires an OAuth client id and secret.');
         } else {
@@ -85,7 +86,12 @@ class ContactSyncSourceController extends Controller
     public function restoreVersion(Request $request, ContactVersion $version, ContactPersister $persister, ContactReplication $replication): JsonResponse
     {
         abort_unless($version->user_id === $this->requireUser($request)->id, 403);
-        $contact = $version->contact_id !== null ? Contact::query()->find($version->contact_id) : null;
+        // The version row is owner-scoped, but the contact it points at is not
+        // covered by a global scope — confirm it still sits in one of the
+        // caller's own address books before writing the stored vCard into it.
+        $contact = $version->contact_id !== null
+            ? Contact::query()->whereKey($version->contact_id)->whereIn('address_book_id', AddressBook::query()->select('id'))->first()
+            : null;
         if ($contact === null) {
             $bookId = ContactSyncSource::query()->whereKey($version->source_id)->value('address_book_id');
             $book = is_string($bookId) ? AddressBook::query()->whereKey($bookId)->first() : AddressBook::query()->first();
@@ -127,7 +133,11 @@ class ContactSyncSourceController extends Controller
         abort_unless($nonce !== '' && hash_equals((string) $source->oauth_state_hash, hash('sha256', $nonce)), 403);
         $code = (string) $request->query('code', '');
         abort_unless($code !== '', 422);
-        $token = Http::asForm()->timeout(20)->post('https://oauth2.googleapis.com/token', [
+        // The client secret and the authorization code travel in this body, so
+        // the request must not be replayed to a redirect target. The one-time
+        // state is burned first: a failed exchange must not leave it reusable.
+        $source->forceFill(['oauth_state_hash' => null])->save();
+        $token = Http::withOptions(['allow_redirects' => false])->asForm()->timeout(20)->post('https://oauth2.googleapis.com/token', [
             'code' => $code, 'client_id' => $source->oauth_client_id, 'client_secret' => $source->oauth_client_secret,
             'redirect_uri' => route('contacts.sources.google.callback'), 'grant_type' => 'authorization_code',
         ]);
@@ -156,5 +166,35 @@ class ContactSyncSourceController extends Controller
     private function authorizeSource(ContactSyncSource $source): void
     {
         abort_unless($source->user_id === auth()->id(), 403);
+    }
+
+    /**
+     * Basic-auth credentials and pushed vCards must not cross the internet in
+     * the clear. Plain http stays available for a LAN/Docker CardDAV server
+     * (the same posture the outbound guard takes for private targets), but any
+     * endpoint that resolves off-LAN has to be https.
+     */
+    private function transportAcceptable(string $endpoint): bool
+    {
+        if (strtolower((string) parse_url($endpoint, PHP_URL_SCHEME)) === 'https') {
+            return true;
+        }
+        $host = parse_url($endpoint, PHP_URL_HOST);
+        if (! is_string($host) || $host === '') {
+            return false;
+        }
+        $ips = OutboundUrl::resolveHost($host);
+        if ($ips === []) {
+            return false;
+        }
+        foreach ($ips as $ip) {
+            // A public address in the set means the plaintext hop can leave the
+            // local network — refuse the whole endpoint.
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

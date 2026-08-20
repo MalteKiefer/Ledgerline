@@ -23,7 +23,13 @@ final class CardDavReplicaClient
     public function cards(ContactSyncSource $source): array
     {
         if ($source->provider === 'google' && str_contains((string) $source->endpoint, '/.well-known/')) {
-            $source->forceFill(['endpoint' => $this->discoverAddressBook($source)])->save();
+            // The discovered collection is named by the peer. Never persist one
+            // that moves the source to another origin.
+            $discovered = $this->discoverAddressBook($source);
+            if (! $this->sameOrigin((string) $source->endpoint, $discovered)) {
+                throw new RuntimeException('CardDAV discovery pointed at a different origin.');
+            }
+            $source->forceFill(['endpoint' => $discovered])->save();
         }
         $xml = '<?xml version="1.0" encoding="utf-8"?><c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav"><d:prop><d:getetag/><c:address-data/></d:prop></c:addressbook-query>';
         $response = $this->request($source, 'REPORT', (string) $source->endpoint, $xml, ['Depth' => '1']);
@@ -113,6 +119,13 @@ final class CardDavReplicaClient
             if (! OutboundUrl::safe($url)) {
                 throw new RuntimeException('CardDAV endpoint is not an allowed outbound URL.');
             }
+            // Every target must stay on the origin the owner configured. Hrefs
+            // in a REPORT/PROPFIND body are peer-controlled and may be absolute,
+            // so without this an untrusted collection could name a foreign host
+            // and receive both the credentials and the pushed vCards.
+            if (! $this->sameOrigin((string) $source->endpoint, $url)) {
+                throw new RuntimeException('CardDAV target left the configured origin.');
+            }
             $client = $this->authenticatedClient($source, $url)->withHeaders(array_merge(['Accept' => 'application/xml, text/vcard'], $headers));
             if ($body !== null) {
                 $client = $client->withBody($body, (string) ($headers['Content-Type'] ?? 'application/xml; charset=utf-8'));
@@ -125,10 +138,37 @@ final class CardDavReplicaClient
             if (! is_string($location) || $location === '') {
                 throw new RuntimeException('CardDAV returned a redirect without a location.');
             }
-            $url = $this->resolveUri($url, $location);
+            $next = $this->resolveUri($url, $location);
+            // Credentials are re-attached on every hop, so a redirect that
+            // leaves the configured origin would hand the account password or
+            // OAuth bearer to whatever host the peer names. Refuse instead:
+            // a CardDAV collection never legitimately moves to another origin
+            // mid-sync, and the endpoint can be re-pointed deliberately.
+            if (! $this->sameOrigin($url, $next)) {
+                throw new RuntimeException('CardDAV redirected to a different origin.');
+            }
+            $url = $next;
         }
 
         throw new RuntimeException('CardDAV redirect limit reached.');
+    }
+
+    /** Whether two URLs share scheme, host and effective port. */
+    private function sameOrigin(string $a, string $b): bool
+    {
+        return $this->origin($a) === $this->origin($b) && $this->origin($a) !== null;
+    }
+
+    private function origin(string $url): ?string
+    {
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+        $scheme = strtolower((string) $parts['scheme']);
+        $port = isset($parts['port']) ? (int) $parts['port'] : ($scheme === 'https' ? 443 : 80);
+
+        return $scheme.'://'.strtolower((string) $parts['host']).':'.$port;
     }
 
     private function authenticatedClient(ContactSyncSource $source, string $url): PendingRequest
@@ -157,7 +197,8 @@ final class CardDavReplicaClient
         if ($source->refresh_token === null || $source->oauth_client_id === null || $source->oauth_client_secret === null) {
             throw new RuntimeException('Google authorization needs to be reconnected.');
         }
-        $response = Http::asForm()->timeout(20)->post('https://oauth2.googleapis.com/token', [
+        // Client secret + refresh token in the body: never follow a redirect.
+        $response = Http::withOptions(['allow_redirects' => false])->asForm()->timeout(20)->post('https://oauth2.googleapis.com/token', [
             'client_id' => $source->oauth_client_id, 'client_secret' => $source->oauth_client_secret,
             'refresh_token' => $source->refresh_token, 'grant_type' => 'refresh_token',
         ]);

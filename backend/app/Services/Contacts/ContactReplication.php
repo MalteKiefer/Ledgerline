@@ -10,6 +10,7 @@ use App\Models\Contact;
 use App\Models\ContactSyncRemoteCard;
 use App\Models\ContactSyncSource;
 use App\Models\ContactVersion;
+use App\Support\Redactor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
@@ -58,8 +59,13 @@ final class ContactReplication
             $this->pushCanonicalCards($source);
             $source->forceFill(['status' => 'idle', 'last_error' => null, 'last_synced_at' => now()])->save();
         } catch (Throwable $e) {
+            // A transport error can carry the endpoint (and with it credential
+            // material) in its message, and last_error is handed back to the
+            // UI — redact before it is logged or stored, as every other
+            // outbound integration in this app does.
+            $message = Redactor::redact($e->getMessage());
             report($e);
-            $source->forceFill(['status' => 'error', 'last_error' => Str::limit($e->getMessage(), 1000)])->save();
+            $source->forceFill(['status' => 'error', 'last_error' => Str::limit($message, 1000)])->save();
         }
     }
 
