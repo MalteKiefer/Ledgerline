@@ -604,6 +604,7 @@ import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { renderInvoicePdfBlob } from '@spa/shared/invoice-print';
+import DOMPurify from 'dompurify';
 
 const s = useMailStore();
 const filesStore = useFilesStore();
@@ -821,7 +822,11 @@ async function printMessage() {
     if (!body) { popup.close(); return; }
     popup.opener = null;
     popup.document.open();
-    popup.document.write(body.replace('</head>', '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:"></head>'));
+    // The popup is same-origin with the app, so the print document must carry
+    // its own CSP. Prepend it when the server document has no <head> to patch,
+    // rather than silently writing the body without one.
+    const printCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">`;
+    popup.document.write(body.includes('</head>') ? body.replace('</head>', `${printCsp}</head>`) : printCsp + body);
     popup.document.close();
     popup.addEventListener('load', () => { popup.focus(); popup.print(); }, { once: true });
   } finally { printing.value = false; }
@@ -836,7 +841,11 @@ async function exportPdf() {
     doc.querySelectorAll('style').forEach((node) => node.remove());
     const node = document.createElement('div');
     node.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;padding:32px;background:#fff;color:#111;z-index:-1;';
-    node.innerHTML = doc.body.innerHTML;
+    // The reader body is server-sanitised, but rendering it here leaves the
+    // sandboxed iframe + strict CSP behind and puts message markup directly in
+    // the app origin. Sanitise again on this side so a parser differential or
+    // mutation-XSS in the stored HTML cannot execute with our session.
+    node.innerHTML = DOMPurify.sanitize(doc.body.innerHTML, { FORBID_TAGS: ['style'], FORBID_ATTR: ['srcset'] });
     document.body.appendChild(node);
     await nextTick();
     const blob = await renderInvoicePdfBlob(node);
