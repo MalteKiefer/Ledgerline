@@ -198,7 +198,7 @@ final class Archiver
         $r = BinaryProcess::runCapture(['tar', '-cf', $tar, '-C', $staging, '.'], self::TIMEOUT);
         if (! $r['ok']) {
             @unlink($tar);
-            throw new RuntimeException('tar failed: '.self::tail($r['err']));
+            throw new RuntimeException('tar failed: '.self::reason($r));
         }
         $argv = $compressor === 'xz'
             ? ['xz', '-z', '-f', '-T0', '-'.($level ?? 6), $tar]
@@ -230,7 +230,7 @@ final class Archiver
         $argv[] = '.';
         $r = BinaryProcess::runCapture($argv, self::TIMEOUT, $staging);
         if (! $r['ok'] || ! is_file($outPath)) {
-            throw new RuntimeException('7z failed: '.self::tail($r['err']));
+            throw new RuntimeException('7z failed: '.self::reason($r));
         }
     }
 
@@ -247,7 +247,7 @@ final class Archiver
             // GNU tar auto-detects the compression and strips leading slashes.
             $r = BinaryProcess::runCapture(['tar', '-xf', $archive, '-C', $dest, '--no-same-owner', '--no-same-permissions'], self::TIMEOUT);
             if (! $r['ok']) {
-                throw new RuntimeException('tar extract failed: '.self::tail($r['err']));
+                throw new RuntimeException('tar extract failed: '.self::reason($r));
             }
 
             return;
@@ -264,7 +264,7 @@ final class Archiver
         $argv[] = $archive;
         $r = BinaryProcess::runCapture($argv, self::TIMEOUT);
         if (! $r['ok']) {
-            throw new RuntimeException('extract failed: '.self::tail($r['err']));
+            throw new RuntimeException('extract failed: '.self::reason($r));
         }
     }
 
@@ -336,7 +336,7 @@ final class Archiver
         // The source copy is removed by -d (gzip/bzip2/xz) or --rm (zstd); belt-and-braces.
         @unlink($copy);
         if (! $r['ok']) {
-            throw new RuntimeException('decompress failed: '.self::tail($r['err']));
+            throw new RuntimeException('decompress failed: '.self::reason($r));
         }
     }
 
@@ -368,6 +368,22 @@ final class Archiver
             $f->isDir() && ! $f->isLink() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
         }
         @rmdir($dir);
+    }
+
+    /**
+     * A short, useful reason from a finished process. Some of these tools report
+     * failures on stdout and leave stderr empty (7z does), which turned a real
+     * failure into a bare "7z failed:" with nothing after the colon — no help to
+     * the owner reading the notification, and none when debugging.
+     *
+     * @param array{ok: bool, out: string, err: string, exit: int|null} $r
+     */
+    private static function reason(array $r): string
+    {
+        $text = trim($r['err']) !== '' ? $r['err'] : $r['out'];
+        $text = self::tail($text);
+
+        return $text !== '' ? $text : 'exit code '.($r['exit'] ?? 'unknown');
     }
 
     private static function tail(string $s): string
