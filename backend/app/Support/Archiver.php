@@ -229,6 +229,15 @@ final class Archiver
         $argv[] = $outPath;
         $argv[] = '.';
         $r = BinaryProcess::runCapture($argv, self::TIMEOUT, $staging);
+        // 7z appends its own .7z when the target name carries no extension, and
+        // the destination here is a tempnam() path that has none. The archive is
+        // written successfully — just one filename over. Move it back rather than
+        // reporting a failure for an archive that exists.
+        clearstatcache(true, $outPath);
+        if ($r['ok'] && ! is_file($outPath) && is_file($outPath.'.7z')) {
+            @rename($outPath.'.7z', $outPath);
+            clearstatcache(true, $outPath);
+        }
         if (! $r['ok'] || ! is_file($outPath)) {
             throw new RuntimeException('7z failed: '.self::reason($r));
         }
