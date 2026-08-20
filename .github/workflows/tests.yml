@@ -35,6 +35,12 @@ jobs:
           # (phpunit.xml), so no database service is needed.
           extensions: bcmath, dom, exif, fileinfo, gd, imagick, intl, mbstring, pdo_sqlite, sodium, sqlite3, zip
 
+      # The suite shells out to the same binaries the runtime image ships
+      # (see Dockerfile). Without them those tests fail on a bare runner
+      # instead of exercising the production path.
+      - name: Install the runtime binaries the suite exercises
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends exiftool p7zip-full poppler-utils
+
       - name: Composer install
         run: composer install --no-interaction --no-progress --prefer-dist
 

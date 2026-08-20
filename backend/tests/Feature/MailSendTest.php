@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Mail\ComposedMessage;
 use App\Services\Mail\MailSender;
+use App\Services\Mail\SecureMailComposer;
 use App\Services\Mail\SendResult;
 use App\Support\Mail\ImapAppender;
 use App\Support\Mail\SmtpProbe;
@@ -88,7 +89,7 @@ class MailSendTest extends TestCase
     /** Bind a spy MailSender and return it; captures the ComposedMessage. */
     private function spySender(): object
     {
-        $spy = new class(app(ImapAppender::class)) extends MailSender
+        $spy = new class(app(ImapAppender::class), app(SecureMailComposer::class)) extends MailSender
         {
             public ?ComposedMessage $captured = null;
 
@@ -403,7 +404,7 @@ class MailSendTest extends TestCase
 
         // Point the per-account runtime mailer at the in-memory array transport
         // so a real send happens with no SMTP socket.
-        $sender = new class($appender) extends MailSender
+        $sender = new class($appender, app(SecureMailComposer::class)) extends MailSender
         {
             protected function configureMailer(string $name, MailAccount $account, string $host, string $fromEmail, ?string $fromName, string $password): void
             {

@@ -270,9 +270,10 @@ final class MailHtmlSanitizer
         // A decoded escape can spell a comment sequence; strip once more so the
         // keyword patterns below see the same text a browser tokenises.
         $css = $this->stripCssComments($css);
-        // Resource-loading at-rules, with or without a terminating semicolon,
-        // and with or without a block body.
-        $css = preg_replace('#@(?:import|namespace|charset)[^;{}]*(?:;|$)#i', '', $css) ?? '';
+        // Resource-loading at-rules. The value runs to the terminating
+        // semicolon, the start of the next rule (a missing semicolon does not
+        // make the import inert to a browser), or the end of the stylesheet.
+        $css = preg_replace('#@(?:import|namespace|charset)[^;{}]*(?:;|(?=[{])|$)#i', '', $css) ?? '';
         $css = preg_replace('#@font-face\s*\{[^{}]*\}?#is', '', $css) ?? '';
         $css = preg_replace('#(?:url|image-set|-webkit-image-set|element)\s*\(\s*[^)]*\)?#i', 'none', $css) ?? '';
         $css = preg_replace('#(?:expression\s*\(|-moz-binding\s*:|behavior\s*:)#i', '', $css) ?? '';
