@@ -153,5 +153,3 @@ export function uploadWithProgress<T>(path: string, form: FormData, onProgress?:
   });
 }
 
-// Back-compat no-op (old code called ensureCsrf; bearer auth needs no CSRF).
-export async function ensureCsrf(): Promise<void> { /* no-op */ }
