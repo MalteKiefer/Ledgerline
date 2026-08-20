@@ -2315,7 +2315,7 @@ paths:
       operationId: contactSyncSourcesIndex
       summary: List external CardDAV replicas and recent immutable recovery versions
       responses:
-        "200": { description: Replica configuration without credentials., content: { application/json: { schema: { type: object, properties: { sources: { type: array, items: { type: object } }, versions: { type: array, items: { type: object } } } } } }
+        "200": { description: Replica configuration without credentials., content: { application/json: { schema: { type: object, properties: { sources: { type: array, items: { type: object } }, versions: { type: array, items: { type: object } } } } } } }
     post:
       tags: [Contacts]
       operationId: contactSyncSourcesStore
@@ -6567,7 +6567,7 @@ paths:
       summary: "Public: guest-upload link metadata (unauthenticated)"
       parameters: [ { name: token, in: path, required: true, schema: { type: string } } ]
       responses:
-        "200": { description: Meta., content: { application/json: { schema: { type: object, properties: { label: { type: [string,"null"] }, album: { type: [string,"null"] }, needs_password: { type: boolean } } } } } }
+        "200": { description: "Meta. When the link is password-gated, label and album are null until the password is proven on upload — the token alone must not reveal the album.", content: { application/json: { schema: { type: object, properties: { label: { type: [string,"null"] }, album: { type: [string,"null"] }, needs_password: { type: boolean } } } } } }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [GallerySharing]
@@ -7569,7 +7569,7 @@ paths:
   /files/upload-links/{link}:
     delete: { tags: [Files], operationId: filesDestroyUploadLink, summary: Revoke an upload link, security: [ { bearerAuth: [] } ], parameters: [ { name: link, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Revoked. }, "401": { $ref: "#/components/responses/Unauthorized" } } }
   /upload-link/{token}:
-    get: { tags: [Files], operationId: uploadLinkMeta, summary: "Public: upload-link metadata (label + owner + needs_password). No auth.", parameters: [ { name: token, in: path, required: true, schema: { type: string } } ], responses: { "200": { description: Metadata., content: { application/json: { schema: { type: object, properties: { label: { type: [string, "null"] }, owner: { type: string }, needs_password: { type: boolean } } } } } }, "404": { $ref: "#/components/responses/NotFound" } } }
+    get: { tags: [Files], operationId: uploadLinkMeta, summary: "Public: upload-link metadata. No auth. When the link is password-gated, label is null and owner is empty until the password is proven on upload — the token alone must not reveal who is asking for files.", parameters: [ { name: token, in: path, required: true, schema: { type: string } } ], responses: { "200": { description: Metadata., content: { application/json: { schema: { type: object, properties: { label: { type: [string, "null"] }, owner: { type: string }, needs_password: { type: boolean } } } } } }, "404": { $ref: "#/components/responses/NotFound" } } }
     post: { tags: [Files], operationId: uploadLinkStore, summary: "Public: upload one file via an upload link (into the owner's folder, owner quota). No auth. Throttle 60/min.", parameters: [ { name: token, in: path, required: true, schema: { type: string } } ], requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, password: { type: string, description: "Required when the link is password-gated." } } } } } }, responses: { "201": { description: Stored., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }, "403": { description: "Wrong/missing password." }, "404": { $ref: "#/components/responses/NotFound" }, "413": { description: Over the owner's quota. } } }
   /shared-with-me:
     get: { tags: [Files], operationId: sharedWithMe, summary: Folders others shared with me, security: [ { bearerAuth: [] } ], responses: { "200": { description: Folders shared with me., content: { application/json: { schema: { type: object, properties: { shares: { type: array, items: { $ref: "#/components/schemas/SharedWithMeItem" } } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" } } }

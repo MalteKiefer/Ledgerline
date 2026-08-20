@@ -258,7 +258,12 @@ class FileShareTest extends TestCase
         ])->assertCreated()->assertJsonPath('link.needs_password', true)->json('link.token');
 
         app('auth')->forgetGuards();
-        $this->getJson(route('api.upload-link.meta', $token))->assertOk()->assertJsonPath('needs_password', true);
+        // The label and the owner's real name stay hidden until the password is
+        // proven; the anonymous page falls back to a generic title.
+        $this->getJson(route('api.upload-link.meta', $token))->assertOk()
+            ->assertJsonPath('needs_password', true)
+            ->assertJsonPath('label', null)
+            ->assertJsonPath('owner', '');
         $this->post(route('api.upload-link.store', $token), ['file' => UploadedFile::fake()->createWithContent('x.txt', 'x')])
             ->assertStatus(403);
         $this->post(route('api.upload-link.store', $token), ['file' => UploadedFile::fake()->createWithContent('y.txt', 'y'), 'password' => 'letmein'])

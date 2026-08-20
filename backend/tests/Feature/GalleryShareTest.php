@@ -153,6 +153,20 @@ class GalleryShareTest extends TestCase
         $this->actingAs($recipient)->postJson(route('gallery.react', ['photo' => $photo->id]), ['emoji' => '❤️'])->assertOk()->assertJsonPath('my_reaction', null);
     }
 
+    public function test_an_upload_link_without_a_password_still_describes_itself(): void
+    {
+        [$owner, $album] = $this->seedAlbum(User::factory()->create());
+        $token = $this->actingAs($owner)->postJson(route('gallery.upload-links.store'), [
+            'album_id' => $album->id, 'label' => 'Wedding',
+        ])->assertCreated()->json('token');
+
+        app('auth')->forgetGuards();
+        $this->getJson(route('api.public.gallery-upload.meta', ['token' => $token]))
+            ->assertOk()
+            ->assertJsonPath('needs_password', false)
+            ->assertJsonPath('label', 'Wedding');
+    }
+
     public function test_public_album_upload_link_lets_a_guest_contribute(): void
     {
         [$owner, $album] = $this->seedAlbum(User::factory()->create());
@@ -161,9 +175,13 @@ class GalleryShareTest extends TestCase
             'album_id' => $album->id, 'label' => 'Wedding', 'password' => 'sekret',
         ])->assertCreated()->json('token');
 
-        // Public meta (no auth) shows label + password requirement.
+        // Public meta (no auth) says a password is required but reveals nothing
+        // about the album until it is proven — the token alone is not enough.
         $this->getJson(route('api.public.gallery-upload.meta', ['token' => $token]))
-            ->assertOk()->assertJsonPath('needs_password', true)->assertJsonPath('label', 'Wedding');
+            ->assertOk()
+            ->assertJsonPath('needs_password', true)
+            ->assertJsonPath('label', null)
+            ->assertJsonPath('album', null);
 
         // Wrong / missing password → 403.
         $this->post(route('api.public.gallery-upload.store', ['token' => $token]), ['file' => UploadedFile::fake()->image('g.jpg', 100, 80)])->assertForbidden();
