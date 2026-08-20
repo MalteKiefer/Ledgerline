@@ -1,0 +1,82 @@
+name: Tests
+
+# The automated test suites. Deliberately separate from "Security scan": that
+# workflow answers "are the dependencies and the static analysis clean", this
+# one answers "does the code still do what the tests say". Both block a merge.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push supersedes an in-flight run for the same ref; the older one has
+# nothing left to tell us.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: "8.5"
+          # Mirrors the runtime image (see Dockerfile) so a test exercises the
+          # same extension set production has. Tests run on sqlite in-memory
+          # (phpunit.xml), so no database service is needed.
+          extensions: bcmath, dom, exif, fileinfo, gd, imagick, intl, mbstring, pdo_sqlite, sodium, sqlite3, zip
+
+      - name: Composer install
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepare test environment
+        # The encrypted casts (SMTP/backup/CardDAV credentials) need a real
+        # APP_KEY; phpunit.xml supplies everything else.
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: PHPUnit
+        run: php artisan test
+
+      - name: Pint (code style, blocking)
+        run: vendor/bin/pint --test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Install
+        run: yarn install --frozen-lockfile --non-interactive
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Vitest
+        run: yarn test:js
+
+      - name: Build
+        run: yarn build
