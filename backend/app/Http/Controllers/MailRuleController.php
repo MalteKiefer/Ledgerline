@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\MailRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Owner-scoped CRUD for sieve-lite ingest rules, evaluated at ingest
@@ -63,7 +64,9 @@ class MailRuleController extends Controller
             'match.folder' => ['nullable', 'string', 'max:255'],
             'match.has_attachment' => ['nullable', 'boolean'],
             'action' => ['required', 'array'],
-            'action.add_label' => ['nullable', 'integer'],
+            // A rule may only attach a label the caller owns; otherwise it would
+            // hang another account's label on this account's messages.
+            'action.add_label' => ['nullable', 'integer', Rule::exists('mail_labels', 'id')->where('user_id', $this->requireUser($request)->id)],
             'action.mark_read' => ['nullable', 'boolean'],
             'action.trash' => ['nullable', 'boolean'],
             'action.skip' => ['nullable', 'boolean'],
