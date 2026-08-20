@@ -39,7 +39,7 @@ jobs:
       # (see Dockerfile). Without them those tests fail on a bare runner
       # instead of exercising the production path.
       - name: Install the runtime binaries the suite exercises
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends exiftool p7zip-full poppler-utils
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends exiftool p7zip-full 7zip poppler-utils || sudo apt-get install -y --no-install-recommends exiftool p7zip-full poppler-utils
 
       - name: Composer install
         run: composer install --no-interaction --no-progress --prefer-dist

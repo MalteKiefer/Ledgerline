@@ -37,7 +37,8 @@ class KeyServerControllerTest extends TestCase
 
         return [
             'public_key' => (string) $res->json('key.public_key'),
-            'fingerprint' => (string) $res->json('key.fingerprint'),
+            // The key payload calls it key_fingerprint (see MailKeyController::present).
+            'fingerprint' => (string) $res->json('key.key_fingerprint'),
         ];
     }
 
@@ -154,8 +155,9 @@ class KeyServerControllerTest extends TestCase
         if (! BinaryProcess::available('gpg')) {
             $this->markTestSkipped('gpg not available');
         }
-        ['public_key' => $armoredA] = $this->realPgpPublicKey();
-        ['public_key' => $armoredB] = $this->realPgpPublicKey(); // a different real key
+        ['public_key' => $armoredA, 'fingerprint' => $fingerprintA] = $this->realPgpPublicKey();
+        ['public_key' => $armoredB, 'fingerprint' => $fingerprintB] = $this->realPgpPublicKey(); // a different real key
+        $this->assertNotSame($fingerprintA, $fingerprintB);
 
         $user = User::factory()->create();
         $recipient = $this->manualRecipient($user, $armoredA);
@@ -175,6 +177,9 @@ class KeyServerControllerTest extends TestCase
         $this->actingAs($user)->postJson(route('crypto.recipients.refresh', $recipient->id))
             ->assertStatus(422)->assertJson(['error' => 'fingerprint_mismatch']);
         Http::assertNotSent(fn ($req) => str_starts_with((string) $req->url(), 'https://other.example'));
-        $this->assertStringContainsString($armoredA, (string) $recipient->fresh()->public_key, 'never swapped in the mismatched key');
+        // Compare the fingerprint, not the armor: importing and re-exporting a
+        // key through gpg reflows the ASCII block, so a byte comparison would
+        // fail for reasons that have nothing to do with the rejection.
+        $this->assertSame($fingerprintA, (string) $recipient->fresh()->fingerprint, 'never swapped in the mismatched key');
     }
 }
