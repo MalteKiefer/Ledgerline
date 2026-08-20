@@ -221,12 +221,30 @@ class MountController extends Controller
 
     // ---- internals ----
 
+    /**
+     * Mount types offered to the user. Nextcloud and B2 are presets, not separate
+     * protocols: Nextcloud speaks WebDAV under a per-user path, B2 is reached
+     * through its S3-compatible endpoint. Keeping them apart in the UI is what
+     * makes the form answerable — a user knows their Nextcloud address, not the
+     * remote.php/dav path it hides behind.
+     */
+    private const TYPES = ['s3', 'b2', 'sftp', 'webdav', 'nextcloud'];
+
+    /** The driver a mount type is served by. */
+    private function driver(string $type): string
+    {
+        return match ($type) {
+            'nextcloud' => 'webdav',
+            default => $type,
+        };
+    }
+
     /** @return array{name:string,type:string} */
     private function validated(Request $request, ?StorageMount $mount = null): array
     {
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'type' => [$mount === null ? 'required' : 'sometimes', Rule::in(['s3', 'sftp'])],
+            'type' => [$mount === null ? 'required' : 'sometimes', Rule::in(self::TYPES)],
             'read_only' => ['sometimes', 'boolean'],
         ]);
 
@@ -246,6 +264,48 @@ class MountController extends Controller
     {
         $old = $mount?->config ?? [];
         $keep = static fn (string $k, string $new): string => $new !== '' ? $new : (is_string($old[$k] ?? null) ? $old[$k] : '');
+
+        if ($type === 'webdav') {
+            return [
+                'base_uri' => rtrim($request->string('base_uri')->value(), '/').'/',
+                'username' => $request->string('username')->value(),
+                'password' => $keep('password', $request->string('password')->value()),
+                'path' => trim($request->string('root')->value(), '/'),
+            ];
+        }
+
+        if ($type === 'nextcloud') {
+            // Nextcloud/ownCloud expose every user's files at a fixed WebDAV path;
+            // asking for the server URL and the login is enough to build it.
+            $server = rtrim($request->string('server')->value(), '/');
+            $user = $request->string('username')->value();
+
+            return [
+                'server' => $server,
+                'base_uri' => $server.'/remote.php/dav/files/'.rawurlencode($user).'/',
+                'username' => $user,
+                // Nextcloud rejects the account password when 2FA is on; an app
+                // password is the supported credential and works either way.
+                'password' => $keep('password', $request->string('password')->value()),
+                'path' => trim($request->string('root')->value(), '/'),
+            ];
+        }
+
+        if ($type === 'b2') {
+            // Backblaze B2 through its S3-compatible endpoint: the region is part
+            // of the host, so derive it rather than making the user paste a URL.
+            $region = $request->string('region')->value() ?: 'us-west-004';
+
+            return [
+                'region' => $region,
+                'bucket' => $request->string('bucket')->value(),
+                'key' => $request->string('key')->value(),
+                'secret' => $keep('secret', $request->string('secret')->value()),
+                'endpoint' => $request->string('endpoint')->value() ?: 'https://s3.'.$region.'.backblazeb2.com',
+                'use_path_style' => false,
+                'path' => $request->string('path_prefix')->value(),
+            ];
+        }
 
         if ($type === 's3') {
             return [
@@ -275,7 +335,7 @@ class MountController extends Controller
         // Interactive: every call site (list/download/upload/mkdir/delete) is a
         // live web request a user is watching, not a queued backup transfer —
         // see BackupDestinationFactory::makeFromParts()'s $interactive doc.
-        return $this->factory->makeFromParts($mount->type, $mount->config ?? [], interactive: true);
+        return $this->factory->makeFromParts($this->driver($mount->type), $mount->config ?? [], interactive: true);
     }
 
     /**
@@ -286,14 +346,14 @@ class MountController extends Controller
      */
     private function probe(string $type, array $config, bool $readOnly): void
     {
-        $fs = $this->factory->makeFromParts($type, $config, interactive: true);
+        $fs = $this->factory->makeFromParts($this->driver($type), $config, interactive: true);
         if ($readOnly) {
             // Touch the listing so bad credentials / host surface now.
             iterator_to_array($fs->listContents('', false));
 
             return;
         }
-        $this->factory->test($type, $config);
+        $this->factory->test($this->driver($type), $config);
     }
 
     /** Normalize a browse path: strip leading/trailing slashes, reject traversal. */

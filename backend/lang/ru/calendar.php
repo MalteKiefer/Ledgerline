@@ -4,18 +4,9 @@ declare(strict_types=1);
 
 return [
     // Страница настроек синхронизации CalDAV
-    'heading' => 'Календарь и CalDAV',
-    'subheading' => 'Синхронизируйте календари с телефонами и настольными клиентами по CalDAV.',
-    'dav_url' => 'CalDAV URL',
-    'username' => 'Имя пользователя',
-    'password' => 'Пароль приложения',
-    'setup_hint' => 'В приложении календаря добавьте учётную запись CalDAV с указанными выше URL, именем пользователя и паролем приложения. Автообнаружение также работает от базового домена (.well-known/caldav).',
-    'apple_profile' => 'Скачать профиль Apple (iOS / macOS)',
-    'apple_profile_hint' => 'Устанавливает учётную запись CalDAV на iPhone, iPad или Mac. Пароль приложения потребуется один раз при установке.',
 
     // Строки приложения SPA
     'ui' => [
-        'title' => 'Календарь',
         'default_calendar' => 'Календарь',
         'new_event' => 'Новое событие',
         'edit_event' => 'Изменить событие',
@@ -31,7 +22,6 @@ return [
         'location_search' => 'Поиск адреса',
         'location_searching' => 'Поиск…',
         'location_no_results' => 'Ничего не найдено',
-        'location_on_map' => 'На карте',
         'location_clear' => 'Очистить место',
         'timezone' => 'Часовой пояс',
         'starts' => 'Начало',
@@ -73,10 +63,6 @@ return [
         'rsvp_accept' => 'Принять',
         'rsvp_tentative' => 'Возможно',
         'rsvp_decline' => 'Отклонить',
-        'ps_needs_action' => 'Нет ответа',
-        'ps_accepted' => 'Принято',
-        'ps_declined' => 'Отклонено',
-        'ps_tentative' => 'Предварительно',
         'find_slot' => 'Найти свободное время',
         'duration' => 'Длительность',
         'within_days' => 'В течение дней',
@@ -108,8 +94,6 @@ return [
         'week_start_monday' => 'Понедельник',
         'more' => 'ещё :count',
         'kw' => 'Нед',
-        'new_calendar_type' => 'Тип календаря',
-        'type_normal' => 'Обычный',
         'type_birthdays' => 'Дни рождения',
         'type_holidays' => 'Праздники',
         'type_school_holidays' => 'Школьные каникулы',
@@ -151,8 +135,6 @@ return [
         'status_cancelled' => 'Отменено',
         'categories' => 'Метки',
         'subtask_of' => 'Подзадача для',
-        'reminder' => 'Напоминание',
-        'reminder_none' => 'Без напоминания',
         'complete' => 'Выполнить',
         'uncomplete' => 'Открыть снова',
         'repeat' => 'Повтор',

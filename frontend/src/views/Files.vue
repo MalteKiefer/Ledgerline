@@ -78,7 +78,7 @@
           :class="view==='mount' && activeMount?.id===m.id ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
           @click="openMount(m)"
         >
-          <Icon :name="m.type==='s3' ? 'cloud' : 'dns'" :size="18" class="text-[var(--ll-muted)]" />
+          <Icon :name="mountIcon(m.type)" :size="18" class="text-[var(--ll-muted)]" />
           <span class="min-w-0 flex-1 truncate text-left">{{ m.name }}</span>
           <Icon v-if="m.read_only" name="lock" :size="13" class="text-[var(--ll-muted)]" />
         </button>
@@ -96,18 +96,33 @@
     <Card :body-class="'flex flex-1 flex-col overflow-hidden p-0'" class="flex min-w-0 flex-1 flex-col overflow-hidden">
       <!-- Toolbar -->
       <div class="flex flex-wrap items-center gap-2 px-4 py-3">
+        <!-- Back / forward / up, like a browser window. -->
+        <div v-if="view==='files'" class="flex items-center gap-0.5">
+          <button
+            class="rounded-lg p-1.5 text-[var(--ll-muted)] enabled:hover:bg-black/[0.05] disabled:opacity-40 dark:enabled:hover:bg-white/10"
+            :disabled="!canBack" :title="t('files.nav_back')" @click="goBack"
+          ><Icon name="arrow_back" :size="18" /></button>
+          <button
+            class="rounded-lg p-1.5 text-[var(--ll-muted)] enabled:hover:bg-black/[0.05] disabled:opacity-40 dark:enabled:hover:bg-white/10"
+            :disabled="!canForward" :title="t('files.nav_forward')" @click="goForward"
+          ><Icon name="arrow_forward" :size="18" /></button>
+          <button
+            class="rounded-lg p-1.5 text-[var(--ll-muted)] enabled:hover:bg-black/[0.05] disabled:opacity-40 dark:enabled:hover:bg-white/10"
+            :disabled="!canUp" :title="t('files.nav_up')" @click="goUp"
+          ><Icon name="arrow_upward" :size="18" /></button>
+        </div>
         <nav v-if="view==='files'" class="flex flex-wrap items-center gap-1 text-sm">
           <template v-for="(c, i) in crumbs" :key="i">
             <Icon v-if="i>0" name="chevron_right" :size="16" class="text-[var(--ll-muted)]" />
             <button
               class="rounded px-1 py-0.5 hover:bg-black/[0.04] dark:hover:bg-white/5"
               :class="i===crumbs.length-1 ? 'font-medium' : 'text-primary-600 dark:text-primary-300'"
-              @click="cwd = c.value"
+              @click="goTo(c.value)"
             >{{ c.title }}</button>
           </template>
         </nav>
         <nav v-else-if="view==='mount'" class="flex flex-wrap items-center gap-1 text-sm">
-          <Icon :name="activeMount?.type==='s3' ? 'cloud' : 'dns'" :size="16" class="text-[var(--ll-muted)]" />
+          <Icon :name="mountIcon(activeMount?.type)" :size="16" class="text-[var(--ll-muted)]" />
           <button class="rounded px-1 py-0.5 text-primary-600 hover:bg-black/[0.04] dark:text-primary-300 dark:hover:bg-white/5" @click="mountGo('')">{{ activeMount?.name }}</button>
           <template v-for="(c, i) in mountCrumbs" :key="i">
             <Icon name="chevron_right" :size="16" class="text-[var(--ll-muted)]" />
@@ -118,6 +133,7 @@
 
         <div class="ml-auto flex items-center gap-1">
           <Btn v-if="view==='files'" variant="ghost" size="sm" icon="create_new_folder" @click="newFolder">{{ t('files.new_folder') }}</Btn>
+          <Btn v-if="canPaste" variant="ghost" size="sm" icon="content_paste" :loading="pasting" @click="paste">{{ t('files.paste') }}</Btn>
           <Btn v-if="view==='files' && cwd!==null" variant="ghost" size="sm" icon="folder_zip" @click="zipFolder">{{ t('files.download_zip') }}</Btn>
           <template v-if="view==='mount'">
             <Btn v-if="!mountRO" variant="soft" size="sm" icon="upload" :loading="mountBusy" @click="pickMountUpload">{{ t('files.upload') }}</Btn>
@@ -254,16 +270,27 @@
         </table>
       </div>
 
-      <div v-else class="flex-1 overflow-y-auto p-2">
+      <div v-else class="flex-1 overflow-y-auto p-2" @contextmenu.prevent.self="openContext($event, null)">
         <div v-if="!rows.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ view==='trash' ? t('files.trash_empty') : t('files.empty_explorer') }}</div>
 
         <!-- Grid -->
         <div v-else-if="layout==='grid'" class="grid grid-cols-2 gap-3 p-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           <div
             v-for="(row, ri) in rows" :key="row._k"
+            :id="'ll-row-' + row._k"
             class="overflow-hidden rounded-lg border bg-[var(--ll-surface)] transition-colors"
-            :class="isRowSelected(row) ? 'border-primary-500' : 'border-[var(--ll-border)] hover:border-primary-500/40'"
+            :class="[
+              isRowSelected(row) ? 'border-primary-500' : 'border-[var(--ll-border)] hover:border-primary-500/40',
+              cursor===ri ? 'ring-2 ring-primary-500/40' : '',
+              dragOverFolder===row.id ? 'ring-2 ring-primary-500' : '',
+            ]"
+            :draggable="view==='files'"
             @dblclick="open(row)"
+            @contextmenu.prevent="openContext($event, row)"
+            @dragstart="onRowDragStart($event, row)"
+            @dragover.prevent="row._folder && isInternalDrag($event) ? dragOverFolder = row.id : null"
+            @dragleave="dragOverFolder = null"
+            @drop="onRowDrop($event, row)"
           >
             <div class="relative flex h-28 items-center justify-center bg-black/[0.03] dark:bg-white/5">
               <input
@@ -318,8 +345,16 @@
             <tbody>
               <tr
                 v-for="(row, ri) in rows" :key="row._k"
+                :id="'ll-row-' + row._k"
                 class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
+                :class="[cursor===ri ? 'bg-primary-500/[0.07]' : '', dragOverFolder===row.id ? 'outline outline-2 -outline-offset-2 outline-primary-500' : '']"
+                :draggable="view==='files'"
                 @click="open(row)"
+                @contextmenu.prevent="openContext($event, row)"
+                @dragstart="onRowDragStart($event, row)"
+                @dragover.prevent="row._folder && isInternalDrag($event) ? dragOverFolder = row.id : null"
+                @dragleave="dragOverFolder = null"
+                @drop="onRowDrop($event, row)"
               >
                 <td v-if="view!=='trash'" class="w-9 pl-3">
                   <input
@@ -644,8 +679,13 @@
   <!-- Mount add/edit dialog -->
   <Modal v-model="mountForm.show" :title="mountForm.id ? t('files.mount_edit') : t('files.mount_add')" width="520px">
     <div class="space-y-3">
-      <div class="flex gap-2">
-        <button v-for="tp in (['s3','sftp'] as const)" :key="tp" class="flex-1 rounded-lg border px-3 py-2 text-sm" :class="mountForm.type===tp ? 'border-primary-500 bg-primary-500/10 text-primary-600' : 'border-[var(--ll-border)]'" :disabled="!!mountForm.id" @click="mountForm.type=tp">{{ tp==='s3' ? 'S3' : 'SFTP' }}</button>
+      <div class="grid grid-cols-3 gap-2">
+        <button
+          v-for="tp in MOUNT_TYPES" :key="tp.value"
+          class="rounded-lg border px-2 py-2 text-sm"
+          :class="mountForm.type===tp.value ? 'border-primary-500 bg-primary-500/10 text-primary-600' : 'border-[var(--ll-border)]'"
+          :disabled="!!mountForm.id" @click="mountForm.type=tp.value"
+        >{{ tp.label }}</button>
       </div>
       <TextField v-model="mountForm.name" :label="t('files.mount_name')" />
       <template v-if="mountForm.type==='s3'">
@@ -656,6 +696,25 @@
         <TextField v-model="mountForm.secret" type="password" label="Secret Key" :placeholder="mountForm.id ? '••••••' : ''" />
         <TextField v-model="mountForm.path_prefix" :label="t('files.mount_prefix')" />
         <label class="flex items-center gap-2 text-sm"><input v-model="mountForm.use_path_style" type="checkbox" class="accent-primary-500">{{ t('files.mount_path_style') }}</label>
+      </template>
+      <template v-else-if="mountForm.type==='b2'">
+        <TextField v-model="mountForm.bucket" label="Bucket" />
+        <TextField v-model="mountForm.region" label="Region" placeholder="us-west-004" :hint="t('files.mount_b2_region_hint')" />
+        <TextField v-model="mountForm.key" label="Key ID" />
+        <TextField v-model="mountForm.secret" type="password" label="Application Key" :placeholder="mountForm.id ? '••••••' : ''" />
+        <TextField v-model="mountForm.path_prefix" :label="t('files.mount_prefix')" />
+      </template>
+      <template v-else-if="mountForm.type==='nextcloud'">
+        <TextField v-model="mountForm.server" :label="t('files.mount_server')" placeholder="https://cloud.example.com" />
+        <TextField v-model="mountForm.username" :label="t('files.mount_user')" />
+        <TextField v-model="mountForm.password" type="password" :label="t('files.mount_app_password')" :hint="t('files.mount_app_password_hint')" :placeholder="mountForm.id ? '••••••' : ''" />
+        <TextField v-model="mountForm.root" :label="t('files.mount_root')" />
+      </template>
+      <template v-else-if="mountForm.type==='webdav'">
+        <TextField v-model="mountForm.base_uri" :label="t('files.mount_base_uri')" placeholder="https://dav.example.com/remote/" />
+        <TextField v-model="mountForm.username" :label="t('files.mount_user')" />
+        <TextField v-model="mountForm.password" type="password" :label="t('files.mount_password')" :placeholder="mountForm.id ? '••••••' : ''" />
+        <TextField v-model="mountForm.root" :label="t('files.mount_root')" />
       </template>
       <template v-else>
         <div class="flex gap-2"><TextField v-model="mountForm.host" class="flex-1" :label="t('files.mount_host')" /><TextField v-model="mountForm.port" label="Port" class="w-24" /></div>
@@ -1063,6 +1122,64 @@
       </aside>
     </div>
   </Modal>
+  <!-- Right-click menu (rows and empty space). Teleported so the table's own
+       overflow cannot clip it; a click anywhere else closes it. -->
+  <Teleport to="body">
+    <div v-if="ctxMenu.show" class="fixed inset-0 z-[2500]" @click="ctxMenu.show=false" @contextmenu.prevent="ctxMenu.show=false">
+      <div
+        class="absolute min-w-[220px] rounded-xl border border-[var(--ll-border)] bg-[var(--ll-elevated)] p-1 shadow-xl"
+        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+        @click.stop
+      >
+        <template v-if="ctxMenu.row">
+          <button :class="ctxItemCls" @click="ctxRun(() => open(ctxMenu.row as Row))">
+            <Icon :name="ctxMenu.row._folder ? 'folder_open' : 'visibility'" :size="18" />{{ ctxMenu.row._folder ? t('common.open') : t('files.preview') }}
+          </button>
+          <button v-if="!ctxMenu.row._folder" :class="ctxItemCls" @click="ctxMenu.show=false">
+            <a :href="s.downloadUrl(ctxMenu.row.raw as FileEntry)" class="flex flex-1 items-center gap-2"><Icon name="download" :size="18" />{{ t('files.download') }}</a>
+          </button>
+          <div class="my-1 h-px bg-[var(--ll-border)]" />
+          <button v-if="view==='files'" :class="ctxItemCls" @click="ctxRun(() => clipFrom('cut', ctxMenu.row as Row))">
+            <Icon name="content_cut" :size="18" />{{ t('files.cut') }}
+          </button>
+          <button v-if="view==='files' && !ctxMenu.row._folder" :class="ctxItemCls" @click="ctxRun(() => clipFrom('copy', ctxMenu.row as Row))">
+            <Icon name="content_copy" :size="18" />{{ t('files.copy') }}
+          </button>
+          <button v-if="canPaste" :class="ctxItemCls" @click="ctxRun(paste)">
+            <Icon name="content_paste" :size="18" />{{ t('files.paste') }}
+          </button>
+          <button v-if="view==='files'" :class="ctxItemCls" @click="ctxRun(() => doRename(ctxMenu.row as Row))">
+            <Icon name="edit" :size="18" />{{ t('common.rename') }}
+          </button>
+          <button v-if="view==='files'" :class="ctxItemCls" @click="ctxRun(() => openMove(ctxMenu.row as Row))">
+            <Icon name="drive_file_move" :size="18" />{{ t('files.move') }}
+          </button>
+          <div class="my-1 h-px bg-[var(--ll-border)]" />
+          <button v-if="!ctxMenu.row._folder" :class="ctxItemCls" @click="ctxRun(() => openInfo(ctxMenu.row as Row))">
+            <Icon name="info" :size="18" />{{ t('files.info_title') }}
+          </button>
+          <button v-if="view==='files'" :class="ctxItemCls + ' text-red-600'" @click="ctxRun(() => doTrash(ctxMenu.row as Row))">
+            <Icon name="delete" :size="18" />{{ t('files.trash') }}
+          </button>
+        </template>
+        <template v-else>
+          <button v-if="view==='files'" :class="ctxItemCls" @click="ctxRun(() => newFolder())">
+            <Icon name="create_new_folder" :size="18" />{{ t('files.new_folder') }}
+          </button>
+          <button v-if="view==='files'" :class="ctxItemCls" @click="ctxRun(() => uploadInput?.click())">
+            <Icon name="upload" :size="18" />{{ t('files.upload') }}
+          </button>
+          <button v-if="canPaste" :class="ctxItemCls" @click="ctxRun(paste)">
+            <Icon name="content_paste" :size="18" />{{ t('files.paste') }}
+          </button>
+          <button :class="ctxItemCls" @click="ctxRun(selectAllRows)">
+            <Icon name="select_all" :size="18" />{{ t('files.select_all') }}
+          </button>
+        </template>
+      </div>
+    </div>
+  </Teleport>
+
 </template>
 
 <script setup lang="ts">
@@ -1077,7 +1194,21 @@ import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type Fi
 import { useCryptoStore } from '@spa/stores/crypto';
 import { ApiError, api } from '@spa/api/client';
 import { highlightCode } from '@spa/lib/highlight';
-import { useMountsStore, type Mount, type MountEntry } from '@spa/stores/mounts';
+import { useMountsStore, type Mount, type MountEntry, type MountType } from '@spa/stores/mounts';
+
+// Nextcloud and B2 are presets over WebDAV and S3 — the protocol is an
+// implementation detail the user should not have to know to fill the form.
+function mountIcon(type: MountType | undefined): string {
+  return { s3: 'cloud', b2: 'cloud', webdav: 'cloud_sync', nextcloud: 'cloud_sync', sftp: 'dns' }[type ?? 's3'] ?? 'cloud';
+}
+
+const MOUNT_TYPES: { value: MountType; label: string }[] = [
+  { value: 's3', label: 'S3' },
+  { value: 'b2', label: 'Backblaze B2' },
+  { value: 'sftp', label: 'SFTP' },
+  { value: 'webdav', label: 'WebDAV' },
+  { value: 'nextcloud', label: 'Nextcloud' },
+];
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -1156,6 +1287,7 @@ const navItems = [
   { v: 'shared' as const, icon: 'share', label: 'files.shared_by_me' },
   { v: 'trash' as const, icon: 'delete', label: 'files.trash' },
 ];
+const ctxItemCls = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-black/[0.05] dark:hover:bg-white/10';
 const menuItemCls = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10';
 const menuItemDangerCls = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm text-red-600 outline-none hover:bg-red-500/10';
 
@@ -1266,12 +1398,13 @@ async function mountDelete(entry: MountEntry, dir: boolean) {
 }
 
 interface MountForm {
-  show: boolean; id: number | null; type: 's3' | 'sftp'; name: string;
+  show: boolean; id: number | null; type: MountType; name: string;
+  server: string; base_uri: string;
   region: string; bucket: string; endpoint: string; key: string; secret: string; path_prefix: string; use_path_style: boolean;
   host: string; port: number; username: string; password: string; root: string;
   read_only: boolean; busy: boolean; testing: boolean; err: string;
 }
-const emptyMountForm = (): MountForm => ({ show: false, id: null, type: 's3', name: '', region: 'us-east-1', bucket: '', endpoint: '', key: '', secret: '', path_prefix: '', use_path_style: true, host: '', port: 22, username: '', password: '', root: '', read_only: false, busy: false, testing: false, err: '' });
+const emptyMountForm = (): MountForm => ({ show: false, id: null, type: 's3', name: '', server: '', base_uri: '', region: 'us-east-1', bucket: '', endpoint: '', key: '', secret: '', path_prefix: '', use_path_style: true, host: '', port: 22, username: '', password: '', root: '', read_only: false, busy: false, testing: false, err: '' });
 const mountForm = ref<MountForm>(emptyMountForm());
 function openMountForm(m?: Mount | null) {
   mountForm.value = { ...emptyMountForm(), show: true, id: m?.id ?? null, type: m?.type ?? 's3', name: m?.name ?? '', read_only: m?.read_only ?? false };
@@ -1280,7 +1413,8 @@ function mountPayload(): Record<string, unknown> {
   const f = mountForm.value;
   return { name: f.name, type: f.type, read_only: f.read_only,
     region: f.region, bucket: f.bucket, endpoint: f.endpoint, key: f.key, secret: f.secret, path_prefix: f.path_prefix, use_path_style: f.use_path_style,
-    host: f.host, port: f.port, username: f.username, password: f.password, root: f.root };
+    host: f.host, port: f.port, username: f.username, password: f.password, root: f.root,
+    server: f.server, base_uri: f.base_uri };
 }
 async function saveMount() {
   const f = mountForm.value; f.busy = true; f.err = '';
@@ -1498,6 +1632,184 @@ async function revokeFolderShare(sh: FolderShare) {
 async function revokeMember(sh: FolderShare, m: FolderShareMember) {
   try { await s.removeShareMember(sh.id, m.user_id); await loadShared(); success(t('common.saved')); } catch { error(t('common.error')); }
 }
+// ---- Browser-like navigation, clipboard and keyboard ----
+// The file view behaves like a browser window: a visited-folder history with
+// back/forward, an "up" step, a cursor row the arrow keys move, a cut/copy
+// clipboard and a right-click menu. All of it drives the same operations the
+// toolbar already exposes — no shortcut can do something the mouse cannot.
+
+const navBack = ref<(number | null)[]>([]);
+const navForward = ref<(number | null)[]>([]);
+const canBack = computed(() => navBack.value.length > 0);
+const canForward = computed(() => navForward.value.length > 0);
+const parentFolderId = computed(() => (cwd.value == null
+  ? null
+  : (s.folders as FileFolder[]).find((f) => f.id === cwd.value)?.parent_id ?? null));
+const canUp = computed(() => view.value === 'files' && cwd.value != null);
+
+/** Navigate to a folder, remembering where we came from. */
+function goTo(id: number | null) {
+  if (view.value === 'files' && id === cwd.value) return;
+  navBack.value.push(cwd.value);
+  navForward.value = [];
+  view.value = 'files';
+  cwd.value = id;
+}
+function goBack() {
+  if (!canBack.value) return;
+  navForward.value.push(cwd.value);
+  view.value = 'files';
+  cwd.value = navBack.value.pop() ?? null;
+}
+function goForward() {
+  if (!canForward.value) return;
+  navBack.value.push(cwd.value);
+  view.value = 'files';
+  cwd.value = navForward.value.pop() ?? null;
+}
+function goUp() {
+  if (canUp.value) goTo(parentFolderId.value);
+}
+
+// Cut/copy clipboard. Holds ids, not rows: the listing is refetched after every
+// operation, so a stored row object would go stale.
+const clip = ref<{ mode: 'copy' | 'cut'; files: number[]; folders: number[] } | null>(null);
+const pasting = ref(false);
+const canPaste = computed(() => view.value === 'files' && clip.value !== null
+  && (clip.value.files.length > 0 || clip.value.folders.length > 0));
+
+function clipFrom(mode: 'copy' | 'cut', row?: Row) {
+  // A right-click on a row outside the selection acts on that row, which is what
+  // every file manager does; inside the selection it acts on the whole set.
+  const useSelection = !row || isRowSelected(row);
+  const files = useSelection ? [...selected.value] : (row._folder ? [] : [row.id]);
+  const folders = useSelection ? [...selectedFolders.value] : (row._folder ? [row.id] : []);
+  if (!files.length && !folders.length) return;
+  clip.value = { mode, files, folders };
+}
+
+async function paste() {
+  const c = clip.value;
+  if (!c || view.value !== 'files') return;
+  const target = cwd.value;
+  let failed = 0;
+  pasting.value = true;
+  try {
+    for (const id of c.files) {
+      const f = (s.files as FileEntry[]).find((x) => x.id === id);
+      if (!f) continue;
+      try {
+        if (c.mode === 'copy') await s.copy(f, target);
+        else await s.move(f, target);
+      } catch { failed++; }
+    }
+    for (const id of c.folders) {
+      // Folders have no copy endpoint; a cut moves them, a copy skips them
+      // rather than pretending to have duplicated a subtree.
+      if (c.mode !== 'cut') { failed++; continue; }
+      const fo = (s.folders as FileFolder[]).find((x) => x.id === id);
+      if (!fo) continue;
+      try { await s.moveFolder(fo, target); } catch { failed++; }
+    }
+    if (c.mode === 'cut') clip.value = null;
+    await s.load();
+    if (failed) error(t('files.move_some_failed', { n: String(failed) }));
+    else success(t('common.saved'));
+  } finally { pasting.value = false; }
+}
+
+// Keyboard cursor: the row the arrow keys sit on, independent of the checkbox
+// selection so a user can walk the list without changing what is selected.
+const cursor = ref(-1);
+const cursorRow = computed<Row | null>(() => rows.value[cursor.value] ?? null);
+watch([view, cwd, rows], () => { if (cursor.value >= rows.value.length) cursor.value = -1; });
+
+function moveCursor(delta: number, extendSelection: boolean) {
+  if (!rows.value.length) return;
+  const next = cursor.value < 0
+    ? (delta > 0 ? 0 : rows.value.length - 1)
+    : Math.min(rows.value.length - 1, Math.max(0, cursor.value + delta));
+  cursor.value = next;
+  const row = rows.value[next];
+  if (extendSelection && row) toggleRow(row, true);
+  if (row) document.getElementById('ll-row-' + row._k)?.scrollIntoView({ block: 'nearest' });
+}
+
+function typingInField(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+}
+
+/** True while a dialog owns the screen — shortcuts must stay out of its way. */
+function anyDialogOpen(): boolean {
+  return previewOpen.value || movePick.value.show || versionsDlg.value.show || shareDlg.value.show
+    || activityDlg.value.show || archiveDlg.value.show || mountForm.value.show || ulDlg.value
+    || info.value.show || labelsDlg.value.show || encDlg.value.show || conflict.value.show || uploadState.value.active;
+}
+
+async function onKeydown(e: KeyboardEvent) {
+  if (typingInField(e.target) || anyDialogOpen()) return;
+  const mod = e.ctrlKey || e.metaKey;
+
+  if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); return; }
+  if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); return; }
+  if (e.key === 'Backspace') { e.preventDefault(); goUp(); return; }
+  if (e.key === 'ArrowDown') { e.preventDefault(); moveCursor(1, e.shiftKey); return; }
+  if (e.key === 'ArrowUp') { e.preventDefault(); moveCursor(-1, e.shiftKey); return; }
+  if (e.key === 'Escape') { clearSelection(); cursor.value = -1; ctxMenu.show = false; return; }
+  if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAllRows(); return; }
+
+  const row = cursorRow.value;
+  if (e.key === 'Enter' && row) { e.preventDefault(); open(row); return; }
+  if (e.key === ' ' && row) { e.preventDefault(); toggleRow(row); return; }
+  if (mod && e.key.toLowerCase() === 'c') { clipFrom('copy', row ?? undefined); return; }
+  if (mod && e.key.toLowerCase() === 'x') { clipFrom('cut', row ?? undefined); return; }
+  if (mod && e.key.toLowerCase() === 'v') { e.preventDefault(); await paste(); return; }
+}
+
+// Right-click menu, positioned at the pointer and teleported so no table
+// overflow can clip it.
+const ctxMenu = reactive<{ show: boolean; x: number; y: number; row: Row | null }>({ show: false, x: 0, y: 0, row: null });
+function openContext(e: MouseEvent, row: Row | null) {
+  if (view.value === 'mount') return;
+  ctxMenu.row = row;
+  // Keep the menu on screen when the click lands near an edge.
+  ctxMenu.x = Math.min(e.clientX, window.innerWidth - 240);
+  ctxMenu.y = Math.min(e.clientY, window.innerHeight - 340);
+  ctxMenu.show = true;
+  if (row) cursor.value = rows.value.findIndex((r) => r._k === row._k);
+}
+function ctxRun(fn: () => unknown) { ctxMenu.show = false; void fn(); }
+
+// Internal drag: dropping a row onto a folder row moves it there.
+const dragOverFolder = ref<number | null>(null);
+function onRowDragStart(e: DragEvent, row: Row) {
+  if (view.value !== 'files') return;
+  const payload = isRowSelected(row)
+    ? { files: [...selected.value], folders: [...selectedFolders.value] }
+    : { files: row._folder ? [] : [row.id], folders: row._folder ? [row.id] : [] };
+  e.dataTransfer?.setData('application/x-ledgerline-rows', JSON.stringify(payload));
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+}
+function isInternalDrag(e: DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types ?? []).includes('application/x-ledgerline-rows');
+}
+async function onRowDrop(e: DragEvent, row: Row) {
+  dragOverFolder.value = null;
+  if (!row._folder || !isInternalDrag(e)) return;
+  e.stopPropagation();
+  const raw = e.dataTransfer?.getData('application/x-ledgerline-rows');
+  if (!raw) return;
+  const payload = JSON.parse(raw) as { files: number[]; folders: number[] };
+  if (payload.folders.includes(row.id)) return; // a folder cannot move into itself
+  clip.value = { mode: 'cut', files: payload.files, folders: payload.folders };
+  const previous = cwd.value;
+  cwd.value = row.id;
+  await paste();
+  cwd.value = previous;
+}
+
 function open(row: Row) {
   if (row._folder) { view.value = 'files'; cwd.value = row.id; return; }
   preview.value = row.raw as FileEntry;
@@ -1768,10 +2080,11 @@ const selCount = computed(() => selected.value.length + selectedFolders.value.le
 function isRowSelected(row: Row): boolean {
   return row._folder ? selectedFolders.value.includes(row.id) : selected.value.includes(row.id);
 }
-function toggleRow(row: Row) {
+/** Toggle a row's selection; `keep` only ever adds (shift-walking with the arrow keys). */
+function toggleRow(row: Row, keep = false) {
   const arr = row._folder ? selectedFolders : selected;
   const i = arr.value.indexOf(row.id);
-  if (i >= 0) arr.value.splice(i, 1); else arr.value.push(row.id);
+  if (i >= 0) { if (!keep) arr.value.splice(i, 1); } else arr.value.push(row.id);
 }
 function clearSelection() { selected.value = []; selectedFolders.value = []; }
 // Row index (in `rows`) of the last checkbox click — anchors shift-range select.
