@@ -43,9 +43,11 @@ class KeyServerControllerTest extends TestCase
 
     private function manualRecipient(User $user, string $armored, string $label = 'Manual'): CryptoRecipient
     {
+        // The endpoint answers 200 with the saved recipient (see openapi.yaml
+        // cryptoRecipientStore); it is not a 201-with-Location resource.
         $res = $this->actingAs($user)->postJson(route('crypto.recipients.store'), [
             'type' => 'pgp', 'label' => $label, 'material' => $armored,
-        ])->assertCreated();
+        ])->assertOk();
 
         return CryptoRecipient::findOrFail($res->json('recipient.id'));
     }

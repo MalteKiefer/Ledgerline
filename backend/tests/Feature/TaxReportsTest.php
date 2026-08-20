@@ -29,13 +29,19 @@ class TaxReportsTest extends TestCase
         return $user->createToken('phone', ['device'])->plainTextToken;
     }
 
-    /** Output invoice (net 200 @19% → vat 38) + input expense (gross 119 @19% → vat 19). */
+    /**
+     * Output invoice (net 200 @19% → vat 38) + input expense (gross 119 @19% → vat 19).
+     *
+     * The invoice is PAID and booked to a payment date: vatAdvanceReturn()
+     * defaults to Ist-Versteuerung, which only counts what has actually been
+     * received. An unpaid invoice legitimately contributes nothing there.
+     */
     private function seedData(User $user): void
     {
         $this->actingAs($user);
         Invoice::create([
-            'number' => '1', 'seq' => 1, 'year' => 2026, 'status' => 'sent',
-            'issue_date' => '2026-02-10', 'imported' => false, 'currency' => 'EUR',
+            'number' => '1', 'seq' => 1, 'year' => 2026, 'status' => 'paid',
+            'issue_date' => '2026-02-10', 'paid_at' => '2026-02-20', 'imported' => false, 'currency' => 'EUR',
             'gross' => 238, 'net' => 200, 'vat' => 38,
             'customer' => ['name' => 'ACME'],
             'lines' => [['qty' => 1, 'unitPrice' => 200, 'vatRate' => 19]],

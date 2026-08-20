@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\MailAccount;
+use App\Models\MailSignature;
 use App\Models\MailAttachment;
 use App\Models\MailBlob;
 use App\Models\MailMessage;
@@ -138,8 +139,14 @@ class MailSendTest extends TestCase
     public function test_compose_appends_signature(): void
     {
         $user = User::factory()->create();
-        UserSetting::for($user->id)->update(['mail_signature' => 'Cheers,\nMe']);
         $account = $this->account($user);
+        // Signatures moved from a single UserSetting string to per-account
+        // MailSignature rows: compose picks the one flagged default for the
+        // sending account.
+        $signature = new MailSignature(['name' => 'Default', 'html' => '<p>Cheers,<br>Me</p>']);
+        $signature->user_id = $user->id;
+        $signature->save();
+        $signature->accounts()->attach($account->id, ['is_default' => true]);
         $spy = $this->spySender();
 
         $this->actingAs($user)->postJson(route('mail.messages.compose'), [
