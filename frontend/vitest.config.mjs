@@ -1,7 +1,10 @@
 import { defineConfig } from 'vitest/config';
+import vue from '@vitejs/plugin-vue';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
+    // Component tests mount real .vue single-file components.
+    plugins: [vue()],
     resolve: {
         alias: {
             '@spa': fileURLToPath(new URL('./src', import.meta.url)),
