@@ -2,7 +2,9 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api, uploadWithProgress } from '@spa/api/client';
 
-export interface Mount { id: number; name: string; type: 's3' | 'sftp'; read_only: boolean }
+export type MountType = 's3' | 'b2' | 'sftp' | 'webdav' | 'nextcloud';
+
+export interface Mount { id: number; name: string; type: MountType; read_only: boolean }
 export interface MountEntry { name: string; path: string; size?: number | null; last_modified?: number | null }
 export interface MountListing { path: string; dirs: MountEntry[]; files: MountEntry[]; read_only: boolean }
 

@@ -78,7 +78,7 @@
           :class="view==='mount' && activeMount?.id===m.id ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
           @click="openMount(m)"
         >
-          <Icon :name="m.type==='s3' ? 'cloud' : 'dns'" :size="18" class="text-[var(--ll-muted)]" />
+          <Icon :name="mountIcon(m.type)" :size="18" class="text-[var(--ll-muted)]" />
           <span class="min-w-0 flex-1 truncate text-left">{{ m.name }}</span>
           <Icon v-if="m.read_only" name="lock" :size="13" class="text-[var(--ll-muted)]" />
         </button>
@@ -107,7 +107,7 @@
           </template>
         </nav>
         <nav v-else-if="view==='mount'" class="flex flex-wrap items-center gap-1 text-sm">
-          <Icon :name="activeMount?.type==='s3' ? 'cloud' : 'dns'" :size="16" class="text-[var(--ll-muted)]" />
+          <Icon :name="mountIcon(activeMount?.type)" :size="16" class="text-[var(--ll-muted)]" />
           <button class="rounded px-1 py-0.5 text-primary-600 hover:bg-black/[0.04] dark:text-primary-300 dark:hover:bg-white/5" @click="mountGo('')">{{ activeMount?.name }}</button>
           <template v-for="(c, i) in mountCrumbs" :key="i">
             <Icon name="chevron_right" :size="16" class="text-[var(--ll-muted)]" />
@@ -644,8 +644,13 @@
   <!-- Mount add/edit dialog -->
   <Modal v-model="mountForm.show" :title="mountForm.id ? t('files.mount_edit') : t('files.mount_add')" width="520px">
     <div class="space-y-3">
-      <div class="flex gap-2">
-        <button v-for="tp in (['s3','sftp'] as const)" :key="tp" class="flex-1 rounded-lg border px-3 py-2 text-sm" :class="mountForm.type===tp ? 'border-primary-500 bg-primary-500/10 text-primary-600' : 'border-[var(--ll-border)]'" :disabled="!!mountForm.id" @click="mountForm.type=tp">{{ tp==='s3' ? 'S3' : 'SFTP' }}</button>
+      <div class="grid grid-cols-3 gap-2">
+        <button
+          v-for="tp in MOUNT_TYPES" :key="tp.value"
+          class="rounded-lg border px-2 py-2 text-sm"
+          :class="mountForm.type===tp.value ? 'border-primary-500 bg-primary-500/10 text-primary-600' : 'border-[var(--ll-border)]'"
+          :disabled="!!mountForm.id" @click="mountForm.type=tp.value"
+        >{{ tp.label }}</button>
       </div>
       <TextField v-model="mountForm.name" :label="t('files.mount_name')" />
       <template v-if="mountForm.type==='s3'">
@@ -656,6 +661,25 @@
         <TextField v-model="mountForm.secret" type="password" label="Secret Key" :placeholder="mountForm.id ? '••••••' : ''" />
         <TextField v-model="mountForm.path_prefix" :label="t('files.mount_prefix')" />
         <label class="flex items-center gap-2 text-sm"><input v-model="mountForm.use_path_style" type="checkbox" class="accent-primary-500">{{ t('files.mount_path_style') }}</label>
+      </template>
+      <template v-else-if="mountForm.type==='b2'">
+        <TextField v-model="mountForm.bucket" label="Bucket" />
+        <TextField v-model="mountForm.region" label="Region" placeholder="us-west-004" :hint="t('files.mount_b2_region_hint')" />
+        <TextField v-model="mountForm.key" label="Key ID" />
+        <TextField v-model="mountForm.secret" type="password" label="Application Key" :placeholder="mountForm.id ? '••••••' : ''" />
+        <TextField v-model="mountForm.path_prefix" :label="t('files.mount_prefix')" />
+      </template>
+      <template v-else-if="mountForm.type==='nextcloud'">
+        <TextField v-model="mountForm.server" :label="t('files.mount_server')" placeholder="https://cloud.example.com" />
+        <TextField v-model="mountForm.username" :label="t('files.mount_user')" />
+        <TextField v-model="mountForm.password" type="password" :label="t('files.mount_app_password')" :hint="t('files.mount_app_password_hint')" :placeholder="mountForm.id ? '••••••' : ''" />
+        <TextField v-model="mountForm.root" :label="t('files.mount_root')" />
+      </template>
+      <template v-else-if="mountForm.type==='webdav'">
+        <TextField v-model="mountForm.base_uri" :label="t('files.mount_base_uri')" placeholder="https://dav.example.com/remote/" />
+        <TextField v-model="mountForm.username" :label="t('files.mount_user')" />
+        <TextField v-model="mountForm.password" type="password" :label="t('files.mount_password')" :placeholder="mountForm.id ? '••••••' : ''" />
+        <TextField v-model="mountForm.root" :label="t('files.mount_root')" />
       </template>
       <template v-else>
         <div class="flex gap-2"><TextField v-model="mountForm.host" class="flex-1" :label="t('files.mount_host')" /><TextField v-model="mountForm.port" label="Port" class="w-24" /></div>
@@ -1077,7 +1101,21 @@ import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type Fi
 import { useCryptoStore } from '@spa/stores/crypto';
 import { ApiError, api } from '@spa/api/client';
 import { highlightCode } from '@spa/lib/highlight';
-import { useMountsStore, type Mount, type MountEntry } from '@spa/stores/mounts';
+import { useMountsStore, type Mount, type MountEntry, type MountType } from '@spa/stores/mounts';
+
+// Nextcloud and B2 are presets over WebDAV and S3 — the protocol is an
+// implementation detail the user should not have to know to fill the form.
+function mountIcon(type: MountType | undefined): string {
+  return { s3: 'cloud', b2: 'cloud', webdav: 'cloud_sync', nextcloud: 'cloud_sync', sftp: 'dns' }[type ?? 's3'] ?? 'cloud';
+}
+
+const MOUNT_TYPES: { value: MountType; label: string }[] = [
+  { value: 's3', label: 'S3' },
+  { value: 'b2', label: 'Backblaze B2' },
+  { value: 'sftp', label: 'SFTP' },
+  { value: 'webdav', label: 'WebDAV' },
+  { value: 'nextcloud', label: 'Nextcloud' },
+];
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -1266,12 +1304,13 @@ async function mountDelete(entry: MountEntry, dir: boolean) {
 }
 
 interface MountForm {
-  show: boolean; id: number | null; type: 's3' | 'sftp'; name: string;
+  show: boolean; id: number | null; type: MountType; name: string;
+  server: string; base_uri: string;
   region: string; bucket: string; endpoint: string; key: string; secret: string; path_prefix: string; use_path_style: boolean;
   host: string; port: number; username: string; password: string; root: string;
   read_only: boolean; busy: boolean; testing: boolean; err: string;
 }
-const emptyMountForm = (): MountForm => ({ show: false, id: null, type: 's3', name: '', region: 'us-east-1', bucket: '', endpoint: '', key: '', secret: '', path_prefix: '', use_path_style: true, host: '', port: 22, username: '', password: '', root: '', read_only: false, busy: false, testing: false, err: '' });
+const emptyMountForm = (): MountForm => ({ show: false, id: null, type: 's3', name: '', server: '', base_uri: '', region: 'us-east-1', bucket: '', endpoint: '', key: '', secret: '', path_prefix: '', use_path_style: true, host: '', port: 22, username: '', password: '', root: '', read_only: false, busy: false, testing: false, err: '' });
 const mountForm = ref<MountForm>(emptyMountForm());
 function openMountForm(m?: Mount | null) {
   mountForm.value = { ...emptyMountForm(), show: true, id: m?.id ?? null, type: m?.type ?? 's3', name: m?.name ?? '', read_only: m?.read_only ?? false };
@@ -1280,7 +1319,8 @@ function mountPayload(): Record<string, unknown> {
   const f = mountForm.value;
   return { name: f.name, type: f.type, read_only: f.read_only,
     region: f.region, bucket: f.bucket, endpoint: f.endpoint, key: f.key, secret: f.secret, path_prefix: f.path_prefix, use_path_style: f.use_path_style,
-    host: f.host, port: f.port, username: f.username, password: f.password, root: f.root };
+    host: f.host, port: f.port, username: f.username, password: f.password, root: f.root,
+    server: f.server, base_uri: f.base_uri };
 }
 async function saveMount() {
   const f = mountForm.value; f.busy = true; f.err = '';

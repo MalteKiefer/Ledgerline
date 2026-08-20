@@ -126,4 +126,61 @@ class StorageMountTest extends TestCase
         $this->actingAs($stranger)->getJson(route('mounts.list', $mount))->assertNotFound();
         $this->actingAs($stranger)->deleteJson(route('mounts.destroy', $mount))->assertNotFound();
     }
+
+    public function test_a_webdav_mount_is_accepted_and_its_password_is_never_returned(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->postJson(route('mounts.store'), [
+            'name' => 'Cloud', 'type' => 'webdav',
+            'base_uri' => 'https://dav.example.com/remote/', 'username' => 'me', 'password' => 'secret',
+        ])->assertCreated()->assertJsonPath('mount.type', 'webdav')->assertJsonMissingPath('mount.config');
+
+        $this->assertSame('https://dav.example.com/remote/', StorageMount::query()->firstOrFail()->config['base_uri']);
+    }
+
+    public function test_a_nextcloud_mount_derives_the_per_user_dav_path(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->postJson(route('mounts.store'), [
+            'name' => 'NC', 'type' => 'nextcloud',
+            'server' => 'https://cloud.example.com/', 'username' => 'a b', 'password' => 'app-pw',
+        ])->assertCreated();
+
+        // The user gives the server address and their login; the remote.php path
+        // is assembled, and the login has to survive as a URL segment.
+        $this->assertSame(
+            'https://cloud.example.com/remote.php/dav/files/a%20b/',
+            StorageMount::query()->firstOrFail()->config['base_uri'],
+        );
+    }
+
+    public function test_a_b2_mount_derives_its_s3_endpoint_from_the_region(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->postJson(route('mounts.store'), [
+            'name' => 'B2', 'type' => 'b2', 'bucket' => 'bk', 'region' => 'eu-central-003',
+            'key' => 'k', 'secret' => 's',
+        ])->assertCreated();
+
+        $config = StorageMount::query()->firstOrFail()->config;
+        $this->assertSame('https://s3.eu-central-003.backblazeb2.com', $config['endpoint']);
+        $this->assertFalse($config['use_path_style']);
+    }
+
+    public function test_an_unknown_mount_type_is_rejected(): void
+    {
+        // Asserted on the API twin: a validation failure on the web route is a
+        // 302 redirect, so a status assertion there would prove nothing.
+        $user = User::factory()->create();
+        $headers = ['Authorization' => 'Bearer '.$user->createToken('phone', ['device'])->plainTextToken];
+
+        $this->postJson(route('api.mounts.store'), ['name' => 'X', 'type' => 'dropbox'], $headers)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('type');
+
+        $this->assertSame(0, StorageMount::query()->withoutGlobalScopes()->count());
+    }
 }
