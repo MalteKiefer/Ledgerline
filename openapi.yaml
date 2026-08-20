@@ -2320,6 +2320,13 @@ paths:
       tags: [Contacts]
       operationId: contactSyncSourcesStore
       summary: Add a Ledgerline-first external CardDAV replica
+      description: >
+        The endpoint must clear the outbound SSRF guard. Plain http is accepted
+        only for a host that resolves inside the local network; an external
+        endpoint has to be https, since basic-auth credentials and pushed vCards
+        would otherwise cross the internet in the clear (422). Every request the
+        sync makes afterwards stays on this origin: a redirect or an absolute
+        href that leaves it aborts the sync rather than forwarding credentials.
       requestBody:
         required: true
         content:
@@ -10368,6 +10375,10 @@ paths:
       tags: [Mail]
       operationId: mailDraftStore
       summary: Create a server-saved compose draft
+      description: >
+        Every referenced id (account, signature, signing key, recipient keys,
+        files, gallery photos) must belong to the caller. At most 200 drafts are
+        kept per account; beyond that the call returns 422 draft_limit_reached.
       requestBody:
         required: true
         content:
