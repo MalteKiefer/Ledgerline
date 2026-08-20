@@ -13,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -49,6 +50,27 @@ class SyncMailAccount implements ShouldQueue
     public int $timeout = 2100;
 
     public function __construct(public int $accountId) {}
+
+    private static function backlogKey(int $accountId): string
+    {
+        return 'mail.sync.backlog.'.$accountId;
+    }
+
+    /** Messages still sitting in the account's Maildir, across every folder. */
+    private static function pendingCount(MailAccount $account): int
+    {
+        $root = MbsyncRunner::maildirPathFor($account);
+        if (! is_dir($root)) {
+            return 0;
+        }
+        $job = new self($account->id);
+        $total = 0;
+        foreach ($job->folders($root) as $dir) {
+            $total += count($job->messageFiles($dir));
+        }
+
+        return $total;
+    }
 
     /**
      * @return array<int, object>
@@ -96,6 +118,12 @@ class SyncMailAccount implements ShouldQueue
         $account->forceFill(['status' => 'syncing', 'last_error' => null])->save();
 
         ['jobs' => $chunks, 'continueBacklog' => $continueBacklog] = $this->buildChunks($account);
+        // Remember how much is still queued locally. The finalizer only chains
+        // another run when that number actually went down, so a backlog that
+        // cannot be ingested (a systematic parse/storage failure leaves every
+        // file in place) settles back onto the scheduled sync instead of
+        // re-running mbsync and re-parsing the same page forever.
+        Cache::put(self::backlogKey($this->accountId), self::pendingCount($account), now()->addHours(6));
         if ($chunks === []) {
             MailLogger::record($account, 'info', 'nothing_to_ingest', null, 'No new messages fetched this run.');
             self::markIdle($this->accountId);
@@ -253,8 +281,14 @@ class SyncMailAccount implements ShouldQueue
                 $account->forceFill(['status' => 'idle', 'last_synced_at' => now(), 'sync_batch_id' => null])->save();
                 MailLogger::record($account, 'info', 'sync_done', null, 'Sync finished.');
                 if ($continueBacklog && $account->enabled) {
-                    MailLogger::record($account, 'info', 'sync_continuing', null, 'More messages are queued locally; continuing the initial import.');
-                    self::dispatch($accountId)->delay(now()->addSeconds(2));
+                    $before = Cache::pull(self::backlogKey($accountId));
+                    $remaining = self::pendingCount($account);
+                    if (is_int($before) && $remaining >= $before) {
+                        MailLogger::record($account, 'warning', 'sync_stalled', null, 'The local backlog did not shrink this run; waiting for the next scheduled sync.');
+                    } else {
+                        MailLogger::record($account, 'info', 'sync_continuing', null, 'More messages are queued locally; continuing the initial import.');
+                        self::dispatch($accountId)->delay(now()->addSeconds(2));
+                    }
                 }
             }
         } catch (Throwable) {
