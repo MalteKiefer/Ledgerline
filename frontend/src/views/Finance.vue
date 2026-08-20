@@ -2093,7 +2093,7 @@ const assignTxCandidates = computed<BookingSuggestion[]>(() => {
   const matchesQuery = (t: BankTransaction) => !q || (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q);
   const amount = rForm.amount.trim() === '' ? null : Number(rForm.amount);
   if (amount != null && Number.isFinite(amount)) {
-    return suggestBookings({ total: amount, date: rForm.date || null }, unlinkedTransactions.value.filter(matchesQuery), { limit: 30 });
+    return suggestBookings({ total: amount, date: rForm.date || null, currency: rForm.currency || null }, unlinkedTransactions.value.filter(matchesQuery), { limit: 30, rates: f.fxRates });
   }
   return unlinkedTransactions.value
     .filter(matchesQuery)
