@@ -3,7 +3,7 @@
     <!-- Left rail: accounts, folders, trash, labels, saved searches -->
     <Card body-class="p-0" class="w-full shrink-0 self-start md:h-full md:w-64 md:overflow-y-auto md:!rounded-none md:!border-y-0 md:!border-l-0 md:border-r md:border-r-[var(--ll-border)] md:!shadow-none">
       <div class="flex items-center gap-2 border-b border-[var(--ll-border)] p-3">
-        <Btn variant="solid" icon="add" block @click="openAccountEditor(null)">{{ t('mail.accounts.add') }}</Btn>
+        <Btn variant="solid" icon="add" block class="h-[38px]" @click="openAccountEditor(null)">{{ t('mail.accounts.add') }}</Btn>
       </div>
       <nav class="space-y-0.5 px-2 pb-3">
         <!-- Unified inbox -->
