@@ -278,4 +278,10 @@ return [
     'virustotal_not_configured' => 'VirusTotal wurde noch nicht von einem Administrator eingerichtet.',
     'virustotal_invalid_api_key' => 'Der hinterlegte VirusTotal-API-Schlüssel wurde abgewiesen. Bitte in den Einstellungen aktualisieren.',
     'virustotal_rate_limited' => 'Das VirusTotal-Limit ist erreicht. Bitte gleich erneut versuchen.',
+    'cut' => 'Ausschneiden',
+    'paste' => 'Einfügen',
+    'preview' => 'Vorschau',
+    'nav_back' => 'Zurück (Alt+←)',
+    'nav_forward' => 'Vorwärts (Alt+→)',
+    'nav_up' => 'Eine Ebene höher (Rücktaste)',
 ];

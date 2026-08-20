@@ -278,4 +278,10 @@ return [
     'virustotal_not_configured' => 'VirusTotal has not been configured by an administrator.',
     'virustotal_invalid_api_key' => 'The configured VirusTotal API key was rejected. Update it in Settings.',
     'virustotal_rate_limited' => 'VirusTotal rate limit reached. Try again shortly.',
+    'cut' => 'Cut',
+    'paste' => 'Paste',
+    'preview' => 'Preview',
+    'nav_back' => 'Back (Alt+←)',
+    'nav_forward' => 'Forward (Alt+→)',
+    'nav_up' => 'Up one level (Backspace)',
 ];

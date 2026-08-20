@@ -278,4 +278,10 @@ return [
     'virustotal_not_configured' => 'VirusTotal ещё не настроен администратором.',
     'virustotal_invalid_api_key' => 'Сохранённый API-ключ VirusTotal отклонён. Обновите его в настройках.',
     'virustotal_rate_limited' => 'Достигнут лимит VirusTotal. Повторите попытку позже.',
+    'cut' => 'Вырезать',
+    'paste' => 'Вставить',
+    'preview' => 'Просмотр',
+    'nav_back' => 'Назад (Alt+←)',
+    'nav_forward' => 'Вперёд (Alt+→)',
+    'nav_up' => 'На уровень выше (Backspace)',
 ];
