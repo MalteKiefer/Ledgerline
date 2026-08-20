@@ -17,6 +17,9 @@ use Throwable;
  */
 class MailAutoconfig
 {
+    /** Largest autoconfig document worth reading from an untrusted host. */
+    private const MAX_BODY = 131_072;
+
     /** @return array<string, mixed> */
     public function discover(string $email): array
     {
@@ -88,18 +91,28 @@ class MailAutoconfig
     protected function fetchAutoconfig(string $url): ?array
     {
         try {
+            // The domain here comes from whatever address the user typed, so the
+            // responding host is not necessarily one we trust. Stream the reply
+            // and read a bounded prefix instead of buffering it whole: a hostile
+            // autoconfig endpoint could otherwise push megabytes into a worker
+            // for as long as the timeout allows.
             $response = OutboundUrl::client($url, 4)
+                ->withOptions(['stream' => true])
                 ->accept('application/xml, text/xml')
                 ->get($url);
+            if (! $response->successful()) {
+                return null;
+            }
+            $body = $response->toPsrResponse()->getBody()->read(self::MAX_BODY + 1);
         } catch (Throwable) {
             return null;
         }
 
-        if (! $response->successful() || strlen($response->body()) > 131_072) {
+        if (! is_string($body) || $body === '' || strlen($body) > self::MAX_BODY) {
             return null;
         }
 
-        return $this->parseAutoconfig($response->body());
+        return $this->parseAutoconfig($body);
     }
 
     /** @return array{imap: ?array{host:string,port:int,encryption:string,username:?string},smtp: ?array{host:string,port:int,encryption:string,username:?string}}|null */
