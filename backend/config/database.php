@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Support\Secret;
 use Illuminate\Support\Str;
 use Pdo\Mysql;

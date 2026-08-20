@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 // The app is finance-only. The Finance page is a single Alpine SPA that renders
 // its OWN in-page section tab bar (Dashboard / Invoices / Payments / Receipts /
 // Projects / Partners / Stats / Settings, driven by setSection()). There is no
