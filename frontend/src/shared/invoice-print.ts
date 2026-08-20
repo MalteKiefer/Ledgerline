@@ -8,10 +8,12 @@
 
 export interface PrintLine {
   desc: string;
-  qty: number;
+  // Numeric fields arrive as strings from the editor's inputs; lineNet() parses
+  // them, so the type says what actually crosses this boundary.
+  qty: number | string;
   unit?: string;
-  unitPrice: number;
-  vatRate: number;
+  unitPrice: number | string;
+  vatRate: number | string;
 }
 
 export interface PrintCustomer {
@@ -160,8 +162,12 @@ export function hasDiscount(inv: PrintInvoice | null): boolean {
 }
 
 function addDays(iso: string, days: number): string {
-  const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() + (days || 0));
+  // Civil-date arithmetic, deliberately timezone-free: parsing local midnight and
+  // serialising with toISOString() moved the result back a day for every viewer
+  // east of UTC, and this date is printed on the invoice.
+  const [y, mo, da] = iso.split('-').map(Number);
+  const d = new Date(Date.UTC(y, (mo || 1) - 1, da || 1));
+  d.setUTCDate(d.getUTCDate() + (days || 0));
   return d.toISOString().slice(0, 10);
 }
 

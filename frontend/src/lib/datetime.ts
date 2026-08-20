@@ -150,6 +150,17 @@ export function utcToZonedInput(iso: string, tz: string, allDay = false): string
   return allDay ? date : `${date}T${String(p.h).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}`;
 }
 
+/**
+ * Today as YYYY-MM-DD in the effective timezone — the civil date the user is
+ * living in. `new Date().toISOString().slice(0, 10)` is today in UTC, which is
+ * yesterday for anyone east of UTC just after local midnight; that is the wrong
+ * default for a document date.
+ */
+export function todayYmd(tz?: string): string {
+  const p = zonedParts(new Date(), tz ?? effectiveTz());
+  return `${String(p.y).padStart(4, '0')}-${String(p.mo).padStart(2, '0')}-${String(p.da).padStart(2, '0')}`;
+}
+
 /** Hour-of-day (fractional) an instant shows in the timezone — for grid layout. */
 export function hoursInTz(input: string | number | Date, tz?: string): number {
   const d = toDate(input);
