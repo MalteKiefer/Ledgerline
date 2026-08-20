@@ -25,6 +25,21 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # A release whose running app reports a different version than the tag it
+      # was built from cannot be verified after deploy — the version endpoint is
+      # the only thing that says which build is live. Catch the mismatch before
+      # the image exists, not on the box afterwards.
+      - name: Guard, tag matches the application version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          app="$(grep -oP "env\('APP_VERSION',\s*'\K[^']+" backend/config/app.php)"
+          echo "tag=$tag app=$app"
+          if [ "$tag" != "$app" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match config/app.php version $app"
+            exit 1
+          fi
+
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
