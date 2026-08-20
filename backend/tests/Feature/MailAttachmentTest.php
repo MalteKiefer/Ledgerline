@@ -135,7 +135,17 @@ class MailAttachmentTest extends TestCase
             ->assertOk()
             ->assertHeader('X-Content-Type-Options', 'nosniff')
             ->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        $this->assertStringStartsWith('inline;', (string) $res->headers->get('Content-Disposition'));
         $this->assertSame('quarterly numbers here', trim($res->streamedContent()));
+
+        // Browser-renderable PDFs still become real downloads when explicitly requested.
+        $att->forceFill(['filename' => 'report.pdf', 'content_type' => 'application/pdf'])->save();
+        $download = $this->actingAs(User::findOrFail($account->user_id))
+            ->get(route('mail.attachments.raw', [$att->id, 'download' => 1]))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/octet-stream');
+        $this->assertStringStartsWith('attachment;', (string) $download->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('report.pdf', (string) $download->headers->get('Content-Disposition'));
 
         // Foreign user → 404.
         $this->actingAs(User::factory()->create())

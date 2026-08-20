@@ -10105,9 +10105,11 @@ paths:
         Throttle 3000/min. Owner-scoped; streams the decoded attachment bytes
         with nosniff + `default-src 'none'; sandbox`. A small safe allowlist
         (png/jpeg/gif/webp/pdf/text-plain) renders inline; everything else is a
-        forced download.
+        forced download. Pass `download=1` to force attachment disposition and
+        an octet-stream content type for every MIME type.
       parameters:
         - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: download, in: query, required: false, schema: { type: boolean, default: false }, description: "Force a browser download instead of an inline preview." }
       responses:
         "200":
           description: Attachment bytes.

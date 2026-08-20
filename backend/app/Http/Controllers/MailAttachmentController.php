@@ -33,7 +33,7 @@ class MailAttachmentController extends Controller
         'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf', 'text/plain',
     ];
 
-    /** Stream one attachment's bytes, sandboxed. Inline for the safe allowlist. */
+    /** Stream one attachment's bytes, sandboxed. Inline for the safe allowlist unless download is requested. */
     public function raw(Request $request, MailAttachment $attachment): StreamedResponse
     {
         $this->authorizeOwner($request, $attachment);
@@ -43,7 +43,8 @@ class MailAttachmentController extends Controller
         abort_unless($disk->exists($key), 404);
 
         $type = (string) $attachment->content_type;
-        $inline = in_array(strtolower(explode(';', $type)[0]), self::INLINE_TYPES, true);
+        $inline = ! $request->boolean('download')
+            && in_array(strtolower(explode(';', $type)[0]), self::INLINE_TYPES, true);
         $filename = $this->safeName($attachment->filename);
 
         return $disk->response($key, $filename, [

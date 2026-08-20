@@ -304,7 +304,7 @@
               <span class="block text-xs text-[var(--ll-muted)]">{{ fmtBytes(att.size) }}<span v-if="att.inline"> · cid</span></span>
             </span>
             <Btn variant="ghost" size="xs" icon="visibility" tag="a" :href="s.attachmentRawUrl(att.id)" target="_blank" rel="noopener" :title="t('mail.reader.attachment_view')" />
-            <Btn variant="ghost" size="xs" icon="download" tag="a" :href="s.attachmentRawUrl(att.id)" :title="t('mail.reader.attachment_download')" />
+            <Btn variant="ghost" size="xs" icon="download" tag="a" :href="s.attachmentRawUrl(att.id, true)" :title="t('mail.reader.attachment_download')" />
             <DropdownMenuRoot>
               <DropdownMenuTrigger class="grid h-7 w-7 place-items-center rounded-md hover:bg-black/[0.05] dark:hover:bg-white/10"><Icon name="more_vert" :size="16" /></DropdownMenuTrigger>
               <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-44 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">

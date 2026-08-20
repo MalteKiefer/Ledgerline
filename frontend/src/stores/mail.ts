@@ -281,7 +281,7 @@ export const useMailStore = defineStore('mail', () => {
 
   const bodyUrl = (id: string, remote = false) => api.streamUrl(`/api/v1/mail/messages/${id}/body${remote ? '?remote=1' : ''}`);
   const rawUrl = (id: string, download = false) => api.streamUrl(`/api/v1/mail/raw/${id}${download ? '?download=1' : ''}`);
-  const attachmentRawUrl = (attId: string) => api.streamUrl(`/api/v1/mail/attachments/${attId}/raw`);
+  const attachmentRawUrl = (attId: string, download = false) => api.streamUrl(`/api/v1/mail/attachments/${attId}/raw${download ? '?download=1' : ''}`);
   const virusTotalAttachment = (attId: string) => api.post<VirusTotalResult>(`/api/v1/mail/attachments/${attId}/virustotal`);
 
   const saveAttachment = (attId: string, target: 'files' | 'paperless', folderId?: number | null) =>
