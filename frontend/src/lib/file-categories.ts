@@ -8,7 +8,7 @@ type Category = 'IMAGE' | 'VECTOR' | 'VIDEO' | 'AUDIO' | 'PDF' | 'DOCUMENT' | 'S
 const EXT_CATEGORY: Record<string, Category> = {
   jpg: 'IMAGE', jpeg: 'IMAGE', png: 'IMAGE', gif: 'IMAGE', webp: 'IMAGE', bmp: 'IMAGE', tif: 'IMAGE', tiff: 'IMAGE', ico: 'IMAGE', heic: 'IMAGE', heif: 'IMAGE', avif: 'IMAGE', jfif: 'IMAGE', psd: 'IMAGE', xcf: 'IMAGE', raw: 'IMAGE', cr2: 'IMAGE', nef: 'IMAGE', dng: 'IMAGE',
   svg: 'VECTOR', ai: 'VECTOR', eps: 'VECTOR',
-  mp4: 'VIDEO', m4v: 'VIDEO', mov: 'VIDEO', webm: 'VIDEO', mkv: 'VIDEO', avi: 'VIDEO', wmv: 'VIDEO', flv: 'VIDEO', mpeg: 'VIDEO', mpg: 'VIDEO', '3gp': 'VIDEO', ogv: 'VIDEO', ts: 'VIDEO',
+  mp4: 'VIDEO', m4v: 'VIDEO', mov: 'VIDEO', webm: 'VIDEO', mkv: 'VIDEO', avi: 'VIDEO', wmv: 'VIDEO', flv: 'VIDEO', mpeg: 'VIDEO', mpg: 'VIDEO', '3gp': 'VIDEO', ogv: 'VIDEO',
   mp3: 'AUDIO', wav: 'AUDIO', flac: 'AUDIO', aac: 'AUDIO', ogg: 'AUDIO', oga: 'AUDIO', m4a: 'AUDIO', wma: 'AUDIO', opus: 'AUDIO', aiff: 'AUDIO', mid: 'AUDIO', midi: 'AUDIO',
   pdf: 'PDF',
   doc: 'DOCUMENT', docx: 'DOCUMENT', odt: 'DOCUMENT', rtf: 'DOCUMENT', pages: 'DOCUMENT', epub: 'EBOOK', mobi: 'EBOOK', azw3: 'EBOOK',
@@ -27,7 +27,11 @@ function extOf(name: string): string {
 
 export function fileCategory(name: string, mime: string): Category {
   const ext = extOf(name);
-  const byExt = EXT_CATEGORY[ext] ?? (ext === 'ts' ? 'CODE' : undefined);
+  // ".ts" is both TypeScript and an MPEG transport stream. The extension table
+  // cannot answer it, so let the MIME type decide and default to code, which is
+  // what a ".ts" in a personal file store almost always is.
+  if (ext === 'ts') return (mime || '').toLowerCase().startsWith('video/') ? 'VIDEO' : 'CODE';
+  const byExt = EXT_CATEGORY[ext];
   if (byExt) return byExt;
   const m = (mime || '').toLowerCase();
   if (m.startsWith('image/')) return m.includes('svg') ? 'VECTOR' : 'IMAGE';
