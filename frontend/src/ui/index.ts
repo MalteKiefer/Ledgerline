@@ -8,3 +8,5 @@ export { default as Modal } from './Modal.vue';
 export { default as ConfirmDialog } from './ConfirmDialog.vue';
 export { default as Chart } from './Chart.vue';
 export { default as SortLabel } from './SortLabel.vue';
+export { default as SectionNav } from './SectionNav.vue';
+export type { SectionNavItem } from './SectionNav.vue';

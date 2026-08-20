@@ -36,8 +36,12 @@ use Throwable;
  */
 class MbsyncRunner
 {
-    /** mbsync itself has no built-in timeout; bound the whole sync run. */
-    private const RUN_TIMEOUT = 300;
+    /**
+     * First-time mirrors can contain many years of mail. Keep the fetch bounded
+     * but give a resumable, read-only initial mirror enough time to finish;
+     * mbsync's durable state means later runs only transfer deltas.
+     */
+    private const RUN_TIMEOUT = 1800;
 
     public function __construct(
         private readonly MbsyncConfig $config = new MbsyncConfig,

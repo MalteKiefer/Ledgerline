@@ -1,0 +1,94 @@
+<template>
+  <div class="overflow-hidden rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] shadow-sm focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/20">
+    <div class="flex flex-wrap items-center gap-0.5 border-b border-[var(--ll-border)] bg-black/[0.02] p-1.5 dark:bg-white/[0.03]" role="toolbar" :aria-label="labels.toolbar">
+      <select class="h-8 rounded-md bg-transparent px-1 text-xs outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" :title="labels.format" @change="formatBlock">
+        <option value="p">{{ labels.text }}</option>
+        <option value="h3">{{ labels.heading }}</option>
+      </select>
+      <select class="h-8 max-w-36 rounded-md bg-transparent px-1 text-xs outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" :title="labels.font" @change="fontName">
+        <optgroup label="Google Fonts"><option value="Roboto, Arial, sans-serif">Roboto</option><option value="Open Sans, Arial, sans-serif">Open Sans</option><option value="Lato, Arial, sans-serif">Lato</option><option value="Montserrat, Arial, sans-serif">Montserrat</option><option value="Merriweather, Georgia, serif">Merriweather</option><option value="Playfair Display, Georgia, serif">Playfair Display</option><option value="Source Sans 3, Arial, sans-serif">Source Sans 3</option><option value="JetBrains Mono, Consolas, monospace">JetBrains Mono</option></optgroup>
+        <optgroup label="System & Web"><option value="Arial, Helvetica, sans-serif">Arial</option><option value="Helvetica, Arial, sans-serif">Helvetica</option><option value="Segoe UI, Arial, sans-serif">Segoe UI</option><option value="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">System UI</option><option value="Verdana, Geneva, sans-serif">Verdana</option><option value="Tahoma, Arial, sans-serif">Tahoma</option><option value="Georgia, Times New Roman, serif">Georgia</option><option value="Times New Roman, Times, serif">Times New Roman</option><option value="Courier New, Courier, monospace">Courier New</option></optgroup>
+      </select>
+      <select class="h-8 rounded-md bg-transparent px-1 text-xs outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" :title="labels.size" @change="fontSize"><option value="2">S</option><option value="3" selected>M</option><option value="4">L</option><option value="5">XL</option></select>
+      <span class="mx-1 h-5 border-l border-[var(--ll-border)]" />
+      <button v-for="action in formatActions" :key="action.command" type="button" class="editor-action" :title="labels[action.label]" :aria-label="labels[action.label]" @click="command(action.command)">
+        <Icon :name="action.icon" :size="17" />
+      </button>
+      <span class="mx-1 h-5 border-l border-[var(--ll-border)]" />
+      <button v-for="action in listActions" :key="action.command" type="button" class="editor-action" :title="labels[action.label]" :aria-label="labels[action.label]" @click="command(action.command)">
+        <Icon :name="action.icon" :size="17" />
+      </button>
+      <button type="button" class="editor-action" :title="labels.quote" :aria-label="labels.quote" @click="command('formatBlock', 'blockquote')"><Icon name="format_quote" :size="17" /></button>
+      <button v-for="action in alignmentActions" :key="action.command" type="button" class="editor-action" :title="labels[action.label]" :aria-label="labels[action.label]" @click="command(action.command)"><Icon :name="action.icon" :size="17" /></button>
+      <input v-model="color" type="color" class="mx-1 h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" :title="labels.color" :aria-label="labels.color" @input="command('foreColor', color)">
+      <span class="mx-1 h-5 border-l border-[var(--ll-border)]" />
+      <button type="button" class="editor-action" :title="labels.link" :aria-label="labels.link" @click="addLink"><Icon name="link" :size="17" /></button>
+      <button type="button" class="editor-action" :title="labels.image" :aria-label="labels.image" @click="addImage"><Icon name="image" :size="17" /></button>
+      <button type="button" class="editor-action" :title="labels.clear" :aria-label="labels.clear" @click="command('removeFormat')"><Icon name="format_clear" :size="17" /></button>
+    </div>
+    <div
+      ref="editor" contenteditable="true" role="textbox" aria-multiline="true"
+      class="signature-editor min-h-40 px-4 py-3 text-sm leading-6 text-[var(--ll-fg)] outline-none"
+      :data-placeholder="placeholder" @input="emitValue" @blur="emitValue"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { onMounted, ref, watch } from 'vue';
+import DOMPurify from 'dompurify';
+import Icon from '@spa/ui/Icon.vue';
+import { promptAsk } from '@spa/composables/useConfirm';
+
+type LabelKey = 'toolbar' | 'format' | 'text' | 'heading' | 'bold' | 'italic' | 'underline' | 'bullets' | 'numbers' | 'color' | 'link' | 'image' | 'clear' | 'font' | 'size' | 'quote' | 'align_left' | 'align_center' | 'align_right';
+const props = defineProps<{ modelValue: string | null; placeholder: string; labels: Record<LabelKey, string> }>();
+const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
+const editor = ref<HTMLDivElement | null>(null);
+const color = ref('#6750a4');
+const formatActions = [
+  { command: 'bold', icon: 'format_bold', label: 'bold' as const },
+  { command: 'italic', icon: 'format_italic', label: 'italic' as const },
+  { command: 'underline', icon: 'format_underlined', label: 'underline' as const },
+];
+const listActions = [
+  { command: 'insertUnorderedList', icon: 'format_list_bulleted', label: 'bullets' as const },
+  { command: 'insertOrderedList', icon: 'format_list_numbered', label: 'numbers' as const },
+];
+const alignmentActions = [
+  { command: 'justifyLeft', icon: 'format_align_left', label: 'align_left' as const },
+  { command: 'justifyCenter', icon: 'format_align_center', label: 'align_center' as const },
+  { command: 'justifyRight', icon: 'format_align_right', label: 'align_right' as const },
+];
+const sanitizer = { ALLOWED_TAGS: ['a', 'b', 'br', 'div', 'em', 'font', 'h3', 'img', 'li', 'ol', 'p', 'span', 'strong', 'u', 'ul'], ALLOWED_ATTR: ['alt', 'face', 'href', 'src', 'style', 'target', 'title'] };
+
+function clean(value: string | null | undefined): string { return DOMPurify.sanitize(value ?? '', sanitizer).trim(); }
+function setContent(value: string | null | undefined) { if (editor.value) editor.value.innerHTML = clean(value); }
+function emitValue() { emit('update:modelValue', clean(editor.value?.innerHTML)); }
+function command(name: string, value?: string) { editor.value?.focus(); document.execCommand(name, false, value); emitValue(); }
+function formatBlock(event: Event) { command('formatBlock', (event.target as HTMLSelectElement).value); }
+function fontName(event: Event) { command('fontName', (event.target as HTMLSelectElement).value); }
+function fontSize(event: Event) { command('fontSize', (event.target as HTMLSelectElement).value); }
+async function addLink() {
+  const href = await promptAsk(props.labels.link);
+  if (href) command('createLink', href.trim());
+}
+async function addImage() {
+  const src = await promptAsk(props.labels.image);
+  if (src) command('insertImage', src.trim());
+}
+
+onMounted(() => setContent(props.modelValue));
+watch(() => props.modelValue, (value) => { if (document.activeElement !== editor.value) setContent(value); });
+</script>
+
+<style scoped>
+.editor-action { display:grid; height:2rem; width:2rem; place-items:center; border-radius:.375rem; color:var(--ll-muted); }
+.editor-action:hover { background:rgb(0 0 0 / .06); color:var(--ll-fg); }
+.signature-editor:empty::before { content:attr(data-placeholder); color:var(--ll-muted); pointer-events:none; }
+.signature-editor :deep(img) { display:inline-block; max-height:5rem; max-width:12rem; vertical-align:middle; }
+.signature-editor :deep(h3) { margin:.25rem 0; font-size:1.125rem; font-weight:650; }
+.signature-editor :deep(p) { margin:.2rem 0; }
+.signature-editor :deep(blockquote) { margin:.5rem 0; border-left:3px solid var(--color-primary-500); padding-left:.75rem; color:var(--ll-muted); }
+.signature-editor :deep(ul), .signature-editor :deep(ol) { margin:.25rem 0; padding-left:1.5rem; }
+.dark .editor-action:hover { background:rgb(255 255 255 / .1); }
+</style>

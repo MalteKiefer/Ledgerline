@@ -412,4 +412,13 @@ return [
     'recipient_added' => 'Empfänger hinzugefügt.',
     'recipient_failed' => 'Empfänger konnte nicht hinzugefügt werden (ungültiger Schlüssel/Zertifikat).',
     'ul_optional' => 'optional',
+    'virustotal_title' => 'VirusTotal-Reputation',
+    'virustotal_check' => 'Prüfen',
+    'virustotal_hint' => 'An VirusTotal wird nur die SHA-256-Prüfsumme gesendet. Die Datei wird nie hochgeladen.',
+    'virustotal_detections' => ':n Funde',
+    'virustotal_undetected' => ':n Engines ohne Fund',
+    'virustotal_unknown' => 'Diese Prüfsumme ist VirusTotal nicht bekannt.',
+    'virustotal_not_configured' => 'VirusTotal wurde noch nicht von einem Administrator eingerichtet.',
+    'virustotal_invalid_api_key' => 'Der hinterlegte VirusTotal-API-Schlüssel wurde abgewiesen. Bitte in den Einstellungen aktualisieren.',
+    'virustotal_rate_limited' => 'Das VirusTotal-Limit ist erreicht. Bitte gleich erneut versuchen.',
 ];

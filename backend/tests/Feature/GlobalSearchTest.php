@@ -21,7 +21,7 @@ class GlobalSearchTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function seed(User $user): void
+    private function seedSearchable(User $user): void
     {
         FileEntry::forceCreate(['user_id' => $user->id, 'name' => 'quarterly-report.pdf', 'storage_path' => 'files/'.Str::uuid(),
             'mime' => 'application/pdf', 'size' => 10, 'sha256' => str_repeat('0', 64), 'version' => 0, 'search_text' => 'revenue and profit report']);
@@ -35,9 +35,9 @@ class GlobalSearchTest extends TestCase
     {
         $user = User::factory()->create();
         $this->actingAs($user);
-        $this->seed($user);
+        $this->seedSearchable($user);
         // Another user's identical data must not surface.
-        $this->seed(User::factory()->create());
+        $this->seedSearchable(User::factory()->create());
 
         $res = $this->getJson(route('search', ['q' => 'report']))->assertOk();
         $modules = collect($res->json('groups'))->pluck('module')->all();
@@ -55,7 +55,7 @@ class GlobalSearchTest extends TestCase
         $user = User::factory()->create();
         $user->forceFill(['modules' => ['files']])->save(); // only Files enabled
         $this->actingAs($user);
-        $this->seed($user);
+        $this->seedSearchable($user);
 
         $modules = collect($this->getJson(route('search', ['q' => 'report']))->json('groups'))->pluck('module')->all();
         $this->assertContains('files', $modules);
@@ -67,7 +67,7 @@ class GlobalSearchTest extends TestCase
     {
         $user = User::factory()->create();
         $this->actingAs($user);
-        $this->seed($user);
+        $this->seedSearchable($user);
 
         $this->getJson(route('gallery.search', ['q' => 'annual']))
             ->assertOk()->assertJsonCount(1, 'photos')->assertJsonPath('photos.0.name', 'scan.jpg');

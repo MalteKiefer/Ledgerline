@@ -287,6 +287,7 @@
                     <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                     <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
                     <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItemCls" :disabled="fileVirusLoading === (row.raw as FileEntry).id" @select="scanFileVirusTotal(row.raw as FileEntry)"><Icon name="security" :size="18" />{{ t('files.virustotal_check') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -359,6 +360,7 @@
                         <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                         <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
                         <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
+                        <DropdownMenuItem :class="menuItemCls" :disabled="fileVirusLoading === (row.raw as FileEntry).id" @select="scanFileVirusTotal(row.raw as FileEntry)"><Icon name="security" :size="18" />{{ t('files.virustotal_check') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -438,6 +440,22 @@
               <dd class="ll-mono truncate" :title="infoDetail.sha256">{{ infoDetail.sha256.slice(0, 16) }}…</dd>
             </template>
           </dl>
+
+          <div v-if="infoDetail.sha256" class="rounded-lg border border-[var(--ll-border)] p-3">
+            <div class="flex items-center gap-2">
+              <Icon name="security" :size="18" class="text-[var(--ll-muted)]" />
+              <span class="flex-1 text-sm font-medium">{{ t('files.virustotal_title') }}</span>
+              <Btn variant="ghost" size="sm" icon="search" :loading="virusTotalLoading" @click="scanVirusTotal">{{ t('files.virustotal_check') }}</Btn>
+            </div>
+            <p class="mt-1 text-xs text-[var(--ll-muted)]">{{ t('files.virustotal_hint') }}</p>
+            <div v-if="virusTotalResult" class="mt-2 text-sm">
+              <template v-if="virusTotalResult.known && virusTotalResult.stats">
+                <Badge :tone="virusTotalResult.stats.malicious || virusTotalResult.stats.suspicious ? 'error' : 'success'">{{ t('files.virustotal_detections', { n: String(virusTotalResult.stats.malicious + virusTotalResult.stats.suspicious) }) }}</Badge>
+                <span class="ml-2 text-xs text-[var(--ll-muted)]">{{ t('files.virustotal_undetected', { n: String(virusTotalResult.stats.undetected) }) }}</span>
+              </template>
+              <span v-else class="text-[var(--ll-muted)]">{{ t('files.virustotal_unknown') }}</span>
+            </div>
+          </div>
 
           <!-- Type-specific metadata (Stufe 1). -->
           <div v-if="infoDetail.metadata && Object.keys(infoDetail.metadata.fields).length">
@@ -938,7 +956,16 @@
         <iframe v-else-if="previewKind(preview) === 'pdf'" :src="s.rawUrl(preview)" class="h-full w-full border-0"></iframe>
         <video v-else-if="previewKind(preview) === 'video'" :src="s.rawUrl(preview)" controls class="max-h-full max-w-full"></video>
         <audio v-else-if="previewKind(preview) === 'audio'" :src="s.rawUrl(preview)" controls></audio>
-        <iframe v-else-if="previewKind(preview) === 'text'" :src="s.rawUrl(preview)" class="h-full w-full border-0 bg-white"></iframe>
+        <div v-else-if="previewKind(preview) === 'text'" class="relative h-full w-full overflow-auto rounded-lg bg-white dark:bg-[#1a1a1a]">
+          <div class="sticky top-0 z-10 flex justify-end border-b border-[var(--ll-border)] bg-white/90 px-2 py-1.5 backdrop-blur dark:bg-[#1a1a1a]/90">
+            <Btn variant="ghost" size="sm" icon="content_copy" :disabled="previewText === null" @click="copyPreviewText">{{ t('common.copy') }}</Btn>
+          </div>
+          <div v-if="previewTextLoading" class="p-10 text-center text-[var(--ll-muted)]">
+            <Icon name="progress_activity" :size="28" class="animate-spin" />
+          </div>
+          <div v-else-if="previewTextError" class="p-10 text-center text-[var(--ll-muted)]">{{ t('common.error') }}</div>
+          <pre v-else class="hljs m-0 overflow-auto p-4 font-mono text-xs leading-5"><code v-html="previewHighlighted"></code></pre>
+        </div>
         <div v-else class="p-10 text-center text-[var(--ll-muted)]">
           <Icon :name="categoryMsym(preview.name, preview.mime)" :size="56" class="mb-3 block" />
           <div class="text-sm">{{ preview.name }}</div>
@@ -971,9 +998,10 @@
             <DropdownMenuTrigger class="grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10">
               <Icon name="more_vert" :size="18" />
             </DropdownMenuTrigger>
-            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[2600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
               <DropdownMenuItem as="a" :href="s.downloadUrl(preview)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
               <DropdownMenuItem as="a" :href="s.rawUrl(preview)" target="_blank" :class="menuItemCls"><Icon name="open_in_new" :size="18" />{{ t('common.open') }}</DropdownMenuItem>
+              <DropdownMenuItem :class="menuItemCls" :disabled="fileVirusLoading === preview.id" @select="scanFileVirusTotal(preview)"><Icon name="security" :size="18" />{{ t('files.virustotal_check') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemCls" @select="previewRename()"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemCls" @select="openVersions(mapFile(preview))"><Icon name="history" :size="18" />{{ t('files.versions') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemCls" @select="openShare(mapFile(preview))"><Icon name="share" :size="18" />{{ t('files.share') }}</DropdownMenuItem>
@@ -1045,15 +1073,21 @@ import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
 import StlViewer from '@spa/components/StlViewer.vue';
-import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo } from '@spa/stores/files';
+import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo, type VirusTotalResult } from '@spa/stores/files';
 import { useCryptoStore } from '@spa/stores/crypto';
-import { ApiError } from '@spa/api/client';
+import { ApiError, api } from '@spa/api/client';
+import { highlightCode } from '@spa/lib/highlight';
 import { useMountsStore, type Mount, type MountEntry } from '@spa/stores/mounts';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
 interface Row { _k: string; _folder: boolean; _icon: string; _tint: string; _img: boolean; _labels: FileLabel[]; id: number; name: string; raw: FileEntry | FileFolder }
+
+// Plain text formats plus common source/code files — anything here gets the
+// inline highlighted + copyable text preview rather than falling to the
+// generic "no preview, download it" pane.
+const TEXT_EXT_RE = /\.(txt|md|markdown|csv|tsv|log|json|xml|yml|yaml|toml|ini|conf|env|gitignore|editorconfig|js|mjs|cjs|jsx|ts|tsx|vue|py|rb|php|go|rs|java|kt|swift|cs|c|h|cpp|cc|hpp|hh|css|scss|less|html|htm|svg|sh|bash|zsh|sql|diff|patch|dockerfile|makefile)$/i;
 
 const s = useFilesStore();
 const { success, error } = useToast();
@@ -1074,6 +1108,47 @@ const preview = ref<FileEntry | null>(null);
 const previewOpen = ref(false);
 const tagInput = ref('');
 
+// Inline text/code preview: fetched raw so it can be highlighted + copied
+// (an <iframe src> can neither be highlighted nor have its content read for
+// a copy button — see `open()`/`watch(preview, ...)` below).
+const previewText = ref<string | null>(null);
+const previewTextLoading = ref(false);
+const previewTextError = ref(false);
+const previewHighlighted = computed(() => (
+  preview.value && previewText.value !== null ? highlightCode(previewText.value, preview.value.name) : ''
+));
+// Guards against a slower fetch for a previously-opened file resolving
+// AFTER a faster one for a file opened right after it, and overwriting the
+// newer file's already-rendered content with the stale one's.
+let previewTextRequest = 0;
+async function loadPreviewText(f: FileEntry): Promise<void> {
+  const requestId = ++previewTextRequest;
+  previewText.value = null;
+  previewTextError.value = false;
+  previewTextLoading.value = true;
+  try {
+    const text = await api.text(`/api/v1/files/entries/${f.id}/raw`);
+    if (requestId === previewTextRequest) previewText.value = text;
+  } catch {
+    if (requestId === previewTextRequest) previewTextError.value = true;
+  } finally {
+    if (requestId === previewTextRequest) previewTextLoading.value = false;
+  }
+}
+async function copyPreviewText(): Promise<void> {
+  if (previewText.value === null) return;
+  try {
+    await navigator.clipboard.writeText(previewText.value);
+    success(t('common.copied'));
+  } catch {
+    error(t('common.error'));
+  }
+}
+watch(preview, (f) => {
+  if (f && previewKind(f) === 'text') loadPreviewText(f);
+  else { previewText.value = null; previewTextError.value = false; }
+});
+
 // Presentational-only constants for the re-skinned nav + dropdown-menu items.
 const navItems = [
   { v: 'files' as const, icon: 'folder', label: 'files.all_files' },
@@ -1087,6 +1162,9 @@ const menuItemDangerCls = 'flex cursor-pointer items-center gap-2.5 rounded-md p
 const info = ref<{ show: boolean; busy: boolean; file: FileEntry | null; name: string; tags: string; note: string; labelIds: number[] }>({ show: false, busy: false, file: null, name: '', tags: '', note: '', labelIds: [] });
 const infoDetail = ref<FileInfo | null>(null);
 const infoLoading = ref(false);
+const virusTotalLoading = ref(false);
+const virusTotalResult = ref<VirusTotalResult | null>(null);
+const fileVirusLoading = ref<number | null>(null);
 const versionsDlg = ref<{ show: boolean; loading: boolean; file: FileEntry | null; list: FileVersion[] }>({ show: false, loading: false, file: null, list: [] });
 const shareDlg = ref<{
   show: boolean; busy: boolean; kind: 'file' | 'folder'; targetId: number; tab: 'link' | 'users';
@@ -1432,7 +1510,7 @@ function previewKind(f: FileEntry): 'image' | 'pdf' | 'video' | 'audio' | 'text'
   if (m === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) return 'pdf';
   if (m.startsWith('video/')) return 'video';
   if (m.startsWith('audio/')) return 'audio';
-  if (m.startsWith('text/') || /\.(txt|md|csv|log|json|xml|yml|yaml)$/i.test(f.name)) return 'text';
+  if (m.startsWith('text/') || TEXT_EXT_RE.test(f.name) || /^(dockerfile|makefile)$/i.test(f.name)) return 'text';
   return 'other';
 }
 function pickUpload() { uploadInput.value?.click(); }
@@ -1918,8 +1996,38 @@ async function openInfo(row: Row) {
   const f = row.raw as FileEntry;
   info.value = { show: true, busy: false, file: f, name: f.name, tags: (f.tags ?? []).join(', '), note: f.note ?? '', labelIds: (f.labels ?? []).map((l) => l.id) };
   infoDetail.value = null;
+  virusTotalResult.value = null;
   infoLoading.value = true;
   try { infoDetail.value = await s.fileInfo(f.id); } catch { /* best-effort */ } finally { infoLoading.value = false; }
+}
+async function scanVirusTotal() {
+  const file = info.value.file;
+  if (!file) return;
+  virusTotalLoading.value = true;
+  try { virusTotalResult.value = await scanFileVirusTotal(file, false); }
+  finally { virusTotalLoading.value = false; }
+}
+function virusTotalErrorKey(e: unknown): string {
+  const code = e instanceof ApiError ? (e.body as { error?: string } | null)?.error : null;
+  return code === 'virustotal_not_configured' ? 'files.virustotal_not_configured'
+    : code === 'virustotal_invalid_api_key' ? 'files.virustotal_invalid_api_key'
+      : code === 'virustotal_rate_limited' ? 'files.virustotal_rate_limited'
+        : 'common.error';
+}
+async function scanFileVirusTotal(file: FileEntry, notify = true): Promise<VirusTotalResult | null> {
+  fileVirusLoading.value = file.id;
+  try {
+    const result = await s.virusTotal(file.id);
+    if (notify) {
+      if (!result.known) success(t('files.virustotal_unknown'));
+      else if ((result.stats?.malicious ?? 0) + (result.stats?.suspicious ?? 0) > 0) error(t('files.virustotal_detections', { n: String((result.stats?.malicious ?? 0) + (result.stats?.suspicious ?? 0)) }));
+      else success(t('files.virustotal_detections', { n: '0' }));
+    }
+    return result;
+  } catch (e) {
+    error(t(virusTotalErrorKey(e)));
+    return null;
+  } finally { fileVirusLoading.value = null; }
 }
 // Localised label for a metadata group / activity action, falling back to the raw
 // key value when no translation exists (t returns the key itself on a miss).

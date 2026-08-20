@@ -65,12 +65,14 @@ use Illuminate\Database\Eloquent\Model;
     'pw_require_symbols',
     'pw_check_breaches',
     'force_2fa',
+    'virustotal_api_key',
 ])]
 // Defense-in-depth: keep the operative-secret columns (SMTP / ntfy / webhook creds)
 // out of any wholesale toArray()/toJson() as well as the encrypted-cast at-rest layer.
 #[Hidden([
     'smtp_host', 'smtp_username', 'smtp_password', 'smtp_from_address', 'smtp_from_name',
     'ntfy_url', 'ntfy_topic', 'ntfy_token', 'webhook_url', 'webhook_secret',
+    'virustotal_api_key',
 ])]
 class AppSettings extends Model
 {
@@ -100,6 +102,7 @@ class AppSettings extends Model
             'webhook_enabled' => 'boolean',
             'webhook_url' => 'encrypted',
             'webhook_secret' => 'encrypted',
+            'virustotal_api_key' => 'encrypted',
             'export_files_max_zip_mb' => 'integer',
             'export_notify_desktop' => 'boolean',
             'export_notify_ntfy' => 'boolean',

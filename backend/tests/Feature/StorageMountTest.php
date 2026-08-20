@@ -36,7 +36,10 @@ class StorageMountTest extends TestCase
         {
             public function __construct(private string $root) {}
 
-            public function makeFromParts(string $driver, array $c): Filesystem
+            // Signature must track the real factory: it grew an $interactive
+            // flag (shorter timeouts for the live mount browser) after this
+            // stub was written, which made the whole class fatal at load time.
+            public function makeFromParts(string $driver, array $c, bool $interactive = false): Filesystem
             {
                 return new Filesystem(new LocalFilesystemAdapter($this->root));
             }

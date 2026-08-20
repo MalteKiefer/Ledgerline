@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'bank_csv_reminder_title' => 'Upload a current bank CSV',
+    'bank_csv_reminder_body' => 'Your last bank-statement import is more than seven days ago. Upload the latest CSV to keep reconciliation current.',
     'title' => 'Invoices',
     'dup_warning_title' => 'Duplicate invoice numbers detected',
     'dup_warning_body' => 'These numbers are used more than once — correct them for a gapless, unique sequence (GoBD):',
@@ -535,9 +537,10 @@ return [
     'tx_dir_all' => 'Income & expenses',
     'tx_dir_in' => 'Income only',
     'tx_dir_out' => 'Expenses only',
-    'tx_doc_all' => 'Receipts: All',
-    'tx_doc_documented' => 'With a receipt',
-    'tx_doc_undocumented' => 'Without a receipt',
+    'tx_documents' => 'Documents',
+    'tx_doc_all' => 'Documents: All',
+    'tx_doc_documented' => 'With a document',
+    'tx_doc_undocumented' => 'Without a document',
     'tx_all_types' => 'All types',
     'tx_all_cats' => 'All VAT rates',
     'tx_all_cp' => 'All counterparties',
@@ -601,6 +604,19 @@ return [
     'no_number' => '(no number)',
     'suggestion_label' => 'Suggestion:',
     'apply_suggestion' => 'Apply suggestion',
+    'tab_documents' => 'Documents',
+    'document_direction' => 'Direction',
+    'document_partner' => 'Partner',
+    'document_matching' => 'Matching',
+    'document_income' => 'Income',
+    'document_expense' => 'Expense',
+    'document_matched' => 'Matched',
+    'document_unmatched' => 'Open',
+    'document_all' => 'All documents',
+    'document_matching_all' => 'All matching states',
+    'document_from' => 'From',
+    'document_to' => 'To',
+    'document_clear_filters' => 'Clear filters',
 
     // Invoicing lifecycle: email dispatch + overdue + reminders.
     'email_send' => 'Send by email',

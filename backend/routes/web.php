@@ -14,6 +14,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\ContactShareController;
+use App\Http\Controllers\ContactSyncSourceController;
 use App\Http\Controllers\CryptoController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
@@ -441,6 +442,8 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
         Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:60,1')->name('contacts.import');
         Route::post('/contacts/settings', [ContactController::class, 'settings'])->middleware('throttle:600,1')->name('contacts.settings');
+        Route::get('/contacts/sources/{source}/authorize', [ContactSyncSourceController::class, 'authorizeGoogle'])->name('contacts.sources.authorize');
+        Route::get('/contacts/sources/google/callback', [ContactSyncSourceController::class, 'googleCallback'])->name('contacts.sources.google.callback');
         Route::delete('/contacts/bulk-destroy', [ContactController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('contacts.bulk-destroy');
         Route::post('/contacts', [ContactController::class, 'store'])->middleware('throttle:600,1')->name('contacts.store');
 
@@ -628,6 +631,7 @@ Route::middleware('auth')->group(function (): void {
     // toggle; the raw .eml is served sandboxed.
     Route::middleware('module:mail')->group(function (): void {
         Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('mail.accounts.index');
+        Route::post('/mail/accounts/autoconfig', [MailAccountController::class, 'autoconfig'])->middleware('throttle:10,1')->name('mail.accounts.autoconfig');
         Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware('throttle:60,1')->name('mail.accounts.store');
         Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->whereNumber('account')->middleware('throttle:60,1')->name('mail.accounts.update');
         Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->whereNumber('account')->middleware('throttle:60,1')->name('mail.accounts.destroy');

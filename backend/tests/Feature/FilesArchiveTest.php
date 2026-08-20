@@ -162,7 +162,10 @@ class FilesArchiveTest extends TestCase
 
     public function test_7z_round_trips_when_available(): void
     {
-        if (! BinaryProcess::available('7z') && ! BinaryProcess::available('7za')) {
+        // Archiver shells out to `7z` specifically. Accepting `7za` here let the
+        // test run on a host that only has the reduced binary and then fail
+        // inside the archiver instead of skipping.
+        if (! BinaryProcess::available('7z')) {
             $this->markTestSkipped('7z not installed (image-only).');
         }
         $u = User::factory()->create();

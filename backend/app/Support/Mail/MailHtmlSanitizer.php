@@ -13,10 +13,11 @@ use Throwable;
 /**
  * Server-side sanitiser for archived-mail HTML bodies. Runs at ingest and
  * stores the result in mail_messages.html_sanitized so the reader never touches
- * the raw HTML directly. Conservative by design (Phase 1 renders this inline;
- * the richer sandboxed-iframe + remote-content gating is Phase 2):
+ * the raw HTML directly. It preserves safe email styling in a sandboxed iframe
+ * while keeping remote content blocked unless the caller explicitly permits it
+ * for one sandboxed reader request:
  *
- *   - Dangerous elements are removed WITH their subtree: script, style, iframe,
+ *   - Dangerous elements are removed WITH their subtree: script, iframe,
  *     object, embed, applet, frame(set), meta, base, link, form and all form
  *     controls, svg, math, template, noscript, title, head.
  *   - Every `on*` event-handler attribute is stripped.
@@ -24,10 +25,10 @@ use Throwable;
  *     <img>) are dropped — no script execution, no data-URI HTML smuggling.
  *   - REMOTE resource loads are neutralised: an http(s)/protocol-relative src on
  *     img/audio/video/source/track/input/poster is removed (tracking-pixel +
- *     leak protection; remote loading is re-enabled behind an explicit opt-in in
- *     Phase 2's body iframe). cid: refs are left for Phase 2 to resolve.
- *   - `style` attributes and the `<style>` element are stripped (CSS url()
- *     remote-fetch / exfil vector).
+ *     leak protection; the body endpoint can permit it for one explicit reader
+ *     request). cid: refs are left for the body endpoint to resolve.
+ *   - Safe inline CSS and style blocks are retained after stripping external
+ *     imports, font faces, url() fetches, and legacy executable CSS features.
  *   - Anchors are rewritten target=_blank rel="noopener noreferrer nofollow".
  *
  * Pure DOMDocument (ext-dom, always present) — no new dependency. Any parse
@@ -37,7 +38,7 @@ final class MailHtmlSanitizer
 {
     /** Elements dropped together with their entire subtree. */
     private const STRIP_SUBTREE = [
-        'script', 'style', 'iframe', 'object', 'embed', 'applet', 'frame', 'frameset',
+        'script', 'iframe', 'object', 'embed', 'applet', 'frame', 'frameset',
         'meta', 'base', 'link', 'form', 'input', 'button', 'select', 'option', 'textarea',
         'svg', 'math', 'template', 'noscript', 'title', 'head',
     ];
@@ -46,12 +47,8 @@ final class MailHtmlSanitizer
     private const URL_ATTRS = ['href', 'src', 'poster', 'background', 'srcset', 'action', 'formaction'];
 
     /**
-     * @param  bool  $allowRemote  keep http(s)/protocol-relative resource src
-     *                             (remote images) — gated by the caller. At ingest
-     *                             this is false (remote src is dropped, so the
-     *                             stored html_sanitized never auto-fetches); the
-     *                             body endpoint passes true only when the user
-     *                             opted into remote content.
+     * @param  bool  $allowRemote  Keep http(s)/protocol-relative resource src
+     *                             for an explicit, sandboxed reader action only.
      * @param  array<string, string>  $cidMap  normalized Content-Id → data: URI;
      *                                         a `cid:<id>` img src is rewritten to its data:
      *                                         URI (or dropped when unresolved).
@@ -77,9 +74,20 @@ final class MailHtmlSanitizer
                 return null;
             }
 
+            // Email templates commonly keep presentation CSS in <head>, while
+            // the stored fragment intentionally contains body children only.
+            // Move styles into that fragment before dropping <head> itself.
+            $body = $dom->getElementsByTagName('body')->item(0);
+            if ($body instanceof DOMElement) {
+                foreach (iterator_to_array($dom->getElementsByTagName('style')) as $style) {
+                    if ($style instanceof DOMElement && strtolower($style->parentNode?->nodeName ?? '') === 'head') {
+                        $body->insertBefore($style, $body->firstChild);
+                    }
+                }
+            }
+
             $this->walk($dom->documentElement, $allowRemote, $cidMap);
 
-            $body = $dom->getElementsByTagName('body')->item(0);
             $out = '';
             if ($body !== null) {
                 foreach (iterator_to_array($body->childNodes) as $child) {
@@ -119,6 +127,10 @@ final class MailHtmlSanitizer
             $this->walk($child, $allowRemote, $cidMap);
         }
 
+        if (strtolower($node->nodeName) === 'style') {
+            $node->textContent = $this->sanitizeCss($node->textContent ?? '');
+        }
+
         $this->scrubAttributes($node, $allowRemote, $cidMap);
     }
 
@@ -141,9 +153,20 @@ final class MailHtmlSanitizer
             $lower = strtolower($name);
             $value = $el->getAttribute($name);
 
-            // Event handlers + inline CSS.
-            if (str_starts_with($lower, 'on') || $lower === 'style') {
+            // Event handlers are executable content.
+            if (str_starts_with($lower, 'on')) {
                 $el->removeAttribute($name);
+
+                continue;
+            }
+
+            if ($lower === 'style') {
+                $safeCss = $this->sanitizeCss($value);
+                if ($safeCss === '') {
+                    $el->removeAttribute($name);
+                } else {
+                    $el->setAttribute($name, $safeCss);
+                }
 
                 continue;
             }
@@ -228,5 +251,60 @@ final class MailHtmlSanitizer
         }
 
         return null;
+    }
+
+    /**
+     * Remove CSS features that can fetch a remote resource or execute legacy
+     * code. Keyword matching on CSS only holds once the two constructs that let
+     * an author spell a keyword differently are gone first: CSS escapes (a
+     * backslash-escaped url( still reads as a fetch to a browser) and comments
+     * placed inside a property value. Backslashes are therefore dropped
+     * outright - mail CSS has no legitimate need for an escape, and leaving one
+     * in is what turns every filter below into a bypass. The reader's
+     * default-src 'none' CSP stays the enforcing layer; this keeps the stored
+     * markup from depending on it alone.
+     */
+    private function sanitizeCss(string $css): string
+    {
+        $css = $this->decodeCssEscapes($this->stripCssComments($css));
+        // A decoded escape can spell a comment sequence; strip once more so the
+        // keyword patterns below see the same text a browser tokenises.
+        $css = $this->stripCssComments($css);
+        // Resource-loading at-rules. The value runs to the terminating
+        // semicolon, the start of the next rule (a missing semicolon does not
+        // make the import inert to a browser), or the end of the stylesheet.
+        $css = preg_replace('#@(?:import|namespace|charset)[^;{}]*(?:;|(?=[{])|$)#i', '', $css) ?? '';
+        $css = preg_replace('#@font-face\s*\{[^{}]*\}?#is', '', $css) ?? '';
+        $css = preg_replace('#(?:url|image-set|-webkit-image-set|element)\s*\(\s*[^)]*\)?#i', 'none', $css) ?? '';
+        $css = preg_replace('#(?:expression\s*\(|-moz-binding\s*:|behavior\s*:)#i', '', $css) ?? '';
+
+        return trim(str_replace(['<', '>'], '', $css));
+    }
+
+    private function stripCssComments(string $css): string
+    {
+        return preg_replace('#/\*.*?(?:\*/|$)#s', '', $css) ?? '';
+    }
+
+    /**
+     * Resolve CSS escapes to the character a browser would see, so the keyword
+     * patterns cannot be spelled around: the hex form is the interesting one,
+     * since it can spell the "u" of url(. Anything outside ASCII cannot form a
+     * keyword and is dropped rather than re-encoded.
+     */
+    private function decodeCssEscapes(string $css): string
+    {
+        $hex = preg_replace_callback(
+            '/\x5c([0-9a-fA-F]{1,6})[ \t\r\n\f]?/',
+            static function (array $m): string {
+                $code = (int) hexdec($m[1]);
+
+                return $code > 0 && $code < 128 ? chr($code) : '';
+            },
+            $css,
+        ) ?? '';
+
+        // Any remaining escape stands for the character that follows it.
+        return preg_replace('/\x5c(.)/s', '$1', $hex) ?? '';
     }
 }

@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\CryptoRecipient;
+use App\Models\FileEntry;
+use App\Models\GalleryPhoto;
 use App\Models\MailAccount;
 use App\Models\MailAttachment;
 use App\Models\MailMessage;
-use App\Models\UserSetting;
+use App\Models\MailPgpKey;
+use App\Models\MailSignature;
 use App\Services\Mail\ComposedMessage;
 use App\Services\Mail\MailSender;
 use App\Support\BlobStore;
+use App\Support\Mail\MailHtmlSanitizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -59,11 +64,12 @@ class MailSendController extends Controller
             'subject' => ['nullable', 'string', 'max:'.self::MAX_SUBJECT],
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
-            'attachments' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
-            'attachments.*' => ['file', 'max:25600'],
-            'attachment_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
-            'attachment_ids.*' => ['uuid'],
+            'signature_id' => ['nullable', 'integer', 'min:-1'],
+            ...$this->attachmentRules(),
+            'read_receipt' => ['nullable', 'boolean'],
+            'high_priority' => ['nullable', 'boolean'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
+            ...$this->cryptoRules(),
         ])) {
             return $resp;
         }
@@ -78,10 +84,14 @@ class MailSendController extends Controller
 
         $text = $this->body($request, 'text');
         $html = $this->body($request, 'html');
+        // A WYSIWYG body is still untrusted browser input (pasted HTML can carry
+        // scripts, event attributes and remote fetches), so apply the same safe
+        // mail HTML policy before it ever reaches SMTP or the archived Sent copy.
+        $html = (new MailHtmlSanitizer)->sanitize($html);
         if ($text === null && $html === null) {
             return $this->fail('empty_body');
         }
-        [$text, $html] = $this->withSignature((int) $user->id, $text, $html);
+        [$text, $html] = $this->withSignature($account, $text, $html, $request->integer('signature_id'));
 
         $composed = new ComposedMessage(
             subject: $this->subject($request->string('subject')->value(), ''),
@@ -94,10 +104,15 @@ class MailSendController extends Controller
             bcc: $this->addresses($request->input('bcc')),
             attachments: $this->gatherAttachments($request, (int) $user->id),
             sentFolder: $this->sentFolder($request),
+            readReceipt: $request->boolean('read_receipt'),
+            highPriority: $request->boolean('high_priority'),
         );
 
         if (! $composed->hasRecipient()) {
             return $this->fail('no_recipient');
+        }
+        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) {
+            return $failure;
         }
 
         return $this->dispatch($sender, $account, $composed);
@@ -112,8 +127,13 @@ class MailSendController extends Controller
         if ($resp = $this->guard($request, [
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
+            'signature_id' => ['nullable', 'integer', 'min:-1'],
             'all' => ['nullable', 'boolean'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
+            'read_receipt' => ['nullable', 'boolean'],
+            'high_priority' => ['nullable', 'boolean'],
+            ...$this->attachmentRules(),
+            ...$this->cryptoRules(),
         ])) {
             return $resp;
         }
@@ -130,10 +150,11 @@ class MailSendController extends Controller
 
         $text = $this->body($request, 'text');
         $html = $this->body($request, 'html');
+        $html = (new MailHtmlSanitizer)->sanitize($html);
         if ($text === null && $html === null) {
             return $this->fail('empty_body');
         }
-        [$text, $html] = $this->withSignature((int) $user->id, $text, $html);
+        [$text, $html] = $this->withSignature($account, $text, $html, $request->integer('signature_id'));
         $text = $this->appendQuote($text, $message);
         $html = $this->appendQuoteHtml($html, $message);
 
@@ -150,10 +171,16 @@ class MailSendController extends Controller
             fromName: null,
             to: [['name' => null, 'email' => $recipient]],
             cc: $cc,
+            attachments: $this->gatherAttachments($request, (int) $user->id),
             inReplyTo: $message->message_id,
             references: $this->references($message),
             sentFolder: $this->sentFolder($request),
+            readReceipt: $request->boolean('read_receipt'),
+            highPriority: $request->boolean('high_priority'),
         );
+        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) {
+            return $failure;
+        }
 
         return $this->dispatch($sender, $account, $composed);
     }
@@ -171,7 +198,12 @@ class MailSendController extends Controller
             'cc.*' => ['email:rfc'],
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
+            'signature_id' => ['nullable', 'integer', 'min:-1'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
+            'read_receipt' => ['nullable', 'boolean'],
+            'high_priority' => ['nullable', 'boolean'],
+            ...$this->attachmentRules(),
+            ...$this->cryptoRules(),
         ])) {
             return $resp;
         }
@@ -183,7 +215,8 @@ class MailSendController extends Controller
 
         $text = $this->body($request, 'text');
         $html = $this->body($request, 'html');
-        [$text, $html] = $this->withSignature((int) $user->id, $text, $html);
+        $html = (new MailHtmlSanitizer)->sanitize($html);
+        [$text, $html] = $this->withSignature($account, $text, $html, $request->integer('signature_id'));
         $text = $this->prependForwardHeader($text ?? '', $message);
 
         $composed = new ComposedMessage(
@@ -194,14 +227,76 @@ class MailSendController extends Controller
             fromName: null,
             to: $this->addresses($request->input('to')),
             cc: $this->addresses($request->input('cc')),
-            attachments: $this->originalEml($message),
+            attachments: $this->forwardAttachments($message, $request, (int) $user->id),
             sentFolder: $this->sentFolder($request),
+            readReceipt: $request->boolean('read_receipt'),
+            highPriority: $request->boolean('high_priority'),
         );
+        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) {
+            return $failure;
+        }
 
         return $this->dispatch($sender, $account, $composed);
     }
 
     // ---- helpers ----
+
+    /** @return array<string, array<int, string>> */
+    private function cryptoRules(): array
+    {
+        return [
+            'crypto_mode' => ['nullable', 'in:none,sign,encrypt,sign_encrypt'],
+            'crypto_type' => ['nullable', 'in:pgp,smime'],
+            'signing_key_id' => ['nullable', 'integer'],
+            'recipient_key_ids' => ['nullable', 'array', 'max:50'],
+            'recipient_key_ids.*' => ['integer'],
+        ];
+    }
+
+    /** Resolve outbound crypto IDs owner-scoped. Returns a safe rejection on invalid input. */
+    private function applyCrypto(Request $request, ComposedMessage $message, int $userId): ?JsonResponse
+    {
+        $modeInput = $request->input('crypto_mode');
+        $mode = is_string($modeInput) ? $modeInput : 'none';
+        if ($mode === 'none') {
+            return null;
+        }
+        $typeInput = $request->input('crypto_type');
+        $type = is_string($typeInput) ? $typeInput : '';
+        $key = MailPgpKey::query()->where('user_id', $userId)->whereKey($request->integer('signing_key_id'))->first();
+        if ($key === null || $key->type !== $type || ($key->expires_at !== null && $key->expires_at->isPast())) {
+            return $this->fail('crypto_key_invalid');
+        }
+        $rawIds = $request->input('recipient_key_ids', []);
+        $ids = [];
+        foreach (is_array($rawIds) ? $rawIds : [] as $value) {
+            if (is_int($value)) {
+                $ids[] = $value;
+            } elseif (is_string($value) && ctype_digit($value)) {
+                $ids[] = (int) $value;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        $recipients = $ids === [] ? collect() : CryptoRecipient::query()->where('user_id', $userId)->where('type', $type)->whereIn('id', $ids)->get();
+        if (count($ids) !== $recipients->count()) {
+            return $this->fail('crypto_recipient_invalid');
+        }
+        if (in_array($mode, ['encrypt', 'sign_encrypt'], true) && $recipients->isEmpty()) {
+            return $this->fail('crypto_recipient_required');
+        }
+        /** @var 'sign'|'encrypt'|'sign_encrypt' $mode */
+        $message->cryptoMode = $mode;
+        /** @var 'pgp'|'smime' $type */
+        $message->cryptoType = $type;
+        $message->signingKeyId = $key->id;
+        $message->recipientKeyIds = $ids;
+        $message->signingKey = $key;
+        /** @var list<CryptoRecipient> $recipientKeys */
+        $recipientKeys = array_values($recipients->all());
+        $message->recipientKeys = $recipientKeys;
+
+        return null;
+    }
 
     /** Hand off to MailSender, mapping a config/SSRF failure to a generic 502. */
     private function dispatch(MailSender $sender, MailAccount $account, ComposedMessage $composed): JsonResponse
@@ -347,22 +442,31 @@ class MailSendController extends Controller
     }
 
     /**
-     * Append the user's plaintext signature to the text/html bodies.
+     * Append the selected account signature to the text/html bodies.
      *
      * @return array{0: ?string, 1: ?string}
      */
-    private function withSignature(int $userId, ?string $text, ?string $html): array
+    private function withSignature(MailAccount $account, ?string $text, ?string $html, int $signatureId = 0): array
     {
-        $sig = UserSetting::for($userId)->mail_signature;
-        if (! is_string($sig) || trim($sig) === '') {
+        if ($signatureId < 0) {
             return [$text, $html];
         }
-        $sig = trim($sig);
+
+        $signature = MailSignature::query()
+            ->ownedBy((int) $account->user_id)
+            ->when($signatureId > 0, fn ($query) => $query->whereKey($signatureId))
+            ->whereHas('accounts', fn ($query) => $query->where('mail_accounts.id', $account->id)->when($signatureId === 0, fn ($query) => $query->where('mail_account_signatures.is_default', true)))
+            ->first();
+        $htmlSignature = $signature instanceof MailSignature ? (new MailHtmlSanitizer)->sanitize($signature->html, true) : null;
+        if ($htmlSignature === null) {
+            return [$text, $html];
+        }
+        $plainSignature = trim(html_entity_decode(strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>', '</div>', '</li>'], "\n", $htmlSignature))));
         if ($text !== null) {
-            $text .= "\n\n-- \n".$sig;
+            $text .= "\n\n-- \n".$plainSignature;
         }
         if ($html !== null) {
-            $html .= '<br><br>-- <br>'.nl2br(e($sig));
+            $html .= '<br><br>-- <br>'.$htmlSignature;
         }
 
         return [$text, $html];
@@ -454,6 +558,35 @@ class MailSendController extends Controller
     }
 
     /**
+     * The immutable original stays first when forwarding; user-selected
+     * attachments use the same count and byte caps as a new message.
+     *
+     * @return list<array{bytes:string, filename:string, mime:string}>
+     */
+    private function forwardAttachments(MailMessage $message, Request $request, int $userId): array
+    {
+        $original = $this->originalEml($message);
+        $remaining = self::MAX_ATTACHMENTS - count($original);
+
+        return [...$original, ...array_slice($this->gatherAttachments($request, $userId), 0, max(0, $remaining))];
+    }
+
+    /** @return array<string, array<int, string>> */
+    private function attachmentRules(): array
+    {
+        return [
+            'attachments' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
+            'attachments.*' => ['file', 'max:25600'],
+            'attachment_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
+            'attachment_ids.*' => ['uuid'],
+            'file_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
+            'file_ids.*' => ['integer'],
+            'gallery_photo_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
+            'gallery_photo_ids.*' => ['integer'],
+        ];
+    }
+
+    /**
      * Uploaded files + references to the caller's own archived attachments →
      * attachment specs, enforcing the count + total-size caps.
      *
@@ -463,6 +596,7 @@ class MailSendController extends Controller
     {
         $out = [];
         $total = 0;
+        $disk = BlobStore::disk();
 
         $files = $request->file('attachments');
         $files = is_array($files) ? $files : ($files instanceof UploadedFile ? [$files] : []);
@@ -488,7 +622,6 @@ class MailSendController extends Controller
                 ->where('user_id', $userId)
                 ->whereIn('id', array_values(array_filter($ids, 'is_string')))
                 ->get();
-            $disk = BlobStore::disk();
             foreach ($rows as $att) {
                 if (count($out) >= self::MAX_ATTACHMENTS) {
                     break;
@@ -506,6 +639,46 @@ class MailSendController extends Controller
                     'filename' => $this->safeName(is_string($att->filename) && $att->filename !== '' ? $att->filename : 'attachment'),
                     'mime' => is_string($att->content_type) && $att->content_type !== '' ? $att->content_type : 'application/octet-stream',
                 ];
+            }
+        }
+
+        $fileIds = $request->input('file_ids');
+        if (is_array($fileIds) && $fileIds !== []) {
+            $ids = array_map('intval', array_filter($fileIds, static fn (mixed $id): bool => is_int($id) || (is_string($id) && ctype_digit($id))));
+            $rows = FileEntry::query()->where('user_id', $userId)->whereIn('id', $ids)->get();
+            foreach ($rows as $file) {
+                if (count($out) >= self::MAX_ATTACHMENTS || ! $disk->exists($file->storage_path)) {
+                    break;
+                }
+                $bytes = $disk->get($file->storage_path);
+                if (! is_string($bytes) || $bytes === '') {
+                    continue;
+                }
+                $total += strlen($bytes);
+                if ($total > self::MAX_TOTAL_BYTES) {
+                    break;
+                }
+                $out[] = ['bytes' => $bytes, 'filename' => $this->safeName($file->name), 'mime' => $file->mime ?: 'application/octet-stream'];
+            }
+        }
+
+        $galleryIds = $request->input('gallery_photo_ids');
+        if (is_array($galleryIds) && $galleryIds !== []) {
+            $ids = array_map('intval', array_filter($galleryIds, static fn (mixed $id): bool => is_int($id) || (is_string($id) && ctype_digit($id))));
+            $rows = GalleryPhoto::query()->where('user_id', $userId)->whereIn('id', $ids)->get();
+            foreach ($rows as $photo) {
+                if (count($out) >= self::MAX_ATTACHMENTS || ! $disk->exists($photo->storage_path)) {
+                    break;
+                }
+                $bytes = $disk->get($photo->storage_path);
+                if (! is_string($bytes) || $bytes === '') {
+                    continue;
+                }
+                $total += strlen($bytes);
+                if ($total > self::MAX_TOTAL_BYTES) {
+                    break;
+                }
+                $out[] = ['bytes' => $bytes, 'filename' => $this->safeName($photo->name), 'mime' => $photo->mime ?: 'application/octet-stream'];
             }
         }
 

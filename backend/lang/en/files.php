@@ -412,4 +412,13 @@ return [
     'recipient_added' => 'Recipient added.',
     'recipient_failed' => 'Could not add the recipient (invalid key/cert).',
     'ul_optional' => 'optional',
+    'virustotal_title' => 'VirusTotal reputation',
+    'virustotal_check' => 'Check',
+    'virustotal_hint' => 'Only the SHA-256 checksum is sent to VirusTotal. The file is never uploaded.',
+    'virustotal_detections' => ':n detections',
+    'virustotal_undetected' => ':n engines found nothing',
+    'virustotal_unknown' => 'This checksum is not known to VirusTotal.',
+    'virustotal_not_configured' => 'VirusTotal has not been configured by an administrator.',
+    'virustotal_invalid_api_key' => 'The configured VirusTotal API key was rejected. Update it in Settings.',
+    'virustotal_rate_limited' => 'VirusTotal rate limit reached. Try again shortly.',
 ];

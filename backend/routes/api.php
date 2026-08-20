@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\SpaAuthController;
 use App\Http\Controllers\Api\SystemController as ApiSystemController;
 use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
+use App\Http\Controllers\Api\VirusTotalController as ApiVirusTotalController;
 use App\Http\Controllers\Api\WebDavAccessController as ApiWebDavAccessController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\CalendarBookController;
@@ -41,6 +42,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\ContactShareController;
+use App\Http\Controllers\ContactSyncSourceController;
 use App\Http\Controllers\CryptoController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesChangesController;
@@ -59,6 +61,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
 use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MailDeleteOriginController;
+use App\Http\Controllers\MailDraftController;
 use App\Http\Controllers\MailExportController;
 use App\Http\Controllers\MailFolderController;
 use App\Http\Controllers\MailKeyController;
@@ -70,6 +73,7 @@ use App\Http\Controllers\MailRuleController;
 use App\Http\Controllers\MailSavedSearchController;
 use App\Http\Controllers\MailSeenController;
 use App\Http\Controllers\MailSendController;
+use App\Http\Controllers\MailSignatureController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\MailTrashController;
 use App\Http\Controllers\MountController;
@@ -266,6 +270,11 @@ Route::prefix('v1')->group(function (): void {
         // view) are intentionally not exposed. Owner-scope is controller-side.
         Route::middleware('module:contacts')->group(function (): void {
             Route::get('/contacts/data', [ContactController::class, 'data'])->name('api.contacts.data');
+            Route::get('/contacts/sources', [ContactSyncSourceController::class, 'index'])->name('api.contacts.sources.index');
+            Route::post('/contacts/sources', [ContactSyncSourceController::class, 'store'])->middleware('throttle:30,1')->name('api.contacts.sources.store');
+            Route::post('/contacts/sources/{source}/sync', [ContactSyncSourceController::class, 'sync'])->middleware('throttle:30,1')->name('api.contacts.sources.sync');
+            Route::delete('/contacts/sources/{source}', [ContactSyncSourceController::class, 'destroy'])->middleware('throttle:30,1')->name('api.contacts.sources.destroy');
+            Route::post('/contacts/versions/{version}/restore', [ContactSyncSourceController::class, 'restoreVersion'])->whereNumber('version')->middleware('throttle:30,1')->name('api.contacts.versions.restore');
             Route::get('/contacts/shares', [ContactShareController::class, 'index'])->name('api.contacts.shares');
             Route::post('/contacts/shares', [ContactShareController::class, 'store'])->middleware('throttle:60,1')->name('api.contacts.shares.store');
             Route::delete('/contacts/shares/{share}', [ContactShareController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('api.contacts.shares.destroy');
@@ -458,6 +467,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/files/activity', [FilesController::class, 'activity'])->middleware('throttle:600,1')->name('api.files.activity');
             Route::get('/files/entries/{file}/activity', [FilesController::class, 'fileActivity'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.activity');
             Route::get('/files/entries/{file}/info', [FilesController::class, 'info'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.info');
+            Route::post('/files/entries/{file}/virustotal', [ApiVirusTotalController::class, 'lookup'])->whereNumber('file')->middleware('throttle:30,1')->name('api.files.entries.virustotal');
             Route::get('/files/entries/{file}/show', [FilesController::class, 'showEntry'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.show');
             Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('api.files.search');
             Route::get('/files/labels', [FilesController::class, 'labels'])->name('api.files.labels');
@@ -535,6 +545,7 @@ Route::prefix('v1')->group(function (): void {
         // seen/trash toggles mutate; raw .eml served sandboxed.
         Route::middleware('module:mail')->group(function (): void {
             Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('api.mail.accounts.index');
+            Route::post('/mail/accounts/autoconfig', [MailAccountController::class, 'autoconfig'])->middleware('throttle:10,1')->name('api.mail.accounts.autoconfig');
             Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.accounts.store');
             Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.update');
             Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.destroy');
@@ -567,10 +578,19 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.pushback');
             Route::post('/mail/messages/{message}/delete-origin', MailDeleteOriginController::class)->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.delete-origin');
             Route::post('/mail/messages/compose', [MailSendController::class, 'compose'])->middleware('throttle:30,1')->name('api.mail.messages.compose');
+            Route::get('/mail/drafts', [MailDraftController::class, 'index'])->middleware('throttle:120,1')->name('api.mail.drafts.index');
+            Route::post('/mail/drafts', [MailDraftController::class, 'store'])->middleware('throttle:120,1')->name('api.mail.drafts.store');
+            Route::put('/mail/drafts/{draft}', [MailDraftController::class, 'update'])->whereUuid('draft')->middleware('throttle:120,1')->name('api.mail.drafts.update');
+            Route::delete('/mail/drafts/{draft}', [MailDraftController::class, 'destroy'])->whereUuid('draft')->middleware('throttle:120,1')->name('api.mail.drafts.destroy');
             Route::post('/mail/messages/{message}/reply', [MailSendController::class, 'reply'])->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.reply');
             Route::post('/mail/messages/{message}/forward', [MailSendController::class, 'forward'])->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.forward');
             Route::get('/mail/attachments/{attachment}/raw', [MailAttachmentController::class, 'raw'])->whereUuid('attachment')->middleware('throttle:3000,1')->name('api.mail.attachments.raw');
             Route::post('/mail/attachments/{attachment}/save', [MailAttachmentController::class, 'save'])->whereUuid('attachment')->middleware('throttle:60,1')->name('api.mail.attachments.save');
+            Route::post('/mail/attachments/{attachment}/virustotal', [ApiVirusTotalController::class, 'lookupAttachment'])->whereUuid('attachment')->middleware('throttle:30,1')->name('api.mail.attachments.virustotal');
+            Route::get('/mail/signatures', [MailSignatureController::class, 'index'])->name('api.mail.signatures.index');
+            Route::post('/mail/signatures', [MailSignatureController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.signatures.store');
+            Route::put('/mail/signatures/{signature}', [MailSignatureController::class, 'update'])->whereNumber('signature')->middleware('throttle:60,1')->name('api.mail.signatures.update');
+            Route::delete('/mail/signatures/{signature}', [MailSignatureController::class, 'destroy'])->whereNumber('signature')->middleware('throttle:60,1')->name('api.mail.signatures.destroy');
             Route::get('/mail/keys', [MailKeyController::class, 'index'])->name('api.mail.keys.index');
             Route::post('/mail/keys', [MailKeyController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.keys.store');
             Route::post('/mail/keys/generate', [MailKeyController::class, 'generate'])->middleware('throttle:30,1')->name('api.mail.keys.generate');
@@ -717,6 +737,11 @@ Route::prefix('v1')->group(function (): void {
             // Workspace Files limits (max upload MB + orphan-blob grace hours).
             Route::get('/files-limits', [ApiFilesLimitsController::class, 'show'])->name('files-limits.show');
             Route::put('/files-limits', [ApiFilesLimitsController::class, 'update'])->middleware('throttle:60,1')->name('files-limits.update');
+
+            // VirusTotal key management. The key is encrypted and never returned;
+            // Files are looked up by SHA-256 only, never uploaded.
+            Route::get('/virustotal', [ApiVirusTotalController::class, 'settings'])->name('virustotal.show');
+            Route::put('/virustotal', [ApiVirusTotalController::class, 'updateSettings'])->middleware('throttle:20,1')->name('virustotal.update');
 
             // Session/auth lifetimes, retention windows, Files quota.
             Route::get('/limits', [ApiLimitsController::class, 'show'])->name('limits.show');

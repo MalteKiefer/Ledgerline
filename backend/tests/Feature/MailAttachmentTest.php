@@ -65,7 +65,14 @@ class MailAttachmentTest extends TestCase
             '--'.$boundary,
             'Content-Type: text/html; charset=utf-8',
             '',
-            '<html><body><p>Hi</p>'
+            '<html><head><style>@font-face{font-family:Tracker;src:url(https://fonts.example/font.woff2)} p{color:#123456;background:url(https://tracker.example/bg.png)}'
+                // Escaped and comment-split spellings of url(), plus an @import
+                // with no terminating semicolon: all read as a fetch in a
+                // browser, none of them match a naive keyword filter.
+                .'@import "https://esc.example/late.css"'
+                .'div{background:'.chr(92).'75 rl(https://esc.example/escaped.png)}'
+                .'span{background:url/*x*/(https://esc.example/comment.png)}'
+                .'</style></head><body><p style="font-weight:bold;background-image:url(https://tracker.example/pixel.png)">Hi</p>'
                 .'<img src="cid:logo@example.com">'
                 .'<img src="http://tracker.example/px.gif">'
                 .'</body></html>',
@@ -135,20 +142,30 @@ class MailAttachmentTest extends TestCase
             ->assertOk()
             ->assertHeader('X-Content-Type-Options', 'nosniff')
             ->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        $this->assertStringStartsWith('inline;', (string) $res->headers->get('Content-Disposition'));
         $this->assertSame('quarterly numbers here', trim($res->streamedContent()));
+
+        // Browser-renderable PDFs still become real downloads when explicitly requested.
+        $att->forceFill(['filename' => 'report.pdf', 'content_type' => 'application/pdf'])->save();
+        $download = $this->actingAs(User::findOrFail($account->user_id))
+            ->get(route('mail.attachments.raw', [$att->id, 'download' => 1]))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/octet-stream');
+        $this->assertStringStartsWith('attachment;', (string) $download->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('report.pdf', (string) $download->headers->get('Content-Disposition'));
 
         // Foreign user → 404.
         $this->actingAs(User::factory()->create())
             ->get(route('mail.attachments.raw', $att->id))->assertNotFound();
     }
 
-    public function test_body_endpoint_gates_remote_images_and_inlines_cid(): void
+    public function test_body_endpoint_blocks_remote_images_by_default_and_allows_one_explicit_view(): void
     {
         $account = $this->account();
         $msg = $this->ingest($account);
         $owner = User::findOrFail($account->user_id);
 
-        // Default (remote off): remote img stripped, cid rewritten to data:.
+        // Remote img is stripped and cid is rewritten to data:.
         $res = $this->actingAs($owner)->get(route('mail.messages.body', $msg->id))->assertOk();
         $csp = $res->headers->get('Content-Security-Policy');
         $this->assertStringContainsString('img-src data:', (string) $csp);
@@ -157,17 +174,23 @@ class MailAttachmentTest extends TestCase
         $this->assertIsString($body);
         $this->assertStringContainsString('data:image/png;base64,', $body);
         $this->assertStringNotContainsString('tracker.example', $body);
+        $this->assertStringNotContainsString('fonts.example', $body);
+        $this->assertStringNotContainsString('@font-face', $body);
+        // Escaped, comment-split and semicolon-less spellings must not survive
+        // either — a browser resolves all three back into a resource fetch.
+        $this->assertStringNotContainsString('esc.example', $body);
+        $this->assertStringNotContainsString('@import', $body);
+        $this->assertStringContainsString('font-weight:bold', str_replace(' ', '', $body));
 
-        // Explicit reader toggle remote=1 → remote kept + https: in CSP, even
-        // without the (not-yet-settable) mail_load_remote pref.
+        // The reader can load remote images for this one explicit view only.
         $res = $this->actingAs($owner)->get(route('mail.messages.body', [$msg->id, 'remote' => 1]))->assertOk();
         $this->assertStringContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
-        $this->assertStringContainsString('tracker.example', (string) $res->getContent());
+        $this->assertStringContainsString('tracker.example/px.gif', (string) $res->getContent());
 
-        // Pref ON acts as an "always load" default even without the query param.
+        // A stale preference alone cannot enable tracking on a later request.
         UserSetting::for($owner->id)->forceFill(['mail_load_remote' => true])->save();
         $res = $this->actingAs($owner)->get(route('mail.messages.body', $msg->id))->assertOk();
-        $this->assertStringContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
+        $this->assertStringNotContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
     }
 
     public function test_show_lists_attachments(): void

@@ -2,21 +2,7 @@
   <div>
     <h1 class="mb-4 text-xl font-bold">{{ t('messages.nav.finance') }}</h1>
     <div class="flex flex-col gap-4 md:flex-row">
-      <!-- In-page left submenu (like Profile / Settings) -->
-      <Card body-class="p-0" class="w-full flex-shrink-0 self-start md:w-64">
-        <button
-          v-for="tt in sections" :key="tt"
-          class="flex w-full items-center gap-3 border-b border-[var(--ll-border)] px-4 py-3 last:border-0 hover:bg-black/[0.04] dark:hover:bg-white/5"
-          :class="tab === tt ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
-          @click="go(tt)"
-        >
-          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg" :class="tab === tt ? 'bg-primary-500/15' : 'bg-black/[0.05] dark:bg-white/10'">
-            <Icon :name="secIcon[tt]" :size="20" />
-          </span>
-          <span class="flex-1 text-left text-sm font-medium">{{ t('invoices.tab_' + tt) }}</span>
-          <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
-        </button>
-      </Card>
+      <SectionNav :groups="financeNavGroups" :active="isFinanceSectionActive" @select="go($event.id)" />
 
       <div class="min-w-0 flex-1">
     <!-- Dashboard (consolidated: headline KPIs + charts + all statistics, one view) -->
@@ -66,10 +52,36 @@
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card :title="t('invoices.stat_monthly')">
           <div v-if="months.length" class="-ml-1"><Chart :data="monthlyChartData" :options="monthlyChartOptions" bars /></div>
+          <div v-if="months.length" class="mt-3 overflow-x-auto border-t border-[var(--ll-border)] pt-3">
+            <table class="w-full min-w-72 text-sm">
+              <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+                <tr><th class="pb-1.5 font-medium">{{ t('common.date') }}</th><th class="pb-1.5 text-right font-medium">{{ t('invoices.gross') }}</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="month in months" :key="month.month" class="border-t border-[var(--ll-border)]">
+                  <td class="py-1.5">{{ monthLabel(month.month) }}</td>
+                  <td class="py-1.5 text-right font-mono tabular-nums">{{ money(Number(month.net ?? 0)) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div v-else class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
         </Card>
         <Card :title="t('invoices.chart_by_category')">
           <div v-if="categoryBreakdown.length" class="-ml-1"><Chart :data="categoryChartData" :options="categoryChartOptions" bars /></div>
+          <div v-if="categoryBreakdown.length" class="mt-3 overflow-x-auto border-t border-[var(--ll-border)] pt-3">
+            <table class="w-full min-w-72 text-sm">
+              <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+                <tr><th class="pb-1.5 font-medium">{{ t('invoices.receipt_category') }}</th><th class="pb-1.5 text-right font-medium">{{ t('invoices.gross') }}</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="[category, total] in categoryBreakdown" :key="category" class="border-t border-[var(--ll-border)]">
+                  <td class="py-1.5">{{ category }}</td>
+                  <td class="py-1.5 text-right font-mono tabular-nums">{{ money(total) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div v-else class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
         </Card>
       </div>
@@ -152,6 +164,48 @@
       </div>
     </div>
 
+    <!-- Documents: one review queue for outgoing invoices and incoming receipts. -->
+    <Card v-show="tab === 'documents'" :body-class="'p-0'">
+      <template #header>
+        <div class="flex flex-wrap items-center gap-2">
+          <TextField v-model="documentQuery" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
+          <Select v-model="documentDirectionFilter" :options="documentDirectionOptions" class="w-36" />
+          <Select v-model="documentMatchFilter" :options="documentMatchOptions" class="w-36" />
+          <TextField v-model="documentFrom" type="date" :placeholder="t('invoices.document_from')" class="w-36" />
+          <TextField v-model="documentTo" type="date" :placeholder="t('invoices.document_to')" class="w-36" />
+          <Btn v-if="documentFiltersActive" variant="ghost" size="sm" icon="filter_alt_off" @click="resetDocumentFilters">{{ t('invoices.document_clear_filters') }}</Btn>
+        </div>
+      </template>
+      <template #actions>
+        <Btn variant="soft" size="sm" icon="upload_file" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.inbox_upload') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="join_inner" :loading="invMatchBusy || matchBusy" @click="runAllDocumentMatching">{{ t('invoices.auto_match') }}</Btn>
+        <Btn variant="solid" size="sm" icon="add" @click="newInvoice">{{ t('invoices.new') }}</Btn>
+      </template>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+            <tr class="border-b border-[var(--ll-border)]">
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="documentSortBy('date')"><SortLabel :label="t('common.date')" active-key="date" :sort="documentSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="documentSortBy('direction')"><SortLabel :label="t('invoices.document_direction')" active-key="direction" :sort="documentSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="documentSortBy('partner')"><SortLabel :label="t('invoices.document_partner')" active-key="partner" :sort="documentSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="documentSortBy('amount')"><SortLabel :label="t('invoices.gross')" active-key="amount" :sort="documentSort" justify="end" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="documentSortBy('matched')"><SortLabel :label="t('invoices.document_matching')" active-key="matched" :sort="documentSort" /></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="doc in documentRows" :key="doc.key" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openDocument(doc)">
+              <td class="px-4 py-2.5 whitespace-nowrap text-[var(--ll-muted)]">{{ fmtDate(doc.date) }}</td>
+              <td class="px-4 py-2.5"><Badge :tone="doc.direction === 'income' ? 'success' : 'warning'">{{ t('invoices.document_' + doc.direction) }}</Badge></td>
+              <td class="px-4 py-2.5"><div class="font-medium">{{ doc.partner }}</div><div class="text-xs text-[var(--ll-muted)]">{{ doc.reference }}</div></td>
+              <td class="px-4 py-2.5 text-right font-mono tabular-nums" :class="doc.direction === 'income' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ money(doc.amount) }}</td>
+              <td class="px-4 py-2.5"><Badge :tone="doc.matched ? 'success' : 'gray'">{{ t(doc.matched ? 'invoices.document_matched' : 'invoices.document_unmatched') }}</Badge></td>
+            </tr>
+            <tr v-if="!documentRows.length"><td colspan="5" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+
     <!-- Invoices -->
     <Card v-show="tab === 'invoices'" :body-class="'p-0'">
       <template #header>
@@ -174,7 +228,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in filteredInvoices" :key="item.id" class="border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5">
+            <tr v-for="item in filteredInvoices" :key="item.id" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openInvoiceDocument(item)">
               <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.issue_date) }}</td>
               <td class="px-4 py-2.5 font-mono">{{ item.number || '—' }}</td>
               <td class="px-4 py-2.5">{{ custName(item) }}</td>
@@ -185,13 +239,13 @@
               </td>
               <td class="px-4 py-2.5">
                 <div class="flex items-center justify-end gap-0.5">
-                  <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editInvoice(item)" />
-                  <Btn variant="ghost" size="sm" icon="print" :title="t('invoices.print')" :loading="pdfBusy && printingId === item.id" @click="doPrint(item)" />
-                  <Btn v-if="item.number" variant="ghost" size="sm" icon="picture_as_pdf" :title="t('common.open')" @click="openPreview(f.invoicePdfUrl(item.id), (item.number || 'invoice') + '.pdf', 'application/pdf')" />
-                  <Btn v-if="item.number" variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click="doEmail(item)" />
-                  <Btn v-if="item.number" variant="ghost" size="sm" icon="gavel" :title="t('invoices.dun_send')" @click="doDun(item)" />
-                  <Btn v-if="item.number && item.type !== 'credit_note'" variant="ghost" size="sm" icon="cancel" :title="t('invoices.storno')" @click="doStorno(item)" />
-                  <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delInvoice(item)" />
+                  <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click.stop="editInvoice(item)" />
+                  <Btn variant="ghost" size="sm" icon="print" :title="t('invoices.print')" :loading="pdfBusy && printingId === item.id" @click.stop="doPrint(item)" />
+                  <Btn v-if="item.pdf_path" variant="ghost" size="sm" icon="picture_as_pdf" :title="t('common.open')" @click.stop="openPreview(f.invoicePdfUrl(item.id), (item.number || 'invoice') + '.pdf', 'application/pdf')" />
+                  <Btn v-if="item.number" variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click.stop="doEmail(item)" />
+                  <Btn v-if="item.number" variant="ghost" size="sm" icon="gavel" :title="t('invoices.dun_send')" @click.stop="doDun(item)" />
+                  <Btn v-if="item.number && item.type !== 'credit_note'" variant="ghost" size="sm" icon="cancel" :title="t('invoices.storno')" @click.stop="doStorno(item)" />
+                  <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click.stop="delInvoice(item)" />
                 </div>
               </td>
             </tr>
@@ -252,9 +306,9 @@
               <td class="px-4 py-2.5"><div class="max-w-xs truncate text-[var(--ll-muted)]">{{ tx.purpose || '—' }}</div></td>
               <td class="px-4 py-2.5 text-right font-medium" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400'">{{ money(tx.amount) }}</td>
               <td class="px-4 py-2.5 text-right whitespace-nowrap">
-                <button class="relative mr-1 inline-flex items-center rounded p-1.5 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('invoices.tx_receipts')" @click="openTxReceipts(tx)">
+                <button class="relative mr-1 inline-flex items-center rounded p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" :class="isTxDocumented(tx) ? 'text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" :title="t('invoices.tx_documents')" @click="openTxReceipts(tx)">
                   <Icon name="attach_file" :size="18" />
-                  <span v-if="(tx.receipts?.length ?? 0) + standaloneReceiptsForTx(tx.id).length" class="ml-0.5 text-xs tabular-nums">{{ (tx.receipts?.length ?? 0) + standaloneReceiptsForTx(tx.id).length }}</span>
+                  <span v-if="txDocumentCount(tx)" class="ml-0.5 text-xs tabular-nums">{{ txDocumentCount(tx) }}</span>
                 </button>
                 <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editTx(tx)" />
                 <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delTx(tx)" />
@@ -630,16 +684,21 @@
       </template>
     </Modal>
 
-    <!-- Bank transaction receipts (reconcile) -->
-    <Modal v-model="txRecDialog" :title="t('invoices.tx_receipts')" width="480px">
+    <!-- Bank transaction documents (receipt and/or incoming invoice) -->
+    <Modal v-model="txRecDialog" :title="t('invoices.tx_documents')" width="480px">
       <div v-if="txRecTx" class="space-y-2">
+        <div v-if="linkedInvoiceForTx(txRecTx)" class="flex items-center gap-2 rounded-lg border border-primary-500/30 bg-primary-500/5 px-3 py-2">
+          <Icon name="receipt_long" :size="18" class="shrink-0 text-primary-600 dark:text-primary-300" />
+          <span class="flex-1 truncate text-sm"><span class="font-medium">{{ linkedInvoiceForTx(txRecTx)?.number }}</span><span class="ml-1 text-[var(--ll-muted)]">{{ money(Number(linkedInvoiceForTx(txRecTx)?.gross ?? 0)) }}</span></span>
+          <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openLinkedInvoice(txRecTx)" />
+        </div>
         <div v-for="r in (txRecTx.receipts ?? [])" :key="r.id" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
           <Icon name="receipt" :size="18" class="shrink-0 text-[var(--ll-muted)]" />
           <span class="flex-1 truncate text-sm">{{ r.name }}</span>
           <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openTxReceipt(r)" />
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delTxReceipt(r)" />
         </div>
-        <div v-if="!(txRecTx.receipts?.length ?? 0) && !standaloneReceiptsForTx(txRecTx.id).length" class="py-4 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        <div v-if="!linkedInvoiceForTx(txRecTx) && !(txRecTx.receipts?.length ?? 0) && !standaloneReceiptsForTx(txRecTx.id).length" class="py-4 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
         <div v-if="standaloneReceiptsForTx(txRecTx.id).length" class="space-y-2 border-t border-[var(--ll-border)] pt-3">
           <span class="block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipts_title') }}</span>
           <div v-for="r in standaloneReceiptsForTx(txRecTx.id)" :key="'std-' + r.id" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
@@ -1409,7 +1468,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { fmtDate as libDate } from '@spa/lib/datetime';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
-import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, SectionNav, type SectionNavItem } from '@spa/ui';
 import type { AlignedData, Options } from 'uplot';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
@@ -1431,22 +1490,31 @@ const f = useFinanceStore();
 const { success, error } = useToast();
 const route = useRoute();
 const router = useRouter();
-const VALID = ['dashboard', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'];
+const VALID = ['dashboard', 'documents', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'];
+const requestedSection = computed(() => String(route.params.section || 'dashboard'));
 const tab = computed(() => {
-  const s = String(route.params.section || 'dashboard');
+  const s = requestedSection.value;
   // 'stats' merged into 'dashboard' (one consolidated overview) — kept as an alias
   // so a bookmarked/shared `/finance/stats` link still lands somewhere sensible.
   if (s === 'stats') return 'dashboard';
+  // The former separate document lists stay addressable, but deliberately land in
+  // the shared review queue with the applicable direction preselected.
+  if (s === 'invoices' || s === 'receipts') return 'documents';
   return VALID.includes(s) ? s : 'dashboard';
 });
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
 
 // In-page left submenu sections (mirrors the Profile/Settings hub layout).
-const sections = ['dashboard', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners'] as const;
+const sections = ['dashboard', 'documents', 'payments', 'bank', 'projects', 'partners'] as const;
 const secIcon: Record<string, string> = {
-  dashboard: 'space_dashboard', invoices: 'receipt_long', payments: 'account_balance_wallet',
+  dashboard: 'space_dashboard', documents: 'inbox', invoices: 'receipt_long', payments: 'account_balance_wallet',
   bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups',
 };
+const financeNavGroups = computed(() => [{
+  id: 'finance',
+  items: sections.map((id) => ({ id, icon: secIcon[id], label: t('invoices.tab_' + id) })),
+}]);
+function isFinanceSectionActive(item: SectionNavItem): boolean { return tab.value === item.id; }
 const q = ref('');
 
 const kpis = ref<{ year: number; net: number; count: number; growthPct: number | null } | null>(null);
@@ -1663,7 +1731,7 @@ const monthlyChartData = computed<AlignedData>(() => [
   months.value.map((m) => Number(m.net ?? 0)),
 ]);
 const monthlyChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
-  padding: [12, 8, 0, 0],
+  padding: [12, 12, 0, 0],
   legend: { show: false },
   cursor: { drag: { x: false, y: false } },
   series: [
@@ -1671,8 +1739,8 @@ const monthlyChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
     { label: t('invoices.stat_monthly'), stroke: CHART_INK, fill: CHART_INK + '33' },
   ],
   axes: [
-    { stroke: '#8888', grid: { show: false }, values: (_u, vals) => vals.map((v) => monthLabel(v)) },
-    { stroke: '#8888', grid: { stroke: 'rgba(128,128,128,.15)' }, size: 56, values: (_u, vals) => vals.map((v) => money(v)) },
+    { stroke: '#625d69', font: '600 12px ui-monospace, SFMono-Regular, Menlo, monospace', grid: { show: false }, values: (_u, vals) => vals.map((v) => monthLabel(v)) },
+    { stroke: '#625d69', font: '600 12px ui-monospace, SFMono-Regular, Menlo, monospace', grid: { stroke: 'rgba(128,128,128,.24)' }, size: 96, values: (_u, vals) => vals.map((v) => money(v)) },
   ],
   scales: { x: { time: false } },
 }));
@@ -1693,7 +1761,7 @@ const categoryChartData = computed<AlignedData>(() => [
   categoryBreakdown.value.map(([, sum]) => sum),
 ]);
 const categoryChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
-  padding: [12, 8, 0, 0],
+  padding: [12, 12, 0, 0],
   legend: { show: false },
   cursor: { drag: { x: false, y: false } },
   series: [
@@ -1701,8 +1769,8 @@ const categoryChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => (
     { label: t('invoices.receipt_category'), stroke: CHART_INK, fill: CHART_INK + '33' },
   ],
   axes: [
-    { stroke: '#8888', grid: { show: false }, values: (_u, vals) => vals.map((v) => categoryBreakdown.value[v]?.[0] ?? '') },
-    { stroke: '#8888', grid: { stroke: 'rgba(128,128,128,.15)' }, size: 56, values: (_u, vals) => vals.map((v) => money(v)) },
+    { stroke: '#625d69', font: '600 12px ui-monospace, SFMono-Regular, Menlo, monospace', grid: { show: false }, values: (_u, vals) => vals.map((v) => categoryBreakdown.value[v]?.[0] ?? '') },
+    { stroke: '#625d69', font: '600 12px ui-monospace, SFMono-Regular, Menlo, monospace', grid: { stroke: 'rgba(128,128,128,.24)' }, size: 96, values: (_u, vals) => vals.map((v) => money(v)) },
   ],
   scales: { x: { time: false } },
 }));
@@ -1725,6 +1793,83 @@ const filteredInvoices = computed(() => {
   const dirMul = invSort.dir === 'asc' ? 1 : -1;
   return [...base].sort((a, b) => sortCmp(invSortValue(a, invSort.key), invSortValue(b, invSort.key)) * dirMul);
 });
+
+type FinanceDocument = { key: string; kind: 'invoice' | 'receipt'; direction: 'income' | 'expense'; date: string | null; partner: string; reference: string; amount: number; matched: boolean; item: Invoice | Receipt };
+const documentQuery = ref('');
+const documentDirectionFilter = ref<'all' | FinanceDocument['direction']>('all');
+const documentMatchFilter = ref<'all' | 'matched' | 'unmatched'>('all');
+const documentFrom = ref('');
+const documentTo = ref('');
+const documentSort = reactive<{ key: string; dir: SortDir }>({ key: 'date', dir: 'desc' });
+const documentDirectionOptions = computed(() => [
+  { title: t('invoices.document_all'), value: 'all' },
+  { title: t('invoices.document_income'), value: 'income' },
+  { title: t('invoices.document_expense'), value: 'expense' },
+]);
+const documentMatchOptions = computed(() => [
+  { title: t('invoices.document_matching_all'), value: 'all' },
+  { title: t('invoices.document_matched'), value: 'matched' },
+  { title: t('invoices.document_unmatched'), value: 'unmatched' },
+]);
+const documentDirection = computed<FinanceDocument['direction'] | null>(() => {
+  if (requestedSection.value === 'invoices') return 'income';
+  if (requestedSection.value === 'receipts') return 'expense';
+  return documentDirectionFilter.value === 'all' ? null : documentDirectionFilter.value;
+});
+const documentFiltersActive = computed(() => documentQuery.value !== '' || documentDirectionFilter.value !== 'all'
+  || documentMatchFilter.value !== 'all' || documentFrom.value !== '' || documentTo.value !== '');
+function resetDocumentFilters() {
+  documentQuery.value = '';
+  documentDirectionFilter.value = 'all';
+  documentMatchFilter.value = 'all';
+  documentFrom.value = '';
+  documentTo.value = '';
+}
+function documentSortBy(key: string) { toggleSort(documentSort, key); }
+function documentSortValue(document: FinanceDocument, key: string): unknown {
+  switch (key) {
+    case 'date': return document.date;
+    case 'direction': return document.direction;
+    case 'partner': return document.partner;
+    case 'amount': return document.amount;
+    case 'matched': return document.matched ? 1 : 0;
+    default: return null;
+  }
+}
+const documentRows = computed<FinanceDocument[]>(() => {
+  const rows: FinanceDocument[] = [
+    ...f.invoices.map((item): FinanceDocument => ({
+      key: `invoice-${item.id}`, kind: 'invoice', direction: 'income', date: item.issue_date,
+      partner: custName(item), reference: item.number || '—', amount: Number(item.gross ?? 0), matched: isInvoiceLinked(item.id), item,
+    })),
+    ...f.standaloneReceipts.map((item): FinanceDocument => ({
+      key: `receipt-${item.id}`, kind: 'receipt', direction: 'expense', date: item.date,
+      partner: partnerOptions.value.find((p) => p.id === item.partner_id)?.name ?? item.name,
+      reference: item.doc_number || item.name, amount: Math.abs(Number(item.amount ?? 0)),
+      matched: item.bank_transaction_id != null || (item.linked_transaction_ids?.length ?? 0) > 0, item,
+    })),
+  ];
+  const needle = documentQuery.value.trim().toLowerCase();
+  const dirMul = documentSort.dir === 'asc' ? 1 : -1;
+  return rows.filter((row) => {
+    const receipt = row.kind === 'receipt' ? row.item as Receipt : null;
+    const haystack = `${row.partner} ${row.reference} ${receipt?.category ?? ''} ${receipt?.order_ref ?? ''}`.toLowerCase();
+    const date = row.date?.slice(0, 10) ?? '';
+    return (!documentDirection.value || row.direction === documentDirection.value)
+      && (documentMatchFilter.value === 'all' || (documentMatchFilter.value === 'matched') === row.matched)
+      && (!documentFrom.value || date >= documentFrom.value)
+      && (!documentTo.value || date <= documentTo.value)
+      && (!needle || haystack.includes(needle));
+  }).sort((a, b) => sortCmp(documentSortValue(a, documentSort.key), documentSortValue(b, documentSort.key)) * dirMul);
+});
+function openDocument(doc: FinanceDocument) {
+  if (doc.kind === 'invoice') openInvoiceDocument(doc.item as Invoice);
+  else openReceiptWorkspace(doc.item as Receipt);
+}
+async function runAllDocumentMatching() {
+  await runInvoiceAutoMatch();
+  await runAutoMatch();
+}
 
 const isLocked = computed(() => !!(draft.value?.imported || (draft.value?.number && draft.value?.status !== 'draft')));
 const totals = computed(() => {
@@ -1774,6 +1919,13 @@ function editInvoice(i: Invoice) {
   lines.value = Array.isArray(i.lines) ? i.lines.map((l) => ({ ...l })) : [];
   loadCustomerFields(i.customer);
   invDialog.value = true;
+}
+function openInvoiceDocument(i: Invoice) {
+  if (i.pdf_path) {
+    openPreview(f.invoicePdfUrl(i.id), (i.number || 'invoice') + '.pdf', 'application/pdf');
+    return;
+  }
+  editInvoice(i);
 }
 async function saveInvoice() {
   if (!draft.value) return;
@@ -1869,7 +2021,7 @@ function txSortValue(tx: BankTransaction, key: string): unknown {
 // booking text, end-to-end reference, and the linked invoice number all
 // count as a match, since that's exactly what someone hunting for "did the
 // INWX invoice actually get paid" would search by), plus a direction
-// (income/expense) and a documentation-status (has a receipt attached) filter.
+// (income/expense) and a documentation-status (has a receipt or invoice linked) filter.
 // Substring match against a transaction's signed/absolute amount, accepting
 // either "." or "," as the decimal separator (so a German "9,52" search hits
 // an amount stored as -9.52 just like "9.52" or "-9.52" would).
@@ -1915,7 +2067,10 @@ const bankTransactions = computed(() => {
 function standaloneReceiptsForTx(txId: number): Receipt[] {
   return f.standaloneReceipts.filter((r) => r.bank_transaction_id === txId || (r.linked_transaction_ids ?? []).includes(txId));
 }
-function isTxDocumented(tx: BankTransaction): boolean { return (tx.receipts?.length ?? 0) > 0 || standaloneReceiptsForTx(tx.id).length > 0; }
+function linkedInvoiceForTx(tx: BankTransaction): Invoice | undefined { return tx.invoice_id == null ? undefined : f.invoices.find((invoice) => invoice.id === tx.invoice_id); }
+function txDocumentCount(tx: BankTransaction): number { return (linkedInvoiceForTx(tx) ? 1 : 0) + (tx.receipts?.length ?? 0) + standaloneReceiptsForTx(tx.id).length; }
+function isTxDocumented(tx: BankTransaction): boolean { return txDocumentCount(tx) > 0; }
+function openLinkedInvoice(tx: BankTransaction) { const invoice = linkedInvoiceForTx(tx); if (invoice) openInvoiceDocument(invoice); }
 // Candidate pool for auto-pick/suggestions: expense transactions with no receipt yet.
 const unlinkedTransactions = computed<BankTransaction[]>(() => f.transactions.filter((t) => t.amount < 0 && !isTxDocumented(t)));
 function txSummary(id: number): string {
@@ -2868,7 +3023,7 @@ async function generateAndUpload(snap: PrintInvoice, id: number) {
     await api.upload(`/api/v1/finance/invoices/${id}/pdf`, fd);
     await f.load();
     success(t('common.saved'));
-    window.open(f.invoicePdfUrl(id), '_blank', 'noopener');
+    openPreview(f.invoicePdfUrl(id), `${snap.number || 'invoice'}.pdf`, 'application/pdf');
   } catch { printInv.value = null; error(t('common.error')); }
   finally { pdfBusy.value = false; printingId.value = null; }
 }

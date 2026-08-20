@@ -25,7 +25,11 @@ class InvoiceStornoTest extends TestCase
         $this->actingAs($user);
         UserSetting::for((int) $user->id)->update(['invoice_number_format' => 'YYYY-NNNN', 'invoice_next_number' => 1]);
 
-        return Invoice::create(array_merge([
+        // number/seq are GoBD-authoritative and deliberately not mass-assignable
+        // (only finalize/storno set them via forceFill), so a fixture that wants
+        // a numbered invoice has to force it in — Invoice::create() would silently
+        // leave the number null and make the sequence assertions meaningless.
+        return Invoice::forceCreate(array_merge([
             'number' => '2026-0001', 'seq' => 1, 'year' => 2026, 'status' => 'sent',
             'issue_date' => '2026-03-15', 'imported' => false, 'currency' => 'EUR',
             'gross' => 119, 'net' => 100, 'vat' => 19,

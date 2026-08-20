@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'bank_csv_reminder_title' => 'Aktuellen Bank-CSV-Export hochladen',
+    'bank_csv_reminder_body' => 'Der letzte Kontoauszug-Import liegt mehr als sieben Tage zurück. Lade den aktuellen CSV-Export hoch, damit der Abgleich vollständig bleibt.',
     'title' => 'Rechnungen',
     'dup_warning_title' => 'Doppelte Rechnungsnummern erkannt',
     'dup_warning_body' => 'Diese Nummern kommen mehrfach vor — bitte korrigieren für eine lückenlose, eindeutige Folge (GoBD):',
@@ -535,9 +537,10 @@ return [
     'tx_dir_all' => 'Einnahmen & Ausgaben',
     'tx_dir_in' => 'Nur Einnahmen',
     'tx_dir_out' => 'Nur Ausgaben',
-    'tx_doc_all' => 'Belege: Alle',
-    'tx_doc_documented' => 'Mit Beleg',
-    'tx_doc_undocumented' => 'Ohne Beleg',
+    'tx_documents' => 'Dokumente',
+    'tx_doc_all' => 'Dokumente: Alle',
+    'tx_doc_documented' => 'Mit Dokument',
+    'tx_doc_undocumented' => 'Ohne Dokument',
     'tx_all_types' => 'Alle Arten',
     'tx_all_cats' => 'Alle Steuersätze',
     'tx_all_cp' => 'Alle Gegenkonten',
@@ -601,6 +604,19 @@ return [
     'no_number' => '(ohne Nummer)',
     'suggestion_label' => 'Vorschlag:',
     'apply_suggestion' => 'Vorschlag übernehmen',
+    'tab_documents' => 'Dokumente',
+    'document_direction' => 'Richtung',
+    'document_partner' => 'Partner',
+    'document_matching' => 'Abgleich',
+    'document_income' => 'Einnahme',
+    'document_expense' => 'Ausgabe',
+    'document_matched' => 'Abgeglichen',
+    'document_unmatched' => 'Offen',
+    'document_all' => 'Alle Dokumente',
+    'document_matching_all' => 'Alle Abgleiche',
+    'document_from' => 'Von',
+    'document_to' => 'Bis',
+    'document_clear_filters' => 'Filter löschen',
 
     // Rechnungs-Lebenszyklus: E-Mail-Versand + überfällig + Erinnerungen.
     'email_send' => 'Per E-Mail senden',

@@ -1,9 +1,9 @@
 <template>
-  <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row">
+  <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:h-[calc(100vh-9.5rem)] md:min-h-0 md:flex-row md:gap-0 md:overflow-hidden md:rounded-xl md:border md:border-[var(--ll-border)] md:bg-[var(--ll-surface)]">
     <!-- Left rail: accounts, folders, trash, labels, saved searches -->
-    <Card body-class="p-0" class="w-full shrink-0 self-start md:w-72">
-      <div class="flex items-center gap-2 p-3">
-        <Btn variant="solid" icon="add" block @click="openAccountEditor(null)">{{ t('mail.accounts.add') }}</Btn>
+    <Card body-class="p-0" class="w-full shrink-0 self-start md:h-full md:w-64 md:overflow-y-auto md:!rounded-none md:!border-y-0 md:!border-l-0 md:border-r md:border-r-[var(--ll-border)] md:!shadow-none">
+      <div class="flex items-center gap-2 border-b border-[var(--ll-border)] p-3">
+        <Btn variant="solid" icon="add" block class="h-[38px]" @click="openAccountEditor(null)">{{ t('mail.accounts.add') }}</Btn>
       </div>
       <nav class="space-y-0.5 px-2 pb-3">
         <!-- Unified inbox -->
@@ -61,6 +61,9 @@
             </button>
           </div>
         </div>
+        <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" :class="draftListActive ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''" @click="pickDrafts">
+          <Icon name="drafts" :size="20" :class="draftListActive ? '' : 'text-[var(--ll-muted)]'" /><span class="flex-1 text-left">{{ t('mail.send.drafts') }}</span><span v-if="drafts.length" class="rounded-full bg-black/[0.06] px-1.5 text-[10px] dark:bg-white/10">{{ drafts.length }}</span>
+        </button>
 
         <!-- Trash -->
         <div class="my-1 border-t border-[var(--ll-border)]" />
@@ -104,11 +107,12 @@
     </Card>
 
     <!-- Center: toolbar + envelope table -->
-    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex w-full min-w-0 flex-1 flex-col self-stretch">
+    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex w-full min-w-0 flex-1 flex-col self-stretch md:!rounded-none md:!border-0 md:!shadow-none">
       <!-- Toolbar -->
       <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-3">
         <Btn variant="solid" size="sm" icon="edit_square" @click="openCompose">{{ t('mail.send.compose') }}</Btn>
-        <TextField v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="w-full sm:w-56" @update:model-value="debouncedReload" @enter="reload" />
+        <span v-if="draftListActive" class="text-sm font-semibold">{{ t('mail.send.drafts') }}</span>
+        <TextField v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="min-w-48 flex-1" @update:model-value="debouncedReload" @enter="reload" />
         <div class="flex items-center gap-1.5">
           <TextField v-model="dateFrom" type="date" :placeholder="t('mail.list.date_from')" class="w-36" @update:model-value="onDate" />
           <TextField v-model="dateTo" type="date" :placeholder="t('mail.list.date_to')" class="w-36" @update:model-value="onDate" />
@@ -150,21 +154,23 @@
       </div>
 
       <!-- Table -->
-      <div v-if="threadView" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2 text-xs">
+      <div v-if="threadView && !draftListActive" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2 text-xs">
         <Icon name="forum" :size="15" class="text-primary-600 dark:text-primary-300" />
         <span class="flex-1">{{ t('mail.reader.thread_view') }}</span>
         <Btn variant="ghost" size="xs" icon="close" @click="clearThread">{{ t('common.clear') }}</Btn>
       </div>
       <div class="flex-1 overflow-y-auto">
         <div v-if="loading" class="py-16 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
+        <div v-else-if="draftListActive && !drafts.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.list.empty') }}</div>
+        <table v-else-if="draftListActive" class="w-full table-fixed text-sm"><thead class="sticky top-0 z-[1] bg-[var(--ll-surface)]"><tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]"><th class="w-[32%] py-2 pl-3 pr-3">{{ t('mail.send.from_email') }}</th><th class="py-2 pr-3">{{ t('mail.list.col_subject') }}</th><th class="w-28 py-2 pr-3 text-right">{{ t('mail.list.col_date') }}</th></tr></thead><tbody><tr v-for="draft in drafts" :key="draft.id" class="cursor-pointer border-b border-[var(--ll-border)] hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openDraft(draft)"><td class="py-2.5 pl-3 pr-3"><div class="flex min-w-0 items-center gap-2"><Icon name="drafts" :size="17" class="text-primary-600" /><span class="truncate">{{ accountName(draft.mail_account_id) }}</span></div></td><td class="py-2.5 pr-3"><div class="truncate font-medium">{{ draft.subject || t('mail.send.new_draft') }}</div><div class="truncate text-xs text-[var(--ll-muted)]">{{ (draft.to ?? []).join(', ') || t('mail.send.to') }}</div></td><td class="py-2.5 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(draft.updated_at) }}</td></tr></tbody></table>
         <div v-else-if="!s.messages.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.list.empty') }}</div>
-        <table v-else class="w-full text-sm">
+        <table v-else class="w-full table-fixed text-sm">
           <thead class="sticky top-0 z-[1] bg-[var(--ll-surface)]">
             <tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]">
               <th class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="allSelected" @change="toggleSelectAll"></th>
-              <th class="py-2 pr-3">{{ t('mail.list.col_from') }}</th>
+              <th class="w-[36%] py-2 pr-3">{{ t('mail.list.col_from') }}</th>
               <th class="py-2 pr-3">{{ t('mail.list.col_subject') }}</th>
-              <th class="w-32 py-2 pr-3 text-right">{{ t('mail.list.col_date') }}</th>
+              <th class="w-28 py-2 pr-3 text-right">{{ t('mail.list.col_date') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -175,16 +181,16 @@
               @click="openReader(m)"
             >
               <td class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="s.selected.includes(m.id)" @click.stop="toggleSelect(m.id)"></td>
-              <td class="py-2.5 pr-3">
+              <td class="py-2.5 pr-3 align-middle">
                 <div class="flex items-center gap-2">
                   <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-primary-500'" />
-                  <span class="min-w-0">
-                    <span class="block truncate">{{ m.from_name || m.from_email || '—' }}</span>
-                    <span v-if="isUnified || !filters.folder" class="block truncate text-xs font-normal text-[var(--ll-muted)]">{{ m.folder }}</span>
+                  <span class="min-w-0 flex-1 truncate">
+                    <span class="truncate">{{ senderLabel(m) }}</span>
+                    <span v-if="isUnified || !filters.folder" class="ml-1.5 rounded bg-black/[0.04] px-1.5 py-0.5 text-[0.6rem] font-medium text-[var(--ll-muted)] dark:bg-white/[0.07]">{{ m.folder }}</span>
                   </span>
                 </div>
               </td>
-              <td class="py-2.5 pr-3">
+              <td class="py-2.5 pr-3 align-middle">
                 <div class="flex items-center gap-1.5">
                   <span class="min-w-0 flex-1 truncate">{{ m.subject || '—' }}</span>
                   <span v-for="l in (m.labels || [])" :key="l.id" class="hidden shrink-0 rounded px-1.5 py-0.5 text-[0.6rem] font-medium sm:inline" :style="{ background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }">{{ l.name }}</span>
@@ -193,14 +199,14 @@
                   <Icon v-if="m.has_attachment" name="attach_file" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.list.attachment')" />
                 </div>
               </td>
-              <td class="py-2.5 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(m.date || m.created_at) }}</td>
+              <td class="truncate py-2.5 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(m.date || m.created_at) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <!-- Pagination -->
-      <div v-if="s.meta.last_page > 1" class="flex items-center justify-between border-t border-[var(--ll-border)] px-3 py-2 text-sm">
+      <div v-if="!draftListActive && s.meta.last_page > 1" class="flex items-center justify-between border-t border-[var(--ll-border)] px-3 py-2 text-sm">
         <span class="text-xs text-[var(--ll-muted)]">{{ s.meta.current_page }} / {{ s.meta.last_page }} · {{ s.meta.total }}</span>
         <div class="flex items-center gap-1">
           <Btn variant="ghost" size="sm" icon="chevron_left" :disabled="s.meta.current_page <= 1" @click="goto(s.meta.current_page - 1)" />
@@ -208,11 +214,17 @@
         </div>
       </div>
     </Card>
-  </div>
 
-  <!-- Reader modal -->
-  <Modal v-model="readerOpen" :title="reader?.subject || t('mail.reader.subject')" width="56rem">
-    <div v-if="reader" class="flex flex-col gap-4">
+    <!-- Reader pane: docked beside the list on desktop, full screen on small displays. -->
+  <aside v-if="readerOpen" class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:basis-[44%] md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none">
+    <div v-if="readerOpen && reader" class="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-5">
+      <div class="sticky top-0 z-10 -mt-4 -mx-4 flex items-center gap-3 border-b border-[var(--ll-border)] bg-[var(--ll-surface)] px-4 py-3 md:-mt-5 md:-mx-5 md:px-5">
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-base font-semibold">{{ reader.subject || t('mail.reader.subject') }}</div>
+          <div class="truncate text-xs text-[var(--ll-muted)]">{{ reader.from_name || reader.from_email }}</div>
+        </div>
+        <Btn variant="ghost" size="sm" icon="close" :title="t('common.close')" @click="readerOpen = false" />
+      </div>
       <!-- Header -->
       <div class="flex flex-col gap-1.5">
         <div class="flex flex-wrap items-center gap-2">
@@ -232,23 +244,32 @@
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-1.5 border-y border-[var(--ll-border)] py-2">
+      <div class="flex flex-wrap items-center gap-1 border-y border-[var(--ll-border)] py-2">
         <template v-if="readerCanSend">
-          <Btn variant="soft" size="sm" icon="reply" @click="openReply(false)">{{ t('mail.send.reply') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="reply_all" @click="openReply(true)">{{ t('mail.send.reply_all') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="forward" @click="openForward">{{ t('mail.send.forward') }}</Btn>
+          <Btn variant="soft" size="sm" icon="reply" :title="t('mail.send.reply')" @click="openReply(false)" />
+          <Btn variant="ghost" size="sm" icon="reply_all" :title="t('mail.send.reply_all')" @click="openReply(true)" />
+          <Btn variant="ghost" size="sm" icon="forward" :title="t('mail.send.forward')" @click="openForward" />
           <span class="mx-0.5 h-4 w-px bg-[var(--ll-border)]" />
         </template>
         <span v-else class="mr-1 inline-flex items-center gap-1 text-xs text-[var(--ll-muted)]"><Icon name="info" :size="14" />{{ t('mail.send.no_smtp') }}</span>
-        <Btn variant="ghost" size="sm" icon="move_to_inbox" @click="doPushBack(reader)">{{ t('mail.actions.push_back') }}</Btn>
-        <Btn variant="ghost" size="sm" icon="delete_sweep" class="text-red-600 dark:text-red-400" @click="doDeleteOrigin(reader)">{{ t('mail.actions.delete_origin') }}</Btn>
-        <Btn variant="ghost" size="sm" icon="download" tag="a" :href="s.rawUrl(reader.id, true)">{{ t('mail.reader.download_eml') }}</Btn>
-        <Btn v-if="!reader.trashed" variant="ghost" size="sm" icon="delete" @click="readerTrash(reader)">{{ t('mail.actions.trash') }}</Btn>
-        <Btn v-else variant="ghost" size="sm" icon="restore" @click="readerRestore(reader)">{{ t('mail.actions.restore') }}</Btn>
-        <Btn v-if="reader.thread_id" variant="ghost" size="sm" icon="forum" @click="viewThread">{{ t('mail.reader.view_thread') }}</Btn>
-        <DropdownMenuRoot v-if="s.labels.length">
-          <DropdownMenuTrigger class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10"><Icon name="label" :size="16" />{{ t('mail.extras.labels') }}</DropdownMenuTrigger>
+        <Btn v-if="!reader.trashed" variant="ghost" size="sm" icon="delete" :title="t('mail.actions.trash')" @click="readerTrash(reader)" />
+        <Btn v-else variant="ghost" size="sm" icon="restore" :title="t('mail.actions.restore')" @click="readerRestore(reader)" />
+        <DropdownMenuRoot>
+          <DropdownMenuTrigger class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('mail.reader.more_actions')"><Icon name="more_vert" :size="18" /></DropdownMenuTrigger>
           <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="start" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+            <DropdownMenuItem :class="menuItem" @select="doPushBack(reader)"><Icon name="move_to_inbox" :size="18" />{{ t('mail.actions.push_back') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItemDanger" @select="doDeleteOrigin(reader)"><Icon name="delete_sweep" :size="18" />{{ t('mail.actions.delete_origin') }}</DropdownMenuItem>
+            <DropdownMenuItem v-if="reader.thread_id" :class="menuItem" @select="viewThread"><Icon name="forum" :size="18" />{{ t('mail.reader.view_thread') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" :disabled="printing" @select="printMessage"><Icon name="print" :size="18" />{{ t('mail.reader.print') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" :disabled="pdfExporting" @select="exportPdf"><Icon name="picture_as_pdf" :size="18" />{{ t('mail.reader.export_pdf') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" @select="downloadEml"><Icon name="download" :size="18" />{{ t('mail.reader.download_eml') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" @select="readerSetSeen(!reader.seen)"><Icon :name="reader.seen ? 'mark_email_unread' : 'mark_email_read'" :size="18" />{{ reader.seen ? t('mail.actions.mark_unread') : t('mail.actions.mark_read') }}</DropdownMenuItem>
+            <DropdownMenuItem v-if="hasHtml" :class="menuItem" @select="toggleRemote"><Icon :name="remoteOn ? 'visibility_off' : 'visibility'" :size="18" />{{ remoteOn ? t('mail.reader.block_remote') : t('mail.reader.load_remote') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" @select="showHeaders = !showHeaders"><Icon :name="showHeaders ? 'expand_less' : 'expand_more'" :size="18" />{{ t('mail.reader.original_headers') }}</DropdownMenuItem>
+            <template v-if="s.labels.length">
+              <div class="my-1 border-t border-[var(--ll-border)]" />
+              <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.extras.labels') }}</div>
+            </template>
             <DropdownMenuItem v-for="l in s.labels" :key="l.id" :class="menuItem" @select="toggleReaderLabel(l.id)">
               <span class="h-3 w-3 rounded-full" :style="{ background: l.color }" />
               <span class="flex-1">{{ l.name }}</span>
@@ -256,10 +277,7 @@
             </DropdownMenuItem>
           </DropdownMenuContent></DropdownMenuPortal>
         </DropdownMenuRoot>
-        <div class="ml-auto flex items-center gap-1.5">
-          <Btn variant="ghost" size="sm" :icon="showHeaders ? 'expand_less' : 'expand_more'" @click="showHeaders = !showHeaders">{{ t('mail.reader.original_headers') }}</Btn>
-          <Btn v-if="hasHtml" variant="ghost" size="sm" :icon="remoteOn ? 'visibility' : 'visibility_off'" @click="toggleRemote">{{ t('mail.reader.load_remote') }}</Btn>
-        </div>
+        <span class="ml-auto inline-flex items-center gap-1.5 pr-1 text-xs text-[var(--ll-muted)]"><Icon :name="remoteOn ? 'visibility' : 'shield'" :size="15" />{{ remoteOn ? t('mail.reader.remote_loaded') : t('mail.reader.remote_blocked') }}</span>
       </div>
 
       <pre v-if="showHeaders" class="max-h-52 overflow-auto rounded-lg bg-black/[0.03] p-3 text-xs dark:bg-white/5">{{ reader.headers_raw || '—' }}</pre>
@@ -267,7 +285,7 @@
       <!-- Body -->
       <iframe
         v-if="hasHtml"
-        :key="frameKey"
+        :key="reader.id"
         :src="s.bodyUrl(reader.id, remoteOn)"
         sandbox=""
         class="h-[48vh] w-full rounded-lg border border-[var(--ll-border)] bg-white"
@@ -286,23 +304,120 @@
               <span class="block text-xs text-[var(--ll-muted)]">{{ fmtBytes(att.size) }}<span v-if="att.inline"> · cid</span></span>
             </span>
             <Btn variant="ghost" size="xs" icon="visibility" tag="a" :href="s.attachmentRawUrl(att.id)" target="_blank" rel="noopener" :title="t('mail.reader.attachment_view')" />
-            <Btn variant="ghost" size="xs" icon="download" tag="a" :href="s.attachmentRawUrl(att.id)" :title="t('mail.reader.attachment_download')" />
+            <Btn variant="ghost" size="xs" icon="download" tag="a" :href="s.attachmentRawUrl(att.id, true)" :title="t('mail.reader.attachment_download')" />
             <DropdownMenuRoot>
               <DropdownMenuTrigger class="grid h-7 w-7 place-items-center rounded-md hover:bg-black/[0.05] dark:hover:bg-white/10"><Icon name="more_vert" :size="16" /></DropdownMenuTrigger>
               <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-44 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+                <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.reader.save_section') }}</div>
                 <DropdownMenuItem :class="menuItem" @select="openAttSaveToFiles(att.id)"><Icon name="folder" :size="18" />{{ t('mail.reader.save_to_files') }}</DropdownMenuItem>
                 <DropdownMenuItem :class="menuItem" @select="saveAtt(att.id, 'paperless')"><Icon name="description" :size="18" />{{ t('mail.reader.save_to_paperless') }}</DropdownMenuItem>
+                <div class="my-1 border-t border-[var(--ll-border)]" />
+                <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.reader.security_section') }}</div>
+                <DropdownMenuItem :class="menuItem" :disabled="attachmentVirusLoading === att.id" @select="scanAttachment(att.id)"><Icon name="security" :size="18" />{{ t('mail.reader.virustotal_check') }}</DropdownMenuItem>
               </DropdownMenuContent></DropdownMenuPortal>
             </DropdownMenuRoot>
+            <Badge v-if="attachmentVirusResults[att.id]?.stats" :tone="(attachmentVirusResults[att.id]?.stats?.malicious ?? 0) || (attachmentVirusResults[att.id]?.stats?.suspicious ?? 0) ? 'error' : 'success'">{{ (attachmentVirusResults[att.id]?.stats?.malicious ?? 0) + (attachmentVirusResults[att.id]?.stats?.suspicious ?? 0) }}</Badge>
           </div>
         </div>
       </div>
     </div>
-  </Modal>
+  </aside>
+  <section v-if="compose.show && !compose.minimized" class="fixed bottom-3 right-4 z-[1500] flex h-[min(48rem,calc(100vh-6rem))] w-[min(44rem,calc(100vw-2rem))] min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] shadow-2xl">
+      <header class="border-b border-[var(--ll-border)] bg-[var(--ll-surface)]">
+        <div class="flex items-center gap-2 px-4 py-3 md:px-5">
+          <div class="min-w-0 flex-1"><div class="text-base font-semibold">{{ composeTitle }}</div><div class="flex items-center gap-1 text-xs text-[var(--ll-muted)]"><Icon :name="composeSaving ? 'sync' : 'cloud_done'" :size="14" :class="composeSaving ? 'animate-spin' : ''" />{{ composeSaving ? t('mail.send.draft_saving') : t('mail.send.draft_saved') }}</div></div>
+          <Btn variant="solid" size="sm" icon="send" :loading="compose.sending" :title="t('mail.send.send_hint')" @click="doSend">{{ t('mail.send.send') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="minimize" :title="t('mail.send.minimize')" @click="compose.minimized = true" />
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('mail.send.more_actions')"><Icon name="more_vert" :size="18" /></DropdownMenuTrigger>
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-52 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.draft_section') }}</div>
+              <DropdownMenuItem :class="menuItem" :disabled="composeSaving" @select="saveDraftNow"><Icon name="save" :size="18" />{{ t('mail.send.save_now') }}</DropdownMenuItem>
+              <DropdownMenuItem :class="menuItemDanger" @select="discardCompose"><Icon name="delete" :size="18" />{{ t('mail.send.discard_draft') }}</DropdownMenuItem>
+            </DropdownMenuContent></DropdownMenuPortal>
+          </DropdownMenuRoot>
+          <Btn variant="ghost" size="sm" icon="close" :title="t('common.close')" @click="closeCompose" />
+        </div>
+        <div class="flex flex-wrap items-center gap-1 border-t border-[var(--ll-border)] px-4 py-2 md:px-5" role="toolbar" :aria-label="t('mail.send.compose_toolbar')">
+          <label class="inline-flex cursor-pointer"><input type="file" multiple class="hidden" @change="onComposeFiles"><Btn variant="ghost" size="xs" icon="upload_file" :title="t('mail.send.from_device')" /></label>
+          <Btn variant="ghost" size="xs" icon="folder" :title="t('mail.send.from_files')" @click="openAssetPicker('files')" />
+          <Btn variant="ghost" size="xs" icon="photo_library" :title="t('mail.send.from_gallery')" @click="openAssetPicker('gallery')" />
+          <span v-if="composeAttachmentCount" class="mr-1 text-xs font-medium text-[var(--ll-muted)]">{{ composeAttachmentCount }}</span>
+          <Btn variant="ghost" size="xs" icon="lock" :class="composeShowCrypto ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.security_options')" @click="openCryptoOptions" />
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger class="grid h-7 w-7 place-items-center rounded-md hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('mail.send.delivery_options')"><Icon name="tune" :size="18" /></DropdownMenuTrigger>
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="start" class="z-[1600] min-w-64 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <div v-if="compose.mode !== 'reply'" class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.layout_section') }}</div>
+              <DropdownMenuCheckboxItem v-if="compose.mode !== 'reply'" :checked="composeShowCc" :class="menuItem" @select.prevent="composeShowCc = !composeShowCc"><Icon name="group" :size="18" />Cc</DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem v-if="compose.mode === 'compose'" :checked="composeShowBcc" :class="menuItem" @select.prevent="composeShowBcc = !composeShowBcc"><Icon name="visibility_off" :size="18" />Bcc</DropdownMenuCheckboxItem>
+              <div class="my-1 border-t border-[var(--ll-border)]" />
+              <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.delivery_options') }}</div>
+              <DropdownMenuCheckboxItem :checked="compose.readReceipt" :class="menuItem" @select.prevent="compose.readReceipt = !compose.readReceipt"><Icon name="mark_email_unread" :size="18" />{{ t('mail.send.read_receipt') }}</DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem :checked="compose.highPriority" :class="menuItem" @select.prevent="compose.highPriority = !compose.highPriority"><Icon name="priority_high" :size="18" />{{ t('mail.send.high_priority') }}</DropdownMenuCheckboxItem>
+              <div class="px-3 pb-2 pt-1" @click.stop><label class="block text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.send.sent_folder') }}<input v-model="compose.sentFolder" class="mt-1 w-full rounded-md border border-[var(--ll-border)] bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary-500" :placeholder="t('mail.send.sent_folder_hint')"></label></div>
+            </DropdownMenuContent></DropdownMenuPortal>
+          </DropdownMenuRoot>
+        </div>
+      </header>
+      <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 md:p-5">
+        <div class="grid gap-2 sm:grid-cols-2">
+          <Select v-if="compose.mode === 'compose'" v-model.number="compose.accountId" :label="t('mail.send.from_email')" :options="composeAccountItems" />
+          <Select v-if="compose.accountId" v-model.number="compose.signatureId" :label="t('mail.send.signature')" :options="composeSignatureItems" />
+        </div>
+        <div v-if="compose.mode === 'reply'" class="rounded-lg bg-black/[0.03] px-3 py-2 text-xs dark:bg-white/5"><span class="font-medium">{{ t('mail.send.to') }}:</span> {{ compose.recipientHint || '—' }}<span v-if="compose.replyAll" class="ml-1 text-[var(--ll-muted)]">· {{ t('mail.send.reply_all') }}</span></div>
+        <template v-if="compose.mode !== 'reply'">
+          <div class="relative"><TextField v-model="compose.to" :label="t('mail.send.to')" placeholder="name@example.com, …" autocomplete="off" @update:model-value="lookupRecipients" />
+            <div v-if="recipientSuggestions.length" class="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] shadow-lg">
+              <button v-for="entry in recipientSuggestions" :key="entry.email" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5" @click="addRecipient(entry.email)"><Icon name="person" :size="16" class="text-[var(--ll-muted)]" /><span class="min-w-0 flex-1 truncate">{{ entry.name || entry.email }}</span><span v-if="entry.name" class="truncate text-xs text-[var(--ll-muted)]">{{ entry.email }}</span></button>
+            </div>
+          </div>
+          <TextField v-if="composeShowCc" v-model="compose.cc" :label="t('mail.send.cc')" placeholder="name@example.com, …" autocomplete="off" />
+          <TextField v-if="compose.mode === 'compose' && composeShowBcc" v-model="compose.bcc" :label="t('mail.send.bcc')" placeholder="name@example.com, …" autocomplete="off" />
+        </template>
+        <TextField v-if="compose.mode === 'compose'" v-model="compose.subject" :label="t('mail.send.subject')" />
+        <div v-if="composeShowCrypto" class="space-y-3 rounded-lg border border-primary-500/25 bg-primary-500/[0.04] p-3 dark:bg-primary-500/10">
+          <div class="flex items-center gap-2"><Icon name="lock" :size="18" class="text-primary-600" /><div><div class="text-sm font-semibold">{{ t('mail.send.security_options') }}</div><p class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.security_hint') }}</p></div></div>
+          <div class="grid gap-2 sm:grid-cols-3"><Select v-model="compose.cryptoMode" :label="t('mail.send.crypto_mode')" :options="cryptoModeItems" /><Select v-if="compose.cryptoMode !== 'none'" v-model="compose.cryptoType" :label="t('mail.send.crypto_type')" :options="cryptoTypeItems" /><Select v-if="compose.cryptoMode !== 'none'" v-model.number="compose.signingKeyId" :label="t('mail.send.signing_key')" :options="signingKeyItems" /></div>
+          <div v-if="compose.cryptoMode === 'encrypt' || compose.cryptoMode === 'sign_encrypt'"><div class="mb-1 text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.send.recipient_keys') }}</div><div v-if="!recipientKeyItems.length" class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.no_recipient_keys') }}</div><label v-for="key in recipientKeyItems" :key="key.value" class="mr-4 inline-flex items-center gap-2 text-sm"><input v-model="compose.recipientKeyIds" type="checkbox" :value="Number(key.value)" class="accent-primary-500">{{ key.title }}</label></div>
+        </div>
+        <RichTextEditor v-model="compose.html" :placeholder="t('mail.send.body')" :labels="composeEditorLabels" @update:model-value="onComposeRichText" />
+        <div class="rounded-lg border border-[var(--ll-border)] p-3">
+          <div class="mb-2 flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.attachments') }}</span><span class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.attachments_hint') }}</span></div>
+          <div v-if="!compose.files.length && !compose.fileIds.length && !compose.galleryPhotoIds.length" class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.attachments_hint') }}</div>
+          <div v-for="(f, i) in compose.files" :key="`local-${i}`" class="flex items-center gap-2 py-1 text-sm"><Icon name="attach_file" :size="15" /><span class="min-w-0 flex-1 truncate">{{ f.name }}</span><span class="text-xs text-[var(--ll-muted)]">{{ fmtBytes(f.size) }}</span><Btn variant="ghost" size="xs" icon="close" @click="removeComposeFile(i)" /></div>
+          <div v-for="f in selectedFiles" :key="`file-${f.id}`" class="flex items-center gap-2 py-1 text-sm"><Icon name="description" :size="15" /><span class="min-w-0 flex-1 truncate">{{ f.name }}</span><span class="text-xs text-[var(--ll-muted)]">{{ fmtBytes(f.size) }}</span><Btn variant="ghost" size="xs" icon="close" @click="removeFileAttachment(f.id)" /></div>
+          <div v-for="photo in selectedPhotos" :key="`photo-${photo.id}`" class="flex items-center gap-2 py-1 text-sm"><Icon name="image" :size="15" /><span class="min-w-0 flex-1 truncate">{{ photo.name }}</span><span class="text-xs text-[var(--ll-muted)]">{{ fmtBytes(photo.size) }}</span><Btn variant="ghost" size="xs" icon="close" @click="removeGalleryAttachment(photo.id)" /></div>
+        </div>
+      </div>
+      <footer class="flex items-center gap-2 border-t border-[var(--ll-border)] px-4 py-3 md:px-5"><span class="flex-1 text-xs text-[var(--ll-muted)]">{{ compose.draftId ? t('mail.send.draft_saved') : t('mail.send.new_draft') }}</span><span class="hidden text-xs text-[var(--ll-muted)] sm:inline">{{ t('mail.send.send_hint') }}</span><Btn variant="solid" icon="send" :loading="compose.sending" @click="doSend">{{ t('mail.send.send') }}</Btn></footer>
+    </section>
+  </div>
+
+  <div v-if="drafts.length || compose.show" class="fixed bottom-3 right-4 z-40 flex max-w-[min(70rem,calc(100vw-2rem))] gap-1 overflow-x-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-xl">
+    <button v-if="compose.show" class="flex min-w-44 items-center gap-2 rounded-md bg-primary-500/10 px-3 py-2 text-left text-xs text-primary-700 hover:bg-primary-500/15" @click="compose.minimized = false"><Icon name="edit_square" :size="16" /><span class="min-w-0 flex-1 truncate">{{ compose.subject || t('mail.send.new_draft') }}</span><Icon v-if="compose.minimized" name="expand_less" :size="16" /></button>
+    <button v-for="draft in drafts.filter((draft) => draft.id !== compose.draftId)" :key="draft.id" class="flex min-w-40 items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openDraft(draft)"><Icon name="drafts" :size="16" class="text-primary-600" /><span class="min-w-0 flex-1 truncate">{{ draft.subject || t('mail.send.new_draft') }}</span></button>
+  </div>
 
   <!-- Account editor modal -->
   <Modal v-model="editor.show" :title="editor.id ? t('mail.accounts.edit') : t('mail.accounts.add')" width="640px">
     <div class="space-y-3">
+      <div v-if="!editor.id" class="grid grid-cols-2 gap-2 border-b border-[var(--ll-border)] pb-3 text-xs font-semibold">
+        <div class="flex items-center gap-2" :class="editor.step === 1 ? 'text-primary-600' : 'text-[var(--ll-muted)]'"><span class="grid h-5 w-5 place-items-center rounded-full" :class="editor.step === 1 ? 'bg-primary-500 text-white' : 'bg-black/[0.06] dark:bg-white/10'">1</span>{{ t('mail.setup.discover') }}</div>
+        <div class="flex items-center gap-2" :class="editor.step === 2 ? 'text-primary-600' : 'text-[var(--ll-muted)]'"><span class="grid h-5 w-5 place-items-center rounded-full" :class="editor.step === 2 ? 'bg-primary-500 text-white' : 'bg-black/[0.06] dark:bg-white/10'">2</span>{{ t('mail.setup.details') }}</div>
+      </div>
+      <template v-if="!editor.id && editor.step === 1">
+        <div class="rounded-xl bg-primary-500/[0.07] p-4">
+          <div class="mb-1 flex items-center gap-2 text-sm font-semibold"><Icon name="auto_awesome" :size="18" />{{ t('mail.setup.title') }}</div>
+          <p class="text-xs leading-5 text-[var(--ll-muted)]">{{ t('mail.setup.hint') }}</p>
+        </div>
+        <TextField v-model="editor.email" :label="t('mail.setup.email')" type="email" inputmode="email" autocomplete="email" @enter="discoverAccount" />
+        <div v-if="editor.discovery" class="rounded-lg px-3 py-2 text-xs" :class="editor.discovery.domain_resolves ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'">
+          {{ editor.discovery.domain_resolves ? t('mail.setup.dns_ok') : t('mail.setup.dns_missing') }}<span v-if="editor.discovery.outlook_autodiscover"> · {{ t('mail.setup.outlook_found') }}</span>
+        </div>
+        <Btn variant="solid" class="w-full" icon="search" :loading="editor.detecting" @click="discoverAccount">{{ t('mail.setup.detect') }}</Btn>
+        <Btn variant="ghost" class="w-full" @click="editor.step = 2">{{ t('mail.setup.manual') }}</Btn>
+      </template>
+      <template v-else>
       <TextField v-model="editor.form.name" :label="t('mail.form.name')" />
       <div class="grid grid-cols-3 gap-3">
         <div class="col-span-2"><TextField v-model="editor.form.host" :label="t('mail.form.host')" /></div>
@@ -310,7 +425,7 @@
       </div>
       <TextField v-model="editor.form.username" :label="t('mail.form.username')" autocomplete="off" />
       <TextField v-model="editor.form.password" :label="t('mail.form.password')" type="password" autocomplete="new-password" :hint="editor.id ? t('mail.form.password_keep') : undefined" />
-      <Select v-model="editor.form.encryption" :label="t('mail.form.encryption')" :options="encItems" />
+      <Select v-model="editor.form.encryption" :label="t('mail.form.encryption')" :options="encItems" @update:model-value="applyImapPort" />
 
       <!-- SMTP (outgoing) — enables compose / reply / forward -->
       <div class="mt-1 border-t border-[var(--ll-border)] pt-3">
@@ -323,7 +438,7 @@
           <TextField v-model="editor.form.smtp_username" :label="t('mail.send.smtp_username')" autocomplete="off" />
           <TextField v-model="editor.form.smtp_password" :label="t('mail.send.smtp_password')" type="password" autocomplete="new-password" :hint="editor.id && editor.hasSmtpPassword ? t('mail.form.password_keep') : undefined" />
         </div>
-        <div class="mt-3"><Select v-model="editor.form.smtp_encryption" :label="t('mail.send.smtp_encryption')" :options="encItems" /></div>
+        <div class="mt-3"><Select v-model="editor.form.smtp_encryption" :label="t('mail.send.smtp_encryption')" :options="encItems" @update:model-value="applySmtpPort" /></div>
         <div class="mt-3 grid grid-cols-2 gap-3">
           <TextField v-model="editor.form.from_name" :label="t('mail.send.from_name')" />
           <TextField v-model="editor.form.from_email" :label="t('mail.send.from_email')" type="email" inputmode="email" autocomplete="off" />
@@ -349,11 +464,13 @@
       <div v-if="editor.testResult" class="rounded-lg px-3 py-2 text-xs" :class="editor.testResult.ok ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'">
         {{ editor.testResult.ok ? t('mail.accounts.test_ok') : t('mail.accounts.test_failed') }}<span v-if="editor.testResult.detail"> — {{ editor.testResult.detail }}</span>
       </div>
+      </template>
     </div>
     <template #footer>
       <Btn v-if="editor.id" variant="outline" :loading="editor.testing" class="mr-auto" @click="runTest">{{ t('mail.accounts.test') }}</Btn>
+      <Btn v-else-if="editor.step === 2" variant="ghost" class="mr-auto" @click="editor.step = 1">{{ t('mail.setup.back') }}</Btn>
       <Btn variant="ghost" @click="editor.show = false">{{ t('mail.form.cancel') }}</Btn>
-      <Btn variant="solid" :loading="editor.saving" @click="saveAccount">{{ t('mail.form.save') }}</Btn>
+      <Btn v-if="editor.id || editor.step === 2" variant="solid" :loading="editor.saving" @click="saveAccount">{{ t('mail.form.save') }}</Btn>
     </template>
   </Modal>
 
@@ -458,76 +575,41 @@
     </div>
   </Modal>
 
-  <Modal v-model="compose.show" :title="composeTitle" width="40rem">
-    <div class="space-y-3">
-      <!-- Account picker (compose only) -->
-      <Select v-if="compose.mode === 'compose'" v-model.number="compose.accountId" :label="t('mail.send.from_email')" :options="composeAccountItems" />
-
-      <!-- Reply recipient (server-derived, read-only) -->
-      <div v-if="compose.mode === 'reply'" class="rounded-lg bg-black/[0.03] px-3 py-2 text-xs dark:bg-white/5">
-        <span class="font-medium">{{ t('mail.send.to') }}:</span> {{ compose.recipientHint || '—' }}
-        <span v-if="compose.replyAll" class="ml-1 text-[var(--ll-muted)]">· {{ t('mail.send.reply_all') }}</span>
-      </div>
-
-      <!-- Recipients (compose / forward) -->
-      <template v-if="compose.mode !== 'reply'">
-        <TextField v-model="compose.to" :label="t('mail.send.to')" placeholder="name@example.com, …" autocomplete="off" />
-        <TextField v-model="compose.cc" :label="t('mail.send.cc')" placeholder="name@example.com, …" autocomplete="off" />
-        <TextField v-if="compose.mode === 'compose'" v-model="compose.bcc" :label="t('mail.send.bcc')" placeholder="name@example.com, …" autocomplete="off" />
-      </template>
-
-      <!-- Subject (compose only; reply/forward derive Re:/Fwd: server-side) -->
-      <TextField v-if="compose.mode === 'compose'" v-model="compose.subject" :label="t('mail.send.subject')" />
-
-      <!-- Optional Sent-folder override (blank → the account's default "Sent"). -->
-      <TextField v-model="compose.sentFolder" :label="t('mail.send.sent_folder')" :placeholder="t('mail.send.sent_folder_hint')" autocomplete="off" />
-
-      <!-- Body -->
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.send.body') }}</span>
-        <textarea
-          v-model="compose.body" rows="8"
-          class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] placeholder:text-[var(--ll-muted)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
-          :placeholder="t('mail.send.body')"
-        ></textarea>
-      </label>
-
-      <!-- Attachments (compose only, multipart upload) -->
-      <div v-if="compose.mode === 'compose'">
-        <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--ll-border)] px-3 py-1.5 text-sm hover:bg-black/[0.03] dark:hover:bg-white/5">
-          <Icon name="attach_file" :size="16" />{{ t('mail.send.attachments') }}
-          <input type="file" multiple class="hidden" @change="onComposeFiles">
-        </label>
-        <div v-if="compose.files.length" class="mt-2 space-y-1">
-          <div v-for="(f, i) in compose.files" :key="i" class="flex items-center gap-2 rounded-lg bg-black/[0.03] px-2.5 py-1.5 text-sm dark:bg-white/5">
-            <Icon name="attach_file" :size="15" class="shrink-0 text-[var(--ll-muted)]" />
-            <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
-            <span class="shrink-0 text-xs text-[var(--ll-muted)]">{{ fmtBytes(f.size) }}</span>
-            <button type="button" class="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[var(--ll-muted)] hover:bg-black/[0.06] hover:text-red-600 dark:hover:bg-white/10" @click="removeComposeFile(i)"><Icon name="close" :size="14" /></button>
-          </div>
-        </div>
+  <Modal v-model="assetPicker.show" :title="assetPicker.kind === 'files' ? t('mail.send.attach_file') : t('mail.send.attach_media')" width="52rem">
+    <div class="space-y-3"><TextField v-model="assetPicker.q" label="Suchen" icon="search" />
+      <div class="grid max-h-[55vh] grid-cols-2 gap-2 overflow-y-auto p-1 sm:grid-cols-3 lg:grid-cols-4">
+        <button v-for="item in assetPickerRows" :key="item.id" class="group relative overflow-hidden rounded-lg border text-left transition hover:border-primary-500" :class="isAssetSelected(item.id) ? 'border-primary-500 ring-2 ring-primary-500/20' : 'border-[var(--ll-border)]'" @click="selectAsset(item.id)">
+          <div class="grid aspect-[4/3] place-items-center bg-black/[0.03] dark:bg-white/[0.05]"><img v-if="assetPicker.kind === 'gallery' && (item as Photo).thumb" :src="galleryStore.thumbUrl(item.id)" :alt="item.name" class="h-full w-full object-cover"><img v-else-if="assetPicker.kind === 'files' && (item as FileEntry).mime.startsWith('image/')" :src="filesStore.thumbUrl(item as FileEntry)" :alt="item.name" class="h-full w-full object-cover"><Icon v-else :name="assetPicker.kind === 'gallery' ? 'image' : 'description'" :size="32" class="text-[var(--ll-muted)]" /></div>
+          <div class="p-2"><div class="truncate text-xs font-medium">{{ item.name }}</div><div class="mt-0.5 text-[0.7rem] text-[var(--ll-muted)]">{{ fmtBytes(item.size) }}</div></div><span v-if="isAssetSelected(item.id)" class="absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-primary-500 text-white"><Icon name="check" :size="14" /></span>
+        </button>
       </div>
     </div>
-    <template #footer>
-      <Btn variant="ghost" @click="compose.show = false">{{ t('mail.form.cancel') }}</Btn>
-      <Btn variant="solid" icon="send" :loading="compose.sending" @click="doSend">{{ t('mail.send.send') }}</Btn>
-    </template>
+    <template #footer><Btn variant="ghost" @click="assetPicker.show = false">{{ t('common.close') }}</Btn></template>
   </Modal>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
-import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
+import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody } from '@spa/stores/mail';
+import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft } from '@spa/stores/mail';
+import { useFilesStore, type FileEntry } from '@spa/stores/files';
+import { useGalleryStore, type Photo } from '@spa/stores/gallery';
+import { useCryptoStore } from '@spa/stores/crypto';
+import RichTextEditor from '@spa/components/RichTextEditor.vue';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
+import { renderInvoicePdfBlob } from '@spa/shared/invoice-print';
+import DOMPurify from 'dompurify';
 
 const s = useMailStore();
+const filesStore = useFilesStore();
+const galleryStore = useGalleryStore();
+const cryptoStore = useCryptoStore();
 const route = useRoute();
 const router = useRouter();
 const { success, error } = useToast();
@@ -541,11 +623,17 @@ const reader = ref<MailMessage | null>(null);
 const readerOpen = ref(false);
 const showHeaders = ref(false);
 const remoteOn = ref(false);
-const frameKey = ref(0);
+const printing = ref(false);
+const pdfExporting = ref(false);
+const attachmentVirusLoading = ref<string | null>(null);
+const attachmentVirusResults = reactive<Record<string, VirusTotalResult | undefined>>({});
+const signatures = ref<MailSignature[]>([]);
+const drafts = ref<MailDraft[]>([]);
+const draftListActive = ref(false);
 const dateFrom = ref('');
 const dateTo = ref('');
 
-const isUnified = computed(() => filters.accountId === null && filters.label === null && !filters.trashed);
+const isUnified = computed(() => !draftListActive.value && filters.accountId === null && filters.label === null && !filters.trashed);
 const hasHtml = computed(() => reader.value?.html != null);
 const allSelected = computed(() => s.messages.length > 0 && s.messages.every((m) => s.selected.includes(m.id)));
 
@@ -572,6 +660,14 @@ const logLevelItems = [
 const labelRuleItems = computed(() => [{ title: t('common.none'), value: 0 }, ...s.labels.map((l) => ({ title: l.name, value: l.id }))]);
 
 function foldersForAccount(id: number) { return s.folders.filter((f) => f.account_id === id); }
+function inboxFolder(id: number): string | null {
+  const folders = foldersForAccount(id);
+  const exact = folders.find((f) => /^inbox$/i.test(f.folder));
+  if (exact) return exact.folder;
+
+  const localized = folders.find((f) => /(?:posteingang|inbox)/i.test(f.folder));
+  return localized?.folder ?? null;
+}
 function unreadForAccount(id: number) { return s.folders.filter((f) => f.account_id === id).reduce((n, f) => n + f.unread, 0); }
 function accountName(id: number | null) { return id == null ? '—' : (s.accounts.find((a) => a.id === id)?.name ?? '—'); }
 function folderIcon(f: string) {
@@ -594,6 +690,12 @@ function authTone(v: string): 'success' | 'warning' | 'error' | 'gray' {
 function fmtDate(iso: string | null) { return libDate(iso); }
 function fmtDateTime(iso: string | null) { return libDateTime(iso); }
 function fmtBytes(n: number) { if (!n) return '0 B'; const u = ['B', 'KB', 'MB', 'GB']; const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024))); return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`; }
+function senderLabel(message: MailMessage): string {
+  if (message.from_name?.trim()) return message.from_name.trim();
+  const alias = message.from_email?.match(/^(.+)_([a-z0-9]{6,})@simplelogin\.co$/i);
+  if (alias) return alias[1].replaceAll('_at_', '@').replaceAll('_', '.');
+  return message.from_email || '—';
+}
 
 // ---- Deep links: mirror the selected account/folder/label + open message in
 // the URL query so a reload or shared link lands on the same place. `restoring`
@@ -643,7 +745,7 @@ async function applyRoute() {
 // --- Loading -----------------------------------------------------------------
 let statusTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
-  await Promise.all([s.loadAccounts(), s.loadLabels(), s.loadSavedSearches()]);
+  await Promise.all([s.loadAccounts(), s.loadLabels(), s.loadSavedSearches(), s.loadDrafts().then((rows) => { drafts.value = rows; }), api.get<{ signatures: MailSignature[] }>('/api/v1/mail/signatures').then((r) => { signatures.value = r.signatures; })]);
   await applyRoute();
   statusTimer = setInterval(async () => {
     if (s.accounts.some((a) => a.status === 'syncing')) { await s.pollStatus(); await s.loadFolders(filters.accountId); }
@@ -652,6 +754,7 @@ onMounted(async () => {
 onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); });
 
 async function reload() {
+  if (draftListActive.value) return;
   loading.value = true;
   s.selected = [];
   try { await s.loadMessages(1); } catch { error(t('mail.toast.load_failed')); } finally { loading.value = false; }
@@ -665,11 +768,19 @@ function debouncedReload() { clearTimeout(debTimer); debTimer = setTimeout(reloa
 function onDate() { filters.dateFrom = dateFrom.value || null; filters.dateTo = dateTo.value || null; reload(); }
 
 // --- Rail navigation ---------------------------------------------------------
-async function pickUnified() { s.resetFilters(); await s.loadFolders(null); reload(); }
-async function pickAccount(a: MailAccount) { s.resetFilters(); filters.accountId = a.id; await s.loadFolders(a.id); reload(); }
-function pickFolder(folder: string) { filters.folder = folder; filters.trashed = false; reload(); }
-function pickTrash() { filters.trashed = true; filters.label = null; reload(); }
-function pickLabel(id: number) { s.resetFilters(); filters.label = id; s.loadFolders(null); reload(); }
+async function pickUnified() { draftListActive.value = false; s.resetFilters(); await s.loadFolders(null); reload(); }
+async function pickAccount(a: MailAccount) {
+  draftListActive.value = false;
+  s.resetFilters();
+  filters.accountId = a.id;
+  await s.loadFolders(a.id);
+  filters.folder = inboxFolder(a.id);
+  reload();
+}
+function pickFolder(folder: string) { draftListActive.value = false; filters.folder = folder; filters.trashed = false; reload(); }
+function pickTrash() { draftListActive.value = false; filters.trashed = true; filters.label = null; reload(); }
+function pickLabel(id: number) { draftListActive.value = false; s.resetFilters(); filters.label = id; s.loadFolders(null); reload(); }
+async function pickDrafts() { draftListActive.value = true; readerOpen.value = false; s.selected = []; drafts.value = await s.loadDrafts(); }
 function toggleUnread() { filters.seen = filters.seen === false ? null : false; reload(); }
 function toggleSpam() { filters.spam = filters.spam === true ? null : true; reload(); }
 
@@ -679,19 +790,85 @@ function toggleSelectAll() { s.selected = allSelected.value ? [] : s.messages.ma
 
 // --- Reader ------------------------------------------------------------------
 async function openReader(m: MailMessage) {
-  showHeaders.value = false; remoteOn.value = false; frameKey.value++;
+  showHeaders.value = false; remoteOn.value = false;
   readerOpen.value = true;
   try {
     reader.value = await s.show(m.id);
     if (!m.seen) { await s.setSeen([m.id], true); m.seen = true; if (reader.value) reader.value.seen = true; refreshCounts(); }
   } catch { error(t('mail.toast.load_failed')); }
 }
-function toggleRemote() { remoteOn.value = !remoteOn.value; frameKey.value++; }
+function toggleRemote() { remoteOn.value = !remoteOn.value; }
+
+async function readerDocument(): Promise<string | null> {
+  if (!reader.value) return null;
+  try { return await api.text(`/api/v1/mail/messages/${reader.value.id}/body`); }
+  catch { error(t('common.error')); return null; }
+}
+function fileStem(): string { return `mail-${(reader.value?.date || reader.value?.created_at || new Date().toISOString()).slice(0, 10)}`; }
+function downloadEml() {
+  if (!reader.value) return;
+  const link = document.createElement('a');
+  link.href = s.rawUrl(reader.value.id, true);
+  link.download = `${fileStem()}.eml`;
+  document.body.appendChild(link); link.click(); link.remove();
+}
+async function printMessage() {
+  if (printing.value) return;
+  const popup = window.open('', '_blank', 'width=960,height=720');
+  if (!popup) { error(t('common.error')); return; }
+  printing.value = true;
+  try {
+    const body = await readerDocument();
+    if (!body) { popup.close(); return; }
+    popup.opener = null;
+    popup.document.open();
+    // The popup is same-origin with the app, so the print document must carry
+    // its own CSP. Prepend it when the server document has no <head> to patch,
+    // rather than silently writing the body without one.
+    const printCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">`;
+    popup.document.write(body.includes('</head>') ? body.replace('</head>', `${printCsp}</head>`) : printCsp + body);
+    popup.document.close();
+    popup.addEventListener('load', () => { popup.focus(); popup.print(); }, { once: true });
+  } finally { printing.value = false; }
+}
+async function exportPdf() {
+  if (pdfExporting.value) return;
+  pdfExporting.value = true;
+  try {
+    const body = await readerDocument();
+    if (!body) return;
+    const doc = new DOMParser().parseFromString(body, 'text/html');
+    doc.querySelectorAll('style').forEach((node) => node.remove());
+    const node = document.createElement('div');
+    node.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;padding:32px;background:#fff;color:#111;z-index:-1;';
+    // The reader body is server-sanitised, but rendering it here leaves the
+    // sandboxed iframe + strict CSP behind and puts message markup directly in
+    // the app origin. Sanitise again on this side so a parser differential or
+    // mutation-XSS in the stored HTML cannot execute with our session.
+    node.innerHTML = DOMPurify.sanitize(doc.body.innerHTML, { FORBID_TAGS: ['style'], FORBID_ATTR: ['srcset'] });
+    document.body.appendChild(node);
+    await nextTick();
+    const blob = await renderInvoicePdfBlob(node);
+    node.remove();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = `${fileStem()}.pdf`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch { error(t('common.error')); }
+  finally { pdfExporting.value = false; }
+}
 
 async function refreshCounts() { try { await s.loadFolders(filters.accountId); } catch { /* non-fatal */ } }
 
 async function readerTrash(m: MailMessage) { try { await s.trash([m.id]); readerOpen.value = false; await reload(); refreshCounts(); } catch { error(t('common.error')); } }
 async function readerRestore(m: MailMessage) { try { await s.restore([m.id]); readerOpen.value = false; await reload(); } catch { error(t('common.error')); } }
+async function readerSetSeen(seen: boolean) {
+  const message = reader.value;
+  if (!message) return;
+  try { await s.setSeen([message.id], seen); message.seen = seen; const row = s.messages.find((m) => m.id === message.id); if (row) row.seen = seen; refreshCounts(); }
+  catch { error(t('common.error')); }
+}
 
 async function doPushBack(m: MailMessage) {
   if (!await confirmAsk(t('mail.actions.confirm_push_back'))) return;
@@ -704,6 +881,21 @@ async function doDeleteOrigin(m: MailMessage) {
 async function saveAtt(attId: string, target: 'files' | 'paperless') {
   try { await s.saveAttachment(attId, target); success(target === 'files' ? t('mail.toast.saved_to_files') : t('mail.toast.saved_to_paperless')); }
   catch { error(t('mail.toast.save_attachment_failed')); }
+}
+async function scanAttachment(attId: string) {
+  attachmentVirusLoading.value = attId;
+  try {
+    const result = await s.virusTotalAttachment(attId);
+    attachmentVirusResults[attId] = result;
+    if (!result.known) success(t('mail.reader.virustotal_unknown'));
+    else if ((result.stats?.malicious ?? 0) + (result.stats?.suspicious ?? 0) > 0) error(t('mail.reader.virustotal_detected'));
+    else success(t('mail.reader.virustotal_clean'));
+  } catch (e) {
+    const code = e instanceof ApiError ? (e.body as { error?: string } | null)?.error : null;
+    error(t(code === 'virustotal_not_configured' ? 'files.virustotal_not_configured'
+      : code === 'virustotal_invalid_api_key' ? 'files.virustotal_invalid_api_key'
+        : code === 'virustotal_rate_limited' ? 'files.virustotal_rate_limited' : 'common.error'));
+  } finally { attachmentVirusLoading.value = null; }
 }
 
 // Save-to-Files with a destination folder picker (instead of always root).
@@ -771,12 +963,13 @@ async function toggleReaderLabel(id: number) {
 
 // --- Accounts ----------------------------------------------------------------
 const folderInput = ref('');
-const editor = reactive<{ show: boolean; id: number | null; saving: boolean; testing: boolean; folders: string[]; hasSmtpPassword: boolean; testResult: { ok: boolean; detail: string } | null; form: AccountBody }>({
-  show: false, id: null, saving: false, testing: false, folders: [], hasSmtpPassword: false, testResult: null,
+const editor = reactive<{ show: boolean; id: number | null; step: 1 | 2; email: string; detecting: boolean; discovery: MailAutoconfig | null; saving: boolean; testing: boolean; folders: string[]; hasSmtpPassword: boolean; testResult: { ok: boolean; detail: string } | null; form: AccountBody }>({
+  show: false, id: null, step: 1, email: '', detecting: false, discovery: null, saving: false, testing: false, folders: [], hasSmtpPassword: false, testResult: null,
   form: { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, skip_spam: true, enabled: true, sync_interval_minutes: null },
 });
 function openAccountEditor(a: MailAccount | null) {
   editor.testResult = null; folderInput.value = '';
+  editor.step = a ? 2 : 1; editor.email = ''; editor.discovery = null;
   editor.hasSmtpPassword = a?.has_smtp_password ?? false;
   if (a) {
     editor.id = a.id; editor.folders = [...(a.folders ?? [])];
@@ -786,6 +979,37 @@ function openAccountEditor(a: MailAccount | null) {
     Object.assign(editor.form, { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, skip_spam: true, enabled: true, sync_interval_minutes: null });
   }
   editor.show = true;
+}
+function defaultPort(encryption: string, protocol: 'imap' | 'smtp'): number {
+  if (encryption === 'ssl' || encryption === 'tls') return protocol === 'imap' ? 993 : 465;
+  return protocol === 'imap' ? 143 : 587;
+}
+function applyImapPort(encryption: string) { editor.form.port = defaultPort(encryption, 'imap'); }
+function applySmtpPort(encryption: string) { editor.form.smtp_port = defaultPort(encryption, 'smtp'); }
+async function discoverAccount() {
+  const email = editor.email.trim().toLowerCase();
+  if (!email || !email.includes('@')) { error(t('mail.setup.email_required')); return; }
+  editor.detecting = true;
+  try {
+    const { configuration } = await s.autoconfig(email);
+    editor.discovery = configuration;
+    const imap = configuration.imap;
+    const smtp = configuration.smtp;
+    const local = email.slice(0, email.indexOf('@'));
+    Object.assign(editor.form, {
+      name: editor.form.name || email,
+      host: imap?.host ?? editor.form.host,
+      port: imap?.port ?? editor.form.port,
+      username: imap?.username?.replace('%EMAILADDRESS%', email).replace('%EMAILLOCALPART%', local) ?? email,
+      encryption: imap?.encryption ?? editor.form.encryption,
+      smtp_host: smtp?.host ?? editor.form.smtp_host,
+      smtp_port: smtp?.port ?? editor.form.smtp_port,
+      smtp_username: smtp?.username?.replace('%EMAILADDRESS%', email).replace('%EMAILLOCALPART%', local) ?? email,
+      smtp_encryption: smtp?.encryption ?? editor.form.smtp_encryption,
+      from_email: email,
+    });
+    editor.step = 2;
+  } catch { error(t('mail.setup.detect_failed')); } finally { editor.detecting = false; }
 }
 function addFolder() { const v = folderInput.value.trim(); if (v && !editor.folders.includes(v)) editor.folders.push(v); folderInput.value = ''; }
 async function saveAccount() {
@@ -892,25 +1116,108 @@ async function openStats() { statsDlg.show = true; statsDlg.loading = true; try 
 
 // --- Compose / reply / forward -----------------------------------------------
 const compose = reactive<{
-  show: boolean; mode: 'compose' | 'reply' | 'forward'; sending: boolean;
-  sourceId: string | null; replyAll: boolean; accountId: number | null; recipientHint: string;
-  to: string; cc: string; bcc: string; subject: string; body: string; sentFolder: string; files: File[];
-}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [] });
+  show: boolean; minimized: boolean; mode: 'compose' | 'reply' | 'forward'; sending: boolean;
+  sourceId: string | null; replyAll: boolean; accountId: number | null; signatureId: number | null; recipientHint: string;
+  to: string; cc: string; bcc: string; subject: string; body: string; html: string; sentFolder: string; files: File[];
+  fileIds: number[]; galleryPhotoIds: number[]; readReceipt: boolean; highPriority: boolean; draftId: string | null; cryptoMode: 'none' | 'sign' | 'encrypt' | 'sign_encrypt'; cryptoType: 'pgp' | 'smime'; signingKeyId: number | null; recipientKeyIds: number[];
+}>({ show: false, minimized: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, signatureId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
+const composeSaving = ref(false);
+const composeShowCc = ref(false);
+const composeShowBcc = ref(false);
+const composeShowCrypto = ref(false);
+const recipientSuggestions = ref<{ name: string; email: string }[]>([]);
+let recipientTimer: ReturnType<typeof setTimeout> | null = null;
+let draftTimer: ReturnType<typeof setTimeout> | null = null;
+const assetPicker = reactive<{ show: boolean; kind: 'files' | 'gallery'; q: string }>({ show: false, kind: 'files', q: '' });
 
 const composeTitle = computed(() =>
   compose.mode === 'reply' ? (compose.replyAll ? t('mail.send.reply_all') : t('mail.send.reply'))
     : compose.mode === 'forward' ? t('mail.send.forward') : t('mail.send.compose'));
 const composeAccountItems = computed(() => sendableAccounts.value.map((a) => ({ title: `${a.name} · ${a.from_email}`, value: a.id })));
+const composeSignatureItems = computed(() => [{ title: t('common.none'), value: -1 }, ...signatures.value.filter((signature) => signature.account_ids.includes(Number(compose.accountId))).map((signature) => ({ title: signature.name, value: signature.id }))]);
+const composeEditorLabels = computed(() => ({ toolbar: t('mail.send.compose_toolbar'), format: t('mail.send.format'), text: t('mail.send.text'), heading: t('mail.send.heading'), bold: t('mail.send.bold'), italic: t('mail.send.italic'), underline: t('mail.send.underline'), bullets: t('mail.send.bullet_list'), numbers: t('mail.send.numbered_list'), color: t('mail.send.color'), link: t('mail.send.link'), image: t('mail.send.image'), clear: t('mail.send.clear_formatting'), font: t('mail.send.font'), size: t('mail.send.size'), quote: t('mail.send.quote'), align_left: t('mail.send.align_left'), align_center: t('mail.send.align_center'), align_right: t('mail.send.align_right') }));
+const cryptoModeItems = computed(() => [{ title: t('mail.send.crypto_none'), value: 'none' }, { title: t('mail.send.crypto_sign'), value: 'sign' }, { title: t('mail.send.crypto_encrypt'), value: 'encrypt' }, { title: t('mail.send.crypto_sign_encrypt'), value: 'sign_encrypt' }]);
+const cryptoTypeItems = computed(() => [{ title: 'OpenPGP', value: 'pgp' }, { title: 'S/MIME', value: 'smime' }]);
+const signingKeyItems = computed(() => cryptoStore.keys.filter((key) => key.type === compose.cryptoType && key.has_private).map((key) => ({ title: key.label, value: key.id })));
+const recipientKeyItems = computed(() => cryptoStore.recipients.filter((key) => key.type === compose.cryptoType).map((key) => ({ title: key.label, value: key.id })));
+async function openCryptoOptions() { composeShowCrypto.value = !composeShowCrypto.value; if (composeShowCrypto.value) { try { await cryptoStore.load(); } catch { error(t('common.error')); } } }
+function defaultSignature(accountId: number | null): number | null { return signatures.value.find((signature) => accountId != null && signature.default_account_ids.includes(accountId))?.id ?? null; }
+watch(() => compose.accountId, (accountId) => { if (compose.show) compose.signatureId = defaultSignature(accountId); });
+watch(() => [compose.to, compose.cc, compose.bcc, compose.subject, compose.sentFolder, compose.signatureId, compose.readReceipt, compose.highPriority, compose.fileIds.join(','), compose.galleryPhotoIds.join(',')], () => scheduleDraft());
 
 function parseEmails(str: string): string[] { return str.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean); }
-function resetComposeFields() { Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [], recipientHint: '', replyAll: false, sourceId: null }); }
+function resetComposeFields() {
+  Object.assign(compose, { minimized: false, to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, recipientHint: '', replyAll: false, sourceId: null, signatureId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
+  composeShowCc.value = false; composeShowBcc.value = false; composeShowCrypto.value = false;
+}
+const selectedFiles = computed(() => (filesStore.files as FileEntry[]).filter((file) => compose.fileIds.includes(file.id)));
+const selectedPhotos = computed(() => (galleryStore.photos as Photo[]).filter((photo) => compose.galleryPhotoIds.includes(photo.id)));
+const composeAttachmentCount = computed(() => compose.files.length + compose.fileIds.length + compose.galleryPhotoIds.length);
+const assetPickerRows = computed(() => {
+  const q = assetPicker.q.trim().toLowerCase();
+  const rows = assetPicker.kind === 'files' ? filesStore.files : galleryStore.photos;
+  return rows.filter((row) => !q || row.name.toLowerCase().includes(q)).slice(0, 250);
+});
+function isAssetSelected(id: number) { return assetPicker.kind === 'files' ? compose.fileIds.includes(id) : compose.galleryPhotoIds.includes(id); }
+async function openAssetPicker(kind: 'files' | 'gallery') {
+  assetPicker.kind = kind; assetPicker.q = '';
+  try { if (kind === 'files' && !filesStore.files.length) await filesStore.load(); if (kind === 'gallery' && !galleryStore.photos.length) await galleryStore.load(); assetPicker.show = true; } catch { error(t('common.error')); }
+}
+function selectAsset(id: number) { const ids = assetPicker.kind === 'files' ? compose.fileIds : compose.galleryPhotoIds; const index = ids.indexOf(id); if (index >= 0) ids.splice(index, 1); else if (ids.length + compose.files.length < 20) ids.push(id); scheduleDraft(); }
+function removeFileAttachment(id: number) { compose.fileIds = compose.fileIds.filter((value) => value !== id); scheduleDraft(); }
+function removeGalleryAttachment(id: number) { compose.galleryPhotoIds = compose.galleryPhotoIds.filter((value) => value !== id); scheduleDraft(); }
+function onComposeRichText(html: string) { compose.html = html; compose.body = new DOMParser().parseFromString(html, 'text/html').body.innerText; scheduleDraft(); }
+function setEditorContent() { /* v-model keeps the shared editor synchronized. */ }
+function addRecipient(email: string) {
+  const current = compose.to;
+  const prefix = current.replace(/\s*[^,;\n]*$/, '').replace(/[\s,;]+$/, '').trim();
+  compose.to = prefix === '' ? email : `${prefix}, ${email}`;
+  recipientSuggestions.value = [];
+  scheduleDraft();
+}
+function lookupRecipients() {
+  if (recipientTimer) clearTimeout(recipientTimer);
+  recipientTimer = setTimeout(async () => {
+    const q = compose.to.split(/[,;\n]/).pop()?.trim() ?? '';
+    if (q.length < 2) { recipientSuggestions.value = []; return; }
+    try { const data = await api.get<{ contacts: { fn?: string | null; emails?: string[] | null }[] }>('/api/v1/contacts/data'); recipientSuggestions.value = data.contacts.flatMap((contact) => (contact.emails ?? []).map((email) => ({ name: contact.fn ?? '', email }))).filter((entry) => `${entry.name} ${entry.email}`.toLowerCase().includes(q.toLowerCase())).slice(0, 8); } catch { recipientSuggestions.value = []; }
+  }, 180);
+}
+function draftPayload(): Omit<MailDraft, 'id' | 'updated_at'> { return { mail_account_id: compose.accountId, mode: compose.mode, source_message_id: compose.sourceId, to: parseEmails(compose.to), cc: parseEmails(compose.cc), bcc: parseEmails(compose.bcc), subject: compose.subject || null, text_body: compose.body || null, html_body: compose.html || null, mail_signature_id: compose.signatureId, sent_folder: compose.sentFolder || null, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority, crypto_mode: compose.cryptoMode, crypto_type: compose.cryptoType, signing_key_id: compose.signingKeyId, recipient_key_ids: compose.recipientKeyIds }; }
+async function persistDraft() {
+  if (!compose.show || compose.sending) return;
+  composeSaving.value = true;
+  try {
+    const row = compose.draftId ? await s.updateDraft(compose.draftId, draftPayload()) : await s.createDraft(draftPayload());
+    compose.draftId = row.id;
+    const index = drafts.value.findIndex((draft) => draft.id === row.id);
+    if (index >= 0) drafts.value[index] = row; else drafts.value.unshift(row);
+  } catch { /* The next edit retries without losing the local draft. */ } finally { composeSaving.value = false; }
+}
+function scheduleDraft() {
+  if (!compose.show || compose.sending) return;
+  if (draftTimer) clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => { void persistDraft(); }, 900);
+}
+async function saveDraftNow() { if (draftTimer) clearTimeout(draftTimer); await persistDraft(); }
+async function closeCompose() { if (draftTimer) clearTimeout(draftTimer); await persistDraft(); compose.show = false; }
+async function discardCompose() { if (draftTimer) clearTimeout(draftTimer); if (compose.draftId) { await s.deleteDraft(compose.draftId); drafts.value = drafts.value.filter((draft) => draft.id !== compose.draftId); } resetComposeFields(); compose.show = false; }
+function openDraft(draft: MailDraft) {
+  resetComposeFields();
+  Object.assign(compose, { show: true, draftId: draft.id, mode: draft.mode, accountId: draft.mail_account_id, sourceId: draft.source_message_id, to: (draft.to ?? []).join(', '), cc: (draft.cc ?? []).join(', '), bcc: (draft.bcc ?? []).join(', '), subject: draft.subject ?? '', body: draft.text_body ?? '', html: draft.html_body ?? '', sentFolder: draft.sent_folder ?? '', signatureId: draft.mail_signature_id, fileIds: draft.file_ids ?? [], galleryPhotoIds: draft.gallery_photo_ids ?? [], readReceipt: draft.read_receipt, highPriority: draft.high_priority, cryptoMode: draft.crypto_mode ?? 'none', cryptoType: draft.crypto_type ?? 'pgp', signingKeyId: draft.signing_key_id ?? null, recipientKeyIds: draft.recipient_key_ids ?? [] });
+  composeShowCc.value = compose.cc !== ''; composeShowBcc.value = compose.bcc !== '';
+  readerOpen.value = false; setEditorContent();
+}
 
 function openCompose() {
   if (!sendableAccounts.value.length) { error(t('mail.send.no_smtp')); return; }
   resetComposeFields();
   compose.mode = 'compose';
   compose.accountId = sendableAccounts.value[0].id;
+  compose.signatureId = defaultSignature(compose.accountId);
   compose.show = true;
+  readerOpen.value = false;
+  setEditorContent();
 }
 function openReply(all: boolean) {
   if (!reader.value || !readerCanSend.value) { error(t('mail.send.no_smtp')); return; }
@@ -919,8 +1226,11 @@ function openReply(all: boolean) {
   compose.sourceId = reader.value.id;
   compose.replyAll = all;
   compose.accountId = reader.value.account_id;
+  compose.signatureId = defaultSignature(compose.accountId);
   compose.recipientHint = reader.value.reply_to || reader.value.from_email || reader.value.from_name || '';
   compose.show = true;
+  readerOpen.value = false;
+  setEditorContent();
 }
 function openForward() {
   if (!reader.value || !readerCanSend.value) { error(t('mail.send.no_smtp')); return; }
@@ -928,15 +1238,23 @@ function openForward() {
   compose.mode = 'forward';
   compose.sourceId = reader.value.id;
   compose.accountId = reader.value.account_id;
+  compose.signatureId = defaultSignature(compose.accountId);
   compose.show = true;
+  readerOpen.value = false;
+  setEditorContent();
 }
 
 function onComposeFiles(e: Event) {
   const input = e.target as HTMLInputElement;
-  if (input.files) compose.files.push(...Array.from(input.files));
+  if (input.files) addComposeFiles(Array.from(input.files));
   input.value = '';
 }
-function removeComposeFile(i: number) { compose.files.splice(i, 1); }
+function addComposeFiles(files: File[]) {
+  const accepted = files.slice(0, Math.max(0, 20 - compose.files.length - compose.fileIds.length - compose.galleryPhotoIds.length));
+  compose.files.push(...accepted);
+  scheduleDraft();
+}
+function removeComposeFile(i: number) { compose.files.splice(i, 1); scheduleDraft(); }
 
 // Surface the backend's machine error code (ApiError body { ok:false, error }) as a toast.
 function sendErr(e: unknown): string {
@@ -950,6 +1268,7 @@ function sendErr(e: unknown): string {
 }
 
 async function doSend() {
+  if (compose.sending) return;
   compose.sending = true;
   try {
     if (compose.mode === 'compose') {
@@ -957,19 +1276,19 @@ async function doSend() {
       const cc = parseEmails(compose.cc);
       const bcc = parseEmails(compose.bcc);
       if (!to.length && !cc.length && !bcc.length) { error(t('mail.send.no_recipient')); return; }
-      if (!compose.body.trim() && !compose.files.length) { error(t('mail.send.empty_body')); return; }
+      if (!compose.body.trim() && !compose.files.length && !compose.fileIds.length && !compose.galleryPhotoIds.length) { error(t('mail.send.empty_body')); return; }
       const sent = compose.sentFolder.trim() || null;
-      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, sent_folder: sent, files: compose.files });
+      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, sent_folder: sent, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority, crypto_mode: compose.cryptoMode, crypto_type: compose.cryptoType, signing_key_id: compose.signingKeyId, recipient_key_ids: compose.recipientKeyIds });
     } else if (compose.mode === 'reply') {
-      if (!compose.body.trim()) { error(t('mail.send.empty_body')); return; }
-      await s.reply(String(compose.sourceId), { text: compose.body, all: compose.replyAll, sent_folder: compose.sentFolder.trim() || null });
+      if (!compose.body.trim() && !compose.files.length && !compose.fileIds.length && !compose.galleryPhotoIds.length) { error(t('mail.send.empty_body')); return; }
+      await s.reply(String(compose.sourceId), { text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, all: compose.replyAll, sent_folder: compose.sentFolder.trim() || null, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority, crypto_mode: compose.cryptoMode, crypto_type: compose.cryptoType, signing_key_id: compose.signingKeyId, recipient_key_ids: compose.recipientKeyIds });
     } else {
       const to = parseEmails(compose.to);
       if (!to.length) { error(t('mail.send.no_recipient')); return; }
       // Forward needs no body — the server attaches the original .eml + a header.
-      await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null, sent_folder: compose.sentFolder.trim() || null });
+      await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, sent_folder: compose.sentFolder.trim() || null, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority, crypto_mode: compose.cryptoMode, crypto_type: compose.cryptoType, signing_key_id: compose.signingKeyId, recipient_key_ids: compose.recipientKeyIds });
     }
-    compose.show = false;
+    if (compose.draftId) await s.deleteDraft(compose.draftId); drafts.value = drafts.value.filter((draft) => draft.id !== compose.draftId); compose.show = false;
     success(t('mail.send.sent'));
   } catch (e) { error(sendErr(e)); } finally { compose.sending = false; }
 }

@@ -34,6 +34,12 @@ export interface MailAccount {
   message_count: number;
 }
 
+export interface MailAutoconfigCandidate { host: string; port: number; encryption: 'ssl' | 'tls' | 'starttls' | 'none'; username: string | null }
+export interface MailAutoconfig {
+  email: string; domain: string; domain_resolves: boolean; imap: MailAutoconfigCandidate | null; smtp: MailAutoconfigCandidate | null;
+  sources: string[]; outlook_autodiscover: boolean;
+}
+
 /** Whether an account can send — mirrors the backend MailAccount::hasSmtp(). */
 export function accountCanSend(a: MailAccount): boolean {
   return !!(a.smtp_host && a.smtp_host.trim() && a.from_email && a.from_email.trim());
@@ -46,6 +52,8 @@ export interface MailAttachment {
   size: number;
   inline: boolean;
 }
+export interface MailSignature { id: number; name: string; html: string | null; account_ids: number[]; default_account_ids: number[] }
+export interface VirusTotalResult { known: boolean; sha256: string; stats?: { malicious: number; suspicious: number; harmless: number; undetected: number } }
 
 export interface MailLabel { id: number; name: string; color: string; message_count?: number }
 
@@ -162,16 +170,34 @@ export interface AccountBody {
 
 /** Result of a compose/reply/forward send. */
 export interface SendResult { ok: boolean; message_id: string | null; appended_to_sent: boolean }
+export interface CryptoPayload { crypto_mode?: 'none' | 'sign' | 'encrypt' | 'sign_encrypt'; crypto_type?: 'pgp' | 'smime' | null; signing_key_id?: number | null; recipient_key_ids?: number[]; }
 
-export interface ComposePayload {
+export interface ComposePayload extends CryptoPayload {
   account_id: number;
   to: string[]; cc?: string[]; bcc?: string[];
   subject?: string | null; text?: string | null; html?: string | null;
-  attachment_ids?: string[]; sent_folder?: string | null;
+  attachment_ids?: string[]; signature_id?: number | null; sent_folder?: string | null;
+  file_ids?: number[]; gallery_photo_ids?: number[];
+  read_receipt?: boolean; high_priority?: boolean;
   files?: File[];
 }
-export interface ReplyPayload { text?: string | null; html?: string | null; all?: boolean; sent_folder?: string | null }
-export interface ForwardPayload { to: string[]; cc?: string[]; text?: string | null; html?: string | null; sent_folder?: string | null }
+export interface MailDraft {
+  id: string; mail_account_id: number | null; mode: 'compose' | 'reply' | 'forward'; source_message_id: string | null;
+  to: string[] | null; cc: string[] | null; bcc: string[] | null; subject: string | null;
+  text_body: string | null; html_body: string | null; mail_signature_id: number | null; sent_folder: string | null;
+  file_ids: number[] | null; gallery_photo_ids: number[] | null; read_receipt: boolean; high_priority: boolean; updated_at: string;
+  crypto_mode?: 'none' | 'sign' | 'encrypt' | 'sign_encrypt'; crypto_type?: 'pgp' | 'smime' | null; signing_key_id?: number | null; recipient_key_ids?: number[] | null;
+}
+export interface ReplyPayload extends CryptoPayload {
+  text?: string | null; html?: string | null; signature_id?: number | null; all?: boolean; sent_folder?: string | null;
+  attachment_ids?: string[]; file_ids?: number[]; gallery_photo_ids?: number[];
+  read_receipt?: boolean; high_priority?: boolean; files?: File[];
+}
+export interface ForwardPayload extends CryptoPayload {
+  to: string[]; cc?: string[]; text?: string | null; html?: string | null; signature_id?: number | null; sent_folder?: string | null;
+  attachment_ids?: string[]; file_ids?: number[]; gallery_photo_ids?: number[];
+  read_receipt?: boolean; high_priority?: boolean; files?: File[];
+}
 
 function defaultFilters(): MailFilters {
   return { accountId: null, folder: null, q: '', seen: null, spam: null, label: null, dateFrom: null, dateTo: null, trashed: false, threadId: null };
@@ -202,6 +228,7 @@ export const useMailStore = defineStore('mail', () => {
       : await api.post<{ account: MailAccount }>('/api/v1/mail/accounts', body);
     return r.account;
   }
+  const autoconfig = (email: string) => api.post<{ configuration: MailAutoconfig }>('/api/v1/mail/accounts/autoconfig', { email });
   const deleteAccount = (id: number) => api.delete(`/api/v1/mail/accounts/${id}`);
   const testAccount = (id: number) => api.post<{ ok: boolean; detail: string }>(`/api/v1/mail/accounts/${id}/test`);
   const syncNow = (id: number) => api.post<{ dispatched: boolean }>(`/api/v1/mail/accounts/${id}/sync`);
@@ -254,7 +281,8 @@ export const useMailStore = defineStore('mail', () => {
 
   const bodyUrl = (id: string, remote = false) => api.streamUrl(`/api/v1/mail/messages/${id}/body${remote ? '?remote=1' : ''}`);
   const rawUrl = (id: string, download = false) => api.streamUrl(`/api/v1/mail/raw/${id}${download ? '?download=1' : ''}`);
-  const attachmentRawUrl = (attId: string) => api.streamUrl(`/api/v1/mail/attachments/${attId}/raw`);
+  const attachmentRawUrl = (attId: string, download = false) => api.streamUrl(`/api/v1/mail/attachments/${attId}/raw${download ? '?download=1' : ''}`);
+  const virusTotalAttachment = (attId: string) => api.post<VirusTotalResult>(`/api/v1/mail/attachments/${attId}/virustotal`);
 
   const saveAttachment = (attId: string, target: 'files' | 'paperless', folderId?: number | null) =>
     api.post<{ ok: boolean; target: string; file_id?: number; task?: string }>(`/api/v1/mail/attachments/${attId}/save`, { target, folder_id: folderId ?? null });
@@ -279,23 +307,81 @@ export const useMailStore = defineStore('mail', () => {
       if (p.subject != null) form.append('subject', p.subject);
       if (p.text != null) form.append('text', p.text);
       if (p.html != null) form.append('html', p.html);
+      if (p.signature_id != null) form.append('signature_id', String(p.signature_id));
       for (const id of p.attachment_ids ?? []) form.append('attachment_ids[]', id);
+      for (const id of p.file_ids ?? []) form.append('file_ids[]', String(id));
+      for (const id of p.gallery_photo_ids ?? []) form.append('gallery_photo_ids[]', String(id));
+      if (p.read_receipt) form.append('read_receipt', '1');
+      if (p.high_priority) form.append('high_priority', '1');
+      appendCrypto(form, p);
       for (const f of p.files) form.append('attachments[]', f);
       if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
       return api.upload<SendResult>('/api/v1/mail/messages/compose', form);
     }
     return api.post<SendResult>('/api/v1/mail/messages/compose', {
       account_id: p.account_id, to: p.to, cc: p.cc ?? [], bcc: p.bcc ?? [],
-      subject: p.subject ?? null, text: p.text ?? null, html: p.html ?? null,
+      subject: p.subject ?? null, text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null,
       attachment_ids: p.attachment_ids ?? [], sent_folder: p.sent_folder ?? null,
+      file_ids: p.file_ids ?? [], gallery_photo_ids: p.gallery_photo_ids ?? [],
+      read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
+      crypto_mode: p.crypto_mode ?? 'none', crypto_type: p.crypto_type ?? null, signing_key_id: p.signing_key_id ?? null, recipient_key_ids: p.recipient_key_ids ?? [],
     });
   }
-  const reply = (id: string, p: ReplyPayload) => api.post<SendResult>(`/api/v1/mail/messages/${id}/reply`, {
-    text: p.text ?? null, html: p.html ?? null, all: p.all ?? false, sent_folder: p.sent_folder ?? null,
-  });
-  const forward = (id: string, p: ForwardPayload) => api.post<SendResult>(`/api/v1/mail/messages/${id}/forward`, {
-    to: p.to, cc: p.cc ?? [], text: p.text ?? null, html: p.html ?? null, sent_folder: p.sent_folder ?? null,
-  });
+
+  function appendAttachments(form: FormData, p: { attachment_ids?: string[]; file_ids?: number[]; gallery_photo_ids?: number[]; files?: File[] }) {
+    for (const id of p.attachment_ids ?? []) form.append('attachment_ids[]', id);
+    for (const id of p.file_ids ?? []) form.append('file_ids[]', String(id));
+    for (const id of p.gallery_photo_ids ?? []) form.append('gallery_photo_ids[]', String(id));
+    for (const file of p.files ?? []) form.append('attachments[]', file);
+  }
+  function appendCrypto(form: FormData, p: CryptoPayload) { if (p.crypto_mode && p.crypto_mode !== 'none') { form.append('crypto_mode', p.crypto_mode); if (p.crypto_type) form.append('crypto_type', p.crypto_type); if (p.signing_key_id != null) form.append('signing_key_id', String(p.signing_key_id)); for (const id of p.recipient_key_ids ?? []) form.append('recipient_key_ids[]', String(id)); } }
+  const loadDrafts = () => api.get<{ drafts: MailDraft[] }>('/api/v1/mail/drafts').then((r) => r.drafts);
+  const createDraft = (body: Omit<MailDraft, 'id' | 'updated_at'>) => api.post<{ draft: MailDraft }>('/api/v1/mail/drafts', body).then((r) => r.draft);
+  const updateDraft = (id: string, body: Partial<Omit<MailDraft, 'id' | 'updated_at'>>) => api.put<{ draft: MailDraft }>(`/api/v1/mail/drafts/${id}`, body).then((r) => r.draft);
+  const deleteDraft = (id: string) => api.delete(`/api/v1/mail/drafts/${id}`);
+  async function reply(id: string, p: ReplyPayload): Promise<SendResult> {
+    if (p.files?.length) {
+      const form = new FormData();
+      if (p.text != null) form.append('text', p.text);
+      if (p.html != null) form.append('html', p.html);
+      if (p.signature_id != null) form.append('signature_id', String(p.signature_id));
+      if (p.all) form.append('all', '1');
+      if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
+      if (p.read_receipt) form.append('read_receipt', '1');
+      if (p.high_priority) form.append('high_priority', '1');
+      appendCrypto(form, p);
+      appendAttachments(form, p);
+      return api.upload<SendResult>(`/api/v1/mail/messages/${id}/reply`, form);
+    }
+    return api.post<SendResult>(`/api/v1/mail/messages/${id}/reply`, {
+      text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, all: p.all ?? false, sent_folder: p.sent_folder ?? null,
+      attachment_ids: p.attachment_ids ?? [], file_ids: p.file_ids ?? [], gallery_photo_ids: p.gallery_photo_ids ?? [],
+      read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
+      crypto_mode: p.crypto_mode ?? 'none', crypto_type: p.crypto_type ?? null, signing_key_id: p.signing_key_id ?? null, recipient_key_ids: p.recipient_key_ids ?? [],
+    });
+  }
+  async function forward(id: string, p: ForwardPayload): Promise<SendResult> {
+    if (p.files?.length) {
+      const form = new FormData();
+      for (const recipient of p.to) form.append('to[]', recipient);
+      for (const recipient of p.cc ?? []) form.append('cc[]', recipient);
+      if (p.text != null) form.append('text', p.text);
+      if (p.html != null) form.append('html', p.html);
+      if (p.signature_id != null) form.append('signature_id', String(p.signature_id));
+      if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
+      if (p.read_receipt) form.append('read_receipt', '1');
+      if (p.high_priority) form.append('high_priority', '1');
+      appendCrypto(form, p);
+      appendAttachments(form, p);
+      return api.upload<SendResult>(`/api/v1/mail/messages/${id}/forward`, form);
+    }
+    return api.post<SendResult>(`/api/v1/mail/messages/${id}/forward`, {
+      to: p.to, cc: p.cc ?? [], text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, sent_folder: p.sent_folder ?? null,
+      attachment_ids: p.attachment_ids ?? [], file_ids: p.file_ids ?? [], gallery_photo_ids: p.gallery_photo_ids ?? [],
+      read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
+      crypto_mode: p.crypto_mode ?? 'none', crypto_type: p.crypto_type ?? null, signing_key_id: p.signing_key_id ?? null, recipient_key_ids: p.recipient_key_ids ?? [],
+    });
+  }
 
   // --- Labels ---------------------------------------------------------------
   async function loadLabels() {
@@ -370,10 +456,11 @@ export const useMailStore = defineStore('mail', () => {
 
   return {
     accounts, folders, folderTotals, messages, meta, selected, filters, openMessage, labels, savedSearches, rules, logs,
-    loadAccounts, saveAccount, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
+    loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
+    virusTotalAttachment,
     setSeen, trash, restore, pushBack, deleteOrigin, setLabels,
-    compose, reply, forward,
+    compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, updateRule, deleteRule,
     loadSavedSearches, saveSearch, deleteSavedSearch,

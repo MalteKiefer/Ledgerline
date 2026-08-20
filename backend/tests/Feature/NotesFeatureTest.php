@@ -47,18 +47,18 @@ class NotesFeatureTest extends TestCase
 
     public function test_attach_from_files_and_gallery_copies_bytes_and_rejects_non_media(): void
     {
-        Storage::fake('files');
+        Storage::fake((string) config('files.disk'));
         $user = User::factory()->create();
         $this->actingAs($user);
         $id = $this->postJson(route('notes.store'), ['title' => 'N', 'body' => 'b'])->json('note.id');
 
         // An owner-scoped image in the Files module + a Gallery photo, both on the files disk.
-        Storage::disk('files')->put('files/a.png', 'PNGBYTES');
+        Storage::disk((string) config('files.disk'))->put('files/a.png', 'PNGBYTES');
         $file = FileEntry::forceCreate([
             'user_id' => $user->id, 'name' => 'a.png', 'storage_path' => 'files/a.png',
             'mime' => 'image/png', 'size' => 8, 'sha256' => str_repeat('0', 64), 'version' => 0,
         ]);
-        Storage::disk('files')->put('gallery/g.jpg', 'JPGBYTES');
+        Storage::disk((string) config('files.disk'))->put('gallery/g.jpg', 'JPGBYTES');
         $photo = GalleryPhoto::forceCreate([
             'user_id' => $user->id, 'name' => 'g.jpg', 'storage_path' => 'gallery/g.jpg',
             'mime' => 'image/jpeg', 'size' => 8, 'sha256' => str_repeat('1', 64), 'version' => 0,
@@ -71,7 +71,7 @@ class NotesFeatureTest extends TestCase
         $this->getJson(route('notes.show', $id))->assertOk()->assertJsonCount(2, 'note.attachments');
 
         // A non-media file cannot be embedded.
-        Storage::disk('files')->put('files/d.pdf', '%PDF');
+        Storage::disk((string) config('files.disk'))->put('files/d.pdf', '%PDF');
         $pdf = FileEntry::forceCreate([
             'user_id' => $user->id, 'name' => 'd.pdf', 'storage_path' => 'files/d.pdf',
             'mime' => 'application/pdf', 'size' => 4, 'sha256' => str_repeat('2', 64), 'version' => 0,
@@ -90,7 +90,7 @@ class NotesFeatureTest extends TestCase
 
     public function test_video_can_be_attached(): void
     {
-        Storage::fake('files');
+        Storage::fake((string) config('files.disk'));
         $this->actingAs(User::factory()->create());
         $id = $this->postJson(route('notes.store'), ['title' => 'V', 'body' => 'b'])->json('note.id');
         $this->post(route('notes.attachments.store', $id), [
@@ -181,7 +181,7 @@ class NotesFeatureTest extends TestCase
 
     public function test_attachment_upload_stream_delete_and_export(): void
     {
-        Storage::fake('files');
+        Storage::fake((string) config('files.disk'));
         $this->actingAs(User::factory()->create());
         $id = $this->postJson(route('notes.store'), ['title' => 'Doc', 'body' => 'body', 'tags' => ['x']])->json('note.id');
 

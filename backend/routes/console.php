@@ -22,6 +22,10 @@ Schedule::command('finance:fetch-fx')->dailyAt('03:15')->withoutOverlapping();
 // Remind the owner about unpaid, overdue invoices (throttled per invoice).
 Schedule::command('invoices:remind')->dailyAt('08:00')->withoutOverlapping();
 
+// Ask each finance user for a current bank-statement CSV no more than once every
+// seven days; a newly imported transaction batch automatically suppresses it.
+Schedule::command('finance:remind-bank-csv')->dailyAt('08:10')->withoutOverlapping();
+
 // Notify about tasks due today / overdue (throttled per task per due-date).
 Schedule::command('tasks:remind')->dailyAt('07:00')->withoutOverlapping();
 
@@ -31,6 +35,9 @@ Schedule::command('tasks:remind-alarms')->everyFiveMinutes()->withoutOverlapping
 
 // Notify about contacts whose birthday is today (throttled once per contact/year).
 Schedule::command('contacts:birthday-remind')->dailyAt('07:00')->withoutOverlapping();
+// Ledgerline is the contact source of truth; replicas pull, version and then
+// converge to the canonical local cards every five minutes.
+Schedule::command('contacts:sync-sources')->everyFiveMinutes()->withoutOverlapping();
 
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();

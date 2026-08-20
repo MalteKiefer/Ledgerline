@@ -509,7 +509,11 @@ class FinanceRelationalTest extends TestCase
             'file' => UploadedFile::fake()->create('same-bytes-other-user.pdf', 20, 'application/pdf'),
             'sig' => 'same-bytes-sig',
         ])->assertCreated();
-        $this->assertSame(3, FinanceReceipt::count());
+        // count() runs under the owner scope, so from here it reports the new
+        // owner's single receipt. The global count proves nothing was reused:
+        // three rows exist, one of them theirs.
+        $this->assertSame(1, FinanceReceipt::count());
+        $this->assertSame(3, FinanceReceipt::withoutGlobalScopes()->count());
     }
 
     public function test_standalone_receipt_split_link_is_mutually_exclusive_with_the_single_link(): void
@@ -547,10 +551,15 @@ class FinanceRelationalTest extends TestCase
         $otherPm = PaymentMethod::create(['type' => 'bank', 'name' => 'Other', 'business' => true]);
         $otherTx = BankTransaction::create(['payment_method_id' => $otherPm->id, 'date' => '2026-07-18', 'amount' => -1.00, 'sig' => 'sig-other']);
 
+        // The JSON contract lives on the API twin: the web route answers a
+        // validation failure with the usual redirect. Assert the rejection where
+        // it is specified, and assert the outcome that actually matters — the
+        // foreign id never reaches the row.
         $this->actingAs($user);
-        $this->putJson(route('finance.receipts.update', $id), [
+        $this->putJson(route('api.finance.receipts.update', $id), [
             'linked_transaction_ids' => [$otherTx->id], 'version' => 2,
         ])->assertStatus(422);
+        $this->assertNull(FinanceReceipt::query()->findOrFail($id)->linked_transaction_ids);
     }
 
     public function test_standalone_receipt_is_owner_scoped(): void

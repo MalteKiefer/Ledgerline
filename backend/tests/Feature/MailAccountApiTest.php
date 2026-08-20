@@ -8,6 +8,7 @@ use App\Jobs\Mail\SyncMailAccount;
 use App\Models\MailAccount;
 use App\Models\User;
 use App\Support\Mail\ImapProbe;
+use App\Support\Mail\MailAutoconfig;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -65,6 +66,25 @@ class MailAccountApiTest extends TestCase
             ->assertJsonMissingPath('account.password');
 
         $this->getJson('/api/v1/mail/accounts', $headers)->assertOk()->assertJsonCount(1, 'accounts');
+    }
+
+    public function test_autoconfig_returns_non_secret_discovery_for_owner(): void
+    {
+        $this->mock(MailAutoconfig::class, function ($mock): void {
+            $mock->shouldReceive('discover')->once()->with('me@example.com')->andReturn([
+                'email' => 'me@example.com', 'domain' => 'example.com', 'domain_resolves' => true,
+                'imap' => ['host' => 'imap.example.com', 'port' => 993, 'encryption' => 'ssl', 'username' => '%EMAILADDRESS%'],
+                'smtp' => ['host' => 'smtp.example.com', 'port' => 587, 'encryption' => 'starttls', 'username' => '%EMAILADDRESS%'],
+                'sources' => ['autoconfig'], 'outlook_autodiscover' => false,
+            ]);
+        });
+
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('mail.accounts.autoconfig'), ['email' => 'me@example.com'])
+            ->assertOk()
+            ->assertJsonPath('configuration.imap.host', 'imap.example.com')
+            ->assertJsonMissingPath('configuration.password')
+            ->assertHeader('Cache-Control', 'no-store, private');
     }
 
     public function test_foreign_account_is_404_not_403(): void

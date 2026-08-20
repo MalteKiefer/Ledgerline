@@ -110,6 +110,22 @@ export const api = {
     const u = apiUrl(path);
     return t ? `${u}${u.includes('?') ? '&' : '?'}_token=${encodeURIComponent(t)}` : u;
   },
+  // Bearer-authed raw text fetch for a non-JSON GET body (e.g. a text/code
+  // file's raw bytes for an inline preview). request()'s JSON.parse-if-it-
+  // looks-like-JSON fallback would silently turn a .json file's raw text
+  // into a re-serialized object instead of the original bytes — this always
+  // returns the response body as-is.
+  text: async (path: string): Promise<string> => {
+    const token = getToken();
+    const res = await fetch(apiUrl(path), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (res.status === 401) {
+      setToken(null);
+      if (onUnauthorized) onUnauthorized();
+      throw new ApiError(401, null);
+    }
+    if (!res.ok) throw new ApiError(res.status, null);
+    return res.text();
+  },
 };
 
 // Multipart upload with byte-level progress (fetch can't observe upload

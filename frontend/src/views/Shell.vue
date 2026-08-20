@@ -184,7 +184,7 @@ const crumbRoot = computed(() => {
 const leafMap: Record<string, string> = {
   'settings.users': 'settings.users_section', 'settings.groups': 'settings.groups_section', 'settings.company': 'settings.company_section',
   'settings.backup': 'settings.backup_section', 'settings.security-log': 'settings.seclog_title', 'settings.notifications-config': 'settings.notifications_section',
-  'settings.security': 'settings.security_section', 'settings.files-limits': 'settings.files_limits_heading', 'settings.system': 'settings.system_section', 'settings.paperless': 'settings.paperless_section',
+  'settings.security': 'settings.security_section', 'settings.files-limits': 'settings.files_limits_heading', 'settings.virustotal': 'settings.virustotal_section', 'settings.system': 'settings.system_section', 'settings.paperless': 'settings.paperless_section',
   'profile.account': 'account.nav_account', 'profile.appearance': 'account.nav_appearance', 'profile.security': 'account.nav_security', 'profile.devices': 'account.nav_devices', 'profile.data': 'account.hub_data_heading',
 };
 const crumbLeaf = computed(() => {

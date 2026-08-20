@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'bank_csv_reminder_title' => 'Загрузите актуальный банковский CSV',
+    'bank_csv_reminder_body' => 'Последний импорт банковской выписки был более семи дней назад. Загрузите актуальный CSV, чтобы сверка оставалась полной.',
     'title' => 'Счета',
     'dup_warning_title' => 'Обнаружены дублирующиеся номера счётов',
     'dup_warning_body' => 'Эти номера используются более одного раза — исправьте для непрерывной уникальной последовательности:',
@@ -535,9 +537,10 @@ return [
     'tx_dir_all' => 'Доходы и расходы',
     'tx_dir_in' => 'Только доходы',
     'tx_dir_out' => 'Только расходы',
-    'tx_doc_all' => 'Чеки: все',
-    'tx_doc_documented' => 'С чеком',
-    'tx_doc_undocumented' => 'Без чека',
+    'tx_documents' => 'Документы',
+    'tx_doc_all' => 'Документы: все',
+    'tx_doc_documented' => 'С документом',
+    'tx_doc_undocumented' => 'Без документа',
     'tx_all_types' => 'Все типы',
     'tx_all_cats' => 'Все ставки НДС',
     'tx_all_cp' => 'Все контрагенты',
@@ -601,6 +604,19 @@ return [
     'no_number' => '(без номера)',
     'suggestion_label' => 'Предложение:',
     'apply_suggestion' => 'Применить предложение',
+    'tab_documents' => 'Документы',
+    'document_direction' => 'Направление',
+    'document_partner' => 'Партнёр',
+    'document_matching' => 'Сверка',
+    'document_income' => 'Доход',
+    'document_expense' => 'Расход',
+    'document_matched' => 'Сверено',
+    'document_unmatched' => 'Открыто',
+    'document_all' => 'Все документы',
+    'document_matching_all' => 'Все статусы сверки',
+    'document_from' => 'От',
+    'document_to' => 'До',
+    'document_clear_filters' => 'Сбросить фильтры',
 
     // Жизненный цикл счёта: отправка по эл. почте + просрочка + напоминания.
     'email_send' => 'Отправить по эл. почте',

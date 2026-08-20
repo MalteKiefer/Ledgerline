@@ -13,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -34,8 +35,9 @@ use Throwable;
  * UID/UIDVALIDITY state files decide what to re-fetch, and the ledger's
  * content-hash dedup makes every re-ingest a no-op. A crashed worker, an aborted
  * batch, or a lost job_batches row costs at most a redundant re-sync — never a
- * lost or duplicated message. Whatever fails to ingest this run stays in the
- * Maildir and is retried on the next scheduled sync.
+ * lost or duplicated message. A deliberately bounded initial-import batch
+ * immediately schedules its own successor; only files that failed to ingest
+ * wait for the regular scheduled retry.
  *
  * Per-account concurrency is 1 (WithoutOverlapping keyed on the account id): an
  * overlapping run is dropped (dontRelease); the next scheduled sync picks it up.
@@ -44,10 +46,31 @@ class SyncMailAccount implements ShouldQueue
 {
     use Queueable;
 
-    /** mbsync itself is bounded to 300s; leave room for the fan-out on top. */
-    public int $timeout = 600;
+    /** mbsync is bounded to 30 min; leave room for bounded ingest fan-out. */
+    public int $timeout = 2100;
 
     public function __construct(public int $accountId) {}
+
+    private static function backlogKey(int $accountId): string
+    {
+        return 'mail.sync.backlog.'.$accountId;
+    }
+
+    /** Messages still sitting in the account's Maildir, across every folder. */
+    private static function pendingCount(MailAccount $account): int
+    {
+        $root = MbsyncRunner::maildirPathFor($account);
+        if (! is_dir($root)) {
+            return 0;
+        }
+        $job = new self($account->id);
+        $total = 0;
+        foreach ($job->folders($root) as $dir) {
+            $total += count($job->messageFiles($dir));
+        }
+
+        return $total;
+    }
 
     /**
      * @return array<int, object>
@@ -94,7 +117,13 @@ class SyncMailAccount implements ShouldQueue
         // done, not the moment the bytes hit local disk.
         $account->forceFill(['status' => 'syncing', 'last_error' => null])->save();
 
-        $chunks = $this->buildChunks($account);
+        ['jobs' => $chunks, 'continueBacklog' => $continueBacklog] = $this->buildChunks($account);
+        // Remember how much is still queued locally. The finalizer only chains
+        // another run when that number actually went down, so a backlog that
+        // cannot be ingested (a systematic parse/storage failure leaves every
+        // file in place) settles back onto the scheduled sync instead of
+        // re-running mbsync and re-parsing the same page forever.
+        Cache::put(self::backlogKey($this->accountId), self::pendingCount($account), now()->addHours(6));
         if ($chunks === []) {
             MailLogger::record($account, 'info', 'nothing_to_ingest', null, 'No new messages fetched this run.');
             self::markIdle($this->accountId);
@@ -109,8 +138,8 @@ class SyncMailAccount implements ShouldQueue
             ->name('mail-ingest-'.$accountId)
             // One poison chunk must never cancel the batch or block the rest.
             ->allowFailures()
-            ->finally(function (Batch $batch) use ($accountId): void {
-                SyncMailAccount::markIdle($accountId);
+            ->finally(function (Batch $batch) use ($accountId, $continueBacklog): void {
+                SyncMailAccount::markIdle($accountId, $continueBacklog);
             })
             ->dispatch();
 
@@ -125,13 +154,13 @@ class SyncMailAccount implements ShouldQueue
      * "Archive/2024"). Files are streamed per folder and sliced so no single job
      * carries more than the configured chunk size.
      *
-     * @return list<IngestMailChunk>
+     * @return array{jobs: list<IngestMailChunk>, continueBacklog: bool}
      */
     private function buildChunks(MailAccount $account): array
     {
         $root = MbsyncRunner::maildirPathFor($account);
         if (! is_dir($root)) {
-            return [];
+            return ['jobs' => [], 'continueBacklog' => false];
         }
 
         $configured = config('mail_archive.ingest_chunk_size', 100);
@@ -140,23 +169,27 @@ class SyncMailAccount implements ShouldQueue
         // Backlog throttle: cap how many messages one sync run ingests. MIME
         // parsing + HTML sanitising is CPU per message, so paging a whole large
         // mailbox into one batch can saturate the host. With a cap, a big
-        // first-time mailbox drains gently over several scheduled runs — the
-        // un-paged files stay durably in the Maildir and are picked up next run
-        // (dedup makes it idempotent). 0/unset = no cap.
+        // first-time mailbox drains in bounded batches; the batch finalizer
+        // queues the next page immediately (dedup makes every retry idempotent).
+        // 0/unset = no cap.
         $maxCfg = config('mail_archive.ingest_max_per_run', 800);
         $maxPerRun = is_numeric($maxCfg) ? (int) $maxCfg : 800;
 
         $jobs = [];
         $paged = 0;
+        $continueBacklog = false;
         foreach ($this->folders($root) as $folder => $dir) {
             $files = $this->messageFiles($dir);
             // Per-folder visibility: shows the owner EXACTLY which folders synced
             // and how many new messages each has this run. A 0-file folder still logs.
             MailLogger::record($account, 'info', 'folder_fetched', $folder, count($files).' new message(s) to ingest.');
             if ($maxPerRun > 0 && $paged >= $maxPerRun) {
+                $continueBacklog = $continueBacklog || $files !== [];
+
                 continue;
             }
             if ($maxPerRun > 0 && $paged + count($files) > $maxPerRun) {
+                $continueBacklog = true;
                 $files = array_slice($files, 0, $maxPerRun - $paged);
             }
             $paged += count($files);
@@ -164,11 +197,11 @@ class SyncMailAccount implements ShouldQueue
                 $jobs[] = new IngestMailChunk($account->id, $folder, $slice);
             }
         }
-        if ($maxPerRun > 0 && $paged >= $maxPerRun) {
-            MailLogger::record($account, 'info', 'ingest_capped', null, "Ingest capped at {$maxPerRun} this run; the rest continues next sync.");
+        if ($continueBacklog) {
+            MailLogger::record($account, 'info', 'ingest_capped', null, "Ingest capped at {$maxPerRun} this run; continuing backlog automatically.");
         }
 
-        return $jobs;
+        return ['jobs' => $jobs, 'continueBacklog' => $continueBacklog];
     }
 
     /**
@@ -241,13 +274,23 @@ class SyncMailAccount implements ShouldQueue
      * Return the account to a resting state after ingest. Only flips a still-
      * 'syncing' account so a concurrently-set error state is never clobbered.
      */
-    public static function markIdle(int $accountId): void
+    public static function markIdle(int $accountId, bool $continueBacklog = false): void
     {
         try {
             $account = MailAccount::find($accountId);
             if ($account !== null && $account->status === 'syncing') {
                 $account->forceFill(['status' => 'idle', 'last_synced_at' => now(), 'sync_batch_id' => null])->save();
                 MailLogger::record($account, 'info', 'sync_done', null, 'Sync finished.');
+                if ($continueBacklog && $account->enabled) {
+                    $before = Cache::pull(self::backlogKey($accountId));
+                    $remaining = self::pendingCount($account);
+                    if (is_int($before) && $remaining >= $before) {
+                        MailLogger::record($account, 'warning', 'sync_stalled', null, 'The local backlog did not shrink this run; waiting for the next scheduled sync.');
+                    } else {
+                        MailLogger::record($account, 'info', 'sync_continuing', null, 'More messages are queued locally; continuing the initial import.');
+                        self::dispatch($accountId)->delay(now()->addSeconds(2));
+                    }
+                }
             }
         } catch (Throwable) {
             // Best-effort resting state; the next sync will settle the status.

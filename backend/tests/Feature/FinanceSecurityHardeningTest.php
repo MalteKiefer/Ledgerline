@@ -68,9 +68,9 @@ class FinanceSecurityHardeningTest extends TestCase
         // Legacy state (pre-fix): a trashed numbered invoice whose number was later
         // taken by a live invoice. The partial unique index excludes the trashed row,
         // so both can exist — restoring must be refused, not 500 on the index.
-        $x = Invoice::create(['number' => '2026-0009', 'seq' => 9, 'year' => 2026, 'status' => 'sent', 'issue_date' => '2026-01-01', 'currency' => 'EUR']);
+        $x = Invoice::forceCreate(['number' => '2026-0009', 'seq' => 9, 'year' => 2026, 'status' => 'sent', 'issue_date' => '2026-01-01', 'currency' => 'EUR']);
         $x->delete();
-        Invoice::create(['number' => '2026-0009', 'seq' => 9, 'year' => 2026, 'status' => 'sent', 'issue_date' => '2026-01-02', 'currency' => 'EUR']);
+        Invoice::forceCreate(['number' => '2026-0009', 'seq' => 9, 'year' => 2026, 'status' => 'sent', 'issue_date' => '2026-01-02', 'currency' => 'EUR']);
 
         $this->postJson(route('finance.invoices.restore', $x->id))
             ->assertStatus(422)

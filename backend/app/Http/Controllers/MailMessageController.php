@@ -8,7 +8,6 @@ use App\Models\MailAttachment;
 use App\Models\MailBlob;
 use App\Models\MailLabel;
 use App\Models\MailMessage;
-use App\Models\UserSetting;
 use App\Services\Mail\MailDecryptor;
 use App\Support\BlobStore;
 use App\Support\Mail\MailHtmlSanitizer;
@@ -164,26 +163,24 @@ class MailMessageController extends Controller
 
     /**
      * The message's HTML body as a standalone, sandboxed document for a reader
-     * iframe. Re-derived from the immutable raw .eml (so remote images can be
-     * gated per request and cid: images inlined). Strict CSP: no scripts, no
-     * same-origin, images only from data: (+ https: when the caller opts into
-     * remote content AND the user's mail_load_remote pref is on). cid: inline
-     * images are rewritten to data: URIs from the stored attachment bytes.
+     * iframe. Re-derived from the immutable raw .eml so inline cid: images can
+     * be embedded as data: URIs. Strict CSP: no scripts and no same-origin.
+     * Remote resources stay blocked by default and are permitted only for an
+     * explicit, one-message `?remote=1` reader action. cid: inline images are
+     * rewritten to data: URIs from the stored attachment bytes.
      */
     public function body(Request $request, MailMessage $message): Response
     {
         $this->authorizeOwner($request, $message);
 
-        // Explicit per-message "load remote images" (?remote=1) is consent enough
-        // — that is the reader's toggle. The mail_load_remote pref, when set, is an
-        // opt-in "always load" default. Either one grants remote content; neither
-        // set keeps images blocked (privacy-safe default). Requiring BOTH made the
-        // toggle a no-op, since the pref has no write path yet.
-        $prefs = UserSetting::for((int) $message->user_id);
-        $allowRemote = $request->boolean('remote') || (bool) $prefs->mail_load_remote;
-
+        // Remote content is privacy-sensitive, so it is opt-in for this one
+        // reader request only. There is deliberately no persistent auto-load
+        // preference: every newly opened message begins with tracking blocked.
+        $allowRemote = $request->boolean('remote');
         $html = $this->renderBody($message, $allowRemote);
 
+        // Remote images are permitted over TLS only: a cleartext fetch would
+        // expose which message was opened, and when, to anyone on the path.
         $csp = "default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src data:".($allowRemote ? ' https:' : '');
         $doc = '<!doctype html><html><head><meta charset="utf-8">'
             .'<meta name="referrer" content="no-referrer">'
@@ -223,7 +220,13 @@ class MailMessageController extends Controller
         }
 
         if ($message->html_sanitized !== null) {
-            return $message->html_sanitized;
+            // Historic imports can predate the current sanitizer. Re-sanitize the
+            // fallback on every render so an unavailable raw .eml never revives
+            // executable or remote markup from an old stored representation.
+            $html = (new MailHtmlSanitizer)->sanitize($message->html_sanitized, $allowRemote, $this->cidMap($message));
+            if ($html !== null) {
+                return $html;
+            }
         }
         if ($message->text_body !== null) {
             return '<pre style="white-space:pre-wrap;word-break:break-word">'.e($message->text_body).'</pre>';

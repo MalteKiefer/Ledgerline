@@ -29,28 +29,26 @@ COPY frontend/package.json frontend/yarn.lock frontend/.npmrc ./frontend/
 RUN cd frontend && yarn install --frozen-lockfile --non-interactive
 COPY frontend ./frontend
 COPY backend/lang ./backend/lang
-# Build the SPA (dist/) and self-host the tesseract.js OCR worker + WASM core +
-# eng/deu language data into dist/tesseract (CSP is worker-src/connect-src 'self',
-# nothing from a CDN at runtime). The language data downloads over the build net.
+# Build the standalone SPA. No frontend asset is fetched from a CDN at runtime.
 RUN cd frontend \
- && VITE_APP_VERSION="${APP_VERSION}" yarn build \
- && node scripts/stage-tesseract.mjs
+ && VITE_APP_VERSION="${APP_VERSION}" yarn build
 
 # --- Runtime: FrankenPHP + Octane serving the Laravel backend + built SPA ----
 FROM ${PHP_BASE} AS runtime
 
 USER root
 # System deps: image/video/OCR/geo toolchain (imagick+heif, ffmpeg, exiftool,
-# tesseract+poppler), the PG18 client for pg_dump backups, gnupg (PGP mail), and
-# curl for the healthcheck. Then the PHP extensions the app needs, plus pcntl +
-# opcache for the Octane worker.
+# tesseract+poppler), the PG18 client for pg_dump backups, gnupg (PGP mail),
+# isync/mbsync (IMAP mail import), and curl for the healthcheck. Then the PHP
+# extensions the app needs, plus pcntl + opcache for the Octane worker.
 RUN apk add --no-cache \
-      curl ca-certificates gnupg gzip libcap \
+      bind-tools curl ca-certificates gnupg gzip isync libcap \
       libheif libde265 x265-libs aom-libs imagemagick imagemagick-heic \
       ffmpeg \
       exiftool \
       postgresql18-client \
       tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu poppler-utils \
+ && command -v mbsync \
  && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip pcntl opcache \
  # The dunglas image sets cap_net_bind_service+ep on the frankenphp binary so it
  # can bind :80/:443 as non-root. We bind :8080 (>1024) and run under

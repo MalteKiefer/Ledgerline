@@ -91,6 +91,9 @@
         <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openBirthdayFeed">
           <Icon name="cake" :size="20" class="text-[var(--ll-muted)]" />{{ t('contacts.ui.birthday_feed') }}
         </button>
+        <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openSyncSources">
+          <Icon name="sync" :size="20" class="text-[var(--ll-muted)]" />{{ t('contacts.ui.sync_sources') }}
+        </button>
       </nav>
     </Card>
 
@@ -524,6 +527,24 @@
     </template>
     <Btn v-else variant="soft" icon="link" @click="enableFeed">{{ t('contacts.ui.enable_feed') }}</Btn>
   </Modal>
+
+  <!-- External CardDAV replicas: Ledgerline stays canonical; this panel makes
+       the safety posture visible rather than hiding destructive sync behavior. -->
+  <Modal v-model="syncM.open" :title="t('contacts.ui.sync_sources')" width="680px">
+    <div v-if="syncM.loading" class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('common.loading') }}</div>
+    <template v-else>
+      <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.sync_sources_hint') }}</p>
+      <div v-if="syncM.sources.length" class="space-y-2">
+        <div v-for="source in syncM.sources" :key="source.id" class="rounded-xl border border-[var(--ll-border)] p-3">
+          <div class="flex items-start gap-3"><Icon :name="source.provider === 'google' ? 'cloud' : 'sync'" :size="20" class="mt-0.5 text-primary-500" /><div class="min-w-0 flex-1"><div class="font-medium">{{ source.name }}</div><div class="truncate text-xs text-[var(--ll-muted)]">{{ source.endpoint }}</div><div v-if="source.last_error" class="mt-1 text-xs text-red-600">{{ source.last_error }}</div><div v-else class="mt-1 text-xs text-[var(--ll-muted)]">{{ source.last_synced_at ? t('contacts.ui.sync_last', { date: new Date(source.last_synced_at).toLocaleString() }) : t('contacts.ui.sync_never') }}</div></div><Badge :tone="source.status === 'error' ? 'error' : source.status === 'syncing' ? 'warning' : 'success'">{{ source.status }}</Badge></div>
+          <div class="mt-3 flex items-center gap-2"><Btn v-if="source.provider === 'google' && !source.connected" variant="soft" size="sm" icon="link" tag="a" :href="`/contacts/sources/${source.id}/authorize`">{{ t('contacts.ui.sync_connect_google') }}</Btn><Btn variant="ghost" size="sm" icon="sync" @click="runSourceSync(source.id)">{{ t('contacts.ui.sync_now') }}</Btn><Btn variant="ghost" size="sm" icon="delete" class="ml-auto text-red-600" @click="removeSyncSource(source.id)">{{ t('common.delete') }}</Btn></div>
+        </div>
+      </div>
+      <div v-else class="rounded-xl border border-dashed border-[var(--ll-border)] p-6 text-center text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.sync_empty') }}</div>
+      <details class="mt-4 rounded-xl bg-primary-500/[0.05] p-3"><summary class="cursor-pointer text-sm font-medium">{{ t('contacts.ui.sync_add') }}</summary><div class="mt-3 grid gap-3 sm:grid-cols-2"><TextField v-model="syncM.form.name" :label="t('contacts.ui.sync_name')" /><Select v-model="syncM.form.provider" :label="t('contacts.ui.sync_provider')" :options="syncProviderItems" /><Select v-model="syncM.form.address_book_id" :label="t('contacts.ui.books')" :options="bookItems" /><TextField v-model="syncM.form.endpoint" :label="t('contacts.ui.sync_endpoint')" :placeholder="syncM.form.provider === 'google' ? 'automatic' : 'https://…'" class="sm:col-span-2" /><TextField v-if="syncM.form.provider !== 'google'" v-model="syncM.form.username" :label="t('common.email')" /><TextField v-if="syncM.form.provider !== 'google'" v-model="syncM.form.password" type="password" :label="t('common.password')" /><TextField v-if="syncM.form.provider === 'google'" v-model="syncM.form.oauth_client_id" :label="t('contacts.ui.sync_google_client_id')" class="sm:col-span-2" /><TextField v-if="syncM.form.provider === 'google'" v-model="syncM.form.oauth_client_secret" type="password" :label="t('contacts.ui.sync_google_client_secret')" class="sm:col-span-2" /></div><label class="mt-3 flex items-center gap-2 text-sm"><input v-model="syncM.form.propagate_deletes" type="checkbox">{{ t('contacts.ui.sync_propagate_deletes') }}</label><div class="mt-3 flex justify-end"><Btn variant="solid" :loading="syncM.saving" icon="add" @click="saveSyncSource">{{ t('contacts.ui.sync_add') }}</Btn></div></details>
+      <div v-if="syncM.versions.length" class="mt-5 border-t border-[var(--ll-border)] pt-4"><h3 class="text-sm font-medium">{{ t('contacts.ui.sync_versions') }}</h3><p class="mt-1 text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.sync_versions_hint') }}</p><div class="mt-2 max-h-40 divide-y divide-[var(--ll-border)] overflow-y-auto"><div v-for="version in syncM.versions" :key="version.id" class="flex items-center gap-2 py-2 text-xs"><span class="min-w-0 flex-1 truncate">{{ version.action }} · {{ new Date(version.created_at).toLocaleString() }}</span><Btn variant="ghost" size="xs" icon="restore" @click="restoreSyncVersion(version.id)">{{ t('contacts.ui.sync_restore') }}</Btn></div></div></div>
+    </template>
+  </Modal>
 </template>
 
 <script setup lang="ts">
@@ -938,6 +959,14 @@ async function openBirthdayFeed() {
 async function enableFeed() { try { feedM.url = (await c.enableBirthdayFeed()).url; } catch { error(t('common.error')); } }
 async function disableFeed() { try { await c.disableBirthdayFeed(); feedM.url = null; } catch { error(t('common.error')); } }
 async function copyFeed() { if (!feedM.url) return; try { await navigator.clipboard.writeText(feedM.url); success(t('common.copied')); } catch { error(t('common.error')); } }
+type SyncForm = { name: string; provider: 'carddav' | 'icloud' | 'google'; address_book_id: string; endpoint: string; username: string; password: string; oauth_client_id: string; oauth_client_secret: string; propagate_deletes: boolean };
+const syncM = reactive<{ open: boolean; loading: boolean; saving: boolean; sources: import('@spa/stores/contacts').ContactSyncSource[]; versions: { id: number; contact_id: string | null; source_id: string | null; action: string; remote_uri: string | null; created_at: string }[]; form: SyncForm }>({ open: false, loading: false, saving: false, sources: [], versions: [], form: { name: '', provider: 'carddav', address_book_id: '', endpoint: '', username: '', password: '', oauth_client_id: '', oauth_client_secret: '', propagate_deletes: true } });
+const syncProviderItems = computed(() => [{ title: 'CardDAV', value: 'carddav' }, { title: 'iCloud', value: 'icloud' }, { title: 'Google', value: 'google' }]);
+async function openSyncSources() { syncM.open = true; syncM.loading = true; syncM.form.address_book_id = bookId.value ?? c.books[0]?.id ?? ''; try { const data = await c.syncSources(); syncM.sources = data.sources; syncM.versions = data.versions; } catch { error(t('common.error')); } finally { syncM.loading = false; } }
+async function runSourceSync(id: string) { try { await c.runSyncSource(id); success(t('contacts.ui.sync_queued')); await openSyncSources(); } catch { error(t('common.error')); } }
+async function removeSyncSource(id: string) { if (!await confirmAsk(t('contacts.ui.sync_remove_confirm'), { danger: true })) return; try { await c.deleteSyncSource(id); syncM.sources = syncM.sources.filter((s) => s.id !== id); success(t('contacts.ui.saved')); } catch { error(t('common.error')); } }
+async function restoreSyncVersion(id: number) { try { await c.restoreContactVersion(id); success(t('contacts.ui.saved')); await reload(); await openSyncSources(); } catch { error(t('common.error')); } }
+async function saveSyncSource() { syncM.saving = true; try { const result = await c.createSyncSource({ ...syncM.form, endpoint: syncM.form.endpoint || undefined }); syncM.sources.push(result.source); if (result.authorize_url) window.location.assign(result.authorize_url); else { success(t('contacts.ui.saved')); syncM.form = { name: '', provider: 'carddav', address_book_id: bookId.value ?? c.books[0]?.id ?? '', endpoint: '', username: '', password: '', oauth_client_id: '', oauth_client_secret: '', propagate_deletes: true }; } } catch { error(t('common.error')); } finally { syncM.saving = false; } }
 async function renameBook(b: AddressBook) {
   const name = await promptAsk(t('common.rename'), { value: b.name });
   if (!name || name === b.name) return;

@@ -35,7 +35,7 @@ class FilesInfoTest extends TestCase
 
     private function makeFile(User $user, string $name, string $path, string $mime, string $sha, string $bytes): FileEntry
     {
-        Storage::disk('files')->put($path, $bytes);
+        Storage::disk((string) config('files.disk'))->put($path, $bytes);
 
         return FileEntry::forceCreate([
             'user_id' => $user->id, 'name' => $name, 'storage_path' => $path,
@@ -45,7 +45,7 @@ class FilesInfoTest extends TestCase
 
     public function test_stl_metadata_is_extracted_and_info_reports_it(): void
     {
-        Storage::fake('files');
+        Storage::fake((string) config('files.disk'));
         $user = User::factory()->create();
         $this->actingAs($user);
 
@@ -70,7 +70,7 @@ class FilesInfoTest extends TestCase
 
     public function test_info_reports_same_checksum_duplicates_owner_scoped(): void
     {
-        Storage::fake('files');
+        Storage::fake((string) config('files.disk'));
         $user = User::factory()->create();
         $this->actingAs($user);
 
@@ -87,7 +87,7 @@ class FilesInfoTest extends TestCase
 
     public function test_info_is_owner_scoped(): void
     {
-        Storage::fake('files');
+        Storage::fake((string) config('files.disk'));
         $owner = User::factory()->create();
         $file = $this->actingAs($owner)->makeFile($owner, 'p.txt', 'files/p.txt', 'text/plain', str_repeat('c', 64), 'x');
 

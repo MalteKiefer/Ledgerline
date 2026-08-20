@@ -500,7 +500,7 @@ class ContactsFeatureTest extends TestCase
 
     public function test_avatar_upload_embeds_a_photo(): void
     {
-        Storage::fake('files');
+        Storage::fake((string) config('files.disk'));
         $user = $this->signIn();
         $book = $this->book($user->id);
         $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Pic'])->assertStatus(201);

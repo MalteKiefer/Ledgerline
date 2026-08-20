@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Mail;
 
 use App\Mail\ComposedMail;
+use App\Models\CryptoRecipient;
+use App\Models\MailPgpKey;
 
 /**
  * An outbound message the user composed (compose / reply / forward), ready to be
@@ -37,6 +39,18 @@ final class ComposedMessage
         public array $references = [],
         public array $attachments = [],
         public string $sentFolder = 'Sent',
+        public bool $readReceipt = false,
+        public bool $highPriority = false,
+        /** @var 'none'|'sign'|'encrypt'|'sign_encrypt' */
+        public string $cryptoMode = 'none',
+        /** @var 'pgp'|'smime'|null */
+        public ?string $cryptoType = null,
+        public ?int $signingKeyId = null,
+        /** @var list<int> */
+        public array $recipientKeyIds = [],
+        public ?MailPgpKey $signingKey = null,
+        /** @var list<CryptoRecipient> */
+        public array $recipientKeys = [],
     ) {}
 
     /** True when at least one recipient (to/cc/bcc) is present. */

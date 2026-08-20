@@ -117,32 +117,35 @@ body { background: var(--ll-bg); color: var(--ll-fg); -webkit-font-smoothing: an
 .ll-wikilink:hover { text-decoration: none; border-bottom-style: solid; }
 .ll-wikilink-missing { color: var(--ll-muted); border-bottom: 1px dashed var(--ll-border); cursor: default; }
 
-/* Syntax highlighting (highlight.js) for note code blocks. Theme-aware, GitHub-
-   like palette; the token classes come from hljs.highlight() output. */
-.ll-prose .hljs { color: inherit; background: transparent; }
-.ll-prose .hljs-comment, .ll-prose .hljs-quote { color: #6a737d; font-style: italic; }
-.ll-prose .hljs-keyword, .ll-prose .hljs-selector-tag, .ll-prose .hljs-literal, .ll-prose .hljs-doctag { color: #d73a49; }
-.ll-prose .hljs-string, .ll-prose .hljs-meta .hljs-string, .ll-prose .hljs-regexp { color: #032f62; }
-.ll-prose .hljs-number, .ll-prose .hljs-built_in, .ll-prose .hljs-type, .ll-prose .hljs-selector-id, .ll-prose .hljs-selector-class { color: #005cc5; }
-.ll-prose .hljs-title, .ll-prose .hljs-title.function_, .ll-prose .hljs-section { color: #6f42c1; }
-.ll-prose .hljs-attr, .ll-prose .hljs-attribute, .ll-prose .hljs-variable, .ll-prose .hljs-template-variable, .ll-prose .hljs-params { color: #e36209; }
-.ll-prose .hljs-tag, .ll-prose .hljs-name, .ll-prose .hljs-symbol, .ll-prose .hljs-bullet { color: #22863a; }
-.ll-prose .hljs-meta { color: #6a737d; }
-.ll-prose .hljs-deletion { color: #b31d28; background: #ffeef0; }
-.ll-prose .hljs-addition { color: #22863a; background: #f0fff4; }
-.ll-prose .hljs-emphasis { font-style: italic; }
-.ll-prose .hljs-strong { font-weight: 600; }
+/* Syntax highlighting (highlight.js). Theme-aware, GitHub-like palette; the
+   token classes come from hljs.highlight() output. Bare .hljs-* (not scoped
+   to .ll-prose) so it applies wherever that output is rendered — note code
+   fences (lib/markdown.ts, inside .ll-prose) and the Files inline text/code
+   preview (views/Files.vue, a plain <pre>, not prose) alike. */
+.hljs { color: inherit; background: transparent; }
+.hljs-comment, .hljs-quote { color: #6a737d; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag { color: #d73a49; }
+.hljs-string, .hljs-meta .hljs-string, .hljs-regexp { color: #032f62; }
+.hljs-number, .hljs-built_in, .hljs-type, .hljs-selector-id, .hljs-selector-class { color: #005cc5; }
+.hljs-title, .hljs-title.function_, .hljs-section { color: #6f42c1; }
+.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-params { color: #e36209; }
+.hljs-tag, .hljs-name, .hljs-symbol, .hljs-bullet { color: #22863a; }
+.hljs-meta { color: #6a737d; }
+.hljs-deletion { color: #b31d28; background: #ffeef0; }
+.hljs-addition { color: #22863a; background: #f0fff4; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
 
-.dark .ll-prose .hljs-comment, .dark .ll-prose .hljs-quote { color: #8b949e; }
-.dark .ll-prose .hljs-keyword, .dark .ll-prose .hljs-selector-tag, .dark .ll-prose .hljs-literal, .dark .ll-prose .hljs-doctag { color: #ff7b72; }
-.dark .ll-prose .hljs-string, .dark .ll-prose .hljs-meta .hljs-string, .dark .ll-prose .hljs-regexp { color: #a5d6ff; }
-.dark .ll-prose .hljs-number, .dark .ll-prose .hljs-built_in, .dark .ll-prose .hljs-type, .dark .ll-prose .hljs-selector-id, .dark .ll-prose .hljs-selector-class { color: #79c0ff; }
-.dark .ll-prose .hljs-title, .dark .ll-prose .hljs-title.function_, .dark .ll-prose .hljs-section { color: #d2a8ff; }
-.dark .ll-prose .hljs-attr, .dark .ll-prose .hljs-attribute, .dark .ll-prose .hljs-variable, .dark .ll-prose .hljs-template-variable, .dark .ll-prose .hljs-params { color: #ffa657; }
-.dark .ll-prose .hljs-tag, .dark .ll-prose .hljs-name, .dark .ll-prose .hljs-symbol, .dark .ll-prose .hljs-bullet { color: #7ee787; }
-.dark .ll-prose .hljs-meta { color: #8b949e; }
-.dark .ll-prose .hljs-deletion { color: #ffdcd7; background: #67060c; }
-.dark .ll-prose .hljs-addition { color: #aff5b4; background: #033a16; }
+.dark .hljs-comment, .dark .hljs-quote { color: #8b949e; }
+.dark .hljs-keyword, .dark .hljs-selector-tag, .dark .hljs-literal, .dark .hljs-doctag { color: #ff7b72; }
+.dark .hljs-string, .dark .hljs-meta .hljs-string, .dark .hljs-regexp { color: #a5d6ff; }
+.dark .hljs-number, .dark .hljs-built_in, .dark .hljs-type, .dark .hljs-selector-id, .dark .hljs-selector-class { color: #79c0ff; }
+.dark .hljs-title, .dark .hljs-title.function_, .dark .hljs-section { color: #d2a8ff; }
+.dark .hljs-attr, .dark .hljs-attribute, .dark .hljs-variable, .dark .hljs-template-variable, .dark .hljs-params { color: #ffa657; }
+.dark .hljs-tag, .dark .hljs-name, .dark .hljs-symbol, .dark .hljs-bullet { color: #7ee787; }
+.dark .hljs-meta { color: #8b949e; }
+.dark .hljs-deletion { color: #ffdcd7; background: #67060c; }
+.dark .hljs-addition { color: #aff5b4; background: #033a16; }
 
 /* Indeterminate progress bar (server processing phase after an upload). */
 @keyframes ll-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }

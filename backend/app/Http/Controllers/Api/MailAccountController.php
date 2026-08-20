@@ -10,6 +10,7 @@ use App\Models\MailAccount;
 use App\Rules\SafeHost;
 use App\Support\KeepBlankSecrets;
 use App\Support\Mail\ImapProbe;
+use App\Support\Mail\MailAutoconfig;
 use App\Support\Mail\SmtpProbe;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,22 @@ use Illuminate\Validation\Rule;
  */
 class MailAccountController extends Controller
 {
+    /**
+     * Discover non-secret IMAP/SMTP settings from an email domain. This is
+     * deliberately separate from account creation: discovery never receives a
+     * password and the user always reviews the returned settings first.
+     */
+    public function autoconfig(Request $request, MailAutoconfig $autoconfig): JsonResponse
+    {
+        Validator::make($request->all(), [
+            'email' => ['required', 'string', 'email:rfc', 'max:255'],
+        ])->validate();
+        $email = $request->string('email')->toString();
+
+        return response()->json(['configuration' => $autoconfig->discover($email)])
+            ->header('Cache-Control', 'no-store');
+    }
+
     /** List the caller's mail accounts, each with its archived-message count. */
     public function index(Request $request): JsonResponse
     {

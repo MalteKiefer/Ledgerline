@@ -357,6 +357,14 @@ components:
         errors:
           type: object
           additionalProperties: { type: array, items: { type: string } }
+    MailSignatureInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 100 }
+        html: { type: [string, "null"], description: "Sanitized rich HTML signature." }
+        account_ids: { type: array, items: { type: integer } }
+        default_account_ids: { type: array, items: { type: integer }, description: "Subset of account_ids made default for those accounts." }
     VersionConflict:
       type: object
       description: >
@@ -761,7 +769,7 @@ components:
         time_format: { type: string, enum: [24h, 12h] }
         timezone: { type: [string, "null"], description: "Hard IANA timezone override (e.g. Europe/Berlin); null follows the browser/system zone." }
         date_format: { type: string, enum: [system, dmy, dmy_dot, mdy, ymd], description: "Date-format preset; 'system' uses the locale's regional format." }
-        mail_load_remote: { type: boolean, description: "Always load remote images in the mail reader (default false)." }
+        mail_load_remote: { type: boolean, deprecated: true, description: "Deprecated and ignored: remote mail content is controlled per message." }
         mail_signature: { type: [string, "null"], description: "Signature appended to outgoing mail; blank clears it to null." }
         notifications:
           type: object
@@ -2300,6 +2308,71 @@ paths:
                   groups: { type: array, items: { type: object } }
                   settings: { type: object, properties: { sort: { type: string, enum: [first_name, last_name] }, display_format: { type: string, enum: [first_last, last_first] } } }
         "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+  /contacts/sources:
+    get:
+      tags: [Contacts]
+      operationId: contactSyncSourcesIndex
+      summary: List external CardDAV replicas and recent immutable recovery versions
+      responses:
+        "200": { description: Replica configuration without credentials., content: { application/json: { schema: { type: object, properties: { sources: { type: array, items: { type: object } }, versions: { type: array, items: { type: object } } } } } }
+    post:
+      tags: [Contacts]
+      operationId: contactSyncSourcesStore
+      summary: Add a Ledgerline-first external CardDAV replica
+      description: >
+        The endpoint must clear the outbound SSRF guard. Plain http is accepted
+        only for a host that resolves inside the local network; an external
+        endpoint has to be https, since basic-auth credentials and pushed vCards
+        would otherwise cross the internet in the clear (422). Every request the
+        sync makes afterwards stays on this origin: a redirect or an absolute
+        href that leaves it aborts the sync rather than forwarding credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, address_book_id, provider]
+              properties:
+                name: { type: string }
+                address_book_id: { type: string, format: uuid }
+                provider: { type: string, enum: [carddav, icloud, google] }
+                endpoint: { type: string, format: uri, description: "Required for CardDAV/iCloud; Google uses discovery by default." }
+                username: { type: string }
+                password: { type: string, writeOnly: true }
+                oauth_client_id: { type: string, writeOnly: true }
+                oauth_client_secret: { type: string, writeOnly: true }
+                propagate_deletes: { type: boolean, default: true }
+      responses:
+        "201": { description: Replica saved; Google response contains an authorization URL., content: { application/json: { schema: { type: object } } } }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/sources/{source}/sync:
+    post:
+      tags: [Contacts]
+      operationId: contactSyncSourcesSync
+      summary: Queue an immediate CardDAV reconciliation
+      parameters: [{ name: source, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Queued. }
+        "403": { $ref: '#/components/responses/Forbidden' }
+  /contacts/sources/{source}:
+    delete:
+      tags: [Contacts]
+      operationId: contactSyncSourcesDestroy
+      summary: Remove replica credentials without deleting local contacts or versions
+      parameters: [{ name: source, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Removed. }
+        "403": { $ref: '#/components/responses/Forbidden' }
+  /contacts/versions/{version}/restore:
+    post:
+      tags: [Contacts]
+      operationId: contactVersionsRestore
+      summary: Restore an immutable contact vCard version locally and queue its replicas
+      parameters: [{ name: version, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { contact_id: { type: string, format: uuid } } } } } }
         "403": { $ref: '#/components/responses/Forbidden' }
   /contacts:
     post:
@@ -4598,6 +4671,8 @@ paths:
                   enum: [system, dmy, dmy_dot, mdy, ymd]
                 mail_load_remote:
                   type: boolean
+                  deprecated: true
+                  description: "Deprecated and ignored: remote mail content is controlled per message."
                 mail_signature:
                   type: [string, "null"]
                   maxLength: 5000
@@ -6948,6 +7023,20 @@ paths:
         "200": { description: The file., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/virustotal:
+    post:
+      tags: [Files]
+      operationId: filesVirusTotalLookup
+      summary: Look up a file's SHA-256 at VirusTotal
+      description: "Throttle 30/min. Owner-scoped. Sends only the existing SHA-256 to VirusTotal; never uploads file bytes. Returns 422 when the workspace key or file hash is unavailable."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Hash reputation result or an unknown hash." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /files/entries/{file}/info:
     get:
       tags: [Files]
@@ -8716,6 +8805,37 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /admin/virustotal:
+    get:
+      tags: [Settings]
+      operationId: adminVirusTotalShow
+      summary: VirusTotal integration status (admin)
+      description: "Returns only whether an encrypted API key is configured; the key is never returned."
+      responses:
+        "200": { description: "Configuration status." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminVirusTotalUpdate
+      summary: Verify and save the encrypted VirusTotal API key (admin)
+      description: "Validates the key against VirusTotal before saving it. The fixed public EICAR hash is queried; no user file bytes are sent. The key is not changed when validation fails."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "200": { description: "Verified and saved." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: "The key is missing or was rejected by VirusTotal." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "VirusTotal could not be reached; the key was not saved." }
   /admin/dashboard:
     get:
       tags: [Settings]
@@ -9611,6 +9731,43 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/accounts/autoconfig:
+    post:
+      tags: [Mail]
+      operationId: mailAccountsAutoconfig
+      summary: Discover non-secret IMAP and SMTP settings from an email address
+      description: "Throttle 10/min. Uses bounded DNS SRV and HTTPS autoconfig checks; credentials are neither accepted nor returned. All discovered hosts are SSRF-guarded."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 255 }
+      responses:
+        "200":
+          description: Discovery result; candidates remain user-reviewable before saving.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configuration:
+                    type: object
+                    properties:
+                      email: { type: string, format: email }
+                      domain: { type: string }
+                      domain_resolves: { type: boolean }
+                      imap: { type: [object, "null"], properties: { host: { type: string }, port: { type: integer }, encryption: { type: string, enum: [ssl, tls, starttls, none] }, username: { type: [string, "null"] } } }
+                      smtp: { type: [object, "null"], properties: { host: { type: string }, port: { type: integer }, encryption: { type: string, enum: [ssl, tls, starttls, none] }, username: { type: [string, "null"] } } }
+                      sources: { type: array, items: { type: string, enum: [autoconfig, srv, dns] } }
+                      outlook_autodiscover: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /mail/accounts:
     get:
       tags: [Mail]
@@ -9929,11 +10086,13 @@ paths:
         Throttle 3000/min. Returns the message's HTML body as a standalone
         document (text/html) for embedding in a sandboxed reader iframe. Served
         with `default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src
-        data:` (+`https:` only when `?remote=1` AND the user's mail_load_remote
-        pref is on). cid: inline images are rewritten to data: URIs; no scripts.
+        data:` by default. Safe embedded styling is preserved; scripts, fonts and
+        CSS imports are always blocked. `?remote=1` explicitly permits remote
+        images for this one message view. cid: inline images are rewritten to data:
+        URIs.
       parameters:
         - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: remote, in: query, required: false, schema: { type: boolean }, description: "Load remote images once (only if mail_load_remote is on)." }
+        - { name: remote, in: query, required: false, schema: { type: boolean }, description: "Explicitly load remote images for this one message view." }
       responses:
         "200":
           description: HTML body document.
@@ -9953,9 +10112,11 @@ paths:
         Throttle 3000/min. Owner-scoped; streams the decoded attachment bytes
         with nosniff + `default-src 'none'; sandbox`. A small safe allowlist
         (png/jpeg/gif/webp/pdf/text-plain) renders inline; everything else is a
-        forced download.
+        forced download. Pass `download=1` to force attachment disposition and
+        an octet-stream content type for every MIME type.
       parameters:
         - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: download, in: query, required: false, schema: { type: boolean, default: false }, description: "Force a browser download instead of an inline preview." }
       responses:
         "200":
           description: Attachment bytes.
@@ -10006,6 +10167,63 @@ paths:
         "413": { description: "Files quota exceeded." }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/attachments/{attachment}/virustotal:
+    post:
+      tags: [Mail]
+      operationId: mailAttachmentVirusTotal
+      summary: Look up an attachment by SHA-256 at VirusTotal
+      description: "Throttle 30/min. Owner-scoped. Only the locally computed SHA-256 is sent to VirusTotal; attachment bytes are never uploaded."
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: VirusTotal hash lookup result. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "VirusTotal is not configured, the stored API key was rejected, or the attachment is unavailable." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/signatures:
+    get:
+      tags: [Mail]
+      operationId: mailSignaturesIndex
+      summary: List account-assigned rich mail signatures
+      responses:
+        "200": { description: Signatures. }
+    post:
+      tags: [Mail]
+      operationId: mailSignaturesStore
+      summary: Create a rich signature and assign it to mail accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MailSignatureInput"
+      responses:
+        "201": { description: Created. }
+  /mail/signatures/{signature}:
+    put:
+      tags: [Mail]
+      operationId: mailSignaturesUpdate
+      summary: Update a signature, its account assignments and defaults
+      parameters:
+        - { name: signature, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MailSignatureInput"
+      responses:
+        "200": { description: Updated. }
+    delete:
+      tags: [Mail]
+      operationId: mailSignaturesDelete
+      summary: Delete a signature
+      parameters:
+        - { name: signature, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Deleted. }
   /mail/messages/seen:
     post:
       tags: [Mail]
@@ -10145,6 +10363,45 @@ paths:
         "422": { description: "Source account deleted or no Message-Id." }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { description: "Origin IMAP delete failed." }
+  /mail/drafts:
+    get:
+      tags: [Mail]
+      operationId: mailDraftIndex
+      summary: List the caller's server-saved compose drafts
+      responses:
+        "200": { description: Drafts., content: { application/json: { schema: { type: object, properties: { drafts: { type: array, items: { type: object } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Mail]
+      operationId: mailDraftStore
+      summary: Create a server-saved compose draft
+      description: >
+        Every referenced id (account, signature, signing key, recipient keys,
+        files, gallery photos) must belong to the caller. At most 200 drafts are
+        kept per account; beyond that the call returns 422 draft_limit_reached.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [mode], properties: { mode: { type: string, enum: [compose, reply, forward] }, mail_account_id: { type: [integer, "null"] }, source_message_id: { type: [string, "null"], format: uuid }, to: { type: array, items: { type: string, format: email } }, cc: { type: array, items: { type: string, format: email } }, bcc: { type: array, items: { type: string, format: email } }, subject: { type: [string, "null"] }, text_body: { type: [string, "null"] }, html_body: { type: [string, "null"] }, file_ids: { type: array, items: { type: integer } }, gallery_photo_ids: { type: array, items: { type: integer } }, read_receipt: { type: boolean }, high_priority: { type: boolean } } }
+      responses:
+        "201": { description: Created. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: Validation failure. }
+  /mail/drafts/{draft}:
+    put:
+      tags: [Mail]
+      operationId: mailDraftUpdate
+      summary: Update an owner-scoped compose draft
+      parameters: [{ name: draft, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [mode], properties: { mode: { type: string, enum: [compose, reply, forward] } } } } } }
+      responses: { "200": { description: Updated. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "422": { description: Validation failure. } }
+    delete:
+      tags: [Mail]
+      operationId: mailDraftDestroy
+      summary: Delete an owner-scoped compose draft
+      parameters: [{ name: draft, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Deleted. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } }
   /mail/messages/compose:
     post:
       tags: [Mail]
@@ -10155,7 +10412,11 @@ paths:
         SMTP credentials (SSRF-guarded) and appends the sent copy to the origin
         Sent folder. Opt-in — an account with no SMTP configured returns
         `no_smtp` (422). Attachments may be uploaded (multipart) and/or referenced
-        by the caller's own archived attachment ids.
+        by the caller's own archived attachment ids, Files ids and Gallery media
+        ids. `read_receipt` adds a standards-based MDN request; `high_priority`
+        adds normal SMTP priority headers. `crypto_*` IDs are resolved owner-scoped
+        on the server; the browser never receives private key material. A crypto
+        failure aborts delivery rather than falling back to plaintext.
       requestBody:
         required: true
         content:
@@ -10171,7 +10432,16 @@ paths:
                 subject: { type: [string, "null"] }
                 text: { type: [string, "null"] }
                 html: { type: [string, "null"] }
+                signature_id: { type: [integer, "null"], minimum: -1, description: "Assigned signature id; omit for account default, -1 for none." }
                 attachment_ids: { type: array, items: { type: string, format: uuid } }
+                file_ids: { type: array, items: { type: integer }, description: "Caller-owned Files entries to attach." }
+                gallery_photo_ids: { type: array, items: { type: integer }, description: "Caller-owned Gallery media to attach." }
+                read_receipt: { type: boolean }
+                high_priority: { type: boolean }
+                crypto_mode: { type: string, enum: [none, sign, encrypt, sign_encrypt] }
+                crypto_type: { type: [string, "null"], enum: [pgp, smime, null] }
+                signing_key_id: { type: [integer, "null"], description: "Caller-owned private key id." }
+                recipient_key_ids: { type: array, items: { type: integer }, description: "Caller-owned public recipient key ids." }
                 sent_folder: { type: [string, "null"] }
           multipart/form-data:
             schema:
@@ -10183,6 +10453,7 @@ paths:
                 subject: { type: string }
                 text: { type: string }
                 html: { type: string }
+                signature_id: { type: integer, minimum: -1 }
                 "attachments[]": { type: array, items: { type: string, format: binary } }
       responses:
         "200":
@@ -10224,8 +10495,19 @@ paths:
               properties:
                 text: { type: [string, "null"] }
                 html: { type: [string, "null"] }
+                signature_id: { type: [integer, "null"], minimum: -1, description: "Assigned signature id; omit for account default, -1 for none." }
                 all: { type: [boolean, "null"], description: "Reply-all." }
                 sent_folder: { type: [string, "null"] }
+                attachments: { type: array, maxItems: 20, items: { type: string, format: binary } }
+                attachment_ids: { type: array, maxItems: 20, items: { type: string, format: uuid } }
+                file_ids: { type: array, maxItems: 20, items: { type: integer } }
+                gallery_photo_ids: { type: array, maxItems: 20, items: { type: integer } }
+                read_receipt: { type: [boolean, "null"] }
+                high_priority: { type: [boolean, "null"] }
+                crypto_mode: { type: string, enum: [none, sign, encrypt, sign_encrypt] }
+                crypto_type: { type: [string, "null"], enum: [pgp, smime, null] }
+                signing_key_id: { type: [integer, "null"] }
+                recipient_key_ids: { type: array, items: { type: integer } }
       responses:
         "200":
           description: Sent.
@@ -10266,7 +10548,18 @@ paths:
                 cc: { type: array, items: { type: string, format: email } }
                 text: { type: [string, "null"] }
                 html: { type: [string, "null"] }
+                signature_id: { type: [integer, "null"], minimum: -1, description: "Assigned signature id; omit for account default, -1 for none." }
                 sent_folder: { type: [string, "null"] }
+                attachments: { type: array, maxItems: 20, items: { type: string, format: binary } }
+                attachment_ids: { type: array, maxItems: 20, items: { type: string, format: uuid } }
+                file_ids: { type: array, maxItems: 20, items: { type: integer } }
+                gallery_photo_ids: { type: array, maxItems: 20, items: { type: integer } }
+                read_receipt: { type: [boolean, "null"] }
+                high_priority: { type: [boolean, "null"] }
+                crypto_mode: { type: string, enum: [none, sign, encrypt, sign_encrypt] }
+                crypto_type: { type: [string, "null"], enum: [pgp, smime, null] }
+                signing_key_id: { type: [integer, "null"] }
+                recipient_key_ids: { type: array, items: { type: integer } }
       responses:
         "200":
           description: Sent.

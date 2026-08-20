@@ -151,6 +151,39 @@ describe('extractDate', () => {
   });
 });
 
+describe('outgoing invoice PDF regressions', () => {
+  it('recognises the structured header and gross total of invoice 2025-3', () => {
+    const text = `Kiefer Networks
+Rechnungsnummer:                    2025-3
+Rechnungsdatum:                     07.03.2025
+Hausmeister Service Töws
+Vitali Töws
+Hochfeldring 85
+76549 Hügelsheim
+Nettobetrag                 77,71 €
+USt. 19,00 %                14,78 €
+Gesamtsumme                 92,49 €`;
+    const result = analyzeReceiptText(text, ['Kiefer Networks', 'Malte Kiefer']);
+    expect(result).toMatchObject({ merchant: 'Hausmeister Service Töws', number: '2025-3', date: '2025-03-07', total: 92.49, vat: '19', currency: 'EUR' });
+  });
+
+  it('recognises the structured header and gross total of invoice 2025-6', () => {
+    const text = `Kiefer Networks
+Rechnungsnummer:                   2025-6
+Rechnungsdatum:                    01.08.2025
+IntellyTec GmbH
+Ingo Radermacher
+Grünenborn 1
+53797 Lohmar
+USt-IdNr.:                         DE 347 51 73 86
+Nettobetrag               145,60 €
+USt. 19,00 %               27,66 €
+Gesamtsumme              173,26 €`;
+    const result = analyzeReceiptText(text, ['Kiefer Networks', 'Malte Kiefer']);
+    expect(result).toMatchObject({ merchant: 'IntellyTec GmbH', number: '2025-6', date: '2025-08-01', total: 173.26, vat: '19', vatId: 'DE347517386', currency: 'EUR' });
+  });
+});
+
 describe('extractMerchant', () => {
   it('prefers a company-legal-form letterhead line', () => {
     expect(extractMerchant('Ihre Bestellung\nIntellyTec GmbH\nGrünenborn 1\n53797 Lohmar')).toBe('IntellyTec GmbH');

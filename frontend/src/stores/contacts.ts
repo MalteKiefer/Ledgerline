@@ -18,6 +18,11 @@ export interface DuplicateContact {
 }
 export interface DuplicateGroup { signature: string; reasons: string[]; contacts: DuplicateContact[] }
 export interface ImportResult { created: number; updated: number; skipped: number }
+export interface ContactSyncSource {
+  id: string; name: string; provider: 'carddav' | 'icloud' | 'google'; address_book_id: string;
+  endpoint: string; username: string | null; enabled: boolean; propagate_deletes: boolean; connected: boolean;
+  status: 'idle' | 'syncing' | 'error'; last_error: string | null; last_synced_at: string | null;
+}
 
 export const useContactsStore = defineStore('contacts', () => {
   const contacts = ref<ContactRow[]>([]);
@@ -89,6 +94,11 @@ export const useContactsStore = defineStore('contacts', () => {
   const birthdayFeed = () => api.get<{ enabled: boolean; url: string | null }>('/api/v1/contacts/birthday-feed');
   const enableBirthdayFeed = () => api.post<{ enabled: boolean; url: string }>('/api/v1/contacts/birthday-feed');
   const disableBirthdayFeed = () => api.delete('/api/v1/contacts/birthday-feed');
+  const syncSources = () => api.get<{ sources: ContactSyncSource[]; versions: { id: number; contact_id: string | null; source_id: string | null; action: string; remote_uri: string | null; created_at: string }[] }>('/api/v1/contacts/sources');
+  const createSyncSource = (body: Record<string, unknown>) => api.post<{ source: ContactSyncSource; authorize_url: string | null }>('/api/v1/contacts/sources', body);
+  const runSyncSource = (id: string) => api.post(`/api/v1/contacts/sources/${id}/sync`);
+  const deleteSyncSource = (id: string) => api.delete(`/api/v1/contacts/sources/${id}`);
+  const restoreContactVersion = (id: number) => api.post<{ ok: boolean; contact_id: string }>(`/api/v1/contacts/versions/${id}/restore`);
 
   return {
     contacts, books, groups, settings, load, show, create, update, destroy, favorite,
@@ -96,5 +106,6 @@ export const useContactsStore = defineStore('contacts', () => {
     createGroup, deleteGroup, loadDuplicates, mergeDuplicates, dismissDuplicate,
     importVcf, exportUrl, uploadAvatar, bulkDestroy,
     loadShares, shareBook, removeShare, sharedWithMe, browseShared, birthdayFeed, enableBirthdayFeed, disableBirthdayFeed, geoSearch,
+    syncSources, createSyncSource, runSyncSource, deleteSyncSource, restoreContactVersion,
   };
 });

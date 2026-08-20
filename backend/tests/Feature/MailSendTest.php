@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\FileEntry;
+use App\Models\GalleryPhoto;
 use App\Models\MailAccount;
 use App\Models\MailAttachment;
 use App\Models\MailBlob;
 use App\Models\MailMessage;
+use App\Models\MailSignature;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Mail\ComposedMessage;
 use App\Services\Mail\MailSender;
+use App\Services\Mail\SecureMailComposer;
 use App\Services\Mail\SendResult;
 use App\Support\Mail\ImapAppender;
 use App\Support\Mail\SmtpProbe;
@@ -86,7 +90,7 @@ class MailSendTest extends TestCase
     /** Bind a spy MailSender and return it; captures the ComposedMessage. */
     private function spySender(): object
     {
-        $spy = new class(app(ImapAppender::class)) extends MailSender
+        $spy = new class(app(ImapAppender::class), app(SecureMailComposer::class)) extends MailSender
         {
             public ?ComposedMessage $captured = null;
 
@@ -135,8 +139,14 @@ class MailSendTest extends TestCase
     public function test_compose_appends_signature(): void
     {
         $user = User::factory()->create();
-        UserSetting::for($user->id)->update(['mail_signature' => 'Cheers,\nMe']);
         $account = $this->account($user);
+        // Signatures moved from a single UserSetting string to per-account
+        // MailSignature rows: compose picks the one flagged default for the
+        // sending account.
+        $signature = new MailSignature(['name' => 'Default', 'html' => '<p>Cheers,<br>Me</p>']);
+        $signature->user_id = $user->id;
+        $signature->save();
+        $signature->accounts()->attach($account->id, ['is_default' => true]);
         $spy = $this->spySender();
 
         $this->actingAs($user)->postJson(route('mail.messages.compose'), [
@@ -215,6 +225,29 @@ class MailSendTest extends TestCase
         $this->assertSame('STORED-BYTES', $spy->captured->attachments[0]['bytes']);
     }
 
+    public function test_compose_attaches_owned_files_and_gallery_media(): void
+    {
+        $user = User::factory()->create();
+        $account = $this->account($user);
+        $file = new FileEntry;
+        $file->forceFill(['user_id' => $user->id, 'name' => 'brief.pdf', 'mime' => 'application/pdf', 'size' => 4, 'storage_path' => 'files/brief', 'version' => 1])->save();
+        $photo = new GalleryPhoto;
+        $photo->forceFill(['user_id' => $user->id, 'name' => 'photo.jpg', 'mime' => 'image/jpeg', 'media_type' => 'image', 'status' => 'ready', 'size' => 5, 'storage_path' => 'gallery/photo', 'version' => 1])->save();
+        Storage::disk(config('files.disk'))->put('files/brief', 'FILE');
+        Storage::disk(config('files.disk'))->put('gallery/photo', 'PHOTO');
+        $spy = $this->spySender();
+
+        $this->actingAs($user)->postJson(route('mail.messages.compose'), [
+            'account_id' => $account->id, 'to' => ['dest@example.com'], 'text' => 'see attached',
+            'file_ids' => [$file->id], 'gallery_photo_ids' => [$photo->id], 'read_receipt' => true, 'high_priority' => true,
+        ])->assertOk();
+
+        $this->assertCount(2, $spy->captured->attachments);
+        $this->assertSame(['brief.pdf', 'photo.jpg'], array_column($spy->captured->attachments, 'filename'));
+        $this->assertTrue($spy->captured->readReceipt);
+        $this->assertTrue($spy->captured->highPriority);
+    }
+
     // ---- reply ----
 
     public function test_reply_quotes_original_and_threads(): void
@@ -267,6 +300,29 @@ class MailSendTest extends TestCase
         $this->assertSame('noreply-list@example.com', $spy->captured->to[0]['email']);
     }
 
+    public function test_reply_sanitizes_html_and_applies_delivery_options_and_attachments(): void
+    {
+        $user = User::factory()->create();
+        $account = $this->account($user);
+        $msg = $this->message($account);
+        $file = new FileEntry;
+        $file->forceFill(['user_id' => $user->id, 'name' => 'reply.pdf', 'mime' => 'application/pdf', 'size' => 5, 'storage_path' => 'files/reply', 'version' => 1])->save();
+        Storage::disk(config('files.disk'))->put('files/reply', 'REPLY');
+        $spy = $this->spySender();
+
+        $this->actingAs($user)->postJson(route('mail.messages.reply', $msg->id), [
+            'text' => 'My reply', 'html' => '<strong>My reply</strong><img src="https://tracker.invalid/a" onerror="alert(1)">',
+            'file_ids' => [$file->id], 'read_receipt' => true, 'high_priority' => true,
+        ])->assertOk();
+
+        $this->assertCount(1, $spy->captured->attachments);
+        $this->assertSame('reply.pdf', $spy->captured->attachments[0]['filename']);
+        $this->assertTrue($spy->captured->readReceipt);
+        $this->assertTrue($spy->captured->highPriority);
+        $this->assertStringNotContainsString('onerror', (string) $spy->captured->html);
+        $this->assertStringNotContainsString('tracker.invalid', (string) $spy->captured->html);
+    }
+
     public function test_reply_when_account_deleted_is_422(): void
     {
         $user = User::factory()->create();
@@ -313,6 +369,23 @@ class MailSendTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_compose_does_not_attach_another_users_file(): void
+    {
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        $account = $this->account($user);
+        $foreign = new FileEntry;
+        $foreign->forceFill(['user_id' => $other->id, 'name' => 'private.pdf', 'mime' => 'application/pdf', 'size' => 7, 'storage_path' => 'files/private', 'version' => 1])->save();
+        Storage::disk(config('files.disk'))->put('files/private', 'PRIVATE');
+        $spy = $this->spySender();
+
+        $this->actingAs($user)->postJson(route('mail.messages.compose'), [
+            'account_id' => $account->id, 'to' => ['dest@example.com'], 'text' => 'hello', 'file_ids' => [$foreign->id],
+        ])->assertOk();
+
+        $this->assertSame([], $spy->captured->attachments);
+    }
+
     // ---- MailSender unit: real send + Sent-append + teardown ----
 
     public function test_mail_sender_sends_and_appends_to_sent_and_scrubs_config(): void
@@ -338,7 +411,7 @@ class MailSendTest extends TestCase
 
         // Point the per-account runtime mailer at the in-memory array transport
         // so a real send happens with no SMTP socket.
-        $sender = new class($appender) extends MailSender
+        $sender = new class($appender, app(SecureMailComposer::class)) extends MailSender
         {
             protected function configureMailer(string $name, MailAccount $account, string $host, string $fromEmail, ?string $fromName, string $password): void
             {
