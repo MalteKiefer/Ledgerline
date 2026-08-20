@@ -23,11 +23,15 @@ class PublicGalleryUploadController extends Controller
     public function meta(string $token): JsonResponse
     {
         $link = $this->resolve($token);
+        // A password on the link means the URL alone is not meant to be enough.
+        // Withhold everything descriptive until it is proven, mirroring the read
+        // share, which hides name and count until unlock.
+        $locked = $link->needsPassword();
 
         return response()->json([
-            'label' => $link->label,
-            'album' => $link->album?->name,
-            'needs_password' => $link->needsPassword(),
+            'label' => $locked ? null : $link->label,
+            'album' => $locked ? null : $link->album?->name,
+            'needs_password' => $locked,
         ]);
     }
 

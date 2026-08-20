@@ -1833,10 +1833,15 @@ class FilesController extends Controller
             abort(404);
         }
 
+        // A password on the link means the URL alone is not meant to be enough.
+        // Withhold the label and the owner's real name until it is proven — the
+        // read share hides its target's name until unlock for the same reason.
+        $locked = $link->needsPassword();
+
         return response()->json([
-            'label' => $link->label,
-            'owner' => (string) ($link->owner->name ?? ''),
-            'needs_password' => $link->needsPassword(),
+            'label' => $locked ? null : $link->label,
+            'owner' => $locked ? '' : (string) ($link->owner->name ?? ''),
+            'needs_password' => $locked,
         ]);
     }
 

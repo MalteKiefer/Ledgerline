@@ -63,8 +63,35 @@ class ApiSurfaceGuardTest extends TestCase
         }
 
         $this->assertSame([], array_values(array_unique($unauthenticated)),
-            "New unauthenticated /api/v1 endpoint(s). If that is intended, add the path to PUBLIC_ENDPOINTS "
-            ."and record the decision in the CLAUDE.md security register with its compensating control.");
+            'New unauthenticated /api/v1 endpoint(s). If that is intended, add the path to PUBLIC_ENDPOINTS '
+            .'and record the decision in the CLAUDE.md security register with its compensating control.');
+    }
+
+    /**
+     * openapi.yaml is the contract the mobile clients build against, and it is
+     * hand-edited. A broken flow mapping once shipped and stayed unnoticed for
+     * releases, because every check here reads the file as text and greps it —
+     * a malformed spec looked exactly like a well-formed one.
+     *
+     * There is no YAML parser in this runtime, so this asserts the invariant the
+     * file actually holds: every line closes the braces and brackets it opens.
+     * That is what a dropped `}` breaks, and it is what nothing else catches.
+     */
+    public function test_openapi_flow_mappings_are_balanced(): void
+    {
+        $lines = explode("\n", (string) file_get_contents(base_path('../openapi.yaml')));
+        $offenders = [];
+        foreach ($lines as $i => $line) {
+            // Delimiters inside quoted scalars are text, not structure.
+            $stripped = preg_replace(['/"(?:[^"\\\\]|\\\\.)*"/', "/'(?:[^']|'')*'/"], ['""', "''"], $line) ?? $line;
+            if (substr_count($stripped, '{') !== substr_count($stripped, '}')
+                || substr_count($stripped, '[') !== substr_count($stripped, ']')) {
+                $offenders[] = ($i + 1).': '.trim($line);
+            }
+        }
+
+        $this->assertSame([], $offenders,
+            'Unbalanced flow mapping in openapi.yaml — the spec will not parse for any client generating code from it.');
     }
 
     public function test_every_api_route_is_documented_in_openapi(): void
