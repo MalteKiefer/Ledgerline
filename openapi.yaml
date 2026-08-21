@@ -1394,7 +1394,7 @@ components:
         name: { type: string, maxLength: 255 }
         host: { type: string, maxLength: 255 }
         port: { type: integer, minimum: 1, maximum: 65535, default: 22 }
-        username: { type: string, maxLength: 64 }
+        username: { type: string, maxLength: 64, description: "Preferably an unprivileged account — the probe needs no privilege. `root` is accepted (some hosts have no other account) but the UI warns that such a key hands over the whole machine if stolen." }
         auth_type: { type: string, enum: [key], description: "Key only; password authentication is not offered." }
         private_key: { type: string, maxLength: 16384 }
         passphrase: { type: string, maxLength: 1024 }
@@ -7282,7 +7282,7 @@ paths:
       tags: [Servers]
       operationId: serversShow
       summary: One server with its snapshot history
-      description: "`history` carries only the series a trend chart draws (load, memory, fullest filesystem) for the newest 50 runs — not the whole snapshot for each."
+      description: "`history` carries only the series a trend chart draws (load, memory, fullest filesystem) for the newest 50 runs — not the whole snapshot for each. The server object additionally carries `public_key`, derived from the stored key, so a client can print removal instructions naming the exact authorized_keys line to delete."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: server, in: path, required: true, schema: { type: integer } } ]
       responses:
@@ -7293,7 +7293,12 @@ paths:
               schema:
                 type: object
                 properties:
-                  server: { $ref: "#/components/schemas/Server" }
+                  server:
+                    allOf:
+                      - $ref: "#/components/schemas/Server"
+                      - type: object
+                        properties:
+                          public_key: { type: [string, "null"], description: "Public half of the stored key, OpenSSH one-line form. Derived on demand; the private key is never returned." }
                   history:
                     type: array
                     items:

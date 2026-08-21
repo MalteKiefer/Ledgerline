@@ -16,6 +16,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use phpseclib3\Crypt\Common\AsymmetricKey;
 use phpseclib3\Crypt\EC;
+use phpseclib3\Crypt\PublicKeyLoader;
+use Throwable;
 
 /**
  * Monitored servers, reached over plain SSH with no agent on the target.
@@ -66,7 +68,13 @@ class ServerController extends Controller
             ->map(fn (ServerFact $f): array => $this->trendPoint($f))->all();
 
         return response()->json([
-            'server' => $this->present($server->load('latestFact')),
+            'server' => [
+                ...$this->present($server->load('latestFact')),
+                // Derived, not stored: it is what the removal instructions have to
+                // name so the right authorized_keys line is deleted and any other
+                // key in that account survives.
+                'public_key' => $this->publicKey($server),
+            ],
             'history' => $history,
         ]);
     }
@@ -282,6 +290,30 @@ class ServerController extends Controller
         return $result->fingerprint === $fingerprint ? $result->hostKey : null;
     }
 
+    /**
+     * The public half of the stored key, in the one-line form authorized_keys
+     * uses. Derived on demand rather than stored: it is a pure function of the
+     * private key, and a second copy could only ever drift.
+     */
+    private function publicKey(Server $server): ?string
+    {
+        $credentials = $server->credentials ?? [];
+        $private = is_string($credentials['private_key'] ?? null) ? $credentials['private_key'] : '';
+        if (trim($private) === '') {
+            return null;
+        }
+        try {
+            $passphrase = is_string($credentials['passphrase'] ?? null) ? $credentials['passphrase'] : '';
+            $public = PublicKeyLoader::loadPrivateKey($private, $passphrase)->getPublicKey();
+
+            return $public instanceof AsymmetricKey ? $this->openSsh($public) : null;
+        } catch (Throwable) {
+            // A key we cannot parse simply yields no removal hint; the rest of
+            // the detail view must still render.
+            return null;
+        }
+    }
+
     /** phpseclib's toString() is documented as array|string; OpenSSH gives a string. */
     private function openSsh(AsymmetricKey $key): ?string
     {
@@ -341,6 +373,10 @@ class ServerController extends Controller
             'name' => [$creating ? 'required' : 'sometimes', 'string', 'max:255'],
             'host' => [$creating ? 'required' : 'sometimes', 'string', 'max:255'],
             'port' => ['sometimes', 'integer', 'min:1', 'max:65535'],
+            // Monitoring needs no privilege, and a key that logs in as root hands
+            // over the whole machine if it is ever stolen. The UI says so where
+            // the name is entered; it is not refused, because the operator may
+            // have a host where root is the only account that exists.
             'username' => [$creating ? 'required' : 'sometimes', 'string', 'max:64'],
             // Key only. OpenSSH takes no password without a terminal, and adding
             // sshpass to drive a pty would be a worse answer than generating a key,

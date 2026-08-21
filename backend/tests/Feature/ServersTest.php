@@ -195,6 +195,46 @@ class ServersTest extends TestCase
             ->assertJsonValidationErrors('auth_type');
     }
 
+    public function test_root_is_allowed_but_warned_about_in_the_form(): void
+    {
+        // Not refused: a host may have no other account. The dialog says what it
+        // costs, and that is where the judgement belongs.
+        Queue::fake();
+
+        $this->postJson(route('api.servers.store'), [...$this->newServerPayload(), 'username' => 'root'], $this->bearer(User::factory()->create()))
+            ->assertCreated()
+            ->assertJsonPath('server.username', 'root');
+    }
+
+    public function test_the_detail_view_carries_the_public_key_for_the_removal_steps(): void
+    {
+        $owner = User::factory()->create();
+        // A real generated key, so the derivation is exercised rather than mocked.
+        $token = $this->postJson(route('api.servers.keypair'), [], $this->bearer($owner))->json('token');
+        $payload = $this->newServerPayload();
+        unset($payload['private_key']);
+        $id = $this->postJson(route('api.servers.store'), [...$payload, 'keypair_token' => $token], $this->bearer($owner))
+            ->assertCreated()->json('server.id');
+
+        $public = $this->getJson(route('api.servers.show', $id), $this->bearer($owner))
+            ->assertOk()->json('server.public_key');
+
+        // The public half only — the private key must never appear anywhere.
+        $this->assertIsString($public);
+        $this->assertStringStartsWith('ssh-ed25519 ', $public);
+    }
+
+    public function test_the_detail_view_never_leaks_the_private_key(): void
+    {
+        $owner = User::factory()->create();
+        $server = $this->server($owner);
+
+        $body = (string) $this->getJson(route('api.servers.show', $server->id), $this->bearer($owner))->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('PRIVATE-KEY-BODY', $body);
+        $this->assertStringNotContainsString('PRIVATE KEY', $body);
+    }
+
     public function test_a_stranger_cannot_read_another_users_server(): void
     {
         $server = $this->server(User::factory()->create());
