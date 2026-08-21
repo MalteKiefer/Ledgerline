@@ -32,16 +32,7 @@ final class ServerMonitor
             ->orderByDesc('collected_at')
             ->first();
 
-        $credentials = $server->credentials ?? [];
-        $result = $this->probe->run(new ServerTarget(
-            host: $server->host,
-            port: $server->port,
-            username: $server->username,
-            privateKey: is_string($credentials['private_key'] ?? null) ? $credentials['private_key'] : '',
-            passphrase: is_string($credentials['passphrase'] ?? null) ? $credentials['passphrase'] : '',
-            fingerprint: (string) $server->host_fingerprint,
-            hostKey: (string) $server->host_key,
-        ));
+        $result = $this->probe->run(ServerTarget::fromServer($server));
 
         $fact = new ServerFact;
         $fact->forceFill([

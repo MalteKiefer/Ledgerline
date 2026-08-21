@@ -86,6 +86,8 @@ use App\Http\Controllers\PublicGalleryShareController;
 use App\Http\Controllers\PublicGalleryUploadController;
 use App\Http\Controllers\ReindexController;
 use App\Http\Controllers\ServerController;
+use App\Http\Controllers\ServerLogController;
+use App\Http\Controllers\ServerTerminalController;
 use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedGalleryController;
 use App\Http\Controllers\SharedWithMeController;
@@ -326,6 +328,17 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/servers/{server}/refresh', [ServerController::class, 'refresh'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.refresh');
             Route::post('/servers/{server}/test', [ServerController::class, 'testStored'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.test-stored');
             Route::get('/servers/{server}/checks', [ServerController::class, 'checks'])->whereNumber('server')->middleware('throttle:120,1')->name('api.servers.checks');
+            // Inline SSH like the connection test, so both are throttled harder
+            // than the read-only endpoints around them.
+            Route::get('/servers/{server}/log-sources', [ServerLogController::class, 'sources'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.log-sources');
+            Route::post('/servers/{server}/logs', [ServerLogController::class, 'read'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.logs');
+            // Interactive shell. Opening demands the account password every
+            // time and is audited; polling is frequent by design, so its limit
+            // is high while opening one stays deliberately low.
+            Route::post('/servers/{server}/terminal', [ServerTerminalController::class, 'open'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.terminal.open');
+            Route::get('/servers/{server}/terminal/{session}', [ServerTerminalController::class, 'poll'])->whereNumber('server')->whereAlphaNumeric('session')->middleware('throttle:1200,1')->name('api.servers.terminal.poll');
+            Route::post('/servers/{server}/terminal/{session}/input', [ServerTerminalController::class, 'input'])->whereNumber('server')->whereAlphaNumeric('session')->middleware('throttle:1200,1')->name('api.servers.terminal.input');
+            Route::delete('/servers/{server}/terminal/{session}', [ServerTerminalController::class, 'close'])->whereNumber('server')->whereAlphaNumeric('session')->middleware('throttle:60,1')->name('api.servers.terminal.close');
         });
 
         Route::middleware('module:notes')->group(function (): void {

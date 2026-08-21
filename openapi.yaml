@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.700.0
+  version: 1.702.0
   license:
     name: Proprietary
   description: >
@@ -7462,6 +7462,254 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/log-sources:
+    get:
+      tags: [Servers]
+      operationId: serversLogSources
+      summary: What logs this host can offer
+      description: >
+        Asks the host which log systems exist and which units, containers and
+        files are actually present. This is also the security boundary for the
+        read below: a selection must be something this endpoint reported, so the
+        browser chooses from the host's own answer rather than naming a target of
+        its own. Opens an SSH session inline with the interactive timeouts, like
+        the connection test, and is throttled 20/min accordingly.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  journal: { type: boolean, description: "journalctl is present and runnable as the monitoring account." }
+                  units: { type: array, items: { type: string }, description: "Running systemd services." }
+                  containers: { type: array, items: { type: string } }
+                  files: { type: array, items: { type: string }, description: "Readable files under /var/log." }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/logs:
+    post:
+      tags: [Servers]
+      operationId: serversLogs
+      summary: Read the tail of one log
+      description: >
+        Returns a bounded slice of one log. Nothing from the request becomes a
+        command: the source is one of a fixed set, the line count is an integer
+        capped at 2000, and unit, container and path are matched against strict
+        patterns and quoted for POSIX sh before being assembled into a fixed
+        command shape. A file path must lie under /var/log. Throttled 30/min;
+        the response carries Cache-Control no-store.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source]
+              properties:
+                source: { type: string, enum: [journal, docker, file] }
+                unit: { type: [string, "null"], maxLength: 128, description: "systemd unit; journal source only." }
+                container: { type: [string, "null"], maxLength: 128, description: "Container name or id; docker source only." }
+                path: { type: [string, "null"], maxLength: 200, description: "Absolute path under /var/log; file source only." }
+                lines: { type: integer, minimum: 1, maximum: 2000, default: 200 }
+                errors_only: { type: boolean, default: false, description: "journalctl -p err; journal source only." }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: The selection was refused, or the host was unreachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [invalid_selection, unreachable] }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/terminal:
+    post:
+      tags: [Servers]
+      operationId: serversTerminalOpen
+      summary: Open an interactive shell
+      description: >
+        Starts a shell session on the host. The account password is required
+        EVERY time and is never remembered — a device token alone cannot obtain
+        a shell. Opening is recorded in the audit log with the server named.
+
+        This is the one endpoint in the module where what runs on the remote
+        machine is decided by whoever is typing, rather than by a fixed script.
+        A key restricted with a forced command cannot open a shell at all, which
+        is the recommended posture and deliberately incompatible with this
+        feature. See the security register.
+
+        The session runs on a dedicated queue; without a worker for it a session
+        never becomes ready and the client says so. Sessions are capped at two
+        per account, thirty minutes of life and two minutes of idle. Throttled
+        10/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password]
+              properties:
+                current_password: { type: string }
+                cols: { type: integer, minimum: 20, maximum: 500, default: 80 }
+                rows: { type: integer, minimum: 5, maximum: 200, default: 24 }
+      responses:
+        "201":
+          description: Session opened
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session: { type: string, description: "48 alphanumeric characters. Bound to this account and this server; both are checked on every subsequent call." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: The password did not match.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [password_invalid] }
+        "429":
+          description: Rate limited, or two sessions are already open.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [too_many_sessions] }
+  /servers/{server}/terminal/{session}:
+    get:
+      tags: [Servers]
+      operationId: serversTerminalPoll
+      summary: Read terminal output
+      description: >
+        Returns everything produced since the cursor. Polling rather than a
+        stream: this runtime serves requests from a fixed worker pool and a
+        long-lived connection pins one for the session's duration. Each poll
+        also signals that somebody is still watching, which is what keeps the
+        shell open. Throttled 1200/min, because a live terminal polls often.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: session
+          in: path
+          required: true
+          schema: { type: string }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready: { type: boolean, description: "A worker has the shell open. False means it is still starting, or no terminal worker is running." }
+                  data: { type: string, description: "Base64. Terminal output is arbitrary bytes and need not be valid UTF-8, which a JSON string cannot carry." }
+                  cursor: { type: integer, description: "Pass back on the next poll; the same bytes are never delivered twice." }
+                  closed: { type: [string, "null"], description: "closed, exited, idle, expired, gone, failed, unsafe_host, no_host_key or no_credentials." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Servers]
+      operationId: serversTerminalClose
+      summary: End the session
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: session
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Closed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/terminal/{session}/input:
+    post:
+      tags: [Servers]
+      operationId: serversTerminalInput
+      summary: Send keystrokes
+      description: >
+        Base64-encoded bytes. A terminal carries control characters — Ctrl-C is
+        0x03, arrow keys are escape sequences — and encoding also keeps the
+        payload clear of the global input-trimming middleware, which would
+        otherwise eat the newline that submits every command.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: session
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data]
+              properties:
+                data: { type: string, maxLength: 8192, description: "Base64." }
+      responses:
+        "200": { description: Accepted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: The body was not valid base64.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [bad_input] }
         "429": { $ref: "#/components/responses/RateLimited" }
   /mounts:
     get:

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Servers;
 
+use App\Models\Server;
+
 /**
  * Everything one probe needs to reach a host, in one value instead of six
  * positional arguments — the controller and the collector build it from
@@ -29,4 +31,24 @@ final readonly class ServerTarget
          */
         public string $hostKey = '',
     ) {}
+
+    /**
+     * Build from a stored row. Three callers now reach a host from a saved
+     * server — the collector, the log reader and the terminal — and they must
+     * not drift on which fields matter or how the credential is unpacked.
+     */
+    public static function fromServer(Server $server): self
+    {
+        $credentials = $server->credentials ?? [];
+
+        return new self(
+            host: $server->host,
+            port: $server->port,
+            username: $server->username,
+            privateKey: is_string($credentials['private_key'] ?? null) ? $credentials['private_key'] : '',
+            passphrase: is_string($credentials['passphrase'] ?? null) ? $credentials['passphrase'] : '',
+            fingerprint: (string) $server->host_fingerprint,
+            hostKey: (string) $server->host_key,
+        );
+    }
 }
