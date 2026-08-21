@@ -130,6 +130,26 @@ export const useServersStore = defineStore('servers', () => {
   const readLog = (id: number, body: Record<string, unknown>) =>
     api.post<{ text: string }>(`/api/v1/servers/${id}/logs`, body);
 
+  /**
+   * Open an interactive session. The account password is required every time
+   * and is never remembered anywhere — not here, not on the server.
+   */
+  const terminalOpen = (id: number, body: Record<string, unknown>) =>
+    api.post<{ session: string }>(`/api/v1/servers/${id}/terminal`, body);
+
+  /** Read output from the cursor forward. Bytes arrive base64-encoded. */
+  const terminalPoll = (id: number, session: string, cursor: number) =>
+    api.get<{ ready: boolean; data: string; cursor: number; closed: string | null }>(
+      `/api/v1/servers/${id}/terminal/${session}?cursor=${cursor}`,
+    );
+
+  /** Send keystrokes, base64-encoded — a terminal carries control bytes, not text. */
+  const terminalInput = (id: number, session: string, data: string) =>
+    api.post(`/api/v1/servers/${id}/terminal/${session}/input`, { data });
+
+  const terminalClose = (id: number, session: string) =>
+    api.delete(`/api/v1/servers/${id}/terminal/${session}`);
+
   /** Reachability history. Bounded by hours so the answer does not shift with port count. */
   const checks = (id: number, hours = 24) =>
     api.get<{ hours: number; checks: ServerCheckSeries[] }>(`/api/v1/servers/${id}/checks?hours=${hours}`);
@@ -171,5 +191,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

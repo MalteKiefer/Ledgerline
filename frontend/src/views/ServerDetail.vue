@@ -296,6 +296,14 @@
         >{{ logText }}</pre>
       </Card>
     </template>
+
+    <!-- Terminal. Mounted only while its tab is open, so leaving the tab ends
+         the session rather than leaving a shell waiting on the idle timeout. -->
+    <template v-else-if="tab === 'terminal'">
+      <Card :body-class="'p-4'">
+        <ServerTerminal :server-id="server.id" />
+      </Card>
+    </template>
   </div>
 
   <div v-else-if="loading" class="p-10 text-center text-[var(--ll-muted)]">{{ t('common.loading') }}</div>
@@ -314,6 +322,7 @@ import {
 } from '@spa/lib/server-facts';
 import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';
+import ServerTerminal from '@spa/components/ServerTerminal.vue';
 import { fmtDate, fmtDateTime, fmtTime } from '@spa/lib/datetime';
 
 const CHART_INK = '#6d4aff';
@@ -392,13 +401,14 @@ const loadNote = computed(() => {
 
 // ---- tabs ----
 
-type Tab = 'overview' | 'logs';
+type Tab = 'overview' | 'logs' | 'terminal';
 
 const tab = ref<Tab>('overview');
 
 const tabs = computed<{ id: Tab; label: string }[]>(() => [
   { id: 'overview', label: t('servers.tab_overview') },
   { id: 'logs', label: t('servers.tab_logs') },
+  { id: 'terminal', label: t('servers.tab_terminal') },
 ]);
 
 function setTab(next: Tab) {
@@ -621,6 +631,8 @@ async function load() {
     if (route.query.tab === 'logs') {
       tab.value = 'logs';
       void loadSources();
+    } else if (route.query.tab === 'terminal') {
+      tab.value = 'terminal';
     }
   } catch {
     server.value = null;

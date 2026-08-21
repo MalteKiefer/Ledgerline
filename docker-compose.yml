@@ -159,6 +159,33 @@ services:
       retries: 3
       start_period: 20s
 
+  # A worker of its own for interactive terminals, and that separation is the
+  # point. A terminal job holds a worker for as long as somebody is typing — up
+  # to half an hour. On the shared queue that would stall the probes, the
+  # reachability checks and the backups, so the feature would break the
+  # monitoring it sits next to in order to serve one shell.
+  #
+  # Not started by default: no terminal worker means terminal sessions never
+  # become ready, and the UI says so. Enable with --profile terminal.
+  terminal-worker:
+    <<: *app-image
+    profiles: ["terminal"]
+    # --timeout above RunServerTerminal::$timeout (1860s) so the job's own
+    # ceiling governs the session, not the worker's.
+    command: ["php", "/var/www/html/artisan", "queue:work", "--queue=terminal", "--sleep=1", "--tries=1", "--max-time=3600", "--timeout=1920"]
+    deploy:
+      replicas: ${TERMINAL_WORKER_REPLICAS:-1}
+      resources:
+        limits:
+          cpus: "${TERMINAL_WORKER_CPU_LIMIT:-1}"
+          memory: ${TERMINAL_WORKER_MEMORY_LIMIT:-512m}
+    healthcheck:
+      test: ["CMD-SHELL", "grep -la queue:work /proc/*/cmdline >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
   scheduler:
     <<: *app-image
     command: ["php", "/var/www/html/artisan", "schedule:work"]

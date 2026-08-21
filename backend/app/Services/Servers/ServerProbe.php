@@ -269,6 +269,25 @@ echo "##LL:end"';
      * noticing a mismatch afterwards. OpenSSH wants the bracketed form for any
      * non-default port.
      */
+    /**
+     * The known_hosts line that pins this host. Public because the terminal
+     * builds its own long-lived ssh invocation and must pin identically — two
+     * copies of this format would be two chances to weaken one of them.
+     */
+    public function knownHostsFor(ServerTarget $target, string $hostKey): string
+    {
+        return $this->knownHostsLine($target, $hostKey);
+    }
+
+    /**
+     * The usable private key for a target, decrypted if it carries a passphrase.
+     * Public for the same reason as knownHostsFor().
+     */
+    public function privateKeyFor(ServerTarget $target): ?string
+    {
+        return $this->usableKey($target);
+    }
+
     private function knownHostsLine(ServerTarget $target, string $hostKey): string
     {
         $name = $target->port === 22 ? $target->host : '['.$target->host.']:'.$target->port;
