@@ -158,58 +158,93 @@
 
     <!-- Create / edit -->
     <Modal v-model="formOpen" :title="editing ? t('servers.edit') : t('servers.add')" width="640px">
-      <div class="space-y-3">
-        <TextField v-model="form.name" :label="t('servers.name')" />
-        <div class="grid grid-cols-3 gap-3">
-          <TextField v-model="form.host" class="col-span-2" :label="t('servers.host')" />
-          <TextField v-model="form.port" :label="t('servers.port')" type="number" />
-        </div>
-        <TextField v-model="form.username" :label="t('servers.username')" />
-
-        <Select v-model="form.auth_type" :label="t('servers.auth_type')" :options="authOptions" />
-        <template v-if="form.auth_type === 'key'">
-          <label class="block">
-            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.private_key') }}</span>
-            <textarea
-              v-model="form.private_key" rows="5" spellcheck="false"
-              class="w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-2 font-mono text-xs"
-              :placeholder="editing ? t('servers.secret_kept') : '-----BEGIN OPENSSH PRIVATE KEY-----'"
-            />
-          </label>
-          <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.private_key_hint') }}</p>
-          <TextField v-model="form.passphrase" :label="t('servers.passphrase')" type="password" :placeholder="editing ? t('servers.secret_kept') : ''" />
-        </template>
-        <TextField v-else v-model="form.password" :label="t('servers.password')" type="password" :placeholder="editing ? t('servers.secret_kept') : ''" />
-
-        <div class="grid grid-cols-2 gap-3">
-          <TextField v-model="form.group" :label="t('servers.group')" />
-        </div>
-        <label class="block">
-          <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.note') }}</span>
-          <textarea v-model="form.note" rows="2" class="w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-2 text-sm" />
-        </label>
-
-        <label class="flex items-center gap-2 text-sm"><input v-model="form.enabled" type="checkbox" class="accent-primary-500">{{ t('servers.enabled') }}</label>
-        <label class="flex items-center gap-2 text-sm"><input v-model="form.restricted_key" type="checkbox" class="accent-primary-500">{{ t('servers.restricted_key') }}</label>
-        <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.restricted_key_hint') }}</p>
-        <button class="text-xs text-primary-600 underline dark:text-primary-400" @click="openScript">{{ t('servers.script_title') }}</button>
-
-        <!-- Host key confirmation. Saving stays blocked until this is answered:
-             the pin is what protects the credential-carrying connection. -->
-        <div class="rounded-lg border border-[var(--ll-border)] p-3">
-          <div class="flex items-center justify-between gap-2">
-            <span class="text-xs font-medium">{{ t('servers.fingerprint') }}</span>
-            <Btn variant="ghost" size="sm" icon="network_check" :disabled="testing" @click="doTest">{{ testing ? t('servers.testing') : t('servers.test') }}</Btn>
+      <div class="space-y-4">
+        <!-- Step 1 — where to connect -->
+        <Step :n="1" :title="t('servers.step_connection')" :done="stepConnectionDone">
+          <TextField v-model="form.name" :label="t('servers.name')" />
+          <div class="mt-3 grid grid-cols-3 gap-3">
+            <TextField v-model="form.host" class="col-span-2" :label="t('servers.host')" />
+            <TextField v-model="form.port" :label="t('servers.port')" type="number" />
           </div>
+          <TextField v-model="form.username" class="mt-3" :label="t('servers.username')" />
+          <p class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.username_hint') }}</p>
+        </Step>
+
+        <!-- Step 2 — the key -->
+        <Step :n="2" :title="t('servers.step_key')" :done="stepKeyDone">
+          <Select v-model="form.auth_type" :label="t('servers.auth_type')" :options="authOptions" />
+
+          <template v-if="form.auth_type === 'key'">
+            <div v-if="generatedKey" class="mt-3 space-y-2">
+              <p class="text-xs">{{ t('servers.key_generated') }}</p>
+              <pre class="overflow-x-auto rounded-lg bg-black/[0.05] p-2.5 font-mono text-[0.7rem] break-all whitespace-pre-wrap dark:bg-white/5">{{ generatedKey.public_key }}</pre>
+              <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.key_private_stays', { minutes: String(generatedKey.expires_in_minutes) }) }}</p>
+            </div>
+            <div v-else class="mt-3 space-y-2">
+              <Btn variant="solid" size="sm" icon="key" :disabled="generating" @click="doGenerateKey">
+                {{ generating ? t('servers.key_generating') : t('servers.key_generate') }}
+              </Btn>
+              <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.key_generate_hint') }}</p>
+              <details class="text-xs">
+                <summary class="cursor-pointer text-[var(--ll-muted)]">{{ t('servers.key_own') }}</summary>
+                <textarea
+                  v-model="form.private_key" rows="4" spellcheck="false"
+                  class="mt-2 w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-2 font-mono text-xs"
+                  :placeholder="editing ? t('servers.secret_kept') : '-----BEGIN OPENSSH PRIVATE KEY-----'"
+                />
+                <p class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.private_key_hint') }}</p>
+                <TextField v-model="form.passphrase" class="mt-2" :label="t('servers.passphrase')" type="password" :placeholder="editing ? t('servers.secret_kept') : ''" />
+              </details>
+            </div>
+          </template>
+
+          <TextField v-else v-model="form.password" class="mt-3" :label="t('servers.password')" type="password" :placeholder="editing ? t('servers.secret_kept') : ''" />
+        </Step>
+
+        <!-- Step 3 — what to run on the target. Built from the values above so the
+             user pastes a command that already names their user and key. -->
+        <Step :n="3" :title="t('servers.step_target')" :done="false" :muted="!setupReady">
+          <p v-if="!setupReady" class="text-xs text-[var(--ll-muted)]">{{ t('servers.step_target_wait') }}</p>
+          <template v-else>
+            <label class="mb-2 flex items-center gap-2 text-sm">
+              <input v-model="form.restricted_key" type="checkbox" class="accent-primary-500">{{ t('servers.restricted_key') }}
+            </label>
+            <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.restricted_key_hint') }}</p>
+            <p class="mb-1.5 text-xs">{{ t('servers.step_target_intro') }}</p>
+            <pre class="max-h-64 overflow-auto rounded-lg bg-black/[0.05] p-2.5 font-mono text-[0.7rem] dark:bg-white/5">{{ setupCommands }}</pre>
+            <Btn variant="ghost" size="sm" icon="content_copy" class="mt-2" @click="copySetup">{{ t('common.copy') }}</Btn>
+          </template>
+        </Step>
+
+        <!-- Step 4 — host key. Saving stays blocked until this is answered: the
+             pin is what protects the credential-carrying connection. -->
+        <Step :n="4" :title="t('servers.step_verify')" :done="probe?.ok === true">
+          <Btn variant="solid" size="sm" icon="network_check" :disabled="testing || !setupReady" @click="doTest">
+            {{ testing ? t('servers.testing') : t('servers.test') }}
+          </Btn>
           <p v-if="!probe" class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.test_first') }}</p>
           <template v-else>
-            <p class="mt-2 break-all font-mono text-xs">{{ probe.fingerprint || '—' }}</p>
-            <p class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.fingerprint_confirm') }}</p>
-            <p class="mt-1 font-mono text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.fingerprint_hint') }}</p>
             <p v-if="!probe.ok" class="mt-2 rounded bg-red-500/10 px-2 py-1.5 text-[0.7rem] text-red-600 dark:text-red-400">{{ errorText(probe.error) }}</p>
-            <p v-else class="mt-2 text-[0.7rem] text-emerald-700 dark:text-emerald-400">{{ t('servers.test_ok') }}</p>
+            <template v-else>
+              <p class="mt-2 text-[0.7rem] text-emerald-700 dark:text-emerald-400">{{ t('servers.test_ok') }}</p>
+              <p class="mt-2 text-xs font-medium">{{ t('servers.fingerprint') }}</p>
+              <p class="mt-1 break-all font-mono text-xs">{{ probe.fingerprint || '—' }}</p>
+              <p class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.fingerprint_confirm') }}</p>
+              <pre class="mt-1 overflow-x-auto rounded-lg bg-black/[0.05] p-2 font-mono text-[0.7rem] dark:bg-white/5">{{ t('servers.fingerprint_hint') }}</pre>
+            </template>
           </template>
-        </div>
+        </Step>
+
+        <!-- Optional metadata, out of the way of the four required steps -->
+        <details class="rounded-lg border border-[var(--ll-border)] p-3">
+          <summary class="cursor-pointer text-xs font-medium">{{ t('servers.more_options') }}</summary>
+          <TextField v-model="form.group" class="mt-3" :label="t('servers.group')" />
+          <label class="mt-3 block">
+            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.note') }}</span>
+            <textarea v-model="form.note" rows="2" class="w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-2 text-sm" />
+          </label>
+          <label class="mt-3 flex items-center gap-2 text-sm"><input v-model="form.enabled" type="checkbox" class="accent-primary-500">{{ t('servers.enabled') }}</label>
+        </details>
       </div>
       <template #footer>
         <Btn v-if="editing" variant="ghost" class="mr-auto text-red-600" icon="delete" @click="doDelete">{{ t('common.delete') }}</Btn>
@@ -218,24 +253,12 @@
       </template>
     </Modal>
 
-    <!-- Forced-command setup -->
-    <Modal v-model="scriptOpen" :title="t('servers.script_title')" width="760px">
-      <div class="space-y-3 text-sm">
-        <p>{{ t('servers.script_intro') }}</p>
-        <pre class="overflow-x-auto rounded-lg bg-black/[0.05] p-3 font-mono text-xs dark:bg-white/5">{{ t('servers.script_authorized') }}</pre>
-        <pre class="max-h-72 overflow-auto rounded-lg bg-black/[0.05] p-3 font-mono text-xs dark:bg-white/5">{{ script }}</pre>
-        <p class="text-[var(--ll-muted)]">{{ t('servers.script_outro') }}</p>
-      </div>
-      <template #footer>
-        <Btn variant="ghost" icon="content_copy" @click="copyScript">{{ t('common.copy') }}</Btn>
-        <Btn variant="ghost" @click="scriptOpen = false">{{ t('common.close') }}</Btn>
-      </template>
-    </Modal>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, h, type PropType } from 'vue';
+import { computed, onMounted, onUnmounted, ref, h, type PropType, type VNode } from 'vue';
 import type { AlignedData, Options } from 'uplot';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Card, Btn, Badge, Modal, TextField, Select, Chart } from '@spa/ui';
@@ -272,6 +295,25 @@ const Meter = (props: { label: string; pct: number | null; note?: string }) => h
   ]),
 ]);
 Meter.props = { label: String, pct: { type: Number as unknown as PropType<number | null>, default: null }, note: String };
+
+/** A numbered setup step with a completion tick — the modal is a walkthrough. */
+const Step = (props: { n: number; title: string; done?: boolean; muted?: boolean }, { slots }: { slots: { default?: () => VNode[] } }) => h(
+  'div',
+  { class: ['rounded-lg border p-3', props.muted ? 'border-[var(--ll-border)] opacity-60' : 'border-[var(--ll-border)]'] },
+  [
+    h('div', { class: 'mb-2 flex items-center gap-2' }, [
+      h('span', {
+        class: [
+          'grid h-5 w-5 shrink-0 place-items-center rounded-full text-[0.65rem] font-bold',
+          props.done ? 'bg-emerald-500 text-white' : 'bg-black/[0.08] text-[var(--ll-muted)] dark:bg-white/10',
+        ],
+      }, props.done ? '✓' : String(props.n)),
+      h('span', { class: 'text-xs font-semibold' }, props.title),
+    ]),
+    slots.default?.(),
+  ],
+);
+Step.props = { n: Number, title: String, done: Boolean, muted: Boolean };
 
 /** One definition-list row that hides itself when there is nothing to show. */
 const Row = (props: { label: string; value?: string | null }) => h('div', { class: 'flex justify-between gap-3' }, [
@@ -439,7 +481,16 @@ function openCreate() {
   editing.value = null;
   form.value = blank();
   probe.value = null;
+  generatedKey.value = null;
   formOpen.value = true;
+  void loadScript();
+}
+
+/** Fetched once per session — it is a constant on the server. */
+async function loadScript() {
+  if (!script.value) {
+    try { script.value = await s.probeScript(); } catch { /* shown as … in the snippet */ }
+  }
 }
 
 function openEdit(srv: Server) {
@@ -451,7 +502,9 @@ function openEdit(srv: Server) {
     enabled: srv.enabled, restricted_key: srv.restricted_key,
   };
   probe.value = null;
+  generatedKey.value = null;
   formOpen.value = true;
+  void loadScript();
 }
 
 /**
@@ -472,8 +525,11 @@ function payload(): Record<string, unknown> {
     port: Number(f.port) || 22,
     username: f.username,
     auth_type: f.auth_type,
-    // Blank secrets are preserved server-side on update.
-    ...(f.auth_type === 'key' ? { private_key: f.private_key, passphrase: f.passphrase } : { password: f.password }),
+    // Blank secrets are preserved server-side on update. A generated key travels
+    // as its token — the private half stayed on the server.
+    ...(f.auth_type === 'key'
+      ? { private_key: f.private_key, passphrase: f.passphrase, keypair_token: generatedKey.value?.token ?? '' }
+      : { password: f.password }),
     group: f.group,
     note: f.note,
     enabled: f.enabled,
@@ -514,16 +570,79 @@ async function doDelete() {
 
 // ---- forced-command script ----
 
-const scriptOpen = ref(false);
 const script = ref('');
+const generating = ref(false);
+const generatedKey = ref<{ token: string; public_key: string; expires_in_minutes: number } | null>(null);
 
-async function openScript() {
-  if (!script.value) script.value = await s.probeScript();
-  scriptOpen.value = true;
+const stepConnectionDone = computed(() => !!form.value.name && !!form.value.host && !!form.value.username);
+
+/** Step 2 is satisfied by a generated key, a pasted one, a password, or — when
+ *  editing — the secret already stored. */
+const stepKeyDone = computed(() => {
+  if (editing.value) return true;
+  if (form.value.auth_type === 'password') return !!form.value.password;
+  return generatedKey.value !== null || !!form.value.private_key;
+});
+
+const setupReady = computed(() => stepConnectionDone.value && stepKeyDone.value);
+
+async function doGenerateKey() {
+  generating.value = true;
+  try {
+    generatedKey.value = await s.keypair();
+    // The private half never comes back to us; the token redeems it server-side.
+    form.value.private_key = '';
+    form.value.passphrase = '';
+  } catch {
+    toastError(t('common.error'));
+  } finally { generating.value = false; }
 }
 
-async function copyScript() {
-  await navigator.clipboard.writeText(script.value);
+/**
+ * The exact commands to run on the target, built from what the user just
+ * entered: their chosen account name and their actual public key. Generic
+ * instructions leave the reader to substitute placeholders; this does not.
+ */
+const setupCommands = computed(() => {
+  const user = form.value.username || 'ledgerline';
+  const pub = generatedKey.value?.public_key ?? t('servers.key_own_placeholder');
+  const lines = [
+    `# 1) ${t('servers.cmd_create_user')}`,
+    `sudo useradd --create-home --shell /bin/sh ${user} 2>/dev/null || true`,
+    `sudo install -d -m 700 -o ${user} -g ${user} /home/${user}/.ssh`,
+    '',
+  ];
+
+  if (form.value.restricted_key) {
+    lines.push(
+      `# 2) ${t('servers.cmd_install_script')}`,
+      "sudo tee /usr/local/bin/ll-facts >/dev/null <<'LLEOF'",
+      '#!/bin/sh',
+      script.value || '# …',
+      'LLEOF',
+      'sudo chmod 755 /usr/local/bin/ll-facts',
+      '',
+      `# 3) ${t('servers.cmd_authorize_restricted')}`,
+      `echo 'command="/usr/local/bin/ll-facts",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ${pub}' \\`,
+      `  | sudo tee -a /home/${user}/.ssh/authorized_keys >/dev/null`,
+    );
+  } else {
+    lines.push(
+      `# 2) ${t('servers.cmd_authorize')}`,
+      `echo '${pub}' | sudo tee -a /home/${user}/.ssh/authorized_keys >/dev/null`,
+    );
+  }
+
+  lines.push(
+    `sudo chown ${user}:${user} /home/${user}/.ssh/authorized_keys`,
+    `sudo chmod 600 /home/${user}/.ssh/authorized_keys`,
+  );
+
+  return lines.join('\n');
+});
+
+async function copySetup() {
+  await navigator.clipboard.writeText(setupCommands.value);
   success(t('common.copied'));
 }
 

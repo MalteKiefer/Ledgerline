@@ -117,5 +117,12 @@ export const useServersStore = defineStore('servers', () => {
 
   const probeScript = () => api.get<{ script: string }>('/api/v1/servers/probe-script').then((r) => r.script);
 
-  return { servers, load, show, create, update, remove, refresh, refreshAll, test, testStored, probeScript };
+  /**
+   * Generate a keypair for a server about to be added. Only the public half comes
+   * back — the private key waits on the server under `token` and is redeemed by
+   * test()/create(), so it never passes through the browser.
+   */
+  const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
+
+  return { servers, load, show, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

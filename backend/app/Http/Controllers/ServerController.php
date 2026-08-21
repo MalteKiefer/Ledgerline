@@ -10,7 +10,11 @@ use App\Models\ServerFact;
 use App\Services\Servers\ServerProbe;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use phpseclib3\Crypt\Common\AsymmetricKey;
+use phpseclib3\Crypt\EC;
 
 /**
  * Monitored servers, reached over plain SSH with no agent on the target.
@@ -32,6 +36,9 @@ class ServerController extends Controller
 {
     /** Keep the trend history bounded — a snapshot every 15 min adds up. */
     private const HISTORY_LIMIT = 50;
+
+    /** How long a generated keypair waits in the cache for the user to finish setup. */
+    private const KEYPAIR_TTL_MINUTES = 30;
 
     public function __construct(private readonly ServerProbe $probe) {}
 
@@ -146,6 +153,7 @@ class ServerController extends Controller
             'private_key' => ['nullable', 'string', 'max:16384'],
             'passphrase' => ['nullable', 'string', 'max:1024'],
             'host_fingerprint' => ['nullable', 'string', 'max:128'],
+            'keypair_token' => ['nullable', 'string', 'max:64'],
         ]);
 
         $result = $this->probe->run(
@@ -155,7 +163,7 @@ class ServerController extends Controller
             $request->string('auth_type')->value(),
             [
                 'password' => $request->string('password')->value(),
-                'private_key' => $request->string('private_key')->value(),
+                'private_key' => $request->string('private_key')->value() ?: $this->keypairPrivateKey($request),
                 'passphrase' => $request->string('passphrase')->value(),
             ],
             // Empty means "learn it" — the response carries what we saw.
@@ -193,6 +201,71 @@ class ServerController extends Controller
             'fingerprint' => $result->fingerprint,
             'duration_ms' => $result->durationMs,
         ], $result->ok ? 200 : 422);
+    }
+
+    /**
+     * Generate a fresh Ed25519 keypair for a server the user is about to add.
+     *
+     * Only the PUBLIC key is returned — the user pastes that into the target's
+     * authorized_keys. The private half waits in the cache under an opaque token
+     * and is picked up by /servers/test and /servers, so a key this host
+     * generated never travels to the browser at all.
+     *
+     * Ed25519 because it is short enough to paste in one line and is accepted by
+     * every OpenSSH an operator is realistically running.
+     */
+    public function keypair(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $key = EC::createKey('Ed25519');
+        $token = Str::random(40);
+
+        // phpseclib types neither getPublicKey() nor toString() tightly; narrow
+        // rather than assume, so a library change surfaces here instead of
+        // silently storing an unusable key.
+        $public = $key->getPublicKey();
+        $privatePem = $this->openSsh($key);
+        $publicLine = $public instanceof AsymmetricKey ? $this->openSsh($public) : null;
+        if ($privatePem === null || $publicLine === null) {
+            return response()->json(['error' => 'keygen_failed'], 500);
+        }
+
+        Cache::put($this->keypairKey($uid, $token), $privatePem, now()->addMinutes(self::KEYPAIR_TTL_MINUTES));
+
+        return response()->json([
+            'token' => $token,
+            'public_key' => $publicLine,
+            'expires_in_minutes' => self::KEYPAIR_TTL_MINUTES,
+        ]);
+    }
+
+    /** phpseclib's toString() is documented as array|string; OpenSSH gives a string. */
+    private function openSsh(AsymmetricKey $key): ?string
+    {
+        $out = $key->toString('OpenSSH');
+
+        return is_string($out) ? $out : null;
+    }
+
+    /**
+     * The private key a request wants to use: one the user pasted, or the one we
+     * generated for them a moment ago. Scoped to the caller, so a token cannot be
+     * redeemed by anyone else.
+     */
+    private function keypairPrivateKey(Request $request): string
+    {
+        $token = $request->string('keypair_token')->value();
+        if ($token === '') {
+            return '';
+        }
+        $cached = Cache::get($this->keypairKey((int) $this->requireUser($request)->id, $token));
+
+        return is_string($cached) ? $cached : '';
+    }
+
+    private function keypairKey(int $userId, string $token): string
+    {
+        return "servers.keypair.{$userId}.{$token}";
     }
 
     /**
@@ -238,11 +311,19 @@ class ServerController extends Controller
             'note' => ['nullable', 'string', 'max:2000'],
             'enabled' => ['sometimes', 'boolean'],
             'restricted_key' => ['sometimes', 'boolean'],
+            'keypair_token' => ['nullable', 'string', 'max:64'],
         ]);
 
         $old = $server?->credentials ?? [];
-        $keep = static function (string $key) use ($request, $old): string {
+        // A generated key is redeemed from the cache, so the browser never had to
+        // hold it; a pasted one wins over it, and a blank field keeps the stored
+        // secret rather than wiping it.
+        $generated = $this->keypairPrivateKey($request);
+        $keep = static function (string $key) use ($request, $old, $generated): string {
             $new = $request->string($key)->value();
+            if ($new === '' && $key === 'private_key') {
+                $new = $generated;
+            }
 
             return $new !== '' ? $new : (is_string($old[$key] ?? null) ? $old[$key] : '');
         };

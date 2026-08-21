@@ -14,6 +14,26 @@ return [
     'delete_confirm' => ':name aus der Überwachung entfernen? Der Server selbst bleibt unberührt.',
     'group_other' => 'Ohne Gruppe',
 
+    // Geführte Einrichtung im Anlege-Dialog
+    'step_connection' => 'Wohin verbunden wird',
+    'step_key' => 'Schlüssel oder Passwort',
+    'step_target' => 'Auf dem Server einrichten',
+    'step_target_wait' => 'Erst Verbindung ausfüllen und Schlüssel wählen — die Befehle werden daraus gebaut.',
+    'step_target_intro' => 'Das auf dem Zielserver ausführen (als Benutzer mit sudo-Recht). Es legt das Konto an, hinterlegt den Schlüssel, sonst nichts:',
+    'step_verify' => 'Hostschlüssel prüfen und bestätigen',
+    'username_hint' => 'Ein unprivilegiertes Konto, niemals root. Es braucht kein sudo — alles Gelesene ist für jeden lesbar.',
+    'key_generate' => 'Schlüssel erzeugen',
+    'key_generating' => 'Wird erzeugt…',
+    'key_generate_hint' => 'Ledgerline erzeugt einen Ed25519-Schlüssel. Den öffentlichen Teil hinterlegen Sie im nächsten Schritt auf dem Server.',
+    'key_generated' => 'Öffentlicher Schlüssel — der gehört auf den Server:',
+    'key_private_stays' => 'Der private Teil bleibt auf diesem Server und wird hier nie angezeigt. Bitte die Einrichtung innerhalb von :minutes Minuten abschließen.',
+    'key_own' => 'Oder eigenen privaten Schlüssel einfügen',
+    'key_own_placeholder' => '<Ihr öffentlicher Schlüssel>',
+    'more_options' => 'Weitere Optionen',
+    'cmd_create_user' => 'Konto anlegen',
+    'cmd_install_script' => 'Abfrage-Skript hinterlegen',
+    'cmd_authorize' => 'Schlüssel zum Anmelden freigeben',
+    'cmd_authorize_restricted' => 'Schlüssel freigeben — und nichts außer der Momentaufnahme erlauben',
     // Verbindungsformular
     'name' => 'Name',
     'host' => 'Host',
@@ -41,12 +61,6 @@ return [
     'fingerprint_confirm' => 'Vor dem Speichern mit dem Zielserver vergleichen. Er wird festgeschrieben, jede spätere Verbindung muss ihn vorweisen.',
     'fingerprint_hint' => 'Auf dem Server: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub',
     'test_first' => 'Erst die Verbindung testen — der Hostschlüssel muss vor dem Speichern bestätigt werden.',
-
-    // Probe-Skript (Forced-Command-Einrichtung)
-    'script_title' => 'Schlüssel auf dem Zielserver einschränken',
-    'script_intro' => 'Dieses Skript nach /usr/local/bin/ll-facts legen (ausführbar), dann dem Schlüssel in ~/.ssh/authorized_keys voranstellen:',
-    'script_authorized' => 'command="/usr/local/bin/ll-facts",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty',
-    'script_outro' => 'Der Schlüssel kann danach nichts außer der Momentaufnahme ausgeben. Unprivilegierten Benutzer verwenden, niemals root, kein sudo.',
 
     // Status / Fakten
     'status_ok' => 'Erreichbar',

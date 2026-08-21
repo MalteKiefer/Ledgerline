@@ -316,6 +316,7 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('module:servers')->group(function (): void {
             Route::get('/servers', [ServerController::class, 'index'])->name('api.servers.index');
             Route::get('/servers/probe-script', [ServerController::class, 'probeScript'])->name('api.servers.probe-script');
+            Route::post('/servers/keypair', [ServerController::class, 'keypair'])->middleware('throttle:20,1')->name('api.servers.keypair');
             Route::post('/servers', [ServerController::class, 'store'])->middleware('throttle:60,1')->name('api.servers.store');
             Route::post('/servers/test', [ServerController::class, 'test'])->middleware('throttle:20,1')->name('api.servers.test');
             Route::post('/servers/refresh', [ServerController::class, 'refreshAll'])->middleware('throttle:20,1')->name('api.servers.refresh-all');

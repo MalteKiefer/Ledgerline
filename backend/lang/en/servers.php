@@ -14,6 +14,26 @@ return [
     'delete_confirm' => 'Remove :name from monitoring? The server itself is not touched.',
     'group_other' => 'Ungrouped',
 
+    // Guided setup in the create dialog
+    'step_connection' => 'Where to connect',
+    'step_key' => 'Key or password',
+    'step_target' => 'Set up on the server',
+    'step_target_wait' => 'Fill in the connection and choose a key first — the commands are built from those values.',
+    'step_target_intro' => 'Run this on the target server (as a user who may sudo). It creates the account, installs the key, and nothing else:',
+    'step_verify' => 'Verify and confirm the host key',
+    'username_hint' => 'An unprivileged account, never root. It needs no sudo — everything read is world-readable.',
+    'key_generate' => 'Generate key',
+    'key_generating' => 'Generating…',
+    'key_generate_hint' => 'Ledgerline creates an Ed25519 key. You install the public half on the server in the next step.',
+    'key_generated' => 'Public key — this goes on the server:',
+    'key_private_stays' => 'The private half stays on this server and is never shown here. Finish setup within :minutes minutes.',
+    'key_own' => 'Or paste your own private key',
+    'key_own_placeholder' => '<your public key>',
+    'more_options' => 'More options',
+    'cmd_create_user' => 'Create the account',
+    'cmd_install_script' => 'Install the snapshot script',
+    'cmd_authorize' => 'Allow the key to log in',
+    'cmd_authorize_restricted' => 'Allow the key — and nothing but the snapshot',
     // Connection form
     'name' => 'Name',
     'host' => 'Host',
@@ -41,12 +61,6 @@ return [
     'fingerprint_confirm' => 'Compare this with the target before saving. It is pinned and every later connection must match it.',
     'fingerprint_hint' => 'On the server: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub',
     'test_first' => 'Test the connection first — the host key has to be confirmed before saving.',
-
-    // Probe script (forced-command setup)
-    'script_title' => 'Restrict the key on the target',
-    'script_intro' => 'Put this script at /usr/local/bin/ll-facts (executable), then prefix the key in ~/.ssh/authorized_keys with:',
-    'script_authorized' => 'command="/usr/local/bin/ll-facts",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty',
-    'script_outro' => 'The key can then do nothing but print the snapshot. Use an unprivileged user, never root, and no sudo.',
 
     // Status / facts
     'status_ok' => 'Reachable',

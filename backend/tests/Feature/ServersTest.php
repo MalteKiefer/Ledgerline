@@ -203,6 +203,63 @@ class ServersTest extends TestCase
             ->assertJsonPath('script', ServerProbe::PROBE);
     }
 
+    public function test_generating_a_keypair_never_returns_the_private_half(): void
+    {
+        $response = $this->postJson(route('api.servers.keypair'), [], $this->bearer(User::factory()->create()))
+            ->assertOk()
+            ->assertJsonStructure(['token', 'public_key', 'expires_in_minutes']);
+
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('ssh-ed25519 ', $response->json('public_key'));
+        // The whole point of the token: the private key stays on this host.
+        $this->assertStringNotContainsString('PRIVATE KEY', $body);
+    }
+
+    public function test_a_generated_keypair_is_redeemed_by_its_token_on_create(): void
+    {
+        Queue::fake();
+        $owner = User::factory()->create();
+        $token = $this->postJson(route('api.servers.keypair'), [], $this->bearer($owner))->json('token');
+
+        $this->postJson(route('api.servers.store'), [
+            'name' => 'web01',
+            'host' => '10.0.0.9',
+            'username' => 'monitor',
+            'auth_type' => 'key',
+            // No private_key in the payload — the browser never had one.
+            'keypair_token' => $token,
+            'host_fingerprint' => self::FP,
+        ], $this->bearer($owner))->assertCreated();
+
+        $server = Server::query()->withoutGlobalScopes()->firstOrFail();
+        $this->assertStringContainsString('OPENSSH PRIVATE KEY', (string) ($server->credentials['private_key'] ?? ''));
+    }
+
+    public function test_a_keypair_token_cannot_be_redeemed_by_another_user(): void
+    {
+        Queue::fake();
+        $token = $this->postJson(route('api.servers.keypair'), [], $this->bearer(User::factory()->create()))->json('token');
+
+        // The guard caches the first resolved user for the lifetime of a test, so
+        // without this the second request would silently run as the FIRST user
+        // and the cross-user claim would never actually be exercised.
+        app('auth')->forgetGuards();
+
+        // Same token, different caller: the cache key is scoped to the owner, so
+        // this must not pick up someone else's freshly generated key.
+        $this->postJson(route('api.servers.store'), [
+            'name' => 'web01',
+            'host' => '10.0.0.9',
+            'username' => 'monitor',
+            'auth_type' => 'key',
+            'keypair_token' => $token,
+            'host_fingerprint' => self::FP,
+        ], $this->bearer(User::factory()->create()))->assertCreated();
+
+        $server = Server::query()->withoutGlobalScopes()->firstOrFail();
+        $this->assertSame('', $server->credentials['private_key'] ?? null);
+    }
+
     public function test_the_index_exposes_the_latest_snapshot(): void
     {
         $owner = User::factory()->create();
