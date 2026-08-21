@@ -181,13 +181,13 @@ class ServerController extends Controller
         $request->validate([
             'host' => ['required', 'string', 'max:255'],
             'port' => ['sometimes', 'integer', 'min:1', 'max:65535'],
-            'username' => ['required', 'string', 'max:64', Rule::notIn(['root'])],
+            'username' => ['required', 'string', 'max:64'],
             'auth_type' => ['sometimes', Rule::in(['key'])],
             'private_key' => ['nullable', 'string', 'max:16384'],
             'passphrase' => ['nullable', 'string', 'max:1024'],
             'host_fingerprint' => ['nullable', 'string', 'max:128'],
             'keypair_token' => ['nullable', 'string', 'max:64'],
-        ], ['username.not_in' => __('servers.username_not_root')]);
+        ]);
 
         $result = $this->probe->run(new ServerTarget(
             host: $request->string('host')->value(),
@@ -373,11 +373,11 @@ class ServerController extends Controller
             'name' => [$creating ? 'required' : 'sometimes', 'string', 'max:255'],
             'host' => [$creating ? 'required' : 'sometimes', 'string', 'max:255'],
             'port' => ['sometimes', 'integer', 'min:1', 'max:65535'],
-            // Monitoring needs no privilege — everything the probe reads is
-            // world-readable. A key that logs in as root would hand an attacker
-            // the whole machine for nothing gained, so it is refused rather than
-            // discouraged in a hint nobody has to follow.
-            'username' => [$creating ? 'required' : 'sometimes', 'string', 'max:64', Rule::notIn(['root'])],
+            // Monitoring needs no privilege, and a key that logs in as root hands
+            // over the whole machine if it is ever stolen. The UI says so where
+            // the name is entered; it is not refused, because the operator may
+            // have a host where root is the only account that exists.
+            'username' => [$creating ? 'required' : 'sometimes', 'string', 'max:64'],
             // Key only. OpenSSH takes no password without a terminal, and adding
             // sshpass to drive a pty would be a worse answer than generating a key,
             // which this app does for the user anyway.
@@ -393,7 +393,7 @@ class ServerController extends Controller
             'enabled' => ['sometimes', 'boolean'],
             'restricted_key' => ['sometimes', 'boolean'],
             'keypair_token' => ['nullable', 'string', 'max:64'],
-        ], ['username.not_in' => __('servers.username_not_root')]);
+        ]);
 
         $old = $server?->credentials ?? [];
         // A generated key is redeemed from the cache, so the browser never had to

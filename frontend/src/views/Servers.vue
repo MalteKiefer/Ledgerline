@@ -167,7 +167,7 @@
     </Modal>
 
     <!-- Create / edit -->
-    <Modal v-model="formOpen" :title="editing ? t('servers.edit') : t('servers.add')" width="640px">
+    <Modal v-model="formOpen" :title="editing ? t('servers.edit') : t('servers.add')" width="640px" persistent>
       <div class="space-y-4">
         <!-- Step 1 — where to connect -->
         <Step :n="1" :title="t('servers.step_connection')" :done="stepConnectionDone">
@@ -177,7 +177,10 @@
             <TextField v-model="form.port" :label="t('servers.port')" type="number" />
           </div>
           <TextField v-model="form.username" class="mt-3" :label="t('servers.username')" />
-          <p class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.username_hint') }}</p>
+          <p v-if="form.username.trim() === 'root'" class="mt-1 rounded bg-amber-500/10 px-2 py-1.5 text-[0.7rem] text-amber-700 dark:text-amber-400">
+            {{ t('servers.username_root_warning') }}
+          </p>
+          <p v-else class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.username_hint') }}</p>
         </Step>
 
         <!-- Step 2 — the key -->
@@ -214,9 +217,17 @@
               <input v-model="form.restricted_key" type="checkbox" class="accent-primary-500">{{ t('servers.restricted_key') }}
             </label>
             <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.restricted_key_hint') }}</p>
-            <p class="mb-1.5 text-xs">{{ t('servers.step_target_intro') }}</p>
-            <pre class="max-h-64 overflow-auto rounded-lg bg-black/[0.05] p-2.5 font-mono text-[0.7rem] dark:bg-white/5">{{ setupCommands }}</pre>
-            <Btn variant="ghost" size="sm" icon="content_copy" class="mt-2" @click="copySetup">{{ t('common.copy') }}</Btn>
+            <label class="mb-1 flex items-center gap-2 text-sm">
+              <input v-model="accountExists" type="checkbox" class="accent-primary-500">{{ t('servers.account_exists') }}
+            </label>
+            <label class="mb-2 flex items-center gap-2 text-sm">
+              <input v-model="useSudo" type="checkbox" class="accent-primary-500">{{ t('servers.use_sudo') }}
+            </label>
+            <p class="mb-1.5 text-xs">{{ setupCommands ? t('servers.step_target_intro') : t('servers.step_target_nothing') }}</p>
+            <template v-if="setupCommands">
+              <pre class="max-h-64 overflow-auto rounded-lg bg-black/[0.05] p-2.5 font-mono text-[0.7rem] dark:bg-white/5">{{ setupCommands }}</pre>
+              <Btn variant="ghost" size="sm" icon="content_copy" class="mt-2" @click="copySetup">{{ t('common.copy') }}</Btn>
+            </template>
           </template>
         </Step>
 
@@ -262,7 +273,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, h, type PropType, type VNode } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch, h, type PropType, type VNode } from 'vue';
 import type { AlignedData, Options } from 'uplot';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Card, Btn, Badge, Modal, TextField, Select, Chart } from '@spa/ui';
@@ -481,9 +492,20 @@ function openCreate() {
   form.value = blank();
   probe.value = null;
   generatedKey.value = null;
+  accountExists.value = false;
+  useSudo.value = true;
   formOpen.value = true;
   void loadScript();
 }
+
+// root always exists and never needs sudo; presetting both spares two clicks and
+// stops the snippet printing a useradd that could only fail.
+watch(() => form.value.username, (name) => {
+  if (name.trim() === 'root') {
+    accountExists.value = true;
+    useSudo.value = false;
+  }
+});
 
 /** Fetched once per session — it is a constant on the server. */
 async function loadScript() {
@@ -571,6 +593,13 @@ async function doDelete() {
 
 const script = ref('');
 const generating = ref(false);
+/** The target already has this account — skip the useradd step. */
+const accountExists = ref(false);
+/** Off for a host without sudo, or when the operator is already root. */
+const useSudo = ref(true);
+
+// base64 rather than a heredoc: fish has none, and the script carries quotes.
+const scriptBase64 = computed(() => (script.value ? btoa(script.value) : ''));
 const generatedKey = ref<{ token: string; public_key: string; expires_in_minutes: number } | null>(null);
 
 const stepConnectionDone = computed(() => !!form.value.name && !!form.value.host && !!form.value.username);
@@ -594,45 +623,52 @@ async function doGenerateKey() {
 }
 
 /**
- * The exact commands to run on the target, built from what the user just
- * entered: their chosen account name and their actual public key. Generic
- * instructions leave the reader to substitute placeholders; this does not.
+ * The commands for the target, built from what the user just entered.
+ *
+ * Two constraints shape their form. The operator's login shell may not be POSIX
+ * — fish rejects `VAR=$(...)` outright — so nothing here relies on shell syntax
+ * beyond running a command with quoted arguments. And the home directory has to
+ * come from the user database rather than being assumed to be /home/<user>,
+ * because on an existing account it frequently is not (root's is /root). Both
+ * are solved the same way: hand the work to `sh -c` with the variable parts as
+ * positional arguments, which every shell passes through untouched. Single
+ * quotes are safe around a key line — those never contain one, though they do
+ * contain the double quotes of a forced command.
  */
 const setupCommands = computed(() => {
   const user = form.value.username || 'ledgerline';
-  const pub = generatedKey.value?.public_key ?? t('servers.key_own_placeholder');
-  const lines = [
-    `# 1) ${t('servers.cmd_create_user')}`,
-    `id -u ${user} >/dev/null 2>&1 || sudo useradd --create-home --shell /bin/sh ${user}`,
-    `# ${t('servers.cmd_home_note')}`,
-    `HOME_DIR=$(getent passwd ${user} | cut -d: -f6)`,
-    `sudo install -d -m 700 -o ${user} -g ${user} "$HOME_DIR/.ssh"`,
-    '',
-  ];
+  const pub = generatedKey.value?.public_key ?? (form.value.private_key ? '' : t('servers.key_own_placeholder'));
+  const keyLine = form.value.restricted_key
+    ? `command="/usr/local/bin/ll-facts",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ${pub}`
+    : pub;
+  const sudo = useSudo.value ? 'sudo ' : '';
+  const lines: string[] = [];
 
-  if (form.value.restricted_key) {
+  if (!accountExists.value) {
     lines.push(
-      `# 2) ${t('servers.cmd_install_script')}`,
-      "sudo tee /usr/local/bin/ll-facts >/dev/null <<'LLEOF'",
-      '#!/bin/sh',
-      script.value || '# …',
-      'LLEOF',
-      'sudo chmod 755 /usr/local/bin/ll-facts',
+      `# ${t('servers.cmd_create_user')}`,
+      `${sudo}sh -c 'id -u "$1" >/dev/null 2>&1 || useradd --create-home --shell /bin/sh "$1"' _ ${user}`,
       '',
-      `# 3) ${t('servers.cmd_authorize_restricted')}`,
-      `echo 'command="/usr/local/bin/ll-facts",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ${pub}' \\`,
-      `  | sudo tee -a "$HOME_DIR/.ssh/authorized_keys" >/dev/null`,
-    );
-  } else {
-    lines.push(
-      `# 2) ${t('servers.cmd_authorize')}`,
-      `echo '${pub}' | sudo tee -a "$HOME_DIR/.ssh/authorized_keys" >/dev/null`,
     );
   }
 
+  if (form.value.restricted_key) {
+    // base64 so a multi-line script with quotes survives any shell on the way in.
+    lines.push(
+      `# ${t('servers.cmd_install_script')}`,
+      `echo '${scriptBase64.value}' | ${sudo}sh -c 'base64 -d > /usr/local/bin/ll-facts && chmod 755 /usr/local/bin/ll-facts'`,
+      '',
+    );
+  }
+
+  // An existing account already carrying a key the user pasted themselves needs
+  // nothing installed — saying so beats printing commands that do nothing.
+  if (!pub && accountExists.value) return lines.join('\n').trim();
+
   lines.push(
-    `sudo chown ${user}:${user} "$HOME_DIR/.ssh/authorized_keys"`,
-    `sudo chmod 600 "$HOME_DIR/.ssh/authorized_keys"`,
+    `# ${form.value.restricted_key ? t('servers.cmd_authorize_restricted') : t('servers.cmd_authorize')}`,
+    `# ${t('servers.cmd_home_note')}`,
+    `${sudo}sh -c 'H=$(getent passwd "$1" | cut -d: -f6); install -d -m 700 -o "$1" -g "$1" "$H/.ssh"; printf "%s\\n" "$2" >> "$H/.ssh/authorized_keys"; chown "$1:$1" "$H/.ssh/authorized_keys"; chmod 600 "$H/.ssh/authorized_keys"' _ ${user} '${keyLine}'`,
   );
 
   return lines.join('\n');
@@ -656,19 +692,18 @@ const removalCommands = computed(() => {
   // without the forced-command prefix.
   const blob = pub.split(' ')[1] ?? '';
 
+  const sudo = useSudo.value ? 'sudo ' : '';
+  const match = blob || 'll-facts';
+
   return [
     `# ${t('servers.removal_case_dedicated')}`,
-    `sudo pkill -u ${user} 2>/dev/null || true   # ${t('servers.removal_pkill_note')}`,
-    `sudo userdel -r ${user}`,
-    'sudo rm -f /usr/local/bin/ll-facts',
+    `# ${t('servers.removal_pkill_note')}`,
+    `${sudo}sh -c 'pkill -u "$1" 2>/dev/null; userdel -r "$1"' _ ${user}`,
+    `${sudo}rm -f /usr/local/bin/ll-facts`,
     '',
     `# ${t('servers.removal_case_shared')}`,
-    `KEYS=$(getent passwd ${user} | cut -d: -f6)/.ssh/authorized_keys`,
-    blob
-      ? `sudo grep -v '${blob}' "$KEYS" | sudo tee "$KEYS.tmp" >/dev/null`
-      : `sudo grep -v 'll-facts' "$KEYS" | sudo tee "$KEYS.tmp" >/dev/null`,
-    'sudo mv "$KEYS.tmp" "$KEYS" && sudo chmod 600 "$KEYS"',
-    'sudo rm -f /usr/local/bin/ll-facts',
+    `${sudo}sh -c 'K=$(getent passwd "$1" | cut -d: -f6)/.ssh/authorized_keys; grep -v "$2" "$K" > "$K.tmp"; mv "$K.tmp" "$K"; chmod 600 "$K"' _ ${user} '${match}'`,
+    `${sudo}rm -f /usr/local/bin/ll-facts`,
   ].join('\n');
 });
 

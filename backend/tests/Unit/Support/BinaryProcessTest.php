@@ -15,6 +15,17 @@ class BinaryProcessTest extends TestCase
         $this->assertSame("hello\n", $out);
     }
 
+    public function test_run_capture_writes_input_to_stdin(): void
+    {
+        // Handing a program its input as data rather than as an argument is what
+        // lets the server probe run a POSIX script on a host whose login shell is
+        // not POSIX — nothing in between gets to parse it.
+        $result = BinaryProcess::runCapture([PHP_BINARY, '-r', 'echo strrev(stream_get_contents(STDIN));'], 30, null, 'abc');
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame('cba', $result['out']);
+    }
+
     public function test_run_returns_null_on_nonzero_exit(): void
     {
         $out = BinaryProcess::run(['false']);

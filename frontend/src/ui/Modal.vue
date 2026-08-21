@@ -5,6 +5,9 @@
       <DialogContent
         class="fixed left-1/2 top-1/2 w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--ll-border)] bg-[var(--ll-surface)] shadow-xl focus:outline-none"
         :style="{ maxWidth: width ?? '520px', zIndex: zIndex + 1 }"
+        @pointer-down-outside="persistent && $event.preventDefault()"
+        @interact-outside="persistent && $event.preventDefault()"
+        @escape-key-down="persistent && $event.preventDefault()"
       >
         <div class="flex items-center gap-2 px-5 py-3.5 border-b border-[var(--ll-border)]">
           <DialogTitle class="text-sm font-semibold">{{ title }}</DialogTitle>
@@ -24,7 +27,18 @@ import { ref, watch } from 'vue';
 import { DialogRoot, DialogPortal, DialogOverlay, DialogContent, DialogTitle, DialogClose } from 'reka-ui';
 import Icon from './Icon.vue';
 
-const props = defineProps<{ modelValue: boolean; title?: string; width?: string }>();
+const props = defineProps<{
+  modelValue: boolean;
+  title?: string;
+  width?: string;
+  /**
+   * Only the close button and the footer buttons dismiss this dialog. For a
+   * multi-step form, a click on the backdrop or a stray Escape would throw away
+   * everything the user has entered — including a generated key they have
+   * already installed on a server.
+   */
+  persistent?: boolean;
+}>();
 defineEmits<{ 'update:modelValue': [boolean] }>();
 
 // Shared modal stacking: each newly-opened modal sits above the previous one, so

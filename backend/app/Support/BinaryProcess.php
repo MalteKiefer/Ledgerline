@@ -52,13 +52,19 @@ final class BinaryProcess
      * @param  array<int, string>  $argv
      * @param  string|null  $cwd  Working directory to run in (e.g. a staging dir for
      *                            7z, which has no -C flag). Null = inherit.
+     * @param  string|null  $input  Written to the process's stdin. Use this to hand a
+     *                              program its input as data rather than as an
+     *                              argument — nothing in between gets to parse it.
      * @return array{ok: bool, out: string, err: string, exit: ?int}
      */
-    public static function runCapture(array $argv, int $timeout = 60, ?string $cwd = null): array
+    public static function runCapture(array $argv, int $timeout = 60, ?string $cwd = null, ?string $input = null): array
     {
         try {
             $process = new Process($argv, $cwd);
             $process->setTimeout($timeout);
+            if ($input !== null) {
+                $process->setInput($input);
+            }
             $process->run();
 
             return [

@@ -195,13 +195,15 @@ class ServersTest extends TestCase
             ->assertJsonValidationErrors('auth_type');
     }
 
-    public function test_root_is_refused_as_the_monitoring_account(): void
+    public function test_root_is_allowed_but_warned_about_in_the_form(): void
     {
-        // Monitoring needs no privilege, and a key that logs in as root would
-        // hand over the whole machine for nothing gained.
+        // Not refused: a host may have no other account. The dialog says what it
+        // costs, and that is where the judgement belongs.
+        Queue::fake();
+
         $this->postJson(route('api.servers.store'), [...$this->newServerPayload(), 'username' => 'root'], $this->bearer(User::factory()->create()))
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('username');
+            ->assertCreated()
+            ->assertJsonPath('server.username', 'root');
     }
 
     public function test_the_detail_view_carries_the_public_key_for_the_removal_steps(): void

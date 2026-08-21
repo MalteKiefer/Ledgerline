@@ -1394,7 +1394,7 @@ components:
         name: { type: string, maxLength: 255 }
         host: { type: string, maxLength: 255 }
         port: { type: integer, minimum: 1, maximum: 65535, default: 22 }
-        username: { type: string, maxLength: 64, description: "An unprivileged account. `root` is refused: the probe needs no privilege, and such a key would hand over the whole machine." }
+        username: { type: string, maxLength: 64, description: "Preferably an unprivileged account — the probe needs no privilege. `root` is accepted (some hosts have no other account) but the UI warns that such a key hands over the whole machine if stolen." }
         auth_type: { type: string, enum: [key], description: "Key only; password authentication is not offered." }
         private_key: { type: string, maxLength: 16384 }
         passphrase: { type: string, maxLength: 1024 }

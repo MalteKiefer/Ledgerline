@@ -129,9 +129,14 @@ echo "##LL:end"';
             chmod($keyFile->path(), 0600);
             file_put_contents($knownHosts->path(), $this->knownHostsLine($target, $hostKey));
 
+            // The script goes in on stdin, not as the remote command: ssh hands a
+            // command string to the ACCOUNT'S LOGIN SHELL, and that may be fish,
+            // csh or anything else that does not read POSIX sh. Feeding `sh -s`
+            // means the shell we chose is the only one that ever parses it.
             $result = BinaryProcess::runCapture(
                 $this->sshArgv($target, $keyFile->path(), $knownHosts->path(), $interactive),
                 $interactive ? self::EXEC_TIMEOUT_INTERACTIVE : self::EXEC_TIMEOUT,
+                input: self::PROBE,
             );
 
             $text = $result['out'];
@@ -183,9 +188,13 @@ echo "##LL:end"';
             '-i', $keyPath,
             '-p', (string) $target->port,
             $target->username.'@'.$target->host,
-            // A restricted key ignores this and runs its forced command; either
-            // way the output must be the marker format the parser understands.
-            self::PROBE,
+            // Two words the login shell cannot get wrong, whatever it is. `sh`
+            // rather than `bash`: the probe is POSIX and bash is absent on a
+            // default Alpine, so requiring it would fail on exactly the small
+            // hosts most likely to be monitored. A restricted key ignores this
+            // and runs its forced command; either way the output must be the
+            // marker format the parser understands.
+            'sh -s',
         ];
     }
 
