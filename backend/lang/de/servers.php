@@ -39,10 +39,6 @@ return [
     'host' => 'Host',
     'port' => 'Port',
     'username' => 'Benutzer',
-    'auth_type' => 'Anmeldung',
-    'auth_key' => 'Privater Schlüssel',
-    'auth_password' => 'Passwort',
-    'password' => 'Passwort',
     'private_key' => 'Privater Schlüssel',
     'private_key_hint' => 'OpenSSH oder PEM. Wird verschlüsselt gespeichert und nie wieder angezeigt.',
     'passphrase' => 'Passphrase des Schlüssels',
@@ -93,6 +89,12 @@ return [
         'no_credentials' => 'Für diese Anmeldeart sind keine Zugangsdaten gespeichert.',
         'auth_failed' => 'Die Anmeldung wurde abgelehnt.',
         'unexpected_output' => 'Der Server hat geantwortet, aber keine Momentaufnahme geliefert. Ist der Forced Command korrekt eingerichtet?',
+        'host_key_unconfirmed' => 'Der Hostschlüssel konnte nicht erneut gelesen und abgeglichen werden — es wurde nichts gespeichert.',
+        'ssh_missing' => 'Der OpenSSH-Client fehlt auf diesem Host — die Serverüberwachung kann nicht laufen.',
+        'connection_refused' => 'Auf diesem Port lauscht nichts.',
+        'timeout' => 'Der Host hat nicht rechtzeitig geantwortet.',
+        'unreachable' => 'Der Host war nicht erreichbar oder nicht auflösbar.',
+        'no_common_algorithms' => 'Kein gemeinsames Verfahren für Schlüsselaustausch, Verschlüsselung oder Hostschlüssel mit diesem Server.',
     ],
 
     'notify' => [

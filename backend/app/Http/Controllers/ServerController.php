@@ -8,6 +8,7 @@ use App\Jobs\CollectServerFacts;
 use App\Models\Server;
 use App\Models\ServerFact;
 use App\Services\Servers\ServerProbe;
+use App\Services\Servers\ServerTarget;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -75,12 +76,22 @@ class ServerController extends Controller
         $uid = (int) $this->requireUser($request)->id;
         $data = $this->validated($request);
 
+        // Re-read the host key here and check it against the fingerprint the user
+        // confirmed. The pin is enforced by handing OpenSSH a known_hosts entry,
+        // which needs the whole key; deriving it now also re-verifies the
+        // confirmation instead of trusting a value the client sent back.
+        $hostKey = $this->resolveHostKey($data['columns'], $data['fingerprint']);
+        if ($hostKey === null) {
+            return response()->json(['error' => 'host_key_unconfirmed'], 422);
+        }
+
         $server = new Server;
         $server->forceFill([
             'user_id' => $uid,
             ...$data['columns'],
             'credentials' => $data['credentials'],
             'host_fingerprint' => $data['fingerprint'],
+            'host_key' => $hostKey,
         ])->save();
 
         // First snapshot in the background, so the create request returns at once.
@@ -94,10 +105,25 @@ class ServerController extends Controller
         $this->requireUser($request);
         $data = $this->validated($request, $server);
 
+        // Only re-scan when the pin or the address actually moved — an edit that
+        // just renames the server must not depend on the host being reachable.
+        $hostKey = (string) $server->host_key;
+        $moved = $data['fingerprint'] !== (string) $server->host_fingerprint
+            || $data['columns']['host'] !== $server->host
+            || $data['columns']['port'] !== $server->port;
+        if ($moved || $hostKey === '') {
+            $resolved = $this->resolveHostKey($data['columns'], $data['fingerprint']);
+            if ($resolved === null) {
+                return response()->json(['error' => 'host_key_unconfirmed'], 422);
+            }
+            $hostKey = $resolved;
+        }
+
         $server->forceFill([
             ...$data['columns'],
             'credentials' => $data['credentials'],
             'host_fingerprint' => $data['fingerprint'],
+            'host_key' => $hostKey,
         ])->save();
 
         return response()->json(['server' => $this->present($server->load('latestFact'))]);
@@ -148,28 +174,22 @@ class ServerController extends Controller
             'host' => ['required', 'string', 'max:255'],
             'port' => ['sometimes', 'integer', 'min:1', 'max:65535'],
             'username' => ['required', 'string', 'max:64'],
-            'auth_type' => ['required', Rule::in(['password', 'key'])],
-            'password' => ['nullable', 'string', 'max:1024'],
+            'auth_type' => ['sometimes', Rule::in(['key'])],
             'private_key' => ['nullable', 'string', 'max:16384'],
             'passphrase' => ['nullable', 'string', 'max:1024'],
             'host_fingerprint' => ['nullable', 'string', 'max:128'],
             'keypair_token' => ['nullable', 'string', 'max:64'],
         ]);
 
-        $result = $this->probe->run(
-            $request->string('host')->value(),
-            $request->integer('port', 22),
-            $request->string('username')->value(),
-            $request->string('auth_type')->value(),
-            [
-                'password' => $request->string('password')->value(),
-                'private_key' => $request->string('private_key')->value() ?: $this->keypairPrivateKey($request),
-                'passphrase' => $request->string('passphrase')->value(),
-            ],
+        $result = $this->probe->run(new ServerTarget(
+            host: $request->string('host')->value(),
+            port: $request->integer('port', 22),
+            username: $request->string('username')->value(),
+            privateKey: $request->string('private_key')->value() ?: $this->keypairPrivateKey($request),
+            passphrase: $request->string('passphrase')->value(),
             // Empty means "learn it" — the response carries what we saw.
-            $request->string('host_fingerprint')->value() ?: null,
-            interactive: true,
-        );
+            fingerprint: $request->string('host_fingerprint')->value(),
+        ), interactive: true);
 
         return response()->json([
             'ok' => $result->ok,
@@ -185,15 +205,16 @@ class ServerController extends Controller
     {
         $this->requireUser($request);
 
-        $result = $this->probe->run(
-            $server->host,
-            $server->port,
-            $server->username,
-            $server->auth_type,
-            $server->credentials ?? [],
-            $server->host_fingerprint,
-            interactive: true,
-        );
+        $credentials = $server->credentials ?? [];
+        $result = $this->probe->run(new ServerTarget(
+            host: $server->host,
+            port: $server->port,
+            username: $server->username,
+            privateKey: is_string($credentials['private_key'] ?? null) ? $credentials['private_key'] : '',
+            passphrase: is_string($credentials['passphrase'] ?? null) ? $credentials['passphrase'] : '',
+            fingerprint: (string) $server->host_fingerprint,
+            hostKey: (string) $server->host_key,
+        ), interactive: true);
 
         return response()->json([
             'ok' => $result->ok,
@@ -237,6 +258,28 @@ class ServerController extends Controller
             'public_key' => $publicLine,
             'expires_in_minutes' => self::KEYPAIR_TTL_MINUTES,
         ]);
+    }
+
+    /**
+     * Read the target's host key and accept it only if it matches the fingerprint
+     * the user confirmed. Returns null when the host is unreachable or answers
+     * with a different key — either way the server is not saved, because a pin
+     * nobody verified is not a pin.
+     *
+     * @param  array<string, mixed>  $columns
+     */
+    private function resolveHostKey(array $columns, string $fingerprint): ?string
+    {
+        $result = $this->probe->run(new ServerTarget(
+            host: is_string($columns['host'] ?? null) ? $columns['host'] : '',
+            port: is_int($columns['port'] ?? null) ? $columns['port'] : 22,
+            username: is_string($columns['username'] ?? null) ? $columns['username'] : '',
+            fingerprint: $fingerprint,
+        ), interactive: true);
+
+        // A missing credential is fine here — the scan happens before auth, so a
+        // matching fingerprint plus a key is all this step needs.
+        return $result->fingerprint === $fingerprint ? $result->hostKey : null;
     }
 
     /** phpseclib's toString() is documented as array|string; OpenSSH gives a string. */
@@ -299,8 +342,10 @@ class ServerController extends Controller
             'host' => [$creating ? 'required' : 'sometimes', 'string', 'max:255'],
             'port' => ['sometimes', 'integer', 'min:1', 'max:65535'],
             'username' => [$creating ? 'required' : 'sometimes', 'string', 'max:64'],
-            'auth_type' => [$creating ? 'required' : 'sometimes', Rule::in(['password', 'key'])],
-            'password' => ['nullable', 'string', 'max:1024'],
+            // Key only. OpenSSH takes no password without a terminal, and adding
+            // sshpass to drive a pty would be a worse answer than generating a key,
+            // which this app does for the user anyway.
+            'auth_type' => ['sometimes', Rule::in(['key'])],
             'private_key' => ['nullable', 'string', 'max:16384'],
             'passphrase' => ['nullable', 'string', 'max:1024'],
             // Required on create: the pin comes from the test step the user just
@@ -328,13 +373,7 @@ class ServerController extends Controller
             return $new !== '' ? $new : (is_string($old[$key] ?? null) ? $old[$key] : '');
         };
 
-        $authType = $request->has('auth_type') ? $request->string('auth_type')->value() : ($server?->auth_type ?? 'key');
-
-        // Store only the fields the chosen method uses, so switching from
-        // password to key does not leave the unused secret behind.
-        $credentials = $authType === 'key'
-            ? ['private_key' => $keep('private_key'), 'passphrase' => $keep('passphrase')]
-            : ['password' => $keep('password')];
+        $credentials = ['private_key' => $keep('private_key'), 'passphrase' => $keep('passphrase')];
 
         return [
             'columns' => [
@@ -342,7 +381,7 @@ class ServerController extends Controller
                 'host' => $request->has('host') ? $request->string('host')->value() : ($server?->host ?? ''),
                 'port' => $request->integer('port', $server?->port ?? 22),
                 'username' => $request->has('username') ? $request->string('username')->value() : ($server?->username ?? ''),
-                'auth_type' => $authType,
+                'auth_type' => 'key',
                 'group' => $request->has('group') ? ($request->string('group')->value() ?: null) : $server?->group,
                 'note' => $request->has('note') ? ($request->string('note')->value() ?: null) : $server?->note,
                 'enabled' => $request->boolean('enabled', $server?->enabled ?? true),

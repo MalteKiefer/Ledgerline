@@ -172,33 +172,27 @@
 
         <!-- Step 2 — the key -->
         <Step :n="2" :title="t('servers.step_key')" :done="stepKeyDone">
-          <Select v-model="form.auth_type" :label="t('servers.auth_type')" :options="authOptions" />
-
-          <template v-if="form.auth_type === 'key'">
-            <div v-if="generatedKey" class="mt-3 space-y-2">
-              <p class="text-xs">{{ t('servers.key_generated') }}</p>
-              <pre class="overflow-x-auto rounded-lg bg-black/[0.05] p-2.5 font-mono text-[0.7rem] break-all whitespace-pre-wrap dark:bg-white/5">{{ generatedKey.public_key }}</pre>
-              <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.key_private_stays', { minutes: String(generatedKey.expires_in_minutes) }) }}</p>
-            </div>
-            <div v-else class="mt-3 space-y-2">
-              <Btn variant="solid" size="sm" icon="key" :disabled="generating" @click="doGenerateKey">
-                {{ generating ? t('servers.key_generating') : t('servers.key_generate') }}
-              </Btn>
-              <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.key_generate_hint') }}</p>
-              <details class="text-xs">
-                <summary class="cursor-pointer text-[var(--ll-muted)]">{{ t('servers.key_own') }}</summary>
-                <textarea
-                  v-model="form.private_key" rows="4" spellcheck="false"
-                  class="mt-2 w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-2 font-mono text-xs"
-                  :placeholder="editing ? t('servers.secret_kept') : '-----BEGIN OPENSSH PRIVATE KEY-----'"
-                />
-                <p class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.private_key_hint') }}</p>
-                <TextField v-model="form.passphrase" class="mt-2" :label="t('servers.passphrase')" type="password" :placeholder="editing ? t('servers.secret_kept') : ''" />
-              </details>
-            </div>
-          </template>
-
-          <TextField v-else v-model="form.password" class="mt-3" :label="t('servers.password')" type="password" :placeholder="editing ? t('servers.secret_kept') : ''" />
+          <div v-if="generatedKey" class="space-y-2">
+            <p class="text-xs">{{ t('servers.key_generated') }}</p>
+            <pre class="overflow-x-auto rounded-lg bg-black/[0.05] p-2.5 font-mono text-[0.7rem] break-all whitespace-pre-wrap dark:bg-white/5">{{ generatedKey.public_key }}</pre>
+            <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.key_private_stays', { minutes: String(generatedKey.expires_in_minutes) }) }}</p>
+          </div>
+          <div v-else class="space-y-2">
+            <Btn variant="solid" size="sm" icon="key" :disabled="generating" @click="doGenerateKey">
+              {{ generating ? t('servers.key_generating') : t('servers.key_generate') }}
+            </Btn>
+            <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.key_generate_hint') }}</p>
+            <details class="text-xs">
+              <summary class="cursor-pointer text-[var(--ll-muted)]">{{ t('servers.key_own') }}</summary>
+              <textarea
+                v-model="form.private_key" rows="4" spellcheck="false"
+                class="mt-2 w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-2 font-mono text-xs"
+                :placeholder="editing ? t('servers.secret_kept') : '-----BEGIN OPENSSH PRIVATE KEY-----'"
+              />
+              <p class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.private_key_hint') }}</p>
+              <TextField v-model="form.passphrase" class="mt-2" :label="t('servers.passphrase')" type="password" :placeholder="editing ? t('servers.secret_kept') : ''" />
+            </details>
+          </div>
         </Step>
 
         <!-- Step 3 — what to run on the target. Built from the values above so the
@@ -455,7 +449,7 @@ async function retest() {
 
 interface Form {
   name: string; host: string; port: string; username: string;
-  auth_type: 'password' | 'key'; password: string; private_key: string; passphrase: string;
+  private_key: string; passphrase: string;
   group: string; note: string; enabled: boolean; restricted_key: boolean;
 }
 
@@ -466,16 +460,11 @@ const form = ref<Form>(blank());
 
 function blank(): Form {
   return {
-    name: '', host: '', port: '22', username: '', auth_type: 'key',
-    password: '', private_key: '', passphrase: '', group: '', note: '',
+    name: '', host: '', port: '22', username: '',
+    private_key: '', passphrase: '', group: '', note: '',
     enabled: true, restricted_key: false,
   };
 }
-
-const authOptions = computed(() => [
-  { value: 'key', title: t('servers.auth_key') },
-  { value: 'password', title: t('servers.auth_password') },
-]);
 
 function openCreate() {
   editing.value = null;
@@ -497,7 +486,7 @@ function openEdit(srv: Server) {
   editing.value = srv;
   form.value = {
     name: srv.name, host: srv.host, port: String(srv.port), username: srv.username,
-    auth_type: srv.auth_type, password: '', private_key: '', passphrase: '',
+    private_key: '', passphrase: '',
     group: srv.group ?? '', note: srv.note ?? '',
     enabled: srv.enabled, restricted_key: srv.restricted_key,
   };
@@ -524,12 +513,12 @@ function payload(): Record<string, unknown> {
     host: f.host,
     port: Number(f.port) || 22,
     username: f.username,
-    auth_type: f.auth_type,
+    auth_type: 'key',
     // Blank secrets are preserved server-side on update. A generated key travels
     // as its token — the private half stayed on the server.
-    ...(f.auth_type === 'key'
-      ? { private_key: f.private_key, passphrase: f.passphrase, keypair_token: generatedKey.value?.token ?? '' }
-      : { password: f.password }),
+    private_key: f.private_key,
+    passphrase: f.passphrase,
+    keypair_token: generatedKey.value?.token ?? '',
     group: f.group,
     note: f.note,
     enabled: f.enabled,
@@ -576,13 +565,9 @@ const generatedKey = ref<{ token: string; public_key: string; expires_in_minutes
 
 const stepConnectionDone = computed(() => !!form.value.name && !!form.value.host && !!form.value.username);
 
-/** Step 2 is satisfied by a generated key, a pasted one, a password, or — when
- *  editing — the secret already stored. */
-const stepKeyDone = computed(() => {
-  if (editing.value) return true;
-  if (form.value.auth_type === 'password') return !!form.value.password;
-  return generatedKey.value !== null || !!form.value.private_key;
-});
+/** Step 2 is satisfied by a generated key, a pasted one, or — when editing — the
+ *  key already stored. */
+const stepKeyDone = computed(() => editing.value !== null || generatedKey.value !== null || !!form.value.private_key);
 
 const setupReady = computed(() => stepConnectionDone.value && stepKeyDone.value);
 

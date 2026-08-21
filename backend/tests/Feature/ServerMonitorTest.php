@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Servers\ProbeResult;
 use App\Services\Servers\ServerMonitor;
 use App\Services\Servers\ServerProbe;
+use App\Services\Servers\ServerTarget;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -31,18 +32,8 @@ class ServerMonitorTest extends TestCase
             /** @param  list<ProbeResult>  $queue */
             public function __construct(private array $queue) {}
 
-            /**
-             * @param  array<string, mixed>  $credentials
-             */
-            public function run(
-                string $host,
-                int $port,
-                string $username,
-                string $authType,
-                array $credentials,
-                ?string $expectedFingerprint = null,
-                bool $interactive = false,
-            ): ProbeResult {
+            public function run(ServerTarget $target, bool $interactive = false): ProbeResult
+            {
                 return array_shift($this->queue) ?? new ProbeResult(false, error: 'exhausted');
             }
         };

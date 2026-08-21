@@ -4,26 +4,36 @@ declare(strict_types=1);
 
 namespace App\Services\Servers;
 
+use App\Support\BinaryProcess;
+use App\Support\DiskTempFile;
 use App\Support\OutboundUrl;
 use phpseclib3\Crypt\PublicKeyLoader;
-use phpseclib3\Net\SSH2;
 use Throwable;
 
 /**
- * Collects a snapshot of a remote host over plain SSH — no agent on the target.
+ * Collects a snapshot of a remote host over SSH — no agent on the target.
  *
- * Everything it runs is read-only and needs no privilege: it reads /proc and
- * /etc/os-release rather than parsing human-formatted tool output, because those
- * are stable across distributions. One connection, ONE exec of the whole probe
- * script (sections separated by markers), not a session per value.
+ * Uses the OpenSSH client rather than a PHP SSH library. That is not a
+ * preference: a correctly hardened sshd may offer only post-quantum key
+ * exchange (mlkem768x25519-sha256, sntrup761x25519-sha512@openssh.com), which
+ * no pure-PHP implementation speaks — the negotiation fails before a host key is
+ * ever seen. OpenSSH speaks them, and it is the better-tested implementation of
+ * the two. The cost is a subprocess, run the way every other binary in this app
+ * is run: array argv through BinaryProcess, so there is no shell to inject into.
  *
- * The probe script is a public constant on purpose: an operator who restricts the
- * key on the target with `command="/usr/local/bin/ll-facts"` puts exactly this
- * script there, so the wire format has a single definition. With that restriction
- * a stolen key can do nothing but print the snapshot below.
+ * Everything it runs on the target is read-only and needs no privilege: it reads
+ * /proc and /etc/os-release rather than parsing human-formatted tool output,
+ * because those are stable across distributions. One connection, ONE command
+ * carrying the whole probe script (sections separated by markers).
  *
- * Never call this from a web request. A hanging SSH connect would pin an Octane
- * worker for the length of the timeout; collection belongs in the queue.
+ * The probe script is a public constant on purpose: an operator who restricts
+ * the key on the target with `command="/usr/local/bin/ll-facts"` installs
+ * exactly this script, so the wire format has a single definition. With that
+ * restriction a stolen key can do nothing but print the snapshot below.
+ *
+ * Never call this from a web request except for the explicit connection test.
+ * A hanging connect would pin an Octane worker for the length of the timeout;
+ * collection belongs in the queue.
  *
  * Not final so a test can subclass it and return a canned ProbeResult — the
  * alternative is an interface whose only production implementation is this class.
@@ -31,10 +41,10 @@ use Throwable;
 class ServerProbe
 {
     /**
-     * Seconds to establish the TCP/SSH session, and to wait for the probe output
-     * once it is up. The interactive pair is what a user waits on behind a
-     * "test connection" button, so it is deliberately tight; the background pair
-     * belongs to the queue worker and may take its time on a slow link.
+     * Seconds to establish the session, and to wait for the probe output. The
+     * interactive pair is what a user waits on behind a "test connection"
+     * button, so it is deliberately tight; the background pair belongs to the
+     * queue worker and may take its time on a slow link.
      */
     private const CONNECT_TIMEOUT = 8;
 
@@ -46,6 +56,13 @@ class ServerProbe
 
     /** Refuse absurd output rather than buffering an unbounded response. */
     private const MAX_OUTPUT = 512 * 1024;
+
+    /**
+     * Host key types we are willing to pin, best first. Ed25519 is short, modern
+     * and what every current sshd generates; RSA is the fallback for older
+     * hosts. Plain DSA is deliberately absent — OpenSSH itself dropped it.
+     */
+    private const HOST_KEY_TYPES = ['ssh-ed25519', 'ecdsa-sha2-nistp256', 'rsa-sha2-512', 'ssh-rsa'];
 
     /**
      * POSIX sh, no bashisms. Every command is read-only, tolerates absence
@@ -69,106 +86,187 @@ echo "##LL:updates"; apt-get -s -o Debug::NoLocking=1 upgrade 2>/dev/null | grep
 echo "##LL:end"';
 
     /**
-     * Connect, run the probe, parse it. Returns a result object rather than
-     * throwing: a failed run is a normal, recordable outcome, not an exception.
+     * Connect, run the probe, parse it. Returns a result rather than throwing:
+     * a failed run is a normal, recordable outcome, not an exception.
      *
-     * @param  array<string, mixed>  $credentials  password | private_key (+ passphrase)
-     * @param  string|null  $expectedFingerprint  pinned host key; null = trust on first use
-     * @param  bool  $interactive  a user is waiting on the response — use tight timeouts
+     * @param  bool  $interactive  a user is waiting on the response — tight timeouts
      */
-    public function run(
-        string $host,
-        int $port,
-        string $username,
-        string $authType,
-        array $credentials,
-        ?string $expectedFingerprint = null,
-        bool $interactive = false,
-    ): ProbeResult {
+    public function run(ServerTarget $target, bool $interactive = false): ProbeResult
+    {
         $started = microtime(true);
 
         // Same guard as every other outbound path: a host that resolves to
         // link-local or a cloud-metadata address is refused before we connect.
-        if (! OutboundUrl::hostAllowed($host)) {
+        if (! OutboundUrl::hostAllowed($target->host)) {
             return new ProbeResult(false, error: 'unsafe_host');
         }
+        if (! BinaryProcess::available('ssh') || ! BinaryProcess::available('ssh-keyscan')) {
+            return new ProbeResult(false, error: 'ssh_missing');
+        }
 
-        $ssh = null;
-        $password = '';
+        // The host key comes first: it decides whether we are willing to hand
+        // this host a credential at all.
+        $hostKey = $target->hostKey !== '' ? $target->hostKey : $this->scanHostKey($target, $interactive);
+        $fingerprint = $hostKey === null ? null : $this->fingerprint($hostKey);
+        if ($hostKey === null || $fingerprint === null) {
+            return new ProbeResult(false, error: 'no_host_key', durationMs: $this->elapsed($started));
+        }
+        if ($target->fingerprint !== '' && ! hash_equals($target->fingerprint, $fingerprint)) {
+            return new ProbeResult(false, error: 'fingerprint_mismatch', fingerprint: $fingerprint, durationMs: $this->elapsed($started));
+        }
+
+        $pem = $this->usableKey($target);
+        if ($pem === null) {
+            return new ProbeResult(false, error: 'no_credentials', fingerprint: $fingerprint, hostKey: $hostKey, durationMs: $this->elapsed($started));
+        }
+
+        // Both files are RAII: the destructor unlinks them when this method
+        // returns, so a private key never outlives the probe on disk.
+        $keyFile = DiskTempFile::create('ll-serverkey');
+        $knownHosts = DiskTempFile::create('ll-knownhosts');
         try {
-            $ssh = new SSH2($host, $port, $interactive ? self::CONNECT_TIMEOUT_INTERACTIVE : self::CONNECT_TIMEOUT);
+            file_put_contents($keyFile->path(), $pem);
+            chmod($keyFile->path(), 0600);
+            file_put_contents($knownHosts->path(), $this->knownHostsLine($target, $hostKey));
 
-            // Pin the host key. Without this the FIRST connection — the one that
-            // carries the credentials — is interceptable.
-            $fingerprint = $this->fingerprint($ssh);
-            if ($fingerprint === null) {
-                return new ProbeResult(false, error: 'no_host_key', durationMs: $this->elapsed($started));
-            }
-            if ($expectedFingerprint !== null && $expectedFingerprint !== ''
-                && ! hash_equals($expectedFingerprint, $fingerprint)) {
-                return new ProbeResult(false, error: 'fingerprint_mismatch', fingerprint: $fingerprint, durationMs: $this->elapsed($started));
-            }
+            $result = BinaryProcess::runCapture(
+                $this->sshArgv($target, $keyFile->path(), $knownHosts->path(), $interactive),
+                $interactive ? self::EXEC_TIMEOUT_INTERACTIVE : self::EXEC_TIMEOUT,
+            );
 
-            if ($authType === 'key') {
-                $raw = is_string($credentials['private_key'] ?? null) ? $credentials['private_key'] : '';
-                $pass = is_string($credentials['passphrase'] ?? null) ? $credentials['passphrase'] : '';
-                if ($raw === '') {
-                    return new ProbeResult(false, error: 'no_credentials', fingerprint: $fingerprint, durationMs: $this->elapsed($started));
-                }
-                $key = PublicKeyLoader::loadPrivateKey($raw, $pass);
-                $authed = $ssh->login($username, $key);
-            } else {
-                $password = is_string($credentials['password'] ?? null) ? $credentials['password'] : '';
-                if ($password === '') {
-                    return new ProbeResult(false, error: 'no_credentials', fingerprint: $fingerprint, durationMs: $this->elapsed($started));
-                }
-                $authed = $ssh->login($username, $password);
-            }
-
-            if ($authed !== true) {
-                return new ProbeResult(false, error: 'auth_failed', fingerprint: $fingerprint, durationMs: $this->elapsed($started));
-            }
-
-            $ssh->setTimeout($interactive ? self::EXEC_TIMEOUT_INTERACTIVE : self::EXEC_TIMEOUT);
-            $out = $ssh->exec(self::PROBE);
-            // A restricted key ignores our command and runs its own forced one;
-            // either way the output must be the marker format parsed below.
-            $text = is_string($out) ? $out : '';
+            $text = $result['out'];
             if (strlen($text) > self::MAX_OUTPUT) {
                 $text = substr($text, 0, self::MAX_OUTPUT);
             }
+
             if (! str_contains($text, '##LL:')) {
-                return new ProbeResult(false, error: 'unexpected_output', fingerprint: $fingerprint, durationMs: $this->elapsed($started));
+                return new ProbeResult(
+                    false,
+                    error: $this->failureReason($result['err']),
+                    fingerprint: $fingerprint,
+                    hostKey: $hostKey,
+                    durationMs: $this->elapsed($started),
+                );
             }
 
             return new ProbeResult(
                 true,
                 facts: (new FactParser)->parse($text),
                 fingerprint: $fingerprint,
+                hostKey: $hostKey,
                 durationMs: $this->elapsed($started),
             );
         } catch (Throwable $e) {
-            return new ProbeResult(false, error: $this->reason($e), durationMs: $this->elapsed($started));
-        } finally {
-            if ($password !== '') {
-                sodium_memzero($password);
+            return new ProbeResult(false, error: $this->shorten($e->getMessage()), fingerprint: $fingerprint, hostKey: $hostKey, durationMs: $this->elapsed($started));
+        }
+    }
+
+    /** @return array<int, string> */
+    private function sshArgv(ServerTarget $target, string $keyPath, string $knownHostsPath, bool $interactive): array
+    {
+        return [
+            'ssh',
+            // No terminal, no prompting, no agent, no user config: this must
+            // either work from what we passed or fail, never hang on a question.
+            '-T',
+            '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=yes',
+            '-o', 'UserKnownHostsFile='.$knownHostsPath,
+            '-o', 'GlobalKnownHostsFile=/dev/null',
+            '-o', 'IdentitiesOnly=yes',
+            '-o', 'IdentityAgent=none',
+            '-o', 'PasswordAuthentication=no',
+            '-o', 'KbdInteractiveAuthentication=no',
+            '-o', 'ClearAllForwardings=yes',
+            '-o', 'ConnectTimeout='.($interactive ? self::CONNECT_TIMEOUT_INTERACTIVE : self::CONNECT_TIMEOUT),
+            '-o', 'LogLevel=ERROR',
+            '-i', $keyPath,
+            '-p', (string) $target->port,
+            $target->username.'@'.$target->host,
+            // A restricted key ignores this and runs its forced command; either
+            // way the output must be the marker format the parser understands.
+            self::PROBE,
+        ];
+    }
+
+    /**
+     * Read the target's host key. Only used when nothing is pinned yet — this is
+     * the trust-on-first-use step whose result a human confirms.
+     */
+    private function scanHostKey(ServerTarget $target, bool $interactive): ?string
+    {
+        $result = BinaryProcess::runCapture([
+            'ssh-keyscan',
+            '-T', (string) ($interactive ? self::CONNECT_TIMEOUT_INTERACTIVE : self::CONNECT_TIMEOUT),
+            '-p', (string) $target->port,
+            $target->host,
+        ], $interactive ? self::EXEC_TIMEOUT_INTERACTIVE : self::EXEC_TIMEOUT);
+
+        $offered = [];
+        foreach (preg_split('/\r\n|\r|\n/', $result['out']) ?: [] as $line) {
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
             }
-            $ssh?->disconnect();
+            // "<host> <type> <base64>" — the host token is one we supplied.
+            $parts = preg_split('/\s+/', trim($line)) ?: [];
+            if (count($parts) >= 3 && in_array($parts[1], self::HOST_KEY_TYPES, true)) {
+                $offered[$parts[1]] = $parts[1].' '.$parts[2];
+            }
+        }
+
+        // Prefer in our own order, not the order the server happened to answer in.
+        foreach (self::HOST_KEY_TYPES as $type) {
+            if (isset($offered[$type])) {
+                return $offered[$type];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A known_hosts entry for exactly this host and port, which is how the pin is
+     * actually enforced: ssh refuses the connection itself rather than us
+     * noticing a mismatch afterwards. OpenSSH wants the bracketed form for any
+     * non-default port.
+     */
+    private function knownHostsLine(ServerTarget $target, string $hostKey): string
+    {
+        $name = $target->port === 22 ? $target->host : '['.$target->host.']:'.$target->port;
+
+        return $name.' '.$hostKey."\n";
+    }
+
+    /**
+     * The key in a form `ssh -i` accepts: decrypted, since OpenSSH would
+     * otherwise prompt for the passphrase and BatchMode would abort. phpseclib
+     * is used here purely as a key-format tool, not as a transport.
+     */
+    private function usableKey(ServerTarget $target): ?string
+    {
+        if (trim($target->privateKey) === '') {
+            return null;
+        }
+        if ($target->passphrase === '') {
+            return rtrim($target->privateKey)."\n";
+        }
+        try {
+            $pem = PublicKeyLoader::loadPrivateKey($target->privateKey, $target->passphrase)->toString('OpenSSH');
+
+            return is_string($pem) ? rtrim($pem)."\n" : null;
+        } catch (Throwable) {
+            return null;
         }
     }
 
     /**
-     * OpenSSH's own presentation — `SHA256:` + unpadded base64 of the SHA-256 over
-     * the raw key blob — so the operator can compare it byte for byte against
-     * `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the target.
+     * OpenSSH's own presentation — `SHA256:` + unpadded base64 of the SHA-256
+     * over the raw key blob — so the operator can compare it byte for byte
+     * against `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the target.
      */
-    private function fingerprint(SSH2 $ssh): ?string
+    private function fingerprint(string $hostKey): ?string
     {
-        $key = $ssh->getServerPublicHostKey();
-        if (! is_string($key)) {
-            return null;
-        }
-        $parts = explode(' ', $key);
+        $parts = explode(' ', trim($hostKey));
         $blob = base64_decode($parts[1] ?? '', true);
         if ($blob === false || $blob === '') {
             return null;
@@ -177,17 +275,42 @@ echo "##LL:end"';
         return 'SHA256:'.rtrim(base64_encode(hash('sha256', $blob, true)), '=');
     }
 
+    /**
+     * Map ssh's own complaint onto a reason the UI can explain, falling back to a
+     * short quote of stderr for anything not seen before. Without this the user
+     * gets "it did not work" for every distinct cause.
+     */
+    private function failureReason(string $stderr): string
+    {
+        $lower = strtolower($stderr);
+
+        return match (true) {
+            str_contains($lower, 'permission denied') => 'auth_failed',
+            str_contains($lower, 'host key verification failed') => 'fingerprint_mismatch',
+            str_contains($lower, 'connection refused') => 'connection_refused',
+            str_contains($lower, 'timed out') => 'timeout',
+            str_contains($lower, 'no route to host'), str_contains($lower, 'could not resolve') => 'unreachable',
+            str_contains($lower, 'no matching key exchange'), str_contains($lower, 'no matching host key'),
+            str_contains($lower, 'no matching cipher'), str_contains($lower, 'no matching mac') => 'no_common_algorithms',
+            trim($stderr) === '' => 'unexpected_output',
+            default => $this->shorten($stderr),
+        };
+    }
+
     private function elapsed(float $started): int
     {
         return (int) round((microtime(true) - $started) * 1000);
     }
 
-    /** A short, credential-free reason — the message may quote what we sent. */
-    private function reason(Throwable $e): string
+    /** Keep a diagnostic short — the message may quote what we sent. */
+    private function shorten(string $message): string
     {
-        $msg = trim($e->getMessage());
-        $msg = $msg === '' ? $e::class : $msg;
+        $message = trim($message);
+        // ssh usually prints several lines; the first carries the cause.
+        // strtok returns false only for an empty subject, which trim() already ruled out.
+        $first = strtok($message, "\n");
+        $message = is_string($first) ? $first : $message;
 
-        return mb_strlen($msg) > 200 ? mb_substr($msg, 0, 200) : $msg;
+        return mb_strlen($message) > 200 ? mb_substr($message, 0, 200) : $message;
     }
 }

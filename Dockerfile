@@ -38,7 +38,10 @@ FROM ${PHP_BASE} AS runtime
 
 USER root
 # System deps: image/video/OCR/geo toolchain (imagick+heif, ffmpeg, exiftool,
-# tesseract+poppler), the PG18 client for pg_dump backups, gnupg (PGP mail),
+# tesseract+poppler), the PG18 client for pg_dump backups, the OpenSSH client
+# (agentless server monitoring: a pure-PHP SSH client cannot negotiate the
+# post-quantum key exchange a hardened sshd may be the only thing offering),
+# gnupg (PGP mail),
 # isync/mbsync (IMAP mail import), and curl for the healthcheck. Then the PHP
 # extensions the app needs, plus pcntl + opcache for the Octane worker.
 RUN apk add --no-cache \
@@ -46,6 +49,7 @@ RUN apk add --no-cache \
       libheif libde265 x265-libs aom-libs imagemagick imagemagick-heic \
       ffmpeg \
       exiftool \
+      openssh-client \
       postgresql18-client \
       tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu poppler-utils \
  && command -v mbsync \

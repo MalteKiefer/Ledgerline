@@ -6,8 +6,9 @@ namespace App\Services\Servers;
 
 /**
  * The outcome of one SSH probe: either a parsed snapshot or the reason it failed,
- * plus the host key fingerprint we saw (needed for trust-on-first-use when the
- * server has no pin stored yet).
+ * plus the host key we saw. Both halves of the key matter — the fingerprint is
+ * what a human confirms, the key itself is what OpenSSH needs in known_hosts to
+ * enforce the pin on every later connection.
  */
 final readonly class ProbeResult
 {
@@ -17,6 +18,7 @@ final readonly class ProbeResult
         public array $facts = [],
         public ?string $error = null,
         public ?string $fingerprint = null,
+        public ?string $hostKey = null,
         public int $durationMs = 0,
     ) {}
 }

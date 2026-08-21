@@ -8,7 +8,9 @@ use App\Jobs\CollectServerFacts;
 use App\Models\Server;
 use App\Models\ServerFact;
 use App\Models\User;
+use App\Services\Servers\ProbeResult;
 use App\Services\Servers\ServerProbe;
+use App\Services\Servers\ServerTarget;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -16,19 +18,43 @@ use Tests\TestCase;
 
 /**
  * The monitored-server surface. What matters here is not the happy path (a
- * snapshot renders) but the three properties the feature rests on: the host key
- * must be confirmed before anything is saved, credentials must never come back
- * out, and a request must never open an SSH session on the collection path.
+ * snapshot renders) but the properties the feature rests on: the host key must
+ * be confirmed and pinned before anything is saved, credentials must never come
+ * back out, and a request must never open an SSH session on the collection path.
  *
- * Each authenticated case gets its own test — the auth guard caches the first
- * resolved user for the lifetime of a test.
+ * The probe is faked throughout — these tests are about the controller's rules,
+ * not about whether OpenSSH works. Each authenticated case gets its own test:
+ * the auth guard caches the first resolved user for the lifetime of a test.
  */
 class ServersTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** A fingerprint in the exact shape the controller accepts (SHA256: + 43 base64 chars). */
+    /** A fingerprint in the exact shape the controller accepts. */
     private const FP = 'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+
+    private const HOST_KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlobForTesting0000000';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Saving a server re-scans the host key to verify the confirmed
+        // fingerprint, so every create/update path needs a probe that answers.
+        $this->fakeProbe(new ProbeResult(true, fingerprint: self::FP, hostKey: self::HOST_KEY));
+    }
+
+    private function fakeProbe(ProbeResult $result): void
+    {
+        $this->app->instance(ServerProbe::class, new class($result) extends ServerProbe
+        {
+            public function __construct(private ProbeResult $result) {}
+
+            public function run(ServerTarget $target, bool $interactive = false): ProbeResult
+            {
+                return $this->result;
+            }
+        });
+    }
 
     /** @return array<string, string> */
     private function bearer(User $user): array
@@ -48,53 +74,63 @@ class ServersTest extends TestCase
             'auth_type' => 'key',
             'credentials' => ['private_key' => 'PRIVATE-KEY-BODY', 'passphrase' => ''],
             'host_fingerprint' => self::FP,
+            'host_key' => self::HOST_KEY,
             'enabled' => true,
         ])->save();
 
         return $server;
     }
 
-    public function test_creating_a_server_requires_a_confirmed_host_key(): void
+    /** @return array<string, mixed> */
+    private function newServerPayload(): array
     {
-        // Without a pin the very first connection — the one carrying the
-        // credentials — would be interceptable, so the field is required.
-        $this->postJson(route('api.servers.store'), [
-            'name' => 'web01',
-            'host' => '10.0.0.9',
-            'username' => 'monitor',
-            'auth_type' => 'key',
-            'private_key' => 'PRIVATE-KEY-BODY',
-        ], $this->bearer(User::factory()->create()))
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('host_fingerprint');
-    }
-
-    public function test_a_malformed_fingerprint_is_rejected(): void
-    {
-        $this->postJson(route('api.servers.store'), [
-            'name' => 'web01',
-            'host' => '10.0.0.9',
-            'username' => 'monitor',
-            'auth_type' => 'key',
-            'private_key' => 'PRIVATE-KEY-BODY',
-            'host_fingerprint' => 'md5:aa:bb:cc',
-        ], $this->bearer(User::factory()->create()))
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('host_fingerprint');
-    }
-
-    public function test_a_created_server_never_returns_its_credentials(): void
-    {
-        Queue::fake();
-
-        $response = $this->postJson(route('api.servers.store'), [
+        return [
             'name' => 'web01',
             'host' => '10.0.0.9',
             'username' => 'monitor',
             'auth_type' => 'key',
             'private_key' => 'PRIVATE-KEY-BODY',
             'host_fingerprint' => self::FP,
-        ], $this->bearer(User::factory()->create()))->assertCreated();
+        ];
+    }
+
+    public function test_creating_a_server_requires_a_confirmed_host_key(): void
+    {
+        // Without a pin the very first connection — the one carrying the
+        // credentials — would be interceptable, so the field is required.
+        $payload = $this->newServerPayload();
+        unset($payload['host_fingerprint']);
+
+        $this->postJson(route('api.servers.store'), $payload, $this->bearer(User::factory()->create()))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('host_fingerprint');
+    }
+
+    public function test_a_malformed_fingerprint_is_rejected(): void
+    {
+        $this->postJson(route('api.servers.store'), [...$this->newServerPayload(), 'host_fingerprint' => 'md5:aa:bb:cc'], $this->bearer(User::factory()->create()))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('host_fingerprint');
+    }
+
+    public function test_a_host_that_answers_with_a_different_key_is_not_saved(): void
+    {
+        // The confirmed fingerprint is re-verified against a fresh scan; a
+        // mismatch means nobody actually verified this host.
+        $this->fakeProbe(new ProbeResult(false, error: 'fingerprint_mismatch', fingerprint: 'SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'));
+
+        $this->postJson(route('api.servers.store'), $this->newServerPayload(), $this->bearer(User::factory()->create()))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'host_key_unconfirmed');
+        $this->assertDatabaseCount('servers', 0);
+    }
+
+    public function test_a_created_server_pins_the_host_key_and_hides_its_credentials(): void
+    {
+        Queue::fake();
+
+        $response = $this->postJson(route('api.servers.store'), $this->newServerPayload(), $this->bearer(User::factory()->create()))
+            ->assertCreated();
 
         $response->assertJsonPath('server.name', 'web01')
             ->assertJsonMissingPath('server.credentials')
@@ -105,6 +141,11 @@ class ServersTest extends TestCase
         $raw = (string) DB::table('servers')->value('credentials');
         $this->assertNotSame('', $raw);
         $this->assertStringNotContainsString('PRIVATE-KEY-BODY', $raw);
+
+        // The whole key is kept, not only its fingerprint: OpenSSH enforces the
+        // pin from a known_hosts entry, which a fingerprint alone cannot fill.
+        $server = Server::query()->withoutGlobalScopes()->firstOrFail();
+        $this->assertSame(self::HOST_KEY, $server->host_key);
 
         // The first snapshot is collected in the queue, not in this request.
         Queue::assertPushed(CollectServerFacts::class);
@@ -125,20 +166,33 @@ class ServersTest extends TestCase
         $this->assertSame('PRIVATE-KEY-BODY', $server->credentials['private_key'] ?? null);
     }
 
-    public function test_switching_the_auth_method_drops_the_unused_secret(): void
+    public function test_renaming_does_not_require_the_host_to_be_reachable(): void
     {
         $owner = User::factory()->create();
         $server = $this->server($owner);
+        // Nothing about the address or the pin changed, so an unreachable host
+        // must not block an edit that never touches the connection.
+        $this->fakeProbe(new ProbeResult(false, error: 'timeout'));
 
-        $this->putJson(route('api.servers.update', $server->id), [
-            'auth_type' => 'password',
-            'password' => 'hunter2',
-        ], $this->bearer($owner))->assertOk();
+        $this->putJson(route('api.servers.update', $server->id), ['name' => 'renamed'], $this->bearer($owner))
+            ->assertOk();
 
         $server->refresh();
-        $this->assertSame('password', $server->auth_type);
-        $this->assertSame('hunter2', $server->credentials['password'] ?? null);
-        $this->assertArrayNotHasKey('private_key', $server->credentials ?? []);
+        $this->assertSame('renamed', $server->name);
+        $this->assertSame(self::HOST_KEY, $server->host_key);
+    }
+
+    public function test_password_authentication_is_refused(): void
+    {
+        // OpenSSH takes no password without a terminal, so offering the option
+        // would promise something the transport cannot do.
+        $owner = User::factory()->create();
+
+        $this->putJson(route('api.servers.update', $this->server($owner)->id), [
+            'auth_type' => 'password',
+        ], $this->bearer($owner))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('auth_type');
     }
 
     public function test_a_stranger_cannot_read_another_users_server(): void
@@ -209,10 +263,9 @@ class ServersTest extends TestCase
             ->assertOk()
             ->assertJsonStructure(['token', 'public_key', 'expires_in_minutes']);
 
-        $body = (string) $response->getContent();
-        $this->assertStringContainsString('ssh-ed25519 ', $response->json('public_key'));
+        $this->assertStringContainsString('ssh-ed25519 ', (string) $response->json('public_key'));
         // The whole point of the token: the private key stays on this host.
-        $this->assertStringNotContainsString('PRIVATE KEY', $body);
+        $this->assertStringNotContainsString('PRIVATE KEY', (string) $response->getContent());
     }
 
     public function test_a_generated_keypair_is_redeemed_by_its_token_on_create(): void
@@ -221,15 +274,12 @@ class ServersTest extends TestCase
         $owner = User::factory()->create();
         $token = $this->postJson(route('api.servers.keypair'), [], $this->bearer($owner))->json('token');
 
-        $this->postJson(route('api.servers.store'), [
-            'name' => 'web01',
-            'host' => '10.0.0.9',
-            'username' => 'monitor',
-            'auth_type' => 'key',
-            // No private_key in the payload — the browser never had one.
-            'keypair_token' => $token,
-            'host_fingerprint' => self::FP,
-        ], $this->bearer($owner))->assertCreated();
+        $payload = $this->newServerPayload();
+        // No private_key in the payload — the browser never had one.
+        unset($payload['private_key']);
+
+        $this->postJson(route('api.servers.store'), [...$payload, 'keypair_token' => $token], $this->bearer($owner))
+            ->assertCreated();
 
         $server = Server::query()->withoutGlobalScopes()->firstOrFail();
         $this->assertStringContainsString('OPENSSH PRIVATE KEY', (string) ($server->credentials['private_key'] ?? ''));
@@ -245,16 +295,11 @@ class ServersTest extends TestCase
         // and the cross-user claim would never actually be exercised.
         app('auth')->forgetGuards();
 
-        // Same token, different caller: the cache key is scoped to the owner, so
-        // this must not pick up someone else's freshly generated key.
-        $this->postJson(route('api.servers.store'), [
-            'name' => 'web01',
-            'host' => '10.0.0.9',
-            'username' => 'monitor',
-            'auth_type' => 'key',
-            'keypair_token' => $token,
-            'host_fingerprint' => self::FP,
-        ], $this->bearer(User::factory()->create()))->assertCreated();
+        $payload = $this->newServerPayload();
+        unset($payload['private_key']);
+
+        $this->postJson(route('api.servers.store'), [...$payload, 'keypair_token' => $token], $this->bearer(User::factory()->create()))
+            ->assertCreated();
 
         $server = Server::query()->withoutGlobalScopes()->firstOrFail();
         $this->assertSame('', $server->credentials['private_key'] ?? null);

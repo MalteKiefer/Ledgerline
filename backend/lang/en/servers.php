@@ -39,10 +39,6 @@ return [
     'host' => 'Host',
     'port' => 'Port',
     'username' => 'User',
-    'auth_type' => 'Authentication',
-    'auth_key' => 'Private key',
-    'auth_password' => 'Password',
-    'password' => 'Password',
     'private_key' => 'Private key',
     'private_key_hint' => 'OpenSSH or PEM. Stored encrypted and never shown again.',
     'passphrase' => 'Key passphrase',
@@ -93,6 +89,12 @@ return [
         'no_credentials' => 'No credentials stored for this authentication method.',
         'auth_failed' => 'Authentication was rejected.',
         'unexpected_output' => 'The server answered, but not with a snapshot. Is the forced command set up correctly?',
+        'host_key_unconfirmed' => 'The host key could not be re-read and matched — nothing was saved.',
+        'ssh_missing' => 'The OpenSSH client is not installed on this host — server monitoring cannot run.',
+        'connection_refused' => 'Nothing is listening on that port.',
+        'timeout' => 'The host did not answer in time.',
+        'unreachable' => 'The host could not be reached or resolved.',
+        'no_common_algorithms' => 'No key exchange, cipher or host key type in common with that server.',
     ],
 
     'notify' => [
