@@ -189,6 +189,18 @@ tags:
       `{contacts, books, groups}`; `GET /contacts/{id}` returns the full parsed
       vCard (fn, org, emails/phones/urls/addresses, note, group_ids). Owner-scope
       is enforced controller-side; avatar bytes stream from `/contacts/{id}/avatar`.
+  - name: Servers
+    description: >
+      Agentless server monitoring over plain SSH. A server row holds the
+      connection (host/port/user) plus the credential, which is encrypted at rest
+      and never serialised. The target's host key is pinned: `POST /servers/test`
+      reports the fingerprint it saw, the user confirms it, and `POST /servers`
+      requires that value — trust-on-first-use is an explicit step, not something
+      the server does silently. Collection runs in the queue (`POST
+      /servers/{id}/refresh` returns 202 and the snapshot appears in a later
+      index/show); the only endpoint that opens an SSH session inline is the
+      connection test, which uses tight interactive timeouts. Gated by
+      `module:servers` on top of device auth and owner-scoped.
   - name: Notes
     description: >
       Notes module (plaintext-relational, Markdown). A nested folder tree + notes
@@ -1294,6 +1306,109 @@ components:
         actor: { type: string, nullable: true }
         meta: { type: object, nullable: true, additionalProperties: true }
         created_at: { type: string, format: date-time }
+    Server:
+      type: object
+      description: "A monitored server. Credentials are never serialised — neither the password nor the private key appears in any response."
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        host: { type: string }
+        port: { type: integer }
+        username: { type: string }
+        auth_type: { type: string, enum: [password, key] }
+        group: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        enabled: { type: boolean }
+        restricted_key: { type: boolean, description: "The key on the target is limited to a forced command." }
+        host_fingerprint: { type: [string, "null"], description: "Pinned host key, OpenSSH form: SHA256 plus 43 base64 characters." }
+        status:
+          type: [object, "null"]
+          description: "The newest collection run, successful or not. Null until the first probe."
+          properties:
+            ok: { type: boolean }
+            error: { type: [string, "null"], description: "Machine-readable reason (unsafe_host, no_host_key, fingerprint_mismatch, no_credentials, auth_failed, unexpected_output) or a transport message." }
+            collected_at: { type: string, format: date-time }
+            duration_ms: { type: integer }
+        facts: { $ref: "#/components/schemas/ServerFacts" }
+    ServerFacts:
+      type: [object, "null"]
+      description: "The parsed snapshot from the last successful probe. Every section is optional: a host without systemd or docker simply omits it."
+      properties:
+        hostname: { type: [string, "null"] }
+        os:
+          type: object
+          properties:
+            name: { type: [string, "null"] }
+            id: { type: [string, "null"] }
+            version: { type: [string, "null"] }
+        kernel: { type: [string, "null"] }
+        arch: { type: [string, "null"] }
+        uptime_s: { type: [integer, "null"] }
+        load: { type: array, items: { type: number }, description: "1/5/15-minute averages." }
+        cpu:
+          type: object
+          properties:
+            cores: { type: [integer, "null"] }
+            model: { type: [string, "null"] }
+        mem:
+          type: object
+          properties:
+            total_kb: { type: [integer, "null"] }
+            available_kb: { type: [integer, "null"] }
+            used_pct: { type: [number, "null"] }
+            swap_total_kb: { type: [integer, "null"] }
+            swap_used_kb: { type: [integer, "null"] }
+        disks:
+          type: array
+          items:
+            type: object
+            properties:
+              fs: { type: string }
+              mount: { type: string }
+              size_kb: { type: integer }
+              used_kb: { type: integer }
+              avail_kb: { type: integer }
+              used_pct: { type: number }
+        disk_max_pct: { type: [number, "null"], description: "The fullest filesystem — what the list view's status dot uses." }
+        reboot_required: { type: boolean }
+        failed_units: { type: array, items: { type: string } }
+        ports: { type: array, items: { type: string } }
+        containers:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              status: { type: string }
+        updates: { type: [integer, "null"], description: "Pending package updates. Null where no supported package manager answered — NOT zero, which would read as fully patched." }
+    ServerInput:
+      type: object
+      description: "Connection parameters. A blank secret on update keeps the stored one. host_fingerprint is required on create and must be the value a prior /servers/test reported."
+      required: [name, host, username, auth_type, host_fingerprint]
+      properties:
+        name: { type: string, maxLength: 255 }
+        host: { type: string, maxLength: 255 }
+        port: { type: integer, minimum: 1, maximum: 65535, default: 22 }
+        username: { type: string, maxLength: 64 }
+        auth_type: { type: string, enum: [password, key] }
+        password: { type: string, maxLength: 1024 }
+        private_key: { type: string, maxLength: 16384 }
+        passphrase: { type: string, maxLength: 1024 }
+        host_fingerprint: { type: string, pattern: "^SHA256:[A-Za-z0-9+/]{43}$" }
+        keypair_token: { type: string, maxLength: 64, description: "Redeems a key generated by /servers/keypair instead of sending a private key. A pasted private_key wins over it; both blank keeps the stored secret on update." }
+        group: { type: string, maxLength: 100 }
+        note: { type: string, maxLength: 2000 }
+        enabled: { type: boolean }
+        restricted_key: { type: boolean }
+    ServerProbeResult:
+      type: object
+      description: "Outcome of an inline connection test. The fingerprint is reported even on failure, so a mismatch can be inspected."
+      properties:
+        ok: { type: boolean }
+        error: { type: [string, "null"] }
+        fingerprint: { type: [string, "null"] }
+        facts: { $ref: "#/components/schemas/ServerFacts" }
+        duration_ms: { type: integer }
     StorageMount:
       type: object
       description: "An external storage mount (S3/SFTP). Credentials are never serialized."
@@ -7081,6 +7196,166 @@ paths:
                   activity: { type: array, items: { $ref: "#/components/schemas/FileActivity" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /servers:
+    get:
+      tags: [Servers]
+      operationId: serversIndex
+      summary: Monitored servers with their latest snapshot
+      description: "Owner-scoped. Credentials are never returned. `facts` is the snapshot of the last SUCCESSFUL run; `status` describes the last run whether it succeeded or not."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Servers., content: { application/json: { schema: { type: object, properties: { servers: { type: array, items: { $ref: "#/components/schemas/Server" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Servers]
+      operationId: serversStore
+      summary: Add a server (requires a confirmed host key)
+      description: "Does NOT connect: the host key pin comes from a prior /servers/test the user confirmed. The first snapshot is queued, so the response returns immediately."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ServerInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { server: { $ref: "#/components/schemas/Server" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /servers/keypair:
+    post:
+      tags: [Servers]
+      operationId: serversKeypair
+      summary: Generate an Ed25519 keypair for a server about to be added
+      description: "Returns ONLY the public key, which the user installs on the target. The private half waits in the cache for 30 minutes under an opaque token, scoped to the caller, and is redeemed by /servers/test and /servers via `keypair_token` — so a key this host generated never reaches the browser."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Keypair.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, description: "Pass as `keypair_token` to /servers/test and /servers." }
+                  public_key: { type: string, description: "OpenSSH one-line form, ready for authorized_keys." }
+                  expires_in_minutes: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /servers/probe-script:
+    get:
+      tags: [Servers]
+      operationId: serversProbeScript
+      summary: The probe script to install as a forced command on the target
+      description: "Served from the same constant the collector executes, so the two cannot drift. Install at /usr/local/bin/ll-facts and restrict the key in authorized_keys with a forced command plus no-port-forwarding, no-agent-forwarding and no-pty — a stolen key can then only print the snapshot."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Script., content: { application/json: { schema: { type: object, properties: { script: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /servers/test:
+    post:
+      tags: [Servers]
+      operationId: serversTest
+      summary: Test unsaved connection parameters and read the host key
+      description: "The only endpoint that opens an SSH session inline (tight interactive timeouts: 5s connect, 10s exec). Omit host_fingerprint to learn it; the response carries what was seen so the user can confirm it before /servers pins it."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ServerInput" } } } }
+      responses:
+        "200": { description: Reachable., content: { application/json: { schema: { $ref: "#/components/schemas/ServerProbeResult" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: "Unreachable, rejected or a fingerprint mismatch.", content: { application/json: { schema: { $ref: "#/components/schemas/ServerProbeResult" } } } }
+  /servers/refresh:
+    post:
+      tags: [Servers]
+      operationId: serversRefreshAll
+      summary: Queue a probe for every enabled server of this user
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "202": { description: Queued., content: { application/json: { schema: { type: object, properties: { queued: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /servers/{server}:
+    get:
+      tags: [Servers]
+      operationId: serversShow
+      summary: One server with its snapshot history
+      description: "`history` carries only the series a trend chart draws (load, memory, fullest filesystem) for the newest 50 runs — not the whole snapshot for each."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: server, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200":
+          description: Server.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  server: { $ref: "#/components/schemas/Server" }
+                  history:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ok: { type: boolean }
+                        error: { type: [string, "null"] }
+                        collected_at: { type: string, format: date-time }
+                        duration_ms: { type: integer }
+                        load: { type: array, items: { type: number } }
+                        mem_used_pct: { type: [number, "null"] }
+                        disk_max_pct: { type: [number, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Servers]
+      operationId: serversUpdate
+      summary: Update a server (a blank secret keeps the stored one)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: server, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ServerInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { server: { $ref: "#/components/schemas/Server" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Servers]
+      operationId: serversDestroy
+      summary: Stop monitoring a server (the server itself is untouched)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: server, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Removed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /servers/{server}/refresh:
+    post:
+      tags: [Servers]
+      operationId: serversRefresh
+      summary: Queue a fresh probe for one server
+      description: "202: the request never opens the SSH session. Poll index/show for the result."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: server, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "202": { description: Queued., content: { application/json: { schema: { type: object, properties: { queued: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /servers/{server}/test:
+    post:
+      tags: [Servers]
+      operationId: serversTestStored
+      summary: Re-test a stored server with its stored credentials
+      description: "Also re-reads the host key, so a mismatch against the pin surfaces here."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: server, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Reachable., content: { application/json: { schema: { $ref: "#/components/schemas/ServerProbeResult" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Unreachable or rejected.", content: { application/json: { schema: { $ref: "#/components/schemas/ServerProbeResult" } } } }
   /mounts:
     get:
       tags: [Mounts]

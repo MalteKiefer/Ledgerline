@@ -49,6 +49,30 @@
         </div>
       </Card>
 
+      <!-- Servers: the whole point of the tile is the exceptions, so an all-clear
+           fleet collapses to one line and anything wrong is named. -->
+      <Card v-if="auth.can('servers')" :title="t('servers.title')" :body-class="'p-0'">
+        <template #actions><Btn variant="ghost" size="sm" @click="$router.push('/servers')">{{ t('common.open') }}</Btn></template>
+        <div v-if="!servers.length" class="px-4 py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('servers.none') }}</div>
+        <div v-else>
+          <div class="flex items-center gap-4 border-b border-[var(--ll-border)] px-4 py-3 text-sm">
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-500" />{{ serverCounts.ok }}</span>
+            <span v-if="serverCounts.warn" class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-amber-500" />{{ serverCounts.warn }}</span>
+            <span v-if="serverCounts.down" class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-red-500" />{{ serverCounts.down }}</span>
+            <span v-if="!serverCounts.warn && !serverCounts.down" class="text-[var(--ll-muted)]">{{ t('servers.status_ok') }}</span>
+          </div>
+          <button
+            v-for="srv in serverAttention" :key="srv.id"
+            class="flex w-full items-center gap-3 border-b border-[var(--ll-border)] px-4 py-2.5 text-left last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
+            @click="$router.push('/servers')"
+          >
+            <span class="h-2 w-2 shrink-0 rounded-full" :class="srv.status && !srv.status.ok ? 'bg-red-500' : 'bg-amber-500'" />
+            <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ srv.name }}</span>
+            <span class="shrink-0 text-xs text-[var(--ll-muted)]">{{ serverIssue(srv) }}</span>
+          </button>
+        </div>
+      </Card>
+
       <!-- Module shortcuts -->
       <Card :class="auth.can('finance') ? '' : 'lg:col-span-3'" :title="t('settings.personal_heading')">
         <div class="space-y-1">
@@ -73,9 +97,12 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Card, Btn, Badge } from '@spa/ui';
 import { api } from '@spa/api/client';
 import { useAuthStore } from '@spa/stores/auth';
+import { useServersStore, type Server } from '@spa/stores/servers';
+import { severity, needsAttention, DISK_WARN_PCT } from '@spa/lib/server-facts';
 
 interface Inv { id: number; number: string | null; gross: number | null; status: string; customer: { name?: string } | null }
 const auth = useAuthStore();
+const serversStore = useServersStore();
 const kpis = ref<{ year: number; net: number; count: number; growthPct: number | null } | null>(null);
 const openGross = ref(0);
 const vatPayable = ref(0);
@@ -94,6 +121,35 @@ const stats = computed(() => [
   { key: 'cnt', label: 'invoices.invoice_count', icon: 'description', tint: 'bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10', value: String(kpis.value?.count ?? 0), trend: null },
 ]);
 
+// Servers needing attention: unreachable first, then a filesystem over 90%, a
+// failed unit or a pending reboot. A healthy fleet lists nothing.
+const servers = computed(() => serversStore.servers);
+
+/** Name the single most pressing thing, in the same order severity() ranks them. */
+function serverIssue(srv: Server): string {
+  const s = severity(srv);
+  if (s === 'down') return t('servers.status_fail');
+  if (s === 'unknown') return t('servers.status_unknown');
+  const f = srv.facts;
+  if (f && (f.disk_max_pct ?? 0) >= DISK_WARN_PCT) return `${f.disk_max_pct}%`;
+  if (f && f.failed_units.length) return t('servers.failed_units');
+  return t('servers.reboot_required');
+}
+
+const serverAttention = computed(() => servers.value.filter(needsAttention).slice(0, 6));
+
+const serverCounts = computed(() => {
+  const counts = { ok: 0, warn: 0, down: 0 };
+  for (const srv of servers.value) {
+    const s = severity(srv);
+    // An un-probed server is not healthy; group it with the unreachable ones.
+    if (s === 'down' || s === 'unknown') counts.down++;
+    else if (s === 'warn') counts.warn++;
+    else counts.ok++;
+  }
+  return counts;
+});
+
 const modules = computed(() => {
   const m: { to: string; label: string; icon: string; tint: string }[] = [];
   if (auth.can('finance')) m.push({ to: '/finance/invoices', label: 'invoices.tab_invoices', icon: 'account_balance_wallet', tint: 'bg-primary-500/12 text-primary-600 dark:text-primary-300' });
@@ -104,6 +160,10 @@ const modules = computed(() => {
 });
 
 onMounted(async () => {
+  // Independent of finance: a servers-only user still gets their tile.
+  if (auth.can('servers')) {
+    try { await serversStore.load(); } catch { /* module disabled mid-session */ }
+  }
   if (!auth.can('finance')) return;
   try {
     const r = await api.get<{ kpis?: typeof kpis.value; aging?: { openGross?: number }; currentVat?: { payable?: number } }>('/api/v1/finance/reports');

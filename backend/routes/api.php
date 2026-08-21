@@ -85,6 +85,7 @@ use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\PublicGalleryShareController;
 use App\Http\Controllers\PublicGalleryUploadController;
 use App\Http\Controllers\ReindexController;
+use App\Http\Controllers\ServerController;
 use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedGalleryController;
 use App\Http\Controllers\SharedWithMeController;
@@ -311,6 +312,21 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // Notes module — same guard-agnostic controller as web, under device auth.
+        // Server monitoring (SSH, agentless). Same controller as the web twin.
+        Route::middleware('module:servers')->group(function (): void {
+            Route::get('/servers', [ServerController::class, 'index'])->name('api.servers.index');
+            Route::get('/servers/probe-script', [ServerController::class, 'probeScript'])->name('api.servers.probe-script');
+            Route::post('/servers/keypair', [ServerController::class, 'keypair'])->middleware('throttle:20,1')->name('api.servers.keypair');
+            Route::post('/servers', [ServerController::class, 'store'])->middleware('throttle:60,1')->name('api.servers.store');
+            Route::post('/servers/test', [ServerController::class, 'test'])->middleware('throttle:20,1')->name('api.servers.test');
+            Route::post('/servers/refresh', [ServerController::class, 'refreshAll'])->middleware('throttle:20,1')->name('api.servers.refresh-all');
+            Route::get('/servers/{server}', [ServerController::class, 'show'])->whereNumber('server')->name('api.servers.show');
+            Route::put('/servers/{server}', [ServerController::class, 'update'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.update');
+            Route::delete('/servers/{server}', [ServerController::class, 'destroy'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.destroy');
+            Route::post('/servers/{server}/refresh', [ServerController::class, 'refresh'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.refresh');
+            Route::post('/servers/{server}/test', [ServerController::class, 'testStored'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.test-stored');
+        });
+
         Route::middleware('module:notes')->group(function (): void {
             Route::get('/notes/data', [NotesController::class, 'data'])->name('api.notes.data');
             Route::get('/notes/trash', [NotesController::class, 'trash'])->name('api.notes.trash');

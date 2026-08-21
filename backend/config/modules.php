@@ -20,5 +20,6 @@ return [
         'gallery' => ['label' => 'messages.nav.gallery', 'route' => 'gallery.index'],
         'calendar' => ['label' => 'messages.nav.calendar', 'route' => 'calendar.index'],
         'mail' => ['label' => 'messages.nav.mail', 'route' => 'mail.index'],
+        'servers' => ['label' => 'messages.nav.servers', 'route' => 'servers.index'],
     ],
 ];

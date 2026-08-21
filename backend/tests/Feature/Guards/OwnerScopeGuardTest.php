@@ -43,6 +43,9 @@ class OwnerScopeGuardTest extends TestCase
         // See the sharing entries in the CLAUDE.md security register.
         'FolderShareMember', 'GalleryPhotoComment', 'GalleryPhotoReaction',
         'ContactDuplicateDismissal',
+        // Reached only through the owning Server, which is owner-scoped; written
+        // solely by the collector job.
+        'ServerFact',
     ];
 
     /**
