@@ -41,6 +41,13 @@ Schedule::command('contacts:birthday-remind')->dailyAt('07:00')->withoutOverlapp
 // converge to the canonical local cards every five minutes.
 Schedule::command('contacts:sync-sources')->everyFiveMinutes()->withoutOverlapping();
 
+// Poll every monitored server over SSH. Agentless, so this IS the freshness of
+// the data the UI shows; a user can always force a refresh on top.
+Schedule::command('servers:poll')->everyFifteenMinutes()->withoutOverlapping();
+
+// Enforce retention on the per-server snapshot history (trend charts only).
+Schedule::command('servers:prune-facts')->dailyAt('00:35')->withoutOverlapping();
+
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();
 

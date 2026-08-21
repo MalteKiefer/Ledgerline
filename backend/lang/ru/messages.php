@@ -11,6 +11,7 @@ return [
         'gallery' => 'Галерея',
         'calendar' => 'Календарь',
         'mail' => 'Почта',
+        'servers' => 'Серверы',
     ],
     'menu' => [
         'logout' => 'Выйти',

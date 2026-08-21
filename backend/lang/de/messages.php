@@ -11,6 +11,7 @@ return [
         'gallery' => 'Galerie',
         'calendar' => 'Kalender',
         'mail' => 'E-Mail',
+        'servers' => 'Server',
     ],
     'menu' => [
         'logout' => 'Abmelden',
