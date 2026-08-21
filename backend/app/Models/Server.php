@@ -28,6 +28,7 @@ use Illuminate\Support\Carbon;
  * @property string $auth_type
  * @property array<string, mixed>|null $credentials
  * @property string|null $host_fingerprint
+ * @property string|null $host_key
  * @property bool $restricted_key
  * @property string|null $group
  * @property string|null $note

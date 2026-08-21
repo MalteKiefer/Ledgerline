@@ -2,7 +2,8 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { ApiError, api } from '@spa/api/client';
 
-export type AuthType = 'password' | 'key';
+/** Key only: OpenSSH takes no password without a terminal. */
+export type AuthType = 'key';
 
 export interface ServerDisk { fs: string; mount: string; size_kb: number; used_kb: number; avail_kb: number; used_pct: number }
 export interface ServerContainer { name: string; status: string }

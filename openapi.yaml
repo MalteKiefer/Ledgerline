@@ -199,8 +199,13 @@ tags:
       the server does silently. Collection runs in the queue (`POST
       /servers/{id}/refresh` returns 202 and the snapshot appears in a later
       index/show); the only endpoint that opens an SSH session inline is the
-      connection test, which uses tight interactive timeouts. Gated by
-      `module:servers` on top of device auth and owner-scoped.
+      connection test, which uses tight interactive timeouts. The transport is
+      the OpenSSH client, not a PHP SSH library: a hardened sshd may offer only
+      post-quantum key exchange (mlkem768x25519-sha256,
+      sntrup761x25519-sha512@openssh.com), which no pure-PHP implementation
+      speaks. Consequently authentication is key-only — OpenSSH takes no password
+      without a terminal — and `POST /servers/keypair` generates one for the user.
+      Gated by `module:servers` on top of device auth and owner-scoped.
   - name: Notes
     description: >
       Notes module (plaintext-relational, Markdown). A nested folder tree + notes
@@ -1315,18 +1320,18 @@ components:
         host: { type: string }
         port: { type: integer }
         username: { type: string }
-        auth_type: { type: string, enum: [password, key] }
+        auth_type: { type: string, enum: [key] }
         group: { type: [string, "null"] }
         note: { type: [string, "null"] }
         enabled: { type: boolean }
         restricted_key: { type: boolean, description: "The key on the target is limited to a forced command." }
-        host_fingerprint: { type: [string, "null"], description: "Pinned host key, OpenSSH form: SHA256 plus 43 base64 characters." }
+        host_fingerprint: { type: [string, "null"], description: "Pinned host key fingerprint, OpenSSH form: SHA256 plus 43 base64 characters." }
         status:
           type: [object, "null"]
           description: "The newest collection run, successful or not. Null until the first probe."
           properties:
             ok: { type: boolean }
-            error: { type: [string, "null"], description: "Machine-readable reason (unsafe_host, no_host_key, fingerprint_mismatch, no_credentials, auth_failed, unexpected_output) or a transport message." }
+            error: { type: [string, "null"], description: "Machine-readable reason (unsafe_host, ssh_missing, no_host_key, fingerprint_mismatch, no_credentials, auth_failed, connection_refused, timeout, unreachable, no_common_algorithms, unexpected_output) or a short quote of ssh's own stderr." }
             collected_at: { type: string, format: date-time }
             duration_ms: { type: integer }
         facts: { $ref: "#/components/schemas/ServerFacts" }
@@ -1384,14 +1389,13 @@ components:
     ServerInput:
       type: object
       description: "Connection parameters. A blank secret on update keeps the stored one. host_fingerprint is required on create and must be the value a prior /servers/test reported."
-      required: [name, host, username, auth_type, host_fingerprint]
+      required: [name, host, username, host_fingerprint]
       properties:
         name: { type: string, maxLength: 255 }
         host: { type: string, maxLength: 255 }
         port: { type: integer, minimum: 1, maximum: 65535, default: 22 }
         username: { type: string, maxLength: 64 }
-        auth_type: { type: string, enum: [password, key] }
-        password: { type: string, maxLength: 1024 }
+        auth_type: { type: string, enum: [key], description: "Key only; password authentication is not offered." }
         private_key: { type: string, maxLength: 16384 }
         passphrase: { type: string, maxLength: 1024 }
         host_fingerprint: { type: string, pattern: "^SHA256:[A-Za-z0-9+/]{43}$" }
@@ -7211,14 +7215,14 @@ paths:
       tags: [Servers]
       operationId: serversStore
       summary: Add a server (requires a confirmed host key)
-      description: "Does NOT connect: the host key pin comes from a prior /servers/test the user confirmed. The first snapshot is queued, so the response returns immediately."
+      description: "Re-reads the target's host key and requires it to match the fingerprint the user confirmed at /servers/test — the whole key is stored, because the pin is enforced by handing OpenSSH a known_hosts entry. Does not authenticate: the first snapshot is queued, so the response returns immediately."
       security: [ { bearerAuth: [] } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ServerInput" } } } }
       responses:
         "201": { description: Created., content: { application/json: { schema: { type: object, properties: { server: { $ref: "#/components/schemas/Server" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { description: "Validation error, or host_key_unconfirmed when the host could not be re-read or answered with a different key.", content: { application/json: { schema: { type: object, properties: { error: { type: string } } } } } }
   /servers/keypair:
     post:
       tags: [Servers]
