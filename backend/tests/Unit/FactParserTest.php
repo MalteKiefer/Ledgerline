@@ -214,4 +214,57 @@ none
         $this->assertSame([], $f['disks']);
         $this->assertNull($f['disk_max_pct']);
     }
+
+    public function test_cpu_utilisation_is_a_delta_between_two_proc_stat_samples(): void
+    {
+        // A single read of /proc/stat gives the average since boot, which never
+        // moves on a long-lived host. Only the difference is a current figure.
+        $out = <<<'OUT'
+        ##LL:cpu
+        4
+        model name	: Ryzen 5 3600
+        ##LL:cpustat
+        cpu  1000 0 1000 8000 0 0 0 0 0 0
+        cpu  1100 0 1100 8800 0 0 0 0 0 0
+        ##LL:end
+        OUT;
+
+        $f = (new FactParser)->parse($out);
+
+        // 200 busy jiffies against 1000 total in the interval.
+        $this->assertSame(20.0, $f['cpu']['used_pct']);
+        $this->assertSame(4, $f['cpu']['cores']);
+    }
+
+    public function test_cpu_utilisation_is_null_without_a_second_sample(): void
+    {
+        // Better an absent number than one computed from a single read, which
+        // would report the since-boot average as if it were current.
+        $out = <<<'OUT'
+        ##LL:cpu
+        2
+        ##LL:cpustat
+        cpu  1000 0 1000 8000 0 0 0 0 0 0
+        ##LL:end
+        OUT;
+
+        $this->assertNull((new FactParser)->parse($out)['cpu']['used_pct']);
+    }
+
+    public function test_id_like_is_captured_for_derivative_distributions(): void
+    {
+        // A derivative we do not know by name is still recognisable through what
+        // it is built on, which is exactly what ID_LIKE is for.
+        $out = <<<'OUT'
+        ##LL:os
+        PRETTY_NAME="Pop!_OS 22.04 LTS"
+        ID=pop
+        ID_LIKE="ubuntu debian"
+        ##LL:end
+        OUT;
+
+        $f = (new FactParser)->parse($out);
+        $this->assertSame('pop', $f['os']['id']);
+        $this->assertSame('ubuntu debian', $f['os']['id_like']);
+    }
 }

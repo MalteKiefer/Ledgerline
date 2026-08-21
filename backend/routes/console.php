@@ -42,11 +42,22 @@ Schedule::command('contacts:birthday-remind')->dailyAt('07:00')->withoutOverlapp
 Schedule::command('contacts:sync-sources')->everyFiveMinutes()->withoutOverlapping();
 
 // Poll every monitored server over SSH. Agentless, so this IS the freshness of
-// the data the UI shows; a user can always force a refresh on top.
-Schedule::command('servers:poll')->everyFifteenMinutes()->withoutOverlapping();
+// the data the UI shows; a user can always force a refresh on top. Every five
+// minutes rather than fifteen because each run is also a data point: CPU,
+// memory, load and disk are stored per snapshot, and a series sampled four
+// times an hour is a shape, not a history.
+Schedule::command('servers:poll')->everyFiveMinutes()->withoutOverlapping();
+
+// Ping every server and connect to its monitored ports. Runs far more often
+// than the SSH poll because it costs a socket rather than a session — an outage
+// lasting minutes should not stay invisible until the next snapshot.
+Schedule::command('servers:check')->everyFiveMinutes()->withoutOverlapping();
 
 // Enforce retention on the per-server snapshot history (trend charts only).
 Schedule::command('servers:prune-facts')->dailyAt('00:35')->withoutOverlapping();
+
+// Reachability history grows continuously; the window is what bounds it.
+Schedule::command('servers:prune-checks')->dailyAt('00:40')->withoutOverlapping();
 
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();

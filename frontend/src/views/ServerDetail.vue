@@ -7,6 +7,7 @@
           ← {{ t('servers.title') }}
         </button>
         <div class="mt-1 flex items-center gap-2">
+          <DistroLogo :id="facts?.os.id" :id-like="facts?.os.id_like" :size="34" :title="facts?.os.name" />
           <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="dotClass(server)" />
           <h1 class="truncate text-xl font-bold">{{ server.name }}</h1>
           <Badge :tone="server.status?.ok ? 'success' : server.status ? 'error' : 'gray'">{{ statusLabel(server) }}</Badge>
@@ -30,7 +31,12 @@
 
     <template v-if="facts">
       <!-- Headline figures. These four answer "is anything wrong" at a glance. -->
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <Card :body-class="'p-4'">
+          <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.cpu') }}</div>
+          <div class="mt-1 font-mono text-2xl font-bold tabular-nums">{{ facts.cpu.used_pct ?? '—' }}%</div>
+          <div class="mt-0.5 truncate text-[0.7rem] text-[var(--ll-muted)]">{{ facts.cpu.cores ? t('servers.cores', { n: String(facts.cpu.cores) }) : '—' }}</div>
+        </Card>
         <Card :body-class="'p-4'">
           <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.load') }}</div>
           <div class="mt-1 font-mono text-2xl font-bold tabular-nums">{{ facts.load[0]?.toFixed(2) ?? '—' }}</div>
@@ -141,6 +147,46 @@
       </Card>
     </template>
 
+    <!-- Reachability: pings and port checks, sampled every few minutes -->
+    <Card v-if="checks.length" :body-class="'p-4'">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-sm font-semibold">{{ t('servers.reachability') }}</h2>
+        <div class="flex items-center gap-1">
+          <button
+            v-for="h in [6, 24, 168]"
+            :key="h"
+            class="rounded-md px-2 py-1 text-xs"
+            :class="checkHours === h ? 'bg-[var(--ll-accent)] text-white' : 'text-[var(--ll-muted)] hover:bg-[var(--ll-hover)]'"
+            @click="setHours(h)"
+          >
+            {{ h < 24 ? t('servers.window_h', { n: String(h) }) : t('servers.window_d', { n: String(Math.round(h / 24)) }) }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="latencyPoints.length > 1" class="-ml-1 mb-3">
+        <Chart :data="latencyData" :options="latencyOptions" :height="140" />
+      </div>
+
+      <div class="divide-y divide-[var(--ll-border)]">
+        <div v-for="c in checks" :key="c.kind + ':' + (c.port ?? '-')" class="flex items-center gap-3 py-2">
+          <span class="h-2 w-2 shrink-0 rounded-full" :class="c.last?.ok ? 'bg-emerald-500' : 'bg-red-500'" />
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm font-medium">{{ checkTitle(c) }}</div>
+            <div class="text-[0.7rem] text-[var(--ll-muted)]">
+              <template v-if="c.last?.ok">{{ c.last.ms !== null ? `${c.last.ms} ms` : '' }}</template>
+              <template v-else>{{ errorText(c.last?.error ?? null) }}</template>
+              · {{ t('servers.samples_n', { n: String(c.samples) }) }}
+            </div>
+          </div>
+          <div class="shrink-0 text-right">
+            <div class="font-mono text-sm tabular-nums" :class="uptimeClass(c.uptime_pct)">{{ c.uptime_pct }}%</div>
+            <div class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.uptime_window') }}</div>
+          </div>
+        </div>
+      </div>
+    </Card>
+
     <!-- History -->
     <Card v-if="trend.length > 1" :title="t('servers.history')" :body-class="'p-4'">
       <div class="-ml-1"><Chart :data="chartData" :options="chartOptions" :height="180" /></div>
@@ -180,16 +226,17 @@ import { computed, h, onMounted, ref, type PropType, type VNode } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import type { AlignedData, Options } from 'uplot';
-import { Card, Btn, Badge, Chart } from '@spa/ui';
-import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint } from '@spa/stores/servers';
+import { Card, Btn, Badge, Chart, DistroLogo } from '@spa/ui';
+import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint, type ServerCheckSeries } from '@spa/stores/servers';
 import {
   severity, formatUptime, formatGib, memoryNote, swapPct, swapNote, diskNote, fullestDisk,
 } from '@spa/lib/server-facts';
 import { useToast } from '@spa/composables/useToast';
-import { fmtDateTime } from '@spa/lib/datetime';
+import { fmtDate, fmtDateTime, fmtTime } from '@spa/lib/datetime';
 
 const CHART_INK = '#6d4aff';
 const CHART_WARN = '#e0a11b';
+const CHART_CPU = '#2f9e6e';
 const AXIS_INK = '#625d69';
 const AXIS_FONT = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -261,15 +308,101 @@ const loadNote = computed(() => {
   return `${f.load.map((l) => l.toFixed(2)).join('  ')}${per}`;
 });
 
+// ---- reachability ----
+
+const checks = ref<ServerCheckSeries[]>([]);
+const checkHours = ref(24);
+
+async function loadChecks() {
+  const id = Number(route.params.id);
+  if (!Number.isFinite(id)) return;
+  try {
+    checks.value = (await s.checks(id, checkHours.value)).checks;
+  } catch {
+    checks.value = [];
+  }
+}
+
+function setHours(h: number) {
+  checkHours.value = h;
+  void loadChecks();
+}
+
+/**
+ * What to call a check. ICMP has no port; the SSH check is named after its role,
+ * because "22" alone does not explain why it is always there.
+ */
+function checkTitle(c: ServerCheckSeries): string {
+  if (c.kind === 'icmp') return t('servers.check_icmp');
+  const label = c.label ? `${c.label} · ` : '';
+  return `${label}${t('servers.check_port', { port: String(c.port ?? '') })}`;
+}
+
+function uptimeClass(pct: number): string {
+  if (pct >= 99.5) return 'text-emerald-600 dark:text-emerald-400';
+  if (pct >= 95) return 'text-amber-600 dark:text-amber-400';
+  return 'text-red-600 dark:text-red-400';
+}
+
+/**
+ * The latency chart draws one series: whichever check is the best measure of
+ * "how far away is this host". ICMP if we have it — it is the closest thing to
+ * pure round-trip — otherwise the SSH handshake.
+ */
+const latencySeries = computed<ServerCheckSeries | null>(
+  () => checks.value.find((c) => c.kind === 'icmp') ?? checks.value[0] ?? null,
+);
+
+const latencyPoints = computed(() => (latencySeries.value?.points ?? []).filter((p) => p.ms !== null));
+
+const latencyData = computed<AlignedData>(() => [
+  latencyPoints.value.map((p) => Math.floor(new Date(p.t).getTime() / 1000)),
+  latencyPoints.value.map((p) => p.ms as number),
+]);
+
+const latencyOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
+  padding: [12, 12, 0, 0],
+  legend: { show: false },
+  cursor: { drag: { x: false, y: false } },
+  series: [{}, { label: 'ms', stroke: CHART_INK, fill: CHART_INK + '1f' }],
+  axes: [
+    {
+      stroke: AXIS_INK,
+      font: AXIS_FONT,
+      grid: { show: false },
+      space: 84,
+      values: (_u, splits) => splits.map((ts) => (checkHours.value > 24 ? `${fmtDate(ts * 1000)} ${fmtTime(ts * 1000)}` : fmtTime(ts * 1000))),
+    },
+    { stroke: AXIS_INK, font: AXIS_FONT, grid: { stroke: 'rgba(128,128,128,.24)' }, size: 44, values: (_u, vals) => vals.map((v) => `${v}`) },
+  ],
+  scales: { x: { time: true } },
+}));
+
 // ---- history ----
 
 const trend = computed(() => [...history.value].reverse().filter((p) => p.ok));
 
+/**
+ * A real time scale, not an index. With indices uPlot has no idea what the gaps
+ * between points mean, so it spaces ticks evenly and we were left thinning the
+ * labels by hand — which is why they still collided. Given seconds and
+ * `time: true` it picks tick positions that fit the width itself.
+ */
 const chartData = computed<AlignedData>(() => [
-  trend.value.map((_, i) => i),
-  trend.value.map((p) => p.mem_used_pct ?? 0),
-  trend.value.map((p) => p.disk_max_pct ?? 0),
+  trend.value.map((p) => Math.floor(new Date(p.collected_at).getTime() / 1000)),
+  trend.value.map((p) => p.cpu_used_pct ?? null),
+  trend.value.map((p) => p.mem_used_pct ?? null),
+  trend.value.map((p) => p.disk_max_pct ?? null),
 ]);
+
+/** True once the window spans more than a day, when a bare clock time is ambiguous. */
+const trendSpansDays = computed(() => {
+  const xs = trend.value;
+  if (xs.length < 2) return false;
+  const a = new Date(xs[0].collected_at).getTime();
+  const b = new Date(xs[xs.length - 1].collected_at).getTime();
+  return b - a > 24 * 3600 * 1000;
+});
 
 const chartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
   padding: [12, 12, 0, 0],
@@ -277,6 +410,7 @@ const chartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
   cursor: { drag: { x: false, y: false } },
   series: [
     {},
+    { label: t('servers.cpu'), stroke: CHART_CPU, width: 1.5 },
     { label: t('servers.memory'), stroke: CHART_INK, fill: CHART_INK + '26' },
     { label: t('servers.disks'), stroke: CHART_WARN },
   ],
@@ -285,18 +419,19 @@ const chartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
       stroke: AXIS_INK,
       font: AXIS_FONT,
       grid: { show: false },
-      // A timestamp per point overlaps into an unreadable smear; show a handful
-      // and let the rest be blank.
-      values: (_u, vals) => vals.map((v) => {
-        const i = Math.round(v);
-        const step = Math.max(1, Math.ceil(trend.value.length / 5));
-        const point = trend.value[i];
-        return point && i % step === 0 ? fmtDateTime(point.collected_at) : '';
-      }),
+      // Minimum pixels between ticks. uPlot drops ticks that would not fit, so
+      // the labels cannot collide however narrow the chart gets.
+      space: 84,
+      values: (_u, splits) =>
+        splits.map((ts) =>
+          trendSpansDays.value
+            ? `${fmtDate(ts * 1000)} ${fmtTime(ts * 1000)}`
+            : fmtTime(ts * 1000),
+        ),
     },
     { stroke: AXIS_INK, font: AXIS_FONT, grid: { stroke: 'rgba(128,128,128,.24)' }, size: 44, values: (_u, vals) => vals.map((v) => `${v}%`) },
   ],
-  scales: { x: { time: false }, y: { range: [0, 100] } },
+  scales: { x: { time: true }, y: { range: [0, 100] } },
 }));
 
 // ---- actions ----
@@ -308,6 +443,7 @@ async function load() {
     const r = await s.show(id);
     server.value = r.server;
     history.value = r.history;
+    void loadChecks();
   } catch {
     server.value = null;
   } finally {

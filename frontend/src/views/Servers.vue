@@ -25,13 +25,16 @@
         <Card v-for="srv in grp.items" :key="srv.id" :body-class="'p-4'">
           <!-- Title row: status dot, name, host -->
           <div class="flex items-start justify-between gap-2">
-            <button class="min-w-0 flex-1 text-left" @click="$router.push(`/servers/${srv.id}`)">
+            <button class="flex min-w-0 flex-1 items-start gap-2.5 text-left" @click="$router.push(`/servers/${srv.id}`)">
+              <DistroLogo :id="srv.facts?.os.id" :id-like="srv.facts?.os.id_like" :size="34" :title="srv.facts?.os.name" />
+              <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="dotClass(srv)" :title="statusLabel(srv)" />
                 <span class="truncate font-semibold">{{ srv.name }}</span>
                 <Icon v-if="srv.restricted_key" name="lock" :size="14" class="shrink-0 text-[var(--ll-muted)]" :title="t('servers.restricted_key')" />
               </div>
               <div class="mt-0.5 truncate font-mono text-xs text-[var(--ll-muted)]">{{ srv.username }}@{{ srv.host }}<span v-if="srv.port !== 22">:{{ srv.port }}</span></div>
+              </div>
             </button>
             <div class="flex shrink-0 items-center gap-1">
               <Btn variant="ghost" size="sm" icon="refresh" :disabled="busy" :title="t('servers.refresh')" @click="doRefresh(srv)" />
@@ -67,7 +70,8 @@
 
             <!-- Memory + fullest filesystem as meters: a number alone does not
                  convey "nearly full" at a glance. -->
-            <Meter class="mt-3" :label="t('servers.memory')" :pct="srv.facts.mem.used_pct" :note="memoryNote(srv.facts)" />
+            <Meter v-if="srv.facts.cpu.used_pct !== null" class="mt-3" :label="t('servers.cpu')" :pct="srv.facts.cpu.used_pct" :note="srv.facts.cpu.cores ? t('servers.cores', { n: String(srv.facts.cpu.cores) }) : ''" />
+            <Meter class="mt-2" :label="t('servers.memory')" :pct="srv.facts.mem.used_pct" :note="memoryNote(srv.facts)" />
             <Meter v-if="fullestDisk(srv.facts)" class="mt-2" :label="fullestDisk(srv.facts)!.mount" :pct="fullestDisk(srv.facts)!.used_pct" :note="diskNote(fullestDisk(srv.facts)!)" />
 
             <div class="mt-3 flex flex-wrap gap-1.5">
@@ -171,6 +175,33 @@
         <details class="rounded-lg border border-[var(--ll-border)] p-3">
           <summary class="cursor-pointer text-xs font-medium">{{ t('servers.more_options') }}</summary>
           <TextField v-model="form.group" class="mt-3" :label="t('servers.group')" />
+
+          <!-- Ports to watch. The SSH port is checked regardless, so it is not
+               listed here — repeating it would only invite a duplicate. -->
+          <div class="mt-3">
+            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.monitor_ports') }}</span>
+            <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.monitor_ports_hint', { port: form.port || '22' }) }}</p>
+            <div v-for="(p, i) in form.monitor_ports" :key="i" class="mb-1.5 flex items-center gap-2">
+              <input
+                v-model="p.port"
+                type="number"
+                min="1"
+                max="65535"
+                :placeholder="t('servers.port')"
+                class="w-24 rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 font-mono text-sm"
+              >
+              <input
+                v-model="p.label"
+                :placeholder="t('servers.monitor_port_label')"
+                maxlength="40"
+                class="min-w-0 flex-1 rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm"
+              >
+              <Btn variant="ghost" size="sm" icon="close" :title="t('common.delete')" @click="form.monitor_ports.splice(i, 1)" />
+            </div>
+            <Btn v-if="form.monitor_ports.length < 20" variant="ghost" size="sm" icon="add" @click="form.monitor_ports.push({ port: '', label: '' })">
+              {{ t('servers.monitor_port_add') }}
+            </Btn>
+          </div>
           <label class="mt-3 block">
             <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.note') }}</span>
             <textarea v-model="form.note" rows="2" class="w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-2 text-sm" />
@@ -193,7 +224,7 @@
 import { computed, onMounted, onUnmounted, ref, watch, h, type PropType, type VNode } from 'vue';
 import { useRoute } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
-import { Icon, Card, Btn, Badge, Modal, TextField } from '@spa/ui';
+import { Icon, Card, Btn, Badge, Modal, TextField, DistroLogo } from '@spa/ui';
 import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint } from '@spa/stores/servers';
 import { severity, formatUptime, memoryNote, diskNote, fullestDisk } from '@spa/lib/server-facts';
 import { useToast } from '@spa/composables/useToast';
@@ -315,6 +346,8 @@ interface Form {
   name: string; host: string; port: string; username: string;
   private_key: string; passphrase: string;
   group: string; note: string; enabled: boolean; restricted_key: boolean;
+  /** Kept as strings while editing so a half-typed port is not coerced to 0. */
+  monitor_ports: { port: string; label: string }[];
 }
 
 const formOpen = ref(false);
@@ -326,7 +359,7 @@ function blank(): Form {
   return {
     name: '', host: '', port: '22', username: '',
     private_key: '', passphrase: '', group: '', note: '',
-    enabled: true, restricted_key: false,
+    enabled: true, restricted_key: false, monitor_ports: [],
   };
 }
 
@@ -364,6 +397,7 @@ function openEdit(srv: Server) {
     private_key: '', passphrase: '',
     group: srv.group ?? '', note: srv.note ?? '',
     enabled: srv.enabled, restricted_key: srv.restricted_key,
+    monitor_ports: (srv.monitor_ports ?? []).map((p) => ({ port: String(p.port), label: p.label ?? '' })),
   };
   probe.value = null;
   generatedKey.value = null;
@@ -399,6 +433,10 @@ function payload(): Record<string, unknown> {
     enabled: f.enabled,
     restricted_key: f.restricted_key,
     account_created: !accountExists.value,
+    // Drop rows the user started and abandoned rather than sending a zero.
+    monitor_ports: f.monitor_ports
+      .filter((p) => Number(p.port) >= 1 && Number(p.port) <= 65535)
+      .map((p) => ({ port: Number(p.port), label: p.label.trim() || null })),
   };
 }
 
