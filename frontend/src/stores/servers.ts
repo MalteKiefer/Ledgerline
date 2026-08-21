@@ -47,6 +47,8 @@ export interface Server {
   enabled: boolean;
   restricted_key: boolean;
   host_fingerprint: string | null;
+  /** Only returned by show(): derived from the stored key for the removal steps. */
+  public_key?: string | null;
   status: ServerStatus | null;
   facts: ServerFacts | null;
 }

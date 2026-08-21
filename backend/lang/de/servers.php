@@ -11,8 +11,16 @@ return [
     'refresh' => 'Aktualisieren',
     'refresh_all' => 'Alle aktualisieren',
     'refresh_queued' => 'Aktualisierung eingereiht.',
-    'delete_confirm' => ':name aus der Überwachung entfernen? Der Server selbst bleibt unberührt.',
+    'delete_confirm' => ':name nicht mehr überwachen? Konto und Schlüssel bleiben auf dem Zielserver — die Detailansicht zeigt, wie man sie entfernt.',
     'group_other' => 'Ohne Gruppe',
+    'cmd_home_note' => 'Echtes Home aus der Benutzerdatenbank nehmen, nicht /home/<user> annehmen',
+    'username_not_root' => 'Die Überwachung braucht kein Privileg — ein unprivilegiertes Konto verwenden, nicht root.',
+    'removal_title' => 'Vom Server entfernen',
+    'removal_intro' => 'Hier löschen beendet nur die Überwachung. Konto, Schlüssel und Skript bleiben auf dem Zielserver, bis Sie sie entfernen. Passenden Fall wählen:',
+    'removal_case_dedicated' => 'A) Das Konto wurde für Ledgerline angelegt — ganz entfernen',
+    'removal_case_shared' => 'B) Ein bestehendes Konto wurde mitbenutzt — nur diese Schlüsselzeile entfernen, Konto behalten',
+    'removal_pkill_note' => 'sonst verweigert userdel den Dienst, solange eine Sitzung offen ist',
+    'removal_footprint' => 'Mehr wurde nicht eingerichtet: kein Dienst, kein Cron-Eintrag, kein Daemon. Das ist der gesamte Fußabdruck.',
 
     // Geführte Einrichtung im Anlege-Dialog
     'step_connection' => 'Wohin verbunden wird',

@@ -16,6 +16,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use phpseclib3\Crypt\Common\AsymmetricKey;
 use phpseclib3\Crypt\EC;
+use phpseclib3\Crypt\PublicKeyLoader;
+use Throwable;
 
 /**
  * Monitored servers, reached over plain SSH with no agent on the target.
@@ -66,7 +68,13 @@ class ServerController extends Controller
             ->map(fn (ServerFact $f): array => $this->trendPoint($f))->all();
 
         return response()->json([
-            'server' => $this->present($server->load('latestFact')),
+            'server' => [
+                ...$this->present($server->load('latestFact')),
+                // Derived, not stored: it is what the removal instructions have to
+                // name so the right authorized_keys line is deleted and any other
+                // key in that account survives.
+                'public_key' => $this->publicKey($server),
+            ],
             'history' => $history,
         ]);
     }
@@ -173,13 +181,13 @@ class ServerController extends Controller
         $request->validate([
             'host' => ['required', 'string', 'max:255'],
             'port' => ['sometimes', 'integer', 'min:1', 'max:65535'],
-            'username' => ['required', 'string', 'max:64'],
+            'username' => ['required', 'string', 'max:64', Rule::notIn(['root'])],
             'auth_type' => ['sometimes', Rule::in(['key'])],
             'private_key' => ['nullable', 'string', 'max:16384'],
             'passphrase' => ['nullable', 'string', 'max:1024'],
             'host_fingerprint' => ['nullable', 'string', 'max:128'],
             'keypair_token' => ['nullable', 'string', 'max:64'],
-        ]);
+        ], ['username.not_in' => __('servers.username_not_root')]);
 
         $result = $this->probe->run(new ServerTarget(
             host: $request->string('host')->value(),
@@ -282,6 +290,30 @@ class ServerController extends Controller
         return $result->fingerprint === $fingerprint ? $result->hostKey : null;
     }
 
+    /**
+     * The public half of the stored key, in the one-line form authorized_keys
+     * uses. Derived on demand rather than stored: it is a pure function of the
+     * private key, and a second copy could only ever drift.
+     */
+    private function publicKey(Server $server): ?string
+    {
+        $credentials = $server->credentials ?? [];
+        $private = is_string($credentials['private_key'] ?? null) ? $credentials['private_key'] : '';
+        if (trim($private) === '') {
+            return null;
+        }
+        try {
+            $passphrase = is_string($credentials['passphrase'] ?? null) ? $credentials['passphrase'] : '';
+            $public = PublicKeyLoader::loadPrivateKey($private, $passphrase)->getPublicKey();
+
+            return $public instanceof AsymmetricKey ? $this->openSsh($public) : null;
+        } catch (Throwable) {
+            // A key we cannot parse simply yields no removal hint; the rest of
+            // the detail view must still render.
+            return null;
+        }
+    }
+
     /** phpseclib's toString() is documented as array|string; OpenSSH gives a string. */
     private function openSsh(AsymmetricKey $key): ?string
     {
@@ -341,7 +373,11 @@ class ServerController extends Controller
             'name' => [$creating ? 'required' : 'sometimes', 'string', 'max:255'],
             'host' => [$creating ? 'required' : 'sometimes', 'string', 'max:255'],
             'port' => ['sometimes', 'integer', 'min:1', 'max:65535'],
-            'username' => [$creating ? 'required' : 'sometimes', 'string', 'max:64'],
+            // Monitoring needs no privilege — everything the probe reads is
+            // world-readable. A key that logs in as root would hand an attacker
+            // the whole machine for nothing gained, so it is refused rather than
+            // discouraged in a hint nobody has to follow.
+            'username' => [$creating ? 'required' : 'sometimes', 'string', 'max:64', Rule::notIn(['root'])],
             // Key only. OpenSSH takes no password without a terminal, and adding
             // sshpass to drive a pty would be a worse answer than generating a key,
             // which this app does for the user anyway.
@@ -357,7 +393,7 @@ class ServerController extends Controller
             'enabled' => ['sometimes', 'boolean'],
             'restricted_key' => ['sometimes', 'boolean'],
             'keypair_token' => ['nullable', 'string', 'max:64'],
-        ]);
+        ], ['username.not_in' => __('servers.username_not_root')]);
 
         $old = $server?->credentials ?? [];
         // A generated key is redeemed from the cache, so the browser never had to

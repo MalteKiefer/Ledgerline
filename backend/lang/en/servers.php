@@ -11,8 +11,16 @@ return [
     'refresh' => 'Refresh',
     'refresh_all' => 'Refresh all',
     'refresh_queued' => 'Refresh queued.',
-    'delete_confirm' => 'Remove :name from monitoring? The server itself is not touched.',
+    'delete_confirm' => 'Stop monitoring :name? The account and key stay on the target — the detail view shows how to remove them.',
     'group_other' => 'Ungrouped',
+    'cmd_home_note' => 'Take the real home directory from the user database, do not assume /home/<user>',
+    'username_not_root' => 'Monitoring needs no privilege — use an unprivileged account, not root.',
+    'removal_title' => 'Remove from the server',
+    'removal_intro' => 'Deleting the server here only stops the monitoring. The account, the key and the script stay on the target until you remove them. Pick the case that applies:',
+    'removal_case_dedicated' => 'A) The account was created for Ledgerline — remove it entirely',
+    'removal_case_shared' => 'B) An existing account was used — remove only this key line, keep the account',
+    'removal_pkill_note' => 'otherwise userdel refuses while a session is open',
+    'removal_footprint' => 'Nothing else was installed: no service, no cron entry, no daemon. This is the whole footprint.',
 
     // Guided setup in the create dialog
     'step_connection' => 'Where to connect',

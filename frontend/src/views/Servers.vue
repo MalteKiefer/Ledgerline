@@ -148,6 +148,16 @@
           <div class="-ml-1"><Chart :data="chartData" :options="chartOptions" :height="150" /></div>
         </div>
 
+        <!-- Undoing the setup. Folded away because it is rarely wanted, but it
+             belongs next to the server it describes, not in a manual. -->
+        <details class="rounded-lg border border-[var(--ll-border)] p-3">
+          <summary class="cursor-pointer text-xs font-semibold">{{ t('servers.removal_title') }}</summary>
+          <p class="mt-2 text-xs">{{ t('servers.removal_intro') }}</p>
+          <pre class="mt-2 max-h-64 overflow-auto rounded-lg bg-black/[0.05] p-2.5 font-mono text-[0.7rem] dark:bg-white/5">{{ removalCommands }}</pre>
+          <Btn variant="ghost" size="sm" icon="content_copy" class="mt-2" @click="copyRemoval">{{ t('common.copy') }}</Btn>
+          <p class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.removal_footprint') }}</p>
+        </details>
+
         <p v-if="detail.note" class="whitespace-pre-line text-xs text-[var(--ll-muted)]">{{ detail.note }}</p>
         <p v-if="detail.host_fingerprint" class="break-all font-mono text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.fingerprint') }}: {{ detail.host_fingerprint }}</p>
       </div>
@@ -593,8 +603,10 @@ const setupCommands = computed(() => {
   const pub = generatedKey.value?.public_key ?? t('servers.key_own_placeholder');
   const lines = [
     `# 1) ${t('servers.cmd_create_user')}`,
-    `sudo useradd --create-home --shell /bin/sh ${user} 2>/dev/null || true`,
-    `sudo install -d -m 700 -o ${user} -g ${user} /home/${user}/.ssh`,
+    `id -u ${user} >/dev/null 2>&1 || sudo useradd --create-home --shell /bin/sh ${user}`,
+    `# ${t('servers.cmd_home_note')}`,
+    `HOME_DIR=$(getent passwd ${user} | cut -d: -f6)`,
+    `sudo install -d -m 700 -o ${user} -g ${user} "$HOME_DIR/.ssh"`,
     '',
   ];
 
@@ -609,22 +621,61 @@ const setupCommands = computed(() => {
       '',
       `# 3) ${t('servers.cmd_authorize_restricted')}`,
       `echo 'command="/usr/local/bin/ll-facts",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ${pub}' \\`,
-      `  | sudo tee -a /home/${user}/.ssh/authorized_keys >/dev/null`,
+      `  | sudo tee -a "$HOME_DIR/.ssh/authorized_keys" >/dev/null`,
     );
   } else {
     lines.push(
       `# 2) ${t('servers.cmd_authorize')}`,
-      `echo '${pub}' | sudo tee -a /home/${user}/.ssh/authorized_keys >/dev/null`,
+      `echo '${pub}' | sudo tee -a "$HOME_DIR/.ssh/authorized_keys" >/dev/null`,
     );
   }
 
   lines.push(
-    `sudo chown ${user}:${user} /home/${user}/.ssh/authorized_keys`,
-    `sudo chmod 600 /home/${user}/.ssh/authorized_keys`,
+    `sudo chown ${user}:${user} "$HOME_DIR/.ssh/authorized_keys"`,
+    `sudo chmod 600 "$HOME_DIR/.ssh/authorized_keys"`,
   );
 
   return lines.join('\n');
 });
+
+/**
+ * How to undo the setup on the target. Two paths, because they are not
+ * interchangeable: an account this app created can go entirely, while a
+ * pre-existing one must keep its account and lose only our key line — deleting
+ * it would take the operator's own access with it.
+ *
+ * Nothing else is installed: no service, no cron entry, no daemon. This really
+ * is the whole footprint.
+ */
+const removalCommands = computed(() => {
+  const srv = detail.value;
+  if (!srv) return '';
+  const user = srv.username;
+  const pub = srv.public_key ?? '';
+  // Match on the key blob, not the whole line: the same key appears with and
+  // without the forced-command prefix.
+  const blob = pub.split(' ')[1] ?? '';
+
+  return [
+    `# ${t('servers.removal_case_dedicated')}`,
+    `sudo pkill -u ${user} 2>/dev/null || true   # ${t('servers.removal_pkill_note')}`,
+    `sudo userdel -r ${user}`,
+    'sudo rm -f /usr/local/bin/ll-facts',
+    '',
+    `# ${t('servers.removal_case_shared')}`,
+    `KEYS=$(getent passwd ${user} | cut -d: -f6)/.ssh/authorized_keys`,
+    blob
+      ? `sudo grep -v '${blob}' "$KEYS" | sudo tee "$KEYS.tmp" >/dev/null`
+      : `sudo grep -v 'll-facts' "$KEYS" | sudo tee "$KEYS.tmp" >/dev/null`,
+    'sudo mv "$KEYS.tmp" "$KEYS" && sudo chmod 600 "$KEYS"',
+    'sudo rm -f /usr/local/bin/ll-facts',
+  ].join('\n');
+});
+
+async function copyRemoval() {
+  await navigator.clipboard.writeText(removalCommands.value);
+  success(t('common.copied'));
+}
 
 async function copySetup() {
   await navigator.clipboard.writeText(setupCommands.value);
