@@ -13,6 +13,17 @@ return [
     'refresh_queued' => 'Refresh queued.',
     'delete_confirm' => 'Stop monitoring :name? The account and key stay on the target — the detail view shows how to remove them.',
     'group_other' => 'Ungrouped',
+    'reachability' => 'Reachability',
+    'check_icmp' => 'Ping (ICMP)',
+    'check_port' => 'Port :port',
+    'uptime_window' => 'in window',
+    'samples_n' => ':n checks',
+    'window_h' => ':nh',
+    'window_d' => ':nd',
+    'monitor_ports' => 'Ports to watch',
+    'monitor_ports_hint' => 'Checked every few minutes alongside a ping. Port :port is always checked and need not be listed.',
+    'monitor_port_label' => 'Label (optional)',
+    'monitor_port_add' => 'Add port',
     'section_system' => 'System',
     'section_capacity' => 'Capacity',
     'section_network' => 'Network',
@@ -107,6 +118,9 @@ return [
 
     // Probe failure reasons
     'error' => [
+        'refused' => 'Connection refused — the host answered, nothing is listening on that port.',
+        'no_reply' => 'No reply to the ping.',
+        'failed' => 'The connection did not succeed.',
         'unsafe_host' => 'Refusing to connect to this host.',
         'no_host_key' => 'The server presented no usable host key.',
         'fingerprint_mismatch' => 'The host key does not match the pinned one — connection refused.',
@@ -122,6 +136,10 @@ return [
     ],
 
     'notify' => [
+        'check_host' => 'the host',
+        'check_port' => 'port :port',
+        'unreachable' => ':name: :what is not answering',
+        'reachable' => ':name: :what is answering again',
         'down' => ':name is unreachable',
         'up' => ':name is reachable again',
         'reboot' => ':name needs a reboot',

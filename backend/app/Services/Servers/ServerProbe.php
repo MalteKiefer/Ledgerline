@@ -78,6 +78,7 @@ echo "##LL:load"; cat /proc/loadavg 2>/dev/null
 echo "##LL:mem"; cat /proc/meminfo 2>/dev/null
 echo "##LL:disk"; df -P -k 2>/dev/null
 echo "##LL:cpu"; nproc 2>/dev/null; grep -m1 "^model name" /proc/cpuinfo 2>/dev/null
+echo "##LL:cpustat"; grep -m1 "^cpu " /proc/stat 2>/dev/null; sleep 1; grep -m1 "^cpu " /proc/stat 2>/dev/null
 echo "##LL:reboot"; if [ -f /var/run/reboot-required ] || [ -f /run/reboot-required ]; then echo yes; else echo no; fi
 echo "##LL:failed"; systemctl --failed --no-legend --plain 2>/dev/null | head -20
 echo "##LL:ports"; ss -H -ltn 2>/dev/null | head -60

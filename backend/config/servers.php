@@ -16,4 +16,18 @@ return [
 
     'fact_retention_days' => (int) env('SERVERS_FACT_RETENTION_DAYS', 30),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Reachability check retention
+    |--------------------------------------------------------------------------
+    |
+    | How many days of ping and port results to keep. This table gains rows
+    | continuously — a handful per server every few minutes — so the window is
+    | what bounds its size. Nothing here is worth keeping past it: current state
+    | is always the newest row.
+    |
+    */
+
+    'check_retention_days' => (int) env('SERVERS_CHECK_RETENTION_DAYS', 30),
+
 ];

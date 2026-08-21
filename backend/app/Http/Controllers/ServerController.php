@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\CollectServerFacts;
 use App\Models\Server;
+use App\Models\ServerCheck;
 use App\Models\ServerFact;
 use App\Services\Servers\ServerProbe;
 use App\Services\Servers\ServerTarget;
@@ -393,6 +394,12 @@ class ServerController extends Controller
             'enabled' => ['sometimes', 'boolean'],
             'restricted_key' => ['sometimes', 'boolean'],
             'account_created' => ['sometimes', 'boolean'],
+            // Extra ports to watch. Capped at twenty: this list is checked
+            // every few minutes, so an unbounded one would be a self-inflicted
+            // load generator rather than monitoring.
+            'monitor_ports' => ['sometimes', 'array', 'max:20'],
+            'monitor_ports.*.port' => ['required', 'integer', 'min:1', 'max:65535'],
+            'monitor_ports.*.label' => ['nullable', 'string', 'max:40'],
             'keypair_token' => ['nullable', 'string', 'max:64'],
         ]);
 
@@ -428,6 +435,9 @@ class ServerController extends Controller
                 'account_created' => $request->has('account_created')
                     ? $request->boolean('account_created')
                     : $server?->account_created,
+                'monitor_ports' => $request->has('monitor_ports')
+                    ? $this->monitorPorts($request)
+                    : $server?->monitor_ports,
             ],
             'credentials' => $credentials,
             'fingerprint' => $request->has('host_fingerprint')
@@ -446,6 +456,7 @@ class ServerController extends Controller
     {
         $facts = $fact->facts ?? [];
         $mem = is_array($facts['mem'] ?? null) ? $facts['mem'] : [];
+        $cpu = is_array($facts['cpu'] ?? null) ? $facts['cpu'] : [];
 
         return [
             'ok' => $fact->ok,
@@ -454,6 +465,7 @@ class ServerController extends Controller
             'duration_ms' => $fact->duration_ms,
             'load' => is_array($facts['load'] ?? null) ? array_values($facts['load']) : [],
             'mem_used_pct' => is_numeric($mem['used_pct'] ?? null) ? (float) $mem['used_pct'] : null,
+            'cpu_used_pct' => is_numeric($cpu['used_pct'] ?? null) ? (float) $cpu['used_pct'] : null,
             'disk_max_pct' => is_numeric($facts['disk_max_pct'] ?? null) ? (float) $facts['disk_max_pct'] : null,
         ];
     }
@@ -481,6 +493,7 @@ class ServerController extends Controller
             'enabled' => $server->enabled,
             'restricted_key' => $server->restricted_key,
             'account_created' => $server->account_created,
+            'monitor_ports' => $server->monitorPorts(),
             'host_fingerprint' => $server->host_fingerprint,
             'status' => $fact === null ? null : [
                 'ok' => $fact->ok,
@@ -490,5 +503,109 @@ class ServerController extends Controller
             ],
             'facts' => $fact?->ok === true ? $fact->facts : null,
         ];
+    }
+
+    /**
+     * Normalise the submitted port list: integers, de-duplicated, each with an
+     * optional label. Validation has already bounded the values; this decides
+     * the stored shape so nothing downstream has to guess at it.
+     *
+     * @return list<array{port:int,label:string|null}>
+     */
+    private function monitorPorts(Request $request): array
+    {
+        $out = [];
+        $seen = [];
+        $raw = $request->input('monitor_ports');
+        foreach (is_array($raw) ? $raw : [] as $entry) {
+            if (! is_array($entry) || ! is_numeric($entry['port'] ?? null)) {
+                continue;
+            }
+            $port = (int) $entry['port'];
+            if ($port < 1 || $port > 65535 || in_array($port, $seen, true)) {
+                continue;
+            }
+            $seen[] = $port;
+            $label = $entry['label'] ?? null;
+            $out[] = ['port' => $port, 'label' => is_string($label) && trim($label) !== '' ? trim($label) : null];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Reachability history for one server: the raw series for the chart, plus
+     * the per-check summary the page shows as rows.
+     *
+     * Bounded by hours rather than row count, because the answer to "was it up
+     * yesterday" must not change with how many ports the owner happens to watch.
+     */
+    public function checks(Request $request, Server $server): JsonResponse
+    {
+        $this->requireUser($request);
+        $hours = max(1, min(168, $request->integer('hours', 24)));
+        $since = now()->subHours($hours);
+
+        $rows = ServerCheck::query()
+            ->where('server_id', $server->id)
+            ->where('created_at', '>=', $since)
+            ->orderBy('id')
+            ->get(['kind', 'port', 'ok', 'latency_ms', 'error', 'created_at']);
+
+        // Group by the thing being checked, which is what a reader compares.
+        $groups = [];
+        foreach ($rows as $row) {
+            $key = $row->kind.':'.($row->port ?? '-');
+            $groups[$key] ??= ['kind' => $row->kind, 'port' => $row->port, 'points' => [], 'ok' => 0, 'total' => 0, 'last' => null];
+            $groups[$key]['points'][] = [
+                't' => $row->created_at->toIso8601String(),
+                'ms' => $row->latency_ms,
+                'ok' => $row->ok,
+            ];
+            $groups[$key]['total']++;
+            if ($row->ok) {
+                $groups[$key]['ok']++;
+            }
+            $groups[$key]['last'] = ['ok' => $row->ok, 'ms' => $row->latency_ms, 'error' => $row->error, 't' => $row->created_at->toIso8601String()];
+        }
+
+        $checks = [];
+        foreach ($groups as $g) {
+            $checks[] = [
+                'kind' => $g['kind'],
+                'port' => $g['port'],
+                'label' => $this->checkLabel($server, $g['kind'], $g['port']),
+                // Uptime over the window, not since forever: a server that was
+                // down last month should not colour today's reading. A group
+                // exists only because a row created it, so the count is never zero.
+                'uptime_pct' => round($g['ok'] / $g['total'] * 100, 1),
+                'samples' => $g['total'],
+                'last' => $g['last'],
+                'points' => $g['points'],
+            ];
+        }
+
+        return response()->json(['hours' => $hours, 'checks' => $checks]);
+    }
+
+    /**
+     * What to call a check in the UI. The SSH port is named after its role
+     * rather than its number, because that is why it is always checked.
+     */
+    private function checkLabel(Server $server, string $kind, ?int $port): ?string
+    {
+        if ($kind === 'icmp') {
+            return null;
+        }
+        if ($port === $server->port) {
+            return 'SSH';
+        }
+        foreach ($server->monitorPorts() as $p) {
+            if ($p['port'] === $port) {
+                return $p['label'];
+            }
+        }
+
+        return null;
     }
 }

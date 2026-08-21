@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.699.0
+  version: 1.700.0
   license:
     name: Proprietary
   description: >
@@ -1326,6 +1326,14 @@ components:
         enabled: { type: boolean }
         restricted_key: { type: boolean, description: "The key on the target is limited to a forced command." }
         account_created: { type: [boolean, "null"], description: "Whether the guided setup created the account on the target. Drives which removal instructions are shown. Null for rows created before the field existed — the answer is genuinely unknown, not false." }
+        monitor_ports:
+          type: array
+          description: "Extra TCP ports checked every few minutes. The SSH port is always checked and is deliberately not listed here."
+          items:
+            type: object
+            properties:
+              port: { type: integer, minimum: 1, maximum: 65535 }
+              label: { type: [string, "null"] }
         host_fingerprint: { type: [string, "null"], description: "Pinned host key fingerprint, OpenSSH form: SHA256 plus 43 base64 characters." }
         status:
           type: [object, "null"]
@@ -1356,6 +1364,7 @@ components:
           properties:
             cores: { type: [integer, "null"] }
             model: { type: [string, "null"] }
+            used_pct: { type: [number, "null"], description: "Busy time as a percentage, from two /proc/stat samples one second apart. Null when only one sample arrived — a single read gives the average since boot, which never moves. Not the same thing as load, which is queue length." }
         mem:
           type: object
           properties:
@@ -1425,6 +1434,40 @@ components:
         enabled: { type: boolean }
         restricted_key: { type: boolean }
         account_created: { type: boolean, description: "Set by the create dialog: true when the setup commands created the account, false when an existing account was reused." }
+        monitor_ports:
+          type: array
+          maxItems: 20
+          description: "Extra TCP ports to watch. Capped because the list is checked every few minutes; duplicates are dropped server-side."
+          items:
+            type: object
+            required: [port]
+            properties:
+              port: { type: integer, minimum: 1, maximum: 65535 }
+              label: { type: [string, "null"], maxLength: 40 }
+    ServerCheckSeries:
+      type: object
+      description: "Reachability history for one thing being checked: the ping, or one TCP port."
+      properties:
+        kind: { type: string, enum: [icmp, tcp] }
+        port: { type: [integer, "null"], description: "Null for ICMP." }
+        label: { type: [string, "null"], description: "'SSH' for the port that is always checked, the owner's label otherwise." }
+        uptime_pct: { type: number, description: "Successful checks over the requested window, not since forever. Always present: a series exists only because at least one check produced it." }
+        samples: { type: integer }
+        last:
+          type: [object, "null"]
+          properties:
+            ok: { type: boolean }
+            ms: { type: [integer, "null"] }
+            error: { type: [string, "null"], description: "refused, timeout, unreachable, no_reply, unsafe_host or failed." }
+            t: { type: string, format: date-time }
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              t: { type: string, format: date-time }
+              ms: { type: [integer, "null"] }
+              ok: { type: boolean }
     ServerProbeResult:
       type: object
       description: "Outcome of an inline connection test. The fingerprint is reported even on failure, so a mismatch can be inspected."
@@ -7386,6 +7429,40 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { description: "Unreachable or rejected.", content: { application/json: { schema: { $ref: "#/components/schemas/ServerProbeResult" } } } }
+  /servers/{server}/checks:
+    get:
+      tags: [Servers]
+      operationId: serversChecks
+      summary: Reachability history for one server
+      description: >
+        Ping and port-check results, grouped by what is being checked. Bounded by
+        hours rather than by row count so the answer does not shift with how many
+        ports the owner happens to watch. Throttled 120/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: hours
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 168, default: 24 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hours: { type: integer }
+                  checks:
+                    type: array
+                    items: { $ref: "#/components/schemas/ServerCheckSeries" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /mounts:
     get:
       tags: [Mounts]

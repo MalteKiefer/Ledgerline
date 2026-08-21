@@ -10,12 +10,13 @@ export interface ServerContainer { name: string; status: string }
 
 export interface ServerFacts {
   hostname: string | null;
-  os: { name: string | null; id: string | null; version: string | null };
+  os: { name: string | null; id: string | null; id_like: string | null; version: string | null };
   kernel: string | null;
   arch: string | null;
   uptime_s: number | null;
   load: number[];
-  cpu: { cores: number | null; model: string | null };
+  /** used_pct is measured from two /proc/stat samples, not inferred from load. */
+  cpu: { cores: number | null; model: string | null; used_pct: number | null };
   mem: {
     total_kb: number | null;
     available_kb: number | null;
@@ -58,6 +59,8 @@ export interface Server {
   /** Whether the setup created the account; null for rows predating the field. */
   account_created: boolean | null;
   host_fingerprint: string | null;
+  /** Extra TCP ports to watch. The SSH port is always checked and is not listed here. */
+  monitor_ports: { port: number; label: string | null }[];
   /** Only returned by show(): derived from the stored key for the removal steps. */
   public_key?: string | null;
   status: ServerStatus | null;
@@ -71,7 +74,23 @@ export interface TrendPoint {
   duration_ms: number;
   load: number[];
   mem_used_pct: number | null;
+  cpu_used_pct: number | null;
   disk_max_pct: number | null;
+}
+
+/** One reachability sample. */
+export interface CheckPoint { t: string; ms: number | null; ok: boolean }
+
+export interface ServerCheckSeries {
+  /** 'icmp' (no port) or 'tcp'. */
+  kind: string;
+  port: number | null;
+  /** 'SSH' for the port we always check, the owner's label otherwise. */
+  label: string | null;
+  uptime_pct: number;
+  samples: number;
+  last: { ok: boolean; ms: number | null; error: string | null; t: string } | null;
+  points: CheckPoint[];
 }
 
 export interface ProbeResult {
@@ -100,6 +119,10 @@ export const useServersStore = defineStore('servers', () => {
     .then((r) => { servers.value = r.servers ?? []; });
 
   const show = (id: number) => api.get<{ server: Server; history: TrendPoint[] }>(`/api/v1/servers/${id}`);
+
+  /** Reachability history. Bounded by hours so the answer does not shift with port count. */
+  const checks = (id: number, hours = 24) =>
+    api.get<{ hours: number; checks: ServerCheckSeries[] }>(`/api/v1/servers/${id}/checks?hours=${hours}`);
 
   const create = (body: Record<string, unknown>) => api.post<{ server: Server }>('/api/v1/servers', body).then((r) => r.server);
   const update = (id: number, body: Record<string, unknown>) => api.put<{ server: Server }>(`/api/v1/servers/${id}`, body).then((r) => r.server);
@@ -138,5 +161,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

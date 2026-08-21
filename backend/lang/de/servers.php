@@ -13,6 +13,17 @@ return [
     'refresh_queued' => 'Aktualisierung eingereiht.',
     'delete_confirm' => ':name nicht mehr überwachen? Konto und Schlüssel bleiben auf dem Zielserver — die Detailansicht zeigt, wie man sie entfernt.',
     'group_other' => 'Ohne Gruppe',
+    'reachability' => 'Erreichbarkeit',
+    'check_icmp' => 'Ping (ICMP)',
+    'check_port' => 'Port :port',
+    'uptime_window' => 'im Zeitraum',
+    'samples_n' => ':n Prüfungen',
+    'window_h' => ':n Std.',
+    'window_d' => ':n Tage',
+    'monitor_ports' => 'Zu prüfende Ports',
+    'monitor_ports_hint' => 'Werden alle paar Minuten zusammen mit einem Ping geprüft. Port :port wird immer geprüft und muss hier nicht stehen.',
+    'monitor_port_label' => 'Bezeichnung (optional)',
+    'monitor_port_add' => 'Port hinzufügen',
     'section_system' => 'System',
     'section_capacity' => 'Auslastung',
     'section_network' => 'Netzwerk',
@@ -107,6 +118,9 @@ return [
 
     // Fehlergründe der Abfrage
     'error' => [
+        'refused' => 'Verbindung abgewiesen — der Host antwortet, auf dem Port lauscht nichts.',
+        'no_reply' => 'Keine Antwort auf den Ping.',
+        'failed' => 'Die Verbindung kam nicht zustande.',
         'unsafe_host' => 'Verbindung zu diesem Host wird verweigert.',
         'no_host_key' => 'Der Server hat keinen verwertbaren Hostschlüssel geliefert.',
         'fingerprint_mismatch' => 'Der Hostschlüssel weicht vom festgeschriebenen ab — Verbindung verweigert.',
@@ -122,6 +136,10 @@ return [
     ],
 
     'notify' => [
+        'check_host' => 'der Host',
+        'check_port' => 'Port :port',
+        'unreachable' => ':name: :what antwortet nicht',
+        'reachable' => ':name: :what antwortet wieder',
         'down' => ':name ist nicht erreichbar',
         'up' => ':name ist wieder erreichbar',
         'reboot' => ':name braucht einen Neustart',

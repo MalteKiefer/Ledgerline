@@ -45,7 +45,7 @@ class OwnerScopeGuardTest extends TestCase
         'ContactDuplicateDismissal',
         // Reached only through the owning Server, which is owner-scoped; written
         // solely by the collector job.
-        'ServerFact',
+        'ServerFact', 'ServerCheck',
     ];
 
     /**

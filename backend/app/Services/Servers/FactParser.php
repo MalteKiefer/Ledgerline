@@ -36,7 +36,7 @@ final class FactParser
             'arch' => $arch,
             'uptime_s' => $this->uptime($s['uptime'] ?? ''),
             'load' => $this->load($s['load'] ?? ''),
-            'cpu' => $this->cpu($s['cpu'] ?? ''),
+            'cpu' => $this->cpu($s['cpu'] ?? '', $s['cpustat'] ?? ''),
             'mem' => $mem,
             'disks' => $this->disks($s['disk'] ?? ''),
             'reboot_required' => trim($s['reboot'] ?? '') === 'yes',
@@ -107,6 +107,9 @@ final class FactParser
         return [
             'name' => $this->nullable($kv['PRETTY_NAME'] ?? $kv['NAME'] ?? ''),
             'id' => $this->nullable($kv['ID'] ?? ''),
+            // Space-separated, most specific first. A derivative that we do not
+            // know by name is still recognisable through what it is built on.
+            'id_like' => $this->nullable($kv['ID_LIKE'] ?? ''),
             'version' => $this->nullable($kv['VERSION_ID'] ?? ''),
         ];
     }
@@ -146,7 +149,19 @@ final class FactParser
     }
 
     /** @return array{cores:int|null,model:string|null} */
-    private function cpu(string $text): array
+    /**
+     * Cores and model from the first section; utilisation from two samples of
+     * /proc/stat a second apart in the second.
+     *
+     * Utilisation has to be a delta — /proc/stat counts jiffies since boot, so a
+     * single read gives the average since the machine started, which on a
+     * long-lived host is a number that never moves. The load average already in
+     * `load` is a different thing again: queue length, not busy time, and it
+     * routinely exceeds 100% of the cores without the CPU being the bottleneck.
+     *
+     * @return array{cores:int|null,model:string|null,used_pct:float|null}
+     */
+    private function cpu(string $text, string $stat = ''): array
     {
         $lines = array_values(array_filter(explode("\n", trim($text)), static fn (string $l): bool => trim($l) !== ''));
         $cores = isset($lines[0]) && is_numeric(trim($lines[0])) ? (int) trim($lines[0]) : null;
@@ -158,7 +173,41 @@ final class FactParser
             }
         }
 
-        return ['cores' => $cores, 'model' => $this->nullable((string) $model)];
+        return [
+            'cores' => $cores,
+            'model' => $this->nullable((string) $model),
+            'used_pct' => $this->cpuUsedPct($stat),
+        ];
+    }
+
+    /**
+     * Two `cpu ...` lines from /proc/stat. Busy is everything except idle and
+     * iowait: a process waiting on disk is not the CPU working.
+     */
+    private function cpuUsedPct(string $text): ?float
+    {
+        $rows = [];
+        foreach (explode("\n", trim($text)) as $line) {
+            $f = preg_split('/\s+/', trim($line)) ?: [];
+            if (($f[0] ?? '') !== 'cpu' || count($f) < 6) {
+                continue;
+            }
+            $nums = array_map(static fn (string $v): int => (int) $v, array_slice($f, 1));
+            $rows[] = $nums;
+        }
+        if (count($rows) < 2) {
+            return null;
+        }
+
+        [$a, $b] = [$rows[0], $rows[count($rows) - 1]];
+        $total = array_sum($b) - array_sum($a);
+        // Fields 4 and 5 are idle and iowait.
+        $idle = (($b[3] ?? 0) + ($b[4] ?? 0)) - (($a[3] ?? 0) + ($a[4] ?? 0));
+        if ($total <= 0) {
+            return null;
+        }
+
+        return round(max(0.0, min(100.0, (1 - $idle / $total) * 100)), 1);
     }
 
     /** @return array{total_kb:int|null,available_kb:int|null,used_pct:float|null,swap_total_kb:int|null,swap_used_kb:int|null} */

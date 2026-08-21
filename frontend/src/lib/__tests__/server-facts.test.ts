@@ -16,12 +16,12 @@ import type { Server, ServerFacts } from '@spa/stores/servers';
 function facts(over: Partial<ServerFacts> = {}): ServerFacts {
   return {
     hostname: 'srv',
-    os: { name: 'Debian GNU/Linux 12', id: 'debian', version: '12' },
+    os: { name: 'Debian GNU/Linux 12', id: 'debian', id_like: null, version: '12' },
     kernel: '6.1.0-18-amd64',
     arch: 'x86_64',
     uptime_s: 3600,
     load: [0.1, 0.2, 0.3],
-    cpu: { cores: 4, model: 'Ryzen 5 3600' },
+    cpu: { cores: 4, used_pct: null, model: 'Ryzen 5 3600' },
     mem: { total_kb: 16000000, available_kb: 8000000, used_pct: 50, swap_total_kb: 0, swap_used_kb: 0 },
     disks: [],
     disk_max_pct: null,
@@ -53,6 +53,7 @@ function server(over: Partial<Server> = {}): Server {
     enabled: true,
     restricted_key: false,
     account_created: true,
+    monitor_ports: [],
     host_fingerprint: 'SHA256:x',
     status: { ok: true, error: null, collected_at: '2026-08-20T10:00:00Z', duration_ms: 100 },
     facts: facts(),

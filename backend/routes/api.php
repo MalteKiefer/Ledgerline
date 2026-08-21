@@ -325,6 +325,7 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/servers/{server}', [ServerController::class, 'destroy'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.destroy');
             Route::post('/servers/{server}/refresh', [ServerController::class, 'refresh'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.refresh');
             Route::post('/servers/{server}/test', [ServerController::class, 'testStored'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.test-stored');
+            Route::get('/servers/{server}/checks', [ServerController::class, 'checks'])->whereNumber('server')->middleware('throttle:120,1')->name('api.servers.checks');
         });
 
         Route::middleware('module:notes')->group(function (): void {
