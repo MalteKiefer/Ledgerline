@@ -13,6 +13,13 @@ namespace App\Services\Servers;
  */
 final class FactParser
 {
+    /**
+     * Filesystems that describe no storage of their own. `overlay` is in here
+     * because a container layer reports the figures of the disk beneath it,
+     * which is already listed under its real mount point.
+     */
+    private const PSEUDO_FILESYSTEMS = ['tmpfs', 'devtmpfs', 'udev', 'none', 'overlay', 'squashfs', 'ramfs', 'efivarfs'];
+
     /** @return array<string, mixed> */
     public function parse(string $output): array
     {
@@ -37,6 +44,12 @@ final class FactParser
             'ports' => $this->ports($s['ports'] ?? ''),
             'containers' => $this->containers($s['containers'] ?? ''),
             'updates' => $this->updates($s['updates'] ?? ''),
+            'addresses' => $this->addresses($s['ip'] ?? ''),
+            'virt' => $this->virt($s['virt'] ?? ''),
+            'boot_at' => $this->bootAt($s['boot'] ?? ''),
+            'sessions' => $this->sessions($s['sessions'] ?? ''),
+            'processes' => $this->processes($s['procs'] ?? ''),
+            'temp_c' => $this->tempC($s['temp'] ?? ''),
         ];
 
         // Convenience for the list view: the fullest disk drives the status dot.
@@ -180,33 +193,132 @@ final class FactParser
      * The -P (POSIX) format is guaranteed one record per line, so a long device
      * name cannot wrap and shift the columns.
      *
+     * Deduplicated by device, which is the whole difficulty: a Docker host lists
+     * every overlay2 layer as its own line, all reporting the figures of the
+     * filesystem underneath. Fifteen identical bars saying 399/502 GiB tell the
+     * reader nothing and hide the mounts that matter, so each device appears
+     * once, under its shortest mount point — the one a human would name.
+     *
      * @return list<array{fs:string,mount:string,size_kb:int,used_kb:int,avail_kb:int,used_pct:float}>
      */
     private function disks(string $text): array
     {
-        $out = [];
+        $byDevice = [];
         foreach (array_slice(explode("\n", trim($text)), 1) as $line) {
             $c = preg_split('/\s+/', trim($line), 6) ?: [];
             if (count($c) < 6 || ! is_numeric($c[1]) || ! is_numeric($c[2]) || ! is_numeric($c[3])) {
                 continue;
             }
             $size = (int) $c[1];
-            // Pseudo filesystems say nothing about the host's storage.
-            if ($size <= 0 || in_array($c[0], ['tmpfs', 'devtmpfs', 'udev', 'none'], true)) {
+            // Pseudo and stacked filesystems say nothing about the host's storage.
+            if ($size <= 0 || in_array($c[0], self::PSEUDO_FILESYSTEMS, true)) {
                 continue;
             }
             $used = (int) $c[2];
-            $out[] = [
+            $avail = (int) $c[3];
+            // used/(used+avail), which is df's own Capacity column — NOT
+            // used/size. The difference is the blocks reserved for root, and
+            // using size would have this view disagree with what `df` prints on
+            // the machine itself (79% here against df's 84%).
+            $usable = $used + $avail;
+            $entry = [
                 'fs' => $c[0],
                 'mount' => $c[5],
                 'size_kb' => $size,
                 'used_kb' => $used,
-                'avail_kb' => (int) $c[3],
-                'used_pct' => round($used / $size * 100, 1),
+                'avail_kb' => $avail,
+                'used_pct' => $usable > 0 ? round($used / $usable * 100, 1) : round($used / $size * 100, 1),
             ];
+
+            $seen = $byDevice[$c[0]] ?? null;
+            // Shortest mount wins: "/" over "/var/lib/docker/overlay2/<hash>".
+            if ($seen === null || strlen($entry['mount']) < strlen($seen['mount'])) {
+                $byDevice[$c[0]] = $entry;
+            }
+        }
+
+        $out = array_values($byDevice);
+        usort($out, static fn (array $a, array $b): int => strcmp($a['mount'], $b['mount']));
+
+        return $out;
+    }
+
+    /** @return list<string> Interface + CIDR, e.g. "eth0 192.168.3.200/24". */
+    private function addresses(string $text): array
+    {
+        $out = [];
+        foreach (explode("\n", trim($text)) as $line) {
+            $line = trim($line);
+            if ($line !== '' && str_contains($line, ' ')) {
+                $out[] = $line;
+            }
         }
 
         return $out;
+    }
+
+    /** "none" on bare metal — reported as null, since that is not a hypervisor. */
+    private function virt(string $text): ?string
+    {
+        $value = $this->firstLine($text);
+
+        return ($value === null || $value === 'none') ? null : $value;
+    }
+
+    /** Boot wall-clock from /proc/stat's btime, as an ISO timestamp. */
+    private function bootAt(string $text): ?string
+    {
+        $parts = preg_split('/\s+/', trim($this->firstLine($text) ?? '')) ?: [];
+        $seconds = $parts[1] ?? '';
+
+        return is_numeric($seconds) ? gmdate('c', (int) $seconds) : null;
+    }
+
+    /** @return list<string> */
+    private function sessions(string $text): array
+    {
+        $out = [];
+        foreach (explode("\n", trim($text)) as $line) {
+            $c = preg_split('/\s+/', trim($line)) ?: [];
+            if (($c[0] ?? '') !== '') {
+                // "user pts/0 2026-08-21 19:30 (10.0.0.5)"
+                $out[] = trim(implode(' ', array_slice($c, 0, 5)));
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The largest resident processes. Memory rather than CPU: a snapshot taken
+     * every fifteen minutes cannot say anything honest about instantaneous CPU,
+     * while resident size is a stable property worth seeing.
+     *
+     * @return list<array{name:string,rss_kb:int}>
+     */
+    private function processes(string $text): array
+    {
+        $out = [];
+        foreach (explode("\n", trim($text)) as $line) {
+            $c = preg_split('/\s+/', trim($line), 2) ?: [];
+            if (count($c) === 2 && is_numeric($c[0]) && trim($c[1]) !== '') {
+                $out[] = ['name' => trim($c[1]), 'rss_kb' => (int) $c[0]];
+            }
+        }
+
+        return $out;
+    }
+
+    /** Thermal zone 0 reports millidegrees; anything absurd is treated as absent. */
+    private function tempC(string $text): ?float
+    {
+        $raw = trim($this->firstLine($text) ?? '');
+        if (! is_numeric($raw)) {
+            return null;
+        }
+        $celsius = round((float) $raw / 1000, 1);
+
+        return ($celsius > 0 && $celsius < 150) ? $celsius : null;
     }
 
     /** @return list<string> */

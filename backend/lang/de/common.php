@@ -18,6 +18,7 @@ return [
     'rename' => 'Umbenennen',
     'add' => 'Hinzufügen',
     'none' => 'Keine',
+    'yes' => 'Ja',
     'search' => 'Suchen',
     'status' => 'Status',
     'date' => 'Datum',

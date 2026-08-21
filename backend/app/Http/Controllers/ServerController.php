@@ -392,6 +392,7 @@ class ServerController extends Controller
             'note' => ['nullable', 'string', 'max:2000'],
             'enabled' => ['sometimes', 'boolean'],
             'restricted_key' => ['sometimes', 'boolean'],
+            'account_created' => ['sometimes', 'boolean'],
             'keypair_token' => ['nullable', 'string', 'max:64'],
         ]);
 
@@ -422,6 +423,11 @@ class ServerController extends Controller
                 'note' => $request->has('note') ? ($request->string('note')->value() ?: null) : $server?->note,
                 'enabled' => $request->boolean('enabled', $server?->enabled ?? true),
                 'restricted_key' => $request->boolean('restricted_key', $server?->restricted_key ?? false),
+                // Recorded once, at setup: it decides which removal path the
+                // detail page may offer without the reader having to guess.
+                'account_created' => $request->has('account_created')
+                    ? $request->boolean('account_created')
+                    : $server?->account_created,
             ],
             'credentials' => $credentials,
             'fingerprint' => $request->has('host_fingerprint')
@@ -474,6 +480,7 @@ class ServerController extends Controller
             'note' => $server->note,
             'enabled' => $server->enabled,
             'restricted_key' => $server->restricted_key,
+            'account_created' => $server->account_created,
             'host_fingerprint' => $server->host_fingerprint,
             'status' => $fact === null ? null : [
                 'ok' => $fact->ok,

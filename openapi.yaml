@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.671.0
+  version: 1.699.0
   license:
     name: Proprietary
   description: >
@@ -1325,6 +1325,7 @@ components:
         note: { type: [string, "null"] }
         enabled: { type: boolean }
         restricted_key: { type: boolean, description: "The key on the target is limited to a forced command." }
+        account_created: { type: [boolean, "null"], description: "Whether the guided setup created the account on the target. Drives which removal instructions are shown. Null for rows created before the field existed — the answer is genuinely unknown, not false." }
         host_fingerprint: { type: [string, "null"], description: "Pinned host key fingerprint, OpenSSH form: SHA256 plus 43 base64 characters." }
         status:
           type: [object, "null"]
@@ -1386,6 +1387,25 @@ components:
               name: { type: string }
               status: { type: string }
         updates: { type: [integer, "null"], description: "Pending package updates. Null where no supported package manager answered — NOT zero, which would read as fully patched." }
+        addresses:
+          type: array
+          description: "Global IPv4 addresses, one entry per interface, formatted as interface then CIDR, e.g. eth0 192.168.3.200/24."
+          items: { type: string }
+        virt: { type: [string, "null"], description: "Hypervisor or container runtime as systemd-detect-virt names it. Null on bare metal, where it reports none." }
+        boot_at: { type: [string, "null"], format: date-time, description: "Boot time from /proc/stat btime. Absolute, so it stays correct between two collection runs, unlike an uptime span." }
+        sessions:
+          type: array
+          description: "Lines from who(1): who is logged in, from where, since when."
+          items: { type: string }
+        processes:
+          type: array
+          description: "The largest processes by resident memory. Deliberately not CPU: a quarter-hourly snapshot cannot say anything honest about instantaneous CPU load."
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              rss_kb: { type: integer }
+        temp_c: { type: [number, "null"], description: "First thermal zone in degrees Celsius. Absent on most virtual machines." }
     ServerInput:
       type: object
       description: "Connection parameters. A blank secret on update keeps the stored one. host_fingerprint is required on create and must be the value a prior /servers/test reported."
@@ -1404,6 +1424,7 @@ components:
         note: { type: string, maxLength: 2000 }
         enabled: { type: boolean }
         restricted_key: { type: boolean }
+        account_created: { type: boolean, description: "Set by the create dialog: true when the setup commands created the account, false when an existing account was reused." }
     ServerProbeResult:
       type: object
       description: "Outcome of an inline connection test. The fingerprint is reported even on failure, so a mismatch can be inspected."

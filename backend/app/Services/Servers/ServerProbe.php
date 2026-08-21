@@ -83,6 +83,12 @@ echo "##LL:failed"; systemctl --failed --no-legend --plain 2>/dev/null | head -2
 echo "##LL:ports"; ss -H -ltn 2>/dev/null | head -60
 echo "##LL:containers"; docker ps --format "{{.Names}}|{{.Status}}" 2>/dev/null | head -60
 echo "##LL:updates"; apt-get -s -o Debug::NoLocking=1 upgrade 2>/dev/null | grep -c "^Inst " || apk version -l "<" 2>/dev/null | tail -n +2 | wc -l
+echo "##LL:ip"; ip -o -4 addr show scope global 2>/dev/null | awk \'{print $2" "$4}\' | head -10
+echo "##LL:virt"; systemd-detect-virt 2>/dev/null
+echo "##LL:boot"; grep -m1 "^btime" /proc/stat 2>/dev/null
+echo "##LL:sessions"; who 2>/dev/null | head -10
+echo "##LL:procs"; ps -eo rss=,comm= 2>/dev/null | sort -rn | head -6
+echo "##LL:temp"; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null
 echo "##LL:end"';
 
     /**

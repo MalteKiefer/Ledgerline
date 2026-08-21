@@ -30,6 +30,12 @@ function facts(over: Partial<ServerFacts> = {}): ServerFacts {
     ports: [],
     containers: [],
     updates: null,
+    addresses: [],
+    virt: null,
+    boot_at: null,
+    sessions: [],
+    processes: [],
+    temp_c: null,
     ...over,
   };
 }
@@ -46,6 +52,7 @@ function server(over: Partial<Server> = {}): Server {
     note: null,
     enabled: true,
     restricted_key: false,
+    account_created: true,
     host_fingerprint: 'SHA256:x',
     status: { ok: true, error: null, collected_at: '2026-08-20T10:00:00Z', duration_ms: 100 },
     facts: facts(),
