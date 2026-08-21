@@ -25,7 +25,7 @@
         <Card v-for="srv in grp.items" :key="srv.id" :body-class="'p-4'">
           <!-- Title row: status dot, name, host -->
           <div class="flex items-start justify-between gap-2">
-            <button class="min-w-0 flex-1 text-left" @click="openDetail(srv)">
+            <button class="min-w-0 flex-1 text-left" @click="$router.push(`/servers/${srv.id}`)">
               <div class="flex items-center gap-2">
                 <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="dotClass(srv)" :title="statusLabel(srv)" />
                 <span class="truncate font-semibold">{{ srv.name }}</span>
@@ -82,89 +82,6 @@
         </Card>
       </div>
     </div>
-
-    <!-- Detail -->
-    <Modal v-model="detailOpen" :title="detail?.name ?? ''" width="820px">
-      <div v-if="detail" class="space-y-5">
-        <div class="flex flex-wrap items-center gap-2">
-          <Badge :tone="detail.status?.ok ? 'success' : detail.status ? 'error' : 'gray'">{{ statusLabel(detail) }}</Badge>
-          <span class="font-mono text-xs text-[var(--ll-muted)]">{{ detail.username }}@{{ detail.host }}:{{ detail.port }}</span>
-          <span class="flex-1" />
-          <Btn variant="ghost" size="sm" icon="network_check" :disabled="testing" @click="retest">{{ testing ? t('servers.testing') : t('servers.test') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="refresh" @click="doRefresh(detail)">{{ t('servers.refresh') }}</Btn>
-        </div>
-
-        <p v-if="retestResult" class="rounded-lg px-2.5 py-2 text-xs" :class="retestResult.ok ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'">
-          {{ retestResult.ok ? t('servers.test_ok') : errorText(retestResult.error) }}
-        </p>
-
-        <div v-if="detail.facts" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Card :body-class="'p-3'">
-            <dl class="space-y-1 text-xs">
-              <Row :label="t('servers.os')" :value="detail.facts.os.name" />
-              <Row :label="t('servers.kernel')" :value="detail.facts.kernel" />
-              <Row :label="t('servers.cpu')" :value="cpuText(detail.facts)" />
-              <Row :label="t('servers.uptime')" :value="formatUptime(detail.facts.uptime_s)" />
-              <Row :label="t('servers.load')" :value="detail.facts.load.map((l) => l.toFixed(2)).join('  ')" />
-              <Row :label="t('servers.updates')" :value="detail.facts.updates === null ? t('servers.updates_unknown') : String(detail.facts.updates)" />
-            </dl>
-          </Card>
-          <Card :body-class="'p-3'">
-            <Meter :label="t('servers.memory')" :pct="detail.facts.mem.used_pct" :note="memoryNote(detail.facts)" />
-            <Meter v-if="detail.facts.mem.swap_total_kb" class="mt-2" :label="t('servers.swap')" :pct="swapPct(detail.facts)" :note="swapNote(detail.facts)" />
-            <div v-for="d in detail.facts.disks" :key="d.mount" class="mt-2">
-              <Meter :label="d.mount" :pct="d.used_pct" :note="diskNote(d)" />
-            </div>
-          </Card>
-        </div>
-
-        <div v-if="detail.facts?.failed_units.length" class="space-y-1">
-          <h3 class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.failed_units') }}</h3>
-          <div class="flex flex-wrap gap-1.5">
-            <Badge v-for="u in detail.facts.failed_units" :key="u" tone="error">{{ u }}</Badge>
-          </div>
-        </div>
-
-        <div v-if="detail.facts?.containers.length" class="space-y-1">
-          <h3 class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.containers') }}</h3>
-          <div class="space-y-0.5 font-mono text-xs">
-            <div v-for="c in detail.facts.containers" :key="c.name" class="flex justify-between gap-3">
-              <span class="truncate">{{ c.name }}</span>
-              <span class="shrink-0 text-[var(--ll-muted)]">{{ c.status }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="detail.facts?.ports.length" class="space-y-1">
-          <h3 class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.ports') }}</h3>
-          <div class="flex flex-wrap gap-1.5">
-            <Badge v-for="p in detail.facts.ports" :key="p" tone="gray">{{ p }}</Badge>
-          </div>
-        </div>
-
-        <!-- History: only the successful runs carry a series worth drawing. -->
-        <div v-if="trend.length > 1" class="space-y-1">
-          <h3 class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.history') }}</h3>
-          <div class="-ml-1"><Chart :data="chartData" :options="chartOptions" :height="150" /></div>
-        </div>
-
-        <!-- Undoing the setup. Folded away because it is rarely wanted, but it
-             belongs next to the server it describes, not in a manual. -->
-        <details class="rounded-lg border border-[var(--ll-border)] p-3">
-          <summary class="cursor-pointer text-xs font-semibold">{{ t('servers.removal_title') }}</summary>
-          <p class="mt-2 text-xs">{{ t('servers.removal_intro') }}</p>
-          <pre class="mt-2 max-h-64 overflow-auto rounded-lg bg-black/[0.05] p-2.5 font-mono text-[0.7rem] dark:bg-white/5">{{ removalCommands }}</pre>
-          <Btn variant="ghost" size="sm" icon="content_copy" class="mt-2" @click="copyRemoval">{{ t('common.copy') }}</Btn>
-          <p class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.removal_footprint') }}</p>
-        </details>
-
-        <p v-if="detail.note" class="whitespace-pre-line text-xs text-[var(--ll-muted)]">{{ detail.note }}</p>
-        <p v-if="detail.host_fingerprint" class="break-all font-mono text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.fingerprint') }}: {{ detail.host_fingerprint }}</p>
-      </div>
-      <template #footer>
-        <Btn variant="ghost" @click="detailOpen = false">{{ t('common.close') }}</Btn>
-      </template>
-    </Modal>
 
     <!-- Create / edit -->
     <Modal v-model="formOpen" :title="editing ? t('servers.edit') : t('servers.add')" width="640px" persistent>
@@ -274,20 +191,16 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, h, type PropType, type VNode } from 'vue';
-import type { AlignedData, Options } from 'uplot';
+import { useRoute } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
-import { Icon, Card, Btn, Badge, Modal, TextField, Select, Chart } from '@spa/ui';
+import { Icon, Card, Btn, Badge, Modal, TextField } from '@spa/ui';
 import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint } from '@spa/stores/servers';
-import { severity, formatUptime, memoryNote, swapPct, swapNote, diskNote, fullestDisk } from '@spa/lib/server-facts';
+import { severity, formatUptime, memoryNote, diskNote, fullestDisk } from '@spa/lib/server-facts';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { fmtDateTime } from '@spa/lib/datetime';
 
-const CHART_INK = '#6d4aff'; // --color-primary-500
-const CHART_WARN = '#e0a11b';
-const AXIS_INK = '#625d69';
-const AXIS_FONT = '600 12px ui-monospace, SFMono-Regular, Menlo, monospace';
-
+const route = useRoute();
 const s = useServersStore();
 const { success, error: toastError } = useToast();
 
@@ -330,12 +243,6 @@ const Step = (props: { n: number; title: string; done?: boolean; muted?: boolean
 );
 Step.props = { n: Number, title: String, done: Boolean, muted: Boolean };
 
-/** One definition-list row that hides itself when there is nothing to show. */
-const Row = (props: { label: string; value?: string | null }) => h('div', { class: 'flex justify-between gap-3' }, [
-  h('dt', { class: 'text-[var(--ll-muted)]' }, props.label),
-  h('dd', { class: 'truncate text-right' }, props.value || '—'),
-]);
-Row.props = { label: String, value: String };
 
 function statusLabel(srv: Server): string {
   if (!srv.status) return t('servers.status_unknown');
@@ -362,10 +269,6 @@ function errorText(code: string | null): string {
   return translated === key ? code : translated;
 }
 
-function cpuText(f: ServerFacts): string {
-  const cores = f.cpu.cores === null ? '' : t('servers.cores', { n: String(f.cpu.cores) });
-  return [f.cpu.model, cores].filter(Boolean).join(' · ');
-}
 
 const grouped = computed(() => {
   const buckets = new Map<string, Server[]>();
@@ -406,67 +309,7 @@ function scheduleReload() {
   reloadTimer = window.setTimeout(() => { void s.load(); }, 6000);
 }
 
-// ---- detail ----
 
-const detailOpen = ref(false);
-const detail = ref<Server | null>(null);
-const history = ref<TrendPoint[]>([]);
-const retestResult = ref<ProbeResult | null>(null);
-
-async function openDetail(srv: Server) {
-  detail.value = srv;
-  history.value = [];
-  retestResult.value = null;
-  detailOpen.value = true;
-  const r = await s.show(srv.id);
-  detail.value = r.server;
-  history.value = r.history;
-}
-
-// Oldest first for a left-to-right axis; a failed run has no series to draw.
-const trend = computed(() => [...history.value].reverse().filter((p) => p.ok));
-
-const chartData = computed<AlignedData>(() => [
-  // uPlot needs a numeric x — the index, labelled with the timestamp below.
-  trend.value.map((_, i) => i),
-  trend.value.map((p) => p.mem_used_pct ?? 0),
-  trend.value.map((p) => p.disk_max_pct ?? 0),
-]);
-
-const chartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
-  padding: [12, 12, 0, 0],
-  legend: { show: false },
-  cursor: { drag: { x: false, y: false } },
-  series: [
-    {},
-    { label: t('servers.memory'), stroke: CHART_INK, fill: CHART_INK + '26' },
-    { label: t('servers.disks'), stroke: CHART_WARN },
-  ],
-  axes: [
-    {
-      stroke: AXIS_INK,
-      font: AXIS_FONT,
-      grid: { show: false },
-      // Index back to its timestamp; uPlot may ask for fractional ticks.
-      values: (_u, vals) => vals.map((v) => {
-        const point = trend.value[Math.round(v)];
-        return point ? fmtDateTime(point.collected_at) : '';
-      }),
-    },
-    { stroke: AXIS_INK, font: AXIS_FONT, grid: { stroke: 'rgba(128,128,128,.24)' }, size: 48, values: (_u, vals) => vals.map((v) => `${v}%`) },
-  ],
-  scales: { x: { time: false }, y: { range: [0, 100] } },
-}));
-
-async function retest() {
-  if (!detail.value) return;
-  testing.value = true;
-  try {
-    retestResult.value = await s.testStored(detail.value.id);
-  } finally { testing.value = false; }
-}
-
-// ---- form ----
 
 interface Form {
   name: string; host: string; port: string; username: string;
@@ -555,6 +398,7 @@ function payload(): Record<string, unknown> {
     note: f.note,
     enabled: f.enabled,
     restricted_key: f.restricted_key,
+    account_created: !accountExists.value,
   };
 }
 
@@ -585,7 +429,6 @@ async function doDelete() {
   if (!(await confirmAsk(t('servers.delete_confirm', { name: srv.name })))) return;
   await s.remove(srv.id);
   formOpen.value = false;
-  detailOpen.value = false;
   await s.load();
 }
 
@@ -674,49 +517,19 @@ const setupCommands = computed(() => {
   return lines.join('\n');
 });
 
-/**
- * How to undo the setup on the target. Two paths, because they are not
- * interchangeable: an account this app created can go entirely, while a
- * pre-existing one must keep its account and lose only our key line — deleting
- * it would take the operator's own access with it.
- *
- * Nothing else is installed: no service, no cron entry, no daemon. This really
- * is the whole footprint.
- */
-const removalCommands = computed(() => {
-  const srv = detail.value;
-  if (!srv) return '';
-  const user = srv.username;
-  const pub = srv.public_key ?? '';
-  // Match on the key blob, not the whole line: the same key appears with and
-  // without the forced-command prefix.
-  const blob = pub.split(' ')[1] ?? '';
 
-  const sudo = useSudo.value ? 'sudo ' : '';
-  const match = blob || 'll-facts';
-
-  return [
-    `# ${t('servers.removal_case_dedicated')}`,
-    `# ${t('servers.removal_pkill_note')}`,
-    `${sudo}sh -c 'pkill -u "$1" 2>/dev/null; userdel -r "$1"' _ ${user}`,
-    `${sudo}rm -f /usr/local/bin/ll-facts`,
-    '',
-    `# ${t('servers.removal_case_shared')}`,
-    `${sudo}sh -c 'K=$(getent passwd "$1" | cut -d: -f6)/.ssh/authorized_keys; grep -v "$2" "$K" > "$K.tmp"; mv "$K.tmp" "$K"; chmod 600 "$K"' _ ${user} '${match}'`,
-    `${sudo}rm -f /usr/local/bin/ll-facts`,
-  ].join('\n');
-});
-
-async function copyRemoval() {
-  await navigator.clipboard.writeText(removalCommands.value);
-  success(t('common.copied'));
-}
 
 async function copySetup() {
   await navigator.clipboard.writeText(setupCommands.value);
   success(t('common.copied'));
 }
 
-onMounted(() => { void s.load(); });
+onMounted(async () => {
+  await s.load();
+  // The detail page sends the user here to edit; open the dialog on arrival.
+  const id = Number(route.query.edit);
+  const target = s.servers.find((x) => x.id === id);
+  if (target) openEdit(target);
+});
 onUnmounted(() => window.clearTimeout(reloadTimer));
 </script>

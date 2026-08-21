@@ -31,6 +31,15 @@ export interface ServerFacts {
   containers: ServerContainer[];
   /** Null where no supported package manager answered — not the same as zero. */
   updates: number | null;
+  /** Interface + CIDR per line, e.g. "eth0 192.168.3.200/24". */
+  addresses: string[];
+  /** Hypervisor, or null on bare metal — "none" is not reported as a type. */
+  virt: string | null;
+  boot_at: string | null;
+  sessions: string[];
+  /** Largest resident processes; memory, not CPU — see the parser for why. */
+  processes: { name: string; rss_kb: number }[];
+  temp_c: number | null;
 }
 
 export interface ServerStatus { ok: boolean; error: string | null; collected_at: string; duration_ms: number }
@@ -46,6 +55,8 @@ export interface Server {
   note: string | null;
   enabled: boolean;
   restricted_key: boolean;
+  /** Whether the setup created the account; null for rows predating the field. */
+  account_created: boolean | null;
   host_fingerprint: string | null;
   /** Only returned by show(): derived from the stored key for the removal steps. */
   public_key?: string | null;

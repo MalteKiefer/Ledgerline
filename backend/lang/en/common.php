@@ -18,6 +18,7 @@ return [
     'rename' => 'Rename',
     'add' => 'Add',
     'none' => 'None',
+    'yes' => 'Yes',
     'search' => 'Search',
     'status' => 'Status',
     'date' => 'Date',

@@ -44,6 +44,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'tasks', name: 'tasks', component: () => import('@spa/views/Tasks.vue') },
       { path: 'mail', name: 'mail', component: () => import('@spa/views/Mail.vue') },
       { path: 'servers', name: 'servers', component: () => import('@spa/views/Servers.vue') },
+      { path: 'servers/:id', name: 'server-detail', component: () => import('@spa/views/ServerDetail.vue') },
       // Settings is a hub layout (left submenu + RouterView), like Profile —
       // its submenu lives in the page, not in the sidebar rail.
       {

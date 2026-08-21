@@ -30,6 +30,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $host_fingerprint
  * @property string|null $host_key
  * @property bool $restricted_key
+ * @property bool|null $account_created
  * @property string|null $group
  * @property string|null $note
  * @property bool $enabled
@@ -42,7 +43,7 @@ class Server extends Model
     use OwnsUserData;
 
     /** Secrets, the host key pin and the owner are server-set — never mass-assigned. */
-    protected $fillable = ['name', 'host', 'port', 'username', 'auth_type', 'group', 'note', 'enabled', 'restricted_key'];
+    protected $fillable = ['name', 'host', 'port', 'username', 'auth_type', 'group', 'note', 'enabled', 'restricted_key', 'account_created'];
 
     protected function casts(): array
     {
@@ -51,6 +52,7 @@ class Server extends Model
             'port' => 'integer',
             'enabled' => 'boolean',
             'restricted_key' => 'boolean',
+            'account_created' => 'boolean',
         ];
     }
 
