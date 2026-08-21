@@ -29,6 +29,21 @@
       {{ errorText(server.status.error) }}
     </p>
 
+    <!-- Tabs. The page had grown into one long scroll; logs and the terminal
+         are separate concerns and do not belong stacked under the metrics. -->
+    <div class="flex gap-1 border-b border-[var(--ll-border)]">
+      <button
+        v-for="tb in tabs"
+        :key="tb.id"
+        class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors"
+        :class="tab === tb.id ? 'border-[var(--ll-accent)] text-[var(--ll-accent)]' : 'border-transparent text-[var(--ll-muted)] hover:text-[var(--ll-text)]'"
+        @click="setTab(tb.id)"
+      >
+        {{ tb.label }}
+      </button>
+    </div>
+
+    <template v-if="tab === 'overview'">
     <template v-if="facts">
       <!-- Headline figures. These four answer "is anything wrong" at a glance. -->
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-5">
@@ -215,6 +230,72 @@
         {{ t('servers.fingerprint') }}: {{ server.host_fingerprint }}
       </p>
     </Card>
+    </template>
+
+    <!-- Logs -->
+    <template v-else-if="tab === 'logs'">
+      <Card :body-class="'p-4'">
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="min-w-0">
+            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.log_source') }}</span>
+            <select v-model="logSource" class="rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
+              <option v-if="sources?.journal" value="journal">{{ t('servers.log_journal') }}</option>
+              <option v-if="sources?.containers.length" value="docker">{{ t('servers.log_docker') }}</option>
+              <option v-if="sources?.files.length" value="file">{{ t('servers.log_file') }}</option>
+            </select>
+          </label>
+
+          <!-- Every option below came from the host itself. The browser picks
+               from that answer rather than naming something of its own. -->
+          <label v-if="logSource === 'journal' && sources?.units.length" class="min-w-0">
+            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.log_unit') }}</span>
+            <select v-model="logUnit" class="max-w-[15rem] rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
+              <option value="">{{ t('servers.log_all_units') }}</option>
+              <option v-for="u in sources.units" :key="u" :value="u">{{ u }}</option>
+            </select>
+          </label>
+
+          <label v-if="logSource === 'docker'" class="min-w-0">
+            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.containers') }}</span>
+            <select v-model="logContainer" class="max-w-[15rem] rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
+              <option v-for="c in sources?.containers ?? []" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </label>
+
+          <label v-if="logSource === 'file'" class="min-w-0">
+            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.log_file') }}</span>
+            <select v-model="logPath" class="max-w-[18rem] rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 font-mono text-xs">
+              <option v-for="f in sources?.files ?? []" :key="f" :value="f">{{ f }}</option>
+            </select>
+          </label>
+
+          <label class="w-24">
+            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.log_lines') }}</span>
+            <input v-model.number="logLines" type="number" min="1" max="2000" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
+          </label>
+
+          <label v-if="logSource === 'journal'" class="flex items-center gap-2 pb-2 text-sm">
+            <input v-model="logErrorsOnly" type="checkbox" class="accent-primary-500">{{ t('servers.log_errors_only') }}
+          </label>
+
+          <Btn variant="solid" size="sm" icon="download" :disabled="logBusy" class="mb-0.5" @click="fetchLog">
+            {{ logBusy ? t('servers.log_loading') : t('servers.log_fetch') }}
+          </Btn>
+          <Btn v-if="logText" variant="ghost" size="sm" icon="content_copy" class="mb-0.5" @click="copyLog">{{ t('common.copy') }}</Btn>
+        </div>
+
+        <p v-if="sourcesError" class="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">{{ t('servers.log_sources_failed') }}</p>
+        <p v-else-if="!sources" class="mt-3 text-sm text-[var(--ll-muted)]">{{ t('common.loading') }}</p>
+        <p v-else-if="!hasAnySource" class="mt-3 text-sm text-[var(--ll-muted)]">{{ t('servers.log_none_available') }}</p>
+
+        <p v-if="logError" class="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ logError }}</p>
+
+        <pre
+          v-if="logText"
+          class="mt-3 max-h-[32rem] overflow-auto rounded-lg bg-black/[0.05] p-3 font-mono text-[0.7rem] leading-relaxed dark:bg-white/5"
+        >{{ logText }}</pre>
+      </Card>
+    </template>
   </div>
 
   <div v-else-if="loading" class="p-10 text-center text-[var(--ll-muted)]">{{ t('common.loading') }}</div>
@@ -232,6 +313,7 @@ import {
   severity, formatUptime, formatGib, memoryNote, swapPct, swapNote, diskNote, fullestDisk,
 } from '@spa/lib/server-facts';
 import { useToast } from '@spa/composables/useToast';
+import { ApiError } from '@spa/api/client';
 import { fmtDate, fmtDateTime, fmtTime } from '@spa/lib/datetime';
 
 const CHART_INK = '#6d4aff';
@@ -307,6 +389,98 @@ const loadNote = computed(() => {
   const per = f.cpu.cores ? ` · ${Math.round((f.load[0] / f.cpu.cores) * 100)}%` : '';
   return `${f.load.map((l) => l.toFixed(2)).join('  ')}${per}`;
 });
+
+// ---- tabs ----
+
+type Tab = 'overview' | 'logs';
+
+const tab = ref<Tab>('overview');
+
+const tabs = computed<{ id: Tab; label: string }[]>(() => [
+  { id: 'overview', label: t('servers.tab_overview') },
+  { id: 'logs', label: t('servers.tab_logs') },
+]);
+
+function setTab(next: Tab) {
+  tab.value = next;
+  // The page is already deep-linkable; the tab belongs in the URL for the same
+  // reason the id does — so a link lands where the sender was looking.
+  void router.replace({ query: { ...route.query, tab: next === 'overview' ? undefined : next } });
+  if (next === 'logs' && sources.value === null) void loadSources();
+}
+
+// ---- logs ----
+
+const sources = ref<{ journal: boolean; units: string[]; containers: string[]; files: string[] } | null>(null);
+const sourcesError = ref(false);
+const logSource = ref<'journal' | 'docker' | 'file'>('journal');
+const logUnit = ref('');
+const logContainer = ref('');
+const logPath = ref('');
+const logLines = ref(200);
+const logErrorsOnly = ref(false);
+const logText = ref('');
+const logError = ref('');
+const logBusy = ref(false);
+
+const hasAnySource = computed(() => {
+  const src = sources.value;
+  return !!src && (src.journal || src.containers.length > 0 || src.files.length > 0);
+});
+
+/**
+ * Ask the host what it has before offering anything. This is also the security
+ * boundary: the selects below are populated from this answer, so a read names
+ * something the host reported rather than something the browser invented.
+ */
+async function loadSources() {
+  const id = Number(route.params.id);
+  if (!Number.isFinite(id)) return;
+  try {
+    const r = await s.logSources(id);
+    sources.value = r;
+    sourcesError.value = r.error !== null;
+    // Land on something that exists rather than on an empty journal select.
+    if (!r.journal && r.containers.length) logSource.value = 'docker';
+    else if (!r.journal && r.files.length) logSource.value = 'file';
+    logContainer.value = r.containers[0] ?? '';
+    logPath.value = r.files[0] ?? '';
+  } catch {
+    sourcesError.value = true;
+  }
+}
+
+async function fetchLog() {
+  const id = Number(route.params.id);
+  if (!Number.isFinite(id)) return;
+  logBusy.value = true;
+  logError.value = '';
+  try {
+    const r = await s.readLog(id, {
+      source: logSource.value,
+      unit: logSource.value === 'journal' ? logUnit.value : '',
+      container: logSource.value === 'docker' ? logContainer.value : '',
+      path: logSource.value === 'file' ? logPath.value : '',
+      lines: logLines.value,
+      errors_only: logErrorsOnly.value,
+    });
+    // An empty log is an answer, not a failure — say so rather than leaving the
+    // previous content on screen as if it were fresh.
+    logText.value = r.text.trim() === '' ? t('servers.log_empty') : r.text;
+  } catch (e) {
+    logText.value = '';
+    logError.value = e instanceof ApiError && typeof e.body === 'object' && e.body !== null && 'error' in e.body
+      ? errorText(String((e.body as { error: unknown }).error))
+      : t('servers.log_failed');
+  } finally {
+    logBusy.value = false;
+  }
+}
+
+async function copyLog() {
+  await navigator.clipboard.writeText(logText.value);
+  success(t('common.copied'));
+}
 
 // ---- reachability ----
 
@@ -444,6 +618,10 @@ async function load() {
     server.value = r.server;
     history.value = r.history;
     void loadChecks();
+    if (route.query.tab === 'logs') {
+      tab.value = 'logs';
+      void loadSources();
+    }
   } catch {
     server.value = null;
   } finally {

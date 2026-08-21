@@ -127,24 +127,8 @@ echo "##LL:end"';
             return new ProbeResult(false, error: 'no_credentials', fingerprint: $fingerprint, hostKey: $hostKey, durationMs: $this->elapsed($started));
         }
 
-        // Both files are RAII: the destructor unlinks them when this method
-        // returns, so a private key never outlives the probe on disk.
-        $keyFile = DiskTempFile::create('ll-serverkey');
-        $knownHosts = DiskTempFile::create('ll-knownhosts');
         try {
-            file_put_contents($keyFile->path(), $pem);
-            chmod($keyFile->path(), 0600);
-            file_put_contents($knownHosts->path(), $this->knownHostsLine($target, $hostKey));
-
-            // The script goes in on stdin, not as the remote command: ssh hands a
-            // command string to the ACCOUNT'S LOGIN SHELL, and that may be fish,
-            // csh or anything else that does not read POSIX sh. Feeding `sh -s`
-            // means the shell we chose is the only one that ever parses it.
-            $result = BinaryProcess::runCapture(
-                $this->sshArgv($target, $keyFile->path(), $knownHosts->path(), $interactive),
-                $interactive ? self::EXEC_TIMEOUT_INTERACTIVE : self::EXEC_TIMEOUT,
-                input: self::PROBE,
-            );
+            $result = $this->exec($target, $hostKey, self::PROBE, $interactive);
 
             $text = $result['out'];
             if (strlen($text) > self::MAX_OUTPUT) {
@@ -171,6 +155,45 @@ echo "##LL:end"';
         } catch (Throwable $e) {
             return new ProbeResult(false, error: $this->shorten($e->getMessage()), fingerprint: $fingerprint, hostKey: $hostKey, durationMs: $this->elapsed($started));
         }
+    }
+
+    /**
+     * Run one script on the target and return its raw result.
+     *
+     * The single place an SSH command is assembled, so every caller inherits the
+     * same posture: pinned host key, no agent, no forwarding, key on disk only
+     * for the length of the call, and the script fed on stdin rather than handed
+     * to the account's login shell.
+     *
+     * Callers must build the script from validated pieces. Nothing here inspects
+     * it — this method is the transport, not the guard.
+     *
+     * @return array{ok: bool, out: string, err: string, exit: ?int}
+     */
+    public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false): array
+    {
+        $pem = $this->usableKey($target);
+        if ($pem === null) {
+            return ['ok' => false, 'out' => '', 'err' => 'no_credentials', 'exit' => null];
+        }
+
+        // Both files are RAII: the destructor unlinks them when this method
+        // returns, so a private key never outlives the call on disk.
+        $keyFile = DiskTempFile::create('ll-serverkey');
+        $knownHosts = DiskTempFile::create('ll-knownhosts');
+        file_put_contents($keyFile->path(), $pem);
+        chmod($keyFile->path(), 0600);
+        file_put_contents($knownHosts->path(), $this->knownHostsLine($target, $hostKey));
+
+        // The script goes in on stdin, not as the remote command: ssh hands a
+        // command string to the ACCOUNT'S LOGIN SHELL, and that may be fish,
+        // csh or anything else that does not read POSIX sh. Feeding `sh -s`
+        // means the shell we chose is the only one that ever parses it.
+        return BinaryProcess::runCapture(
+            $this->sshArgv($target, $keyFile->path(), $knownHosts->path(), $interactive),
+            $interactive ? self::EXEC_TIMEOUT_INTERACTIVE : self::EXEC_TIMEOUT,
+            input: $script,
+        );
     }
 
     /** @return array<int, string> */

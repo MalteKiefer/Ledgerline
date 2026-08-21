@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.700.0
+  version: 1.701.0
   license:
     name: Proprietary
   description: >
@@ -7462,6 +7462,92 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/log-sources:
+    get:
+      tags: [Servers]
+      operationId: serversLogSources
+      summary: What logs this host can offer
+      description: >
+        Asks the host which log systems exist and which units, containers and
+        files are actually present. This is also the security boundary for the
+        read below: a selection must be something this endpoint reported, so the
+        browser chooses from the host's own answer rather than naming a target of
+        its own. Opens an SSH session inline with the interactive timeouts, like
+        the connection test, and is throttled 20/min accordingly.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  journal: { type: boolean, description: "journalctl is present and runnable as the monitoring account." }
+                  units: { type: array, items: { type: string }, description: "Running systemd services." }
+                  containers: { type: array, items: { type: string } }
+                  files: { type: array, items: { type: string }, description: "Readable files under /var/log." }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/logs:
+    post:
+      tags: [Servers]
+      operationId: serversLogs
+      summary: Read the tail of one log
+      description: >
+        Returns a bounded slice of one log. Nothing from the request becomes a
+        command: the source is one of a fixed set, the line count is an integer
+        capped at 2000, and unit, container and path are matched against strict
+        patterns and quoted for POSIX sh before being assembled into a fixed
+        command shape. A file path must lie under /var/log. Throttled 30/min;
+        the response carries Cache-Control no-store.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source]
+              properties:
+                source: { type: string, enum: [journal, docker, file] }
+                unit: { type: [string, "null"], maxLength: 128, description: "systemd unit; journal source only." }
+                container: { type: [string, "null"], maxLength: 128, description: "Container name or id; docker source only." }
+                path: { type: [string, "null"], maxLength: 200, description: "Absolute path under /var/log; file source only." }
+                lines: { type: integer, minimum: 1, maximum: 2000, default: 200 }
+                errors_only: { type: boolean, default: false, description: "journalctl -p err; journal source only." }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: The selection was refused, or the host was unreachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [invalid_selection, unreachable] }
         "429": { $ref: "#/components/responses/RateLimited" }
   /mounts:
     get:

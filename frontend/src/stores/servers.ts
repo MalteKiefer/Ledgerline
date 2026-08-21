@@ -120,6 +120,16 @@ export const useServersStore = defineStore('servers', () => {
 
   const show = (id: number) => api.get<{ server: Server; history: TrendPoint[] }>(`/api/v1/servers/${id}`);
 
+  /** What the host can offer: which log systems exist, and the units, containers and files really present. */
+  const logSources = (id: number) =>
+    api.get<{ journal: boolean; units: string[]; containers: string[]; files: string[]; error: string | null }>(
+      `/api/v1/servers/${id}/log-sources`,
+    );
+
+  /** Tail one log. The selection must be one the host itself reported. */
+  const readLog = (id: number, body: Record<string, unknown>) =>
+    api.post<{ text: string }>(`/api/v1/servers/${id}/logs`, body);
+
   /** Reachability history. Bounded by hours so the answer does not shift with port count. */
   const checks = (id: number, hours = 24) =>
     api.get<{ hours: number; checks: ServerCheckSeries[] }>(`/api/v1/servers/${id}/checks?hours=${hours}`);
@@ -161,5 +171,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });
