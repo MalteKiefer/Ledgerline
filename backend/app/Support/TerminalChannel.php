@@ -21,6 +21,12 @@ use Illuminate\Support\Str;
  *
  * Everything is short-lived by construction: a session that stops being polled
  * expires, and with it every byte of whatever was on screen.
+ *
+ * Every number that comes back out of the cache goes through intFrom(). Redis
+ * stores numeric values unserialized and hands them back as STRINGS, so an
+ * is_int() check on a counter is false in production and true under the array
+ * driver the tests use — which is to say it passes the suite and fails on the
+ * host. That cost a working terminal and a working idle timeout once already.
  */
 class TerminalChannel
 {
@@ -65,7 +71,7 @@ class TerminalChannel
         return [
             'user_id' => $meta['user_id'],
             'server_id' => $meta['server_id'],
-            'started_at' => is_int($started) ? $started : 0,
+            'started_at' => self::intFrom($started) ?? 0,
         ];
     }
 
@@ -104,9 +110,11 @@ class TerminalChannel
 
     public function idleSeconds(): int
     {
-        $seen = Cache::get($this->key('seen'));
+        $seen = self::intFrom(Cache::get($this->key('seen')));
 
-        return is_int($seen) ? time() - $seen : 0;
+        // No timestamp at all means the session was never touched, which for an
+        // idle check has to read as "nobody is there" rather than "just seen".
+        return $seen === null ? PHP_INT_MAX : time() - $seen;
     }
 
     /** Terminal output, from the job towards the browser. */
@@ -144,8 +152,7 @@ class TerminalChannel
         }
         // increment() is atomic on Redis, which is what makes two writers safe;
         // the array driver used in tests is single-process, so it agrees.
-        $n = Cache::increment($this->key($lane.':seq'));
-        $n = is_int($n) ? $n : 1;
+        $n = self::intFrom(Cache::increment($this->key($lane.':seq'))) ?? 1;
         Cache::put($this->key($lane.':'.$n), $data, self::CHUNK_TTL);
     }
 
@@ -159,8 +166,7 @@ class TerminalChannel
      */
     private function read(string $lane, int $cursor): array
     {
-        $seq = Cache::get($this->key($lane.':seq'));
-        $seq = is_int($seq) ? $seq : 0;
+        $seq = self::intFrom(Cache::get($this->key($lane.':seq'))) ?? 0;
 
         $data = '';
         $at = max(0, $cursor);
@@ -178,6 +184,19 @@ class TerminalChannel
         }
 
         return ['data' => $data, 'cursor' => $at];
+    }
+
+    /**
+     * A cached number, whatever shape the store returned it in.
+     *
+     * Redis keeps numeric values raw rather than serialized, so a counter comes
+     * back as '2' and not 2. Anything non-numeric is null — a caller decides
+     * what a missing number means, because for a cursor it is zero and for a
+     * last-seen timestamp it is the opposite of zero.
+     */
+    private static function intFrom(mixed $value): ?int
+    {
+        return is_numeric($value) ? (int) $value : null;
     }
 
     private function key(string $suffix): string
