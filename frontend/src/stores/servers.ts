@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { ApiError, api } from '@spa/api/client';
+import { ApiError, api, getToken } from '@spa/api/client';
 
 /** Key only: OpenSSH takes no password without a terminal. */
 export type AuthType = 'key';
@@ -139,6 +139,22 @@ export interface BanList {
   error: string | null;
 }
 
+export interface FileEntry {
+  name: string;
+  path: string;
+  type: 'file' | 'dir' | 'link' | 'special';
+  perms: string;
+  owner: string;
+  group: string;
+  size: number;
+  /** As the host printed it: sftp gives no year for a recent file. */
+  modified: string;
+}
+
+export interface FileListing { ok: boolean; path: string; entries: FileEntry[]; error: string | null }
+export interface FileRead { ok: boolean; content: string; binary: boolean; size: number; error: string | null }
+export interface FileResult { ok: boolean; error: string | null }
+
 export interface ServiceUnit { name: string; load: string; active: string; sub: string; description: string }
 
 export interface ProcessRow { pid: number; user: string; cpu: number; mem: number; rss_kb: number; command: string }
@@ -238,6 +254,47 @@ export const useServersStore = defineStore('servers', () => {
 
   const bans = (id: number) => api.get<BanList>(`/api/v1/servers/${id}/bans`);
 
+  // ---- file browser ----
+  //
+  // Every call carries the unlock grant in a header rather than the URL, so it
+  // never lands in an access log or a bookmark.
+
+  const filesUnlock = (id: number, password: string) =>
+    api.post<{ token: string; expires_in: number }>(`/api/v1/servers/${id}/files/unlock`, { password });
+
+  const filesLock = (id: number, grant: string) =>
+    api.post<{ ok: boolean }>(`/api/v1/servers/${id}/files/lock`, {}, { 'X-File-Grant': grant });
+
+  const filesList = (id: number, grant: string, path: string) =>
+    api.get<FileListing>(`/api/v1/servers/${id}/files?path=${encodeURIComponent(path)}`, { 'X-File-Grant': grant });
+
+  const filesRead = (id: number, grant: string, path: string) =>
+    api.get<FileRead>(`/api/v1/servers/${id}/files/read?path=${encodeURIComponent(path)}`, { 'X-File-Grant': grant });
+
+  const filesWrite = (id: number, grant: string, path: string, content: string) =>
+    api.post<FileResult>(`/api/v1/servers/${id}/files/write`, { path, content }, { 'X-File-Grant': grant });
+
+  const filesMutate = (id: number, grant: string, body: { action: string; path: string; target?: string; mode?: string }) =>
+    api.post<FileResult>(`/api/v1/servers/${id}/files/mutate`, body, { 'X-File-Grant': grant });
+
+  const filesUpload = (id: number, grant: string, path: string, file: File) => {
+    const form = new FormData();
+    form.append('path', path);
+    form.append('file', file);
+
+    return api.upload<FileResult>(`/api/v1/servers/${id}/files/upload`, form, { 'X-File-Grant': grant });
+  };
+
+  /** Downloads go through fetch so the grant can ride in the header. */
+  const filesDownload = async (id: number, grant: string, path: string): Promise<Blob> => {
+    const res = await fetch(api.url(`/api/v1/servers/${id}/files/download?path=${encodeURIComponent(path)}`), {
+      headers: { Authorization: `Bearer ${getToken() ?? ''}`, 'X-File-Grant': grant },
+    });
+    if (!res.ok) throw new Error(String(res.status));
+
+    return res.blob();
+  };
+
   const banAction = (id: number, body: { daemon: string; action: string; ip: string; jail?: string }) =>
     api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/bans`, body);
 
@@ -282,5 +339,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

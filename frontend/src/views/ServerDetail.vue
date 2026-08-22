@@ -371,6 +371,14 @@
       </Card>
     </template>
 
+    <!-- Files. Mounted only while its tab is open, so leaving the tab gives
+         the unlock grant back rather than leaving a filesystem open. -->
+    <template v-else-if="tab === 'files'">
+      <Card :body-class="'p-4'">
+        <ServerFiles ref="filesRef" :key="server.id" :server-id="server.id" />
+      </Card>
+    </template>
+
     <!-- Terminal. Mounted only while its tab is open, so leaving the tab ends
          the session rather than leaving a shell waiting on the idle timeout. -->
     <template v-else-if="tab === 'terminal'">
@@ -681,6 +689,7 @@ import {
 import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';
 import { confirmAsk } from '@spa/composables/useConfirm';
+import ServerFiles from '@spa/components/ServerFiles.vue';
 import ServerTerminal from '@spa/components/ServerTerminal.vue';
 import { fmtDate, fmtDateTime, fmtTime } from '@spa/lib/datetime';
 
@@ -1170,7 +1179,7 @@ async function doDelete() {
 
 // ---- tabs ----
 
-type Tab = 'overview' | 'logs' | 'security' | 'services' | 'processes' | 'terminal' | 'removal';
+type Tab = 'overview' | 'logs' | 'security' | 'services' | 'processes' | 'files' | 'terminal' | 'removal';
 
 const tab = ref<Tab>('overview');
 
@@ -1180,17 +1189,22 @@ const tabs = computed<{ id: Tab; label: string }[]>(() => [
   { id: 'security', label: t('servers.tab_security') },
   { id: 'services', label: t('servers.tab_services') },
   { id: 'processes', label: t('servers.tab_processes') },
+  { id: 'files', label: t('servers.tab_files') },
   { id: 'terminal', label: t('servers.tab_terminal') },
   { id: 'removal', label: t('servers.tab_removal') },
 ]);
 
 const terminalRef = ref<{ close: () => Promise<void> } | null>(null);
+const filesRef = ref<{ close: () => Promise<void> } | null>(null);
 
 function setTab(next: Tab) {
   // Leaving the terminal ends the shell here rather than relying on unmount:
   // unmount closes it too, but fire-and-forget, so a slow answer could leave a
   // session running on somebody's server after the tab looked closed.
   if (tab.value === 'terminal' && next !== 'terminal') void terminalRef.value?.close();
+  // Same for the file browser: leaving hands the unlock grant back rather than
+  // letting it sit until it expires.
+  if (tab.value === 'files' && next !== 'files') void filesRef.value?.close();
   tab.value = next;
   // The page is already deep-linkable; the tab belongs in the URL for the same
   // reason the id does — so a link lands where the sender was looking.
@@ -1427,6 +1441,8 @@ async function load() {
     if (route.query.tab === 'logs') {
       tab.value = 'logs';
       void loadSources();
+    } else if (route.query.tab === 'files') {
+      tab.value = 'files';
     } else if (route.query.tab === 'terminal') {
       tab.value = 'terminal';
     } else if (route.query.tab === 'removal') {
