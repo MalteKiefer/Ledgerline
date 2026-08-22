@@ -284,4 +284,11 @@ return [
     'nav_back' => 'Zurück (Alt+←)',
     'nav_forward' => 'Vorwärts (Alt+→)',
     'nav_up' => 'Eine Ebene höher (Rücktaste)',
+    'sort' => 'Sortieren',
+    'sort_name' => 'Name',
+    'sort_size' => 'Größe',
+    'sort_modified' => 'Zuletzt geändert',
+    'sort_type' => 'Typ',
+    'view_source' => 'Quelltext',
+    'view_rendered' => 'Gerendert',
 ];
