@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Models\Server;
 use App\Models\User;
 use App\Services\Servers\FilePermissions;
+use App\Services\Servers\RemoteArchiver;
 use App\Services\Servers\SftpBrowser;
 use App\Support\DiskTempFile;
 use App\Support\FileBrowserUnlock;
@@ -33,7 +34,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ServerFileController extends Controller
 {
-    public function __construct(private SftpBrowser $sftp, private FilePermissions $perms) {}
+    public function __construct(private SftpBrowser $sftp, private FilePermissions $perms, private RemoteArchiver $archiver) {}
 
     /** Exchange the account password for a short-lived grant. */
     public function unlock(Request $request, Server $server): JsonResponse
@@ -180,6 +181,82 @@ class ServerFileController extends Controller
         }
 
         return $this->streamTempFile($got['file'], basename($path).'.tar.gz');
+    }
+
+    /** Which archive formats this host can pack and unpack. */
+    public function archiveTools(Request $request, Server $server): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        if (! $this->unlocked($request, $user, $server)) {
+            return $this->locked();
+        }
+
+        return response()->json($this->archiver->tools($server))->header('Cache-Control', 'no-store');
+    }
+
+    /**
+     * Pack a selection into one archive and stream it.
+     *
+     * Built on the host: pulling a directory file by file to tar it here would
+     * be one transfer per file and would carry none of the permissions a tar
+     * keeps.
+     */
+    public function archive(Request $request, Server $server): JsonResponse|StreamedResponse
+    {
+        $user = $this->requireUser($request);
+        if (! $this->unlocked($request, $user, $server)) {
+            return response()->json(['error' => 'locked'], 403)->header('Cache-Control', 'no-store');
+        }
+
+        $request->validate([
+            'paths' => ['required', 'array', 'min:1', 'max:500'],
+            'paths.*' => ['string', 'max:4096'],
+            'format' => ['nullable', Rule::in(RemoteArchiver::FORMATS)],
+        ]);
+
+        $paths = [];
+        foreach ((array) $request->input('paths', []) as $entry) {
+            if (is_string($entry) && trim($entry) !== '') {
+                $paths[] = $entry;
+            }
+        }
+
+        $format = $request->string('format')->value() ?: 'tar.gz';
+        $result = $this->archiver->pack($server, $paths, $format);
+
+        if (! $result['ok'] || $result['file'] === null) {
+            return response()->json(['error' => $result['error']], 422)->header('Cache-Control', 'no-store');
+        }
+
+        return $this->streamTempFile($result['file'], $result['name']);
+    }
+
+    /** Unpack an archive on the host. */
+    public function extract(Request $request, Server $server): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        if (! $this->unlocked($request, $user, $server)) {
+            return $this->locked();
+        }
+
+        $request->validate([
+            'path' => ['required', 'string', 'max:4096'],
+            'destination' => ['nullable', 'string', 'max:4096'],
+        ]);
+
+        $path = $request->string('path')->value();
+        $result = $this->archiver->extract($server, $path, $request->string('destination')->value());
+
+        AuditLog::record('server.file_extracted', $server, [
+            'server' => $server->name,
+            'path' => $path,
+            'dest' => $result['dest'],
+            'ok' => $result['ok'],
+        ], $user->id);
+
+        $refused = in_array($result['error'], ['invalid_path', 'unknown_format'], true);
+
+        return response()->json($result, $refused ? 422 : 200)->header('Cache-Control', 'no-store');
     }
 
     /** Save an edited file. */

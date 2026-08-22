@@ -122,13 +122,77 @@ export interface FirewallInfo {
 
 export interface BanInfo { name: string; present: boolean; readable: boolean; summary: string; detail: string }
 
+/** A socket the host is listening on. `exposed` means it answers from off-box. */
+export interface ListeningPort {
+  proto: string;
+  address: string;
+  port: number;
+  process: string;
+  exposed: boolean;
+}
+
+/** One judgement about an sshd setting, with the reason spelled out. */
+export interface SshFinding { key: string; level: 'ok' | 'warn' | 'danger' | string; note: string }
+
+export interface HostKey { bits: number; fingerprint: string; type: string }
+export interface WebServer { name: string; version: string; active: string }
+export interface CertificateInfo { path: string; expires: string }
+
 export interface SecurityAudit {
   ok: boolean;
   firewalls: FirewallInfo[];
   bans: BanInfo[];
   ssh: Record<string, string>;
+  /** The resolved sshd configuration read through `sshd -T`, judged. */
+  ssh_findings: SshFinding[];
+  ssh_host_keys: HostKey[];
+  ssh_authorized: { path: string; keys: number }[];
+  listening: ListeningPort[];
+  /** The subset of `listening` bound to a wildcard address. */
+  exposed: ListeningPort[];
+  addresses: string[];
+  web: WebServer[];
+  certificates: CertificateInfo[];
+  sysctl: Record<string, string>;
+  accounts: { empty_password: string[]; uid_zero: string[] };
+  sudoers_nopasswd: string[];
   updates: { unattended: boolean; reboot_required: boolean };
   error: string | null;
+}
+
+export interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+  ports: string;
+  created: string;
+  cpu: string;
+  mem: string;
+  mem_pct: string;
+  net: string;
+  block: string;
+  health: string;
+  compose: string;
+}
+
+export interface DockerImage { id: string; repo: string; tag: string; size: string; created: string }
+export interface DockerVolume { name: string; driver: string; mount: string }
+export interface DockerNetwork { name: string; driver: string; scope: string }
+export interface DockerDisk { type: string; total: string; active: string; size: string; reclaimable: string }
+
+export interface DockerState {
+  available: boolean;
+  /** `not_installed` and `no_access` are opposite answers, never conflated. */
+  error: string | null;
+  version: string | null;
+  containers: DockerContainer[];
+  images: DockerImage[];
+  volumes: DockerVolume[];
+  networks: DockerNetwork[];
+  disk: DockerDisk[];
+  compose: string[];
 }
 
 /** fail2ban groups its bans by jail; CrowdSec keeps one flat list of decisions. */
@@ -335,6 +399,49 @@ export const useServersStore = defineStore('servers', () => {
     return res.blob();
   };
 
+  /** What this host can pack and unpack - asked, never assumed. */
+  const archiveTools = (id: number, grant: string) =>
+    api.get<{ pack: string[]; extract: string[] }>(`/api/v1/servers/${id}/files/archive-tools`, { 'X-File-Grant': grant });
+
+  /**
+   * Pack a selection on the host and download the single file.
+   *
+   * POST rather than GET because a selection can run to hundreds of paths, and
+   * no query string should be asked to carry that.
+   */
+  const filesArchive = async (id: number, grant: string, paths: string[], format: string): Promise<Blob> => {
+    const res = await fetch(api.url(`/api/v1/servers/${id}/files/archive`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getToken() ?? ''}`,
+        'X-File-Grant': grant,
+      },
+      body: JSON.stringify({ paths, format }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+
+    return res.blob();
+  };
+
+  const filesExtract = (id: number, grant: string, path: string, destination?: string) =>
+    api.post<{ ok: boolean; dest: string | null; error: string | null }>(
+      `/api/v1/servers/${id}/files/extract`,
+      { path, destination },
+      { 'X-File-Grant': grant },
+    );
+
+  const docker = (id: number) => api.get<DockerState>(`/api/v1/servers/${id}/docker`);
+
+  const dockerAction = (id: number, container: string, action: string) =>
+    api.post<{ ok: boolean; output: string; error: string | null }>(
+      `/api/v1/servers/${id}/docker/action`,
+      { container, action },
+    );
+
+  const dockerPrune = (id: number, target: string) =>
+    api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/docker/prune`, { target });
+
   const banAction = (id: number, body: { daemon: string; action: string; ip: string; jail?: string }) =>
     api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/bans`, body);
 
@@ -379,5 +486,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

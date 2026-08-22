@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.703.0
+  version: 1.708.0
   license:
     name: Proprietary
   description: >
@@ -7782,6 +7782,124 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/archive-tools:
+    get:
+      tags: [Servers]
+      operationId: serversFilesArchiveTools
+      summary: Which archive formats the host can handle
+      description: >
+        Asked rather than assumed. A minimal host often has tar and gzip and
+        nothing else, and offering a zip button that always fails is worse than
+        not offering it. Packing and unpacking are reported separately because
+        they are not the same capability: gzip unpacks a .gz, but only tar turns
+        a directory into a single file. Needs an unlock grant. Throttled 60/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Supported formats.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pack: { type: array, items: { type: string } }
+                  extract: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/archive:
+    post:
+      tags: [Servers]
+      operationId: serversFilesArchive
+      summary: Pack a selection into one archive and download it
+      description: >
+        Packed on the host, not here. Pulling a directory across to tar it
+        locally would be one transfer per file and would arrive without any of
+        the permissions a tar preserves. Paths are stored relative to their
+        common parent, so unpacking the result somewhere else does not recreate
+        the machine's entire directory layout around the files. The temporary
+        archive on the target is removed whatever happens. Needs an unlock
+        grant. Throttled 20/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paths]
+              properties:
+                paths:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items: { type: string }
+                format:
+                  type: string
+                  enum: [tar, tar.gz, tar.xz, tar.bz2, tar.zst, zip, 7z]
+      responses:
+        "200":
+          description: The archive.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/extract:
+    post:
+      tags: [Servers]
+      operationId: serversFilesExtract
+      summary: Unpack an archive on the host
+      description: >
+        Into a directory named after the archive, beside it, never straight into
+        the current one: an archive that turns out to hold two hundred loose
+        files should not scatter them across somebody's working directory. The
+        format is taken from the file name and must be one the host can actually
+        unpack, which is what archive-tools is for. Audited. Needs an unlock
+        grant. Throttled 20/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: { type: string }
+                destination: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Result, including the directory it landed in.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  dest: { type: string, nullable: true }
+                  error: { type: string, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/files/permissions:
     get:
       tags: [Servers]
@@ -8168,6 +8286,132 @@ paths:
                   ok: { type: boolean }
                   output: { type: string }
                   error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/docker:
+    get:
+      tags: [Servers]
+      operationId: serversDocker
+      summary: Containers, images, volumes, networks and disk use
+      description: >
+        One round trip that collects everything rather than a call per panel:
+        each one costs a full SSH handshake, and a page that opens five
+        connections to draw itself is slow for no reason. Distinguishes an
+        engine that is not installed from one the monitoring account is not
+        allowed to talk to - those are opposite answers, and reporting "no
+        containers" for a permission problem would be a lie. Throttled 60/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Docker state, or why it could not be read.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: { type: boolean }
+                  error: { type: string, nullable: true }
+                  version: { type: string, nullable: true }
+                  containers: { type: array, items: { type: object, additionalProperties: true } }
+                  images: { type: array, items: { type: object, additionalProperties: true } }
+                  volumes: { type: array, items: { type: object, additionalProperties: true } }
+                  networks: { type: array, items: { type: object, additionalProperties: true } }
+                  disk: { type: array, items: { type: object, additionalProperties: true } }
+                  compose: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/docker/action:
+    post:
+      tags: [Servers]
+      operationId: serversDockerAction
+      summary: Start, stop, restart, pause or remove a container
+      description: >
+        The verb comes from a fixed set and the container name must match a
+        strict pattern, so nothing typed into a request is ever parsed as part
+        of a command line. A well-formed name the host does not know is passed
+        through and refused by Docker itself. Every action
+        is audited with the container and the result. Same boundary as the
+        terminal: everything here could be typed into a shell. Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [container, action]
+              properties:
+                container: { type: string }
+                action:
+                  type: string
+                  enum: [start, stop, restart, pause, unpause, kill, remove]
+      responses:
+        "200":
+          description: Result and the host's own output.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string }
+                  error: { type: string, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/docker/prune:
+    post:
+      tags: [Servers]
+      operationId: serversDockerPrune
+      summary: Reclaim space from unused images, containers, volumes or networks
+      description: >
+        Deliberately one target per call rather than a single sweep: pruning
+        volumes throws data away, pruning dangling images does not, and putting
+        both behind one button would hide that difference at exactly the moment
+        it matters. Audited with the target and the reclaimed size. Throttled
+        10/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target]
+              properties:
+                target:
+                  type: string
+                  enum: [images, containers, volumes, networks, builder]
+      responses:
+        "200":
+          description: Result and the host's own output.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string }
+                  error: { type: string, nullable: true }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
