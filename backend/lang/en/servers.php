@@ -415,4 +415,5 @@ return [
     'sec_uid_zero' => 'Accounts with uid 0 — these are root under another name',
     'sec_empty_pw' => 'Accounts with an empty password',
     'sec_nopasswd' => 'sudo without a password',
+    'sec_ssh_clean' => 'Checked :n settings from the running server; nothing here needs acting on.',
 ];

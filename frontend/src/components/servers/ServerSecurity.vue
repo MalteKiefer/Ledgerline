@@ -204,8 +204,16 @@
 
     <!-- The judgements, not the raw settings: "PermitRootLogin yes" only means
          something to a reader who already knows it is a problem. -->
-    <Card v-if="sec && sec.ssh_findings.length" :body-class="'p-4'">
+    <Card v-if="sec && Object.keys(sec.ssh).length" :body-class="'p-4'">
       <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_ssh_findings') }}</h2>
+
+      <!-- Nothing to report is a result, not an empty panel: hiding the card
+           when a host is clean makes a working check look like a missing one. -->
+      <p v-if="!sec.ssh_findings.length" class="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+        <Icon name="check_circle" :size="16" />
+        {{ t('servers.sec_ssh_clean', { n: String(Object.keys(sec.ssh).length) }) }}
+      </p>
+
       <div v-for="f in sec.ssh_findings" :key="f.key" class="flex items-start gap-2 border-b border-[var(--ll-border)] py-2 last:border-0">
         <Icon :name="f.level === 'danger' ? 'error' : f.level === 'warn' ? 'warning' : 'check_circle'" :size="16" class="mt-0.5 shrink-0" :class="levelClass(f.level)" />
         <div class="min-w-0">

@@ -390,6 +390,20 @@ class SecurityAudit
     }
 
     /**
+     * The version, without the build hash some servers print after it.
+     *
+     * Caddy reports `v2.11.4 h1:XKxk...` - the hash identifies the build to
+     * its authors and means nothing to somebody reading a panel, while being
+     * long enough to push everything else off the row.
+     */
+    private static function shortVersion(string $raw): string
+    {
+        $first = strtok($raw, ' ');
+
+        return $first === false ? $raw : $first;
+    }
+
+    /**
      * The host's own key fingerprints, as ssh-keygen prints them.
      *
      * @return list<array{bits:int,fingerprint:string,type:string}>
@@ -440,7 +454,7 @@ class SecurityAudit
             if ($f[0] === '') {
                 continue;
             }
-            $out[] = ['name' => $f[0], 'version' => trim($f[1] ?? ''), 'active' => trim($f[2] ?? '')];
+            $out[] = ['name' => $f[0], 'version' => self::shortVersion(trim($f[1] ?? '')), 'active' => trim($f[2] ?? '')];
         }
 
         return $out;
