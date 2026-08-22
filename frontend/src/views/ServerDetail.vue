@@ -111,6 +111,39 @@
               <div v-for="a in facts.addresses" :key="a">{{ a }}</div>
             </div>
           </template>
+
+          <!-- Routing and resolution: the two things you check first when a host
+               is up but cannot reach anything. -->
+          <template v-if="facts.network?.gateway || facts.network?.dns?.length">
+            <h3 class="mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.routing') }}</h3>
+            <div class="mb-3 space-y-0.5 text-xs">
+              <div v-if="facts.network.gateway" class="flex justify-between gap-3">
+                <span class="text-[var(--ll-muted)]">{{ t('servers.gateway') }}</span>
+                <span class="font-mono">{{ facts.network.gateway }}</span>
+              </div>
+              <div v-if="facts.network.dns.length" class="flex justify-between gap-3">
+                <span class="text-[var(--ll-muted)]">{{ t('servers.dns') }}</span>
+                <span class="text-right font-mono">{{ facts.network.dns.join(', ') }}</span>
+              </div>
+              <div v-if="facts.network.search" class="flex justify-between gap-3">
+                <span class="text-[var(--ll-muted)]">{{ t('servers.dns_search') }}</span>
+                <span class="text-right font-mono">{{ facts.network.search }}</span>
+              </div>
+            </div>
+          </template>
+
+          <!-- Totals since boot, not a rate. One snapshot cannot give throughput,
+               and calling it traffic would be the CPU mistake all over again. -->
+          <template v-if="facts.network?.interfaces?.length">
+            <h3 class="mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.traffic_since_boot') }}</h3>
+            <div class="mb-3 space-y-0.5 text-xs">
+              <div v-for="n in facts.network.interfaces" :key="n.name" class="flex justify-between gap-3">
+                <span class="font-mono text-[var(--ll-muted)]">{{ n.name }}</span>
+                <span class="font-mono tabular-nums">↓ {{ formatGib(n.rx_bytes / 1024) }} · ↑ {{ formatGib(n.tx_bytes / 1024) }}</span>
+              </div>
+            </div>
+          </template>
+
           <template v-if="facts.ports.length">
             <h3 class="mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.ports') }}</h3>
             <div class="flex flex-wrap gap-1.5">
@@ -213,61 +246,39 @@
 
     <p v-if="server.note" class="whitespace-pre-line rounded-lg border border-[var(--ll-border)] p-3 text-sm">{{ server.note }}</p>
 
-    <!-- Removal. Exactly one path, chosen from what the setup recorded — the
-         reader should not have to work out which case they are in. -->
-    <Card :title="t('servers.removal_title')" :body-class="'p-4'">
-      <p class="text-sm">{{ t('servers.removal_intro') }}</p>
-      <p v-if="server.account_created === null" class="mt-2 rounded bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400">
-        {{ t('servers.removal_unknown_case') }}
-      </p>
-      <pre class="mt-3 overflow-x-auto rounded-lg bg-black/[0.05] p-3 font-mono text-xs dark:bg-white/5">{{ removalCommands }}</pre>
-      <div class="mt-2 flex items-center gap-2">
-        <Btn variant="ghost" size="sm" icon="content_copy" @click="copyRemoval">{{ t('common.copy') }}</Btn>
-        <label class="flex items-center gap-2 text-xs"><input v-model="useSudo" type="checkbox" class="accent-primary-500">{{ t('servers.use_sudo') }}</label>
-      </div>
-      <p class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.removal_footprint') }}</p>
-      <p v-if="server.host_fingerprint" class="mt-3 break-all font-mono text-[0.7rem] text-[var(--ll-muted)]">
-        {{ t('servers.fingerprint') }}: {{ server.host_fingerprint }}
-      </p>
-    </Card>
     </template>
 
     <!-- Logs -->
     <template v-else-if="tab === 'logs'">
       <Card :body-class="'p-4'">
         <div class="flex flex-wrap items-end gap-3">
-          <label class="min-w-0">
-            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.log_source') }}</span>
-            <select v-model="logSource" class="rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
-              <option v-if="sources?.journal" value="journal">{{ t('servers.log_journal') }}</option>
-              <option v-if="sources?.containers.length" value="docker">{{ t('servers.log_docker') }}</option>
-              <option v-if="sources?.files.length" value="file">{{ t('servers.log_file') }}</option>
-            </select>
-          </label>
+          <Select v-model="logSource" class="w-44" :label="t('servers.log_source')" :options="sourceOptions" />
 
           <!-- Every option below came from the host itself. The browser picks
                from that answer rather than naming something of its own. -->
-          <label v-if="logSource === 'journal' && sources?.units.length" class="min-w-0">
-            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.log_unit') }}</span>
-            <select v-model="logUnit" class="max-w-[15rem] rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
-              <option value="">{{ t('servers.log_all_units') }}</option>
-              <option v-for="u in sources.units" :key="u" :value="u">{{ u }}</option>
-            </select>
-          </label>
+          <Select
+            v-if="logSource === 'journal' && sources?.units.length"
+            v-model="logUnit"
+            class="w-60"
+            :label="t('servers.log_unit')"
+            :options="[{ title: t('servers.log_all_units'), value: '' }, ...sources.units.map((u) => ({ title: u, value: u }))]"
+          />
 
-          <label v-if="logSource === 'docker'" class="min-w-0">
-            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.containers') }}</span>
-            <select v-model="logContainer" class="max-w-[15rem] rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
-              <option v-for="c in sources?.containers ?? []" :key="c" :value="c">{{ c }}</option>
-            </select>
-          </label>
+          <Select
+            v-if="logSource === 'docker'"
+            v-model="logContainer"
+            class="w-60"
+            :label="t('servers.containers')"
+            :options="(sources?.containers ?? []).map((c) => ({ title: c, value: c }))"
+          />
 
-          <label v-if="logSource === 'file'" class="min-w-0">
-            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.log_file') }}</span>
-            <select v-model="logPath" class="max-w-[18rem] rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 font-mono text-xs">
-              <option v-for="f in sources?.files ?? []" :key="f" :value="f">{{ f }}</option>
-            </select>
-          </label>
+          <Select
+            v-if="logSource === 'file'"
+            v-model="logPath"
+            class="w-72"
+            :label="t('servers.log_file')"
+            :options="(sources?.files ?? []).map((f) => ({ title: f, value: f }))"
+          />
 
           <label class="w-24">
             <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.log_lines') }}</span>
@@ -304,6 +315,132 @@
         <ServerTerminal :server-id="server.id" />
       </Card>
     </template>
+
+    <!-- Services -->
+    <template v-else-if="tab === 'services'">
+      <Card :body-class="'p-4'">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <input
+            v-model="svcQuery"
+            :placeholder="t('servers.filter')"
+            class="w-64 rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm"
+          >
+          <Btn variant="ghost" size="sm" icon="refresh" :disabled="svcBusy" @click="loadServices">{{ t('servers.refresh') }}</Btn>
+        </div>
+
+        <p v-if="svcError" class="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ svcError }}</p>
+        <p v-else-if="svcBusy && !services.length" class="text-sm text-[var(--ll-muted)]">{{ t('common.loading') }}</p>
+
+        <div v-if="actionNote" class="mb-3 rounded-lg px-3 py-2 text-sm" :class="actionOk ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'">
+          <pre class="whitespace-pre-wrap font-mono text-[0.7rem]">{{ actionNote }}</pre>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <tbody>
+              <tr v-for="u in filteredServices" :key="u.name" class="border-b border-[var(--ll-border)] last:border-0">
+                <td class="py-2 pr-3">
+                  <div class="font-mono text-xs">{{ u.name }}</div>
+                  <div class="truncate text-[0.7rem] text-[var(--ll-muted)]">{{ u.description }}</div>
+                </td>
+                <td class="w-32 py-2 pr-3">
+                  <Badge :tone="u.active === 'active' ? 'success' : u.active === 'failed' ? 'error' : 'gray'">{{ u.sub }}</Badge>
+                </td>
+                <td class="w-56 py-2 text-right">
+                  <div class="flex justify-end gap-1">
+                    <Btn variant="ghost" size="sm" :disabled="acting" :title="t('servers.svc_start')" icon="play_arrow" @click="doService(u.name, 'start')" />
+                    <Btn variant="ghost" size="sm" :disabled="acting" :title="t('servers.svc_restart')" icon="restart_alt" @click="doService(u.name, 'restart')" />
+                    <Btn variant="ghost" size="sm" :disabled="acting" :title="t('servers.svc_stop')" icon="stop" @click="doService(u.name, 'stop')" />
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="!svcBusy && !filteredServices.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+        </div>
+      </Card>
+    </template>
+
+    <!-- Processes -->
+    <template v-else-if="tab === 'processes'">
+      <Card :body-class="'p-4'">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <input
+            v-model="procQuery"
+            :placeholder="t('servers.filter')"
+            class="w-64 rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm"
+          >
+          <Btn variant="ghost" size="sm" icon="refresh" :disabled="procBusy" @click="loadProcesses">{{ t('servers.refresh') }}</Btn>
+        </div>
+
+        <p v-if="procError" class="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ procError }}</p>
+        <p v-else-if="procBusy && !processes.length" class="text-sm text-[var(--ll-muted)]">{{ t('common.loading') }}</p>
+
+        <div v-if="actionNote" class="mb-3 rounded-lg px-3 py-2 text-sm" :class="actionOk ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'">
+          <pre class="whitespace-pre-wrap font-mono text-[0.7rem]">{{ actionNote }}</pre>
+        </div>
+
+        <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.processes_note') }}</p>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-[var(--ll-border)] text-left text-[0.7rem] uppercase tracking-wide text-[var(--ll-muted)]">
+                <th class="py-1.5 pr-3 font-medium">PID</th>
+                <th class="py-1.5 pr-3 font-medium">{{ t('servers.proc_user') }}</th>
+                <th class="py-1.5 pr-3 font-medium">{{ t('servers.proc_command') }}</th>
+                <th class="py-1.5 pr-3 text-right font-medium">{{ t('servers.memory') }}</th>
+                <th class="py-1.5 text-right font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in filteredProcesses" :key="p.pid" class="border-b border-[var(--ll-border)] last:border-0">
+                <td class="py-2 pr-3 font-mono text-xs tabular-nums">{{ p.pid }}</td>
+                <td class="py-2 pr-3 text-xs">{{ p.user }}</td>
+                <td class="py-2 pr-3 font-mono text-xs">{{ p.command }}</td>
+                <td class="py-2 pr-3 text-right font-mono text-xs tabular-nums">{{ formatGib(p.rss_kb) }}</td>
+                <td class="w-32 py-2 text-right">
+                  <div class="flex justify-end gap-1">
+                    <Btn variant="ghost" size="sm" :disabled="acting" :title="t('servers.proc_term')" icon="close" @click="doSignal(p, 'TERM')" />
+                    <Btn variant="ghost" size="sm" :disabled="acting" :title="t('servers.proc_kill')" icon="dangerous" @click="doSignal(p, 'KILL')" />
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="!procBusy && !filteredProcesses.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+        </div>
+      </Card>
+    </template>
+
+    <!-- Removal: what to undo on the target, and removing it from here. -->
+    <template v-else-if="tab === 'removal'">
+    <!-- Removal. Exactly one path, chosen from what the setup recorded — the
+         reader should not have to work out which case they are in. -->
+    <Card :title="t('servers.removal_title')" :body-class="'p-4'">
+      <p class="text-sm">{{ t('servers.removal_intro') }}</p>
+      <p v-if="server.account_created === null" class="mt-2 rounded bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400">
+        {{ t('servers.removal_unknown_case') }}
+      </p>
+      <pre class="mt-3 overflow-x-auto rounded-lg bg-black/[0.05] p-3 font-mono text-xs dark:bg-white/5">{{ removalCommands }}</pre>
+      <div class="mt-2 flex items-center gap-2">
+        <Btn variant="ghost" size="sm" icon="content_copy" @click="copyRemoval">{{ t('common.copy') }}</Btn>
+        <label class="flex items-center gap-2 text-xs"><input v-model="useSudo" type="checkbox" class="accent-primary-500">{{ t('servers.use_sudo') }}</label>
+      </div>
+      <p class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.removal_footprint') }}</p>
+      <p v-if="server.host_fingerprint" class="mt-3 break-all font-mono text-[0.7rem] text-[var(--ll-muted)]">
+        {{ t('servers.fingerprint') }}: {{ server.host_fingerprint }}
+      </p>
+    </Card>
+
+      <Card :body-class="'p-4'">
+        <h2 class="text-sm font-semibold text-red-600 dark:text-red-400">{{ t('servers.remove_from_app') }}</h2>
+        <p class="mt-1 text-sm text-[var(--ll-muted)]">{{ t('servers.remove_from_app_intro') }}</p>
+        <Btn class="mt-3" variant="ghost" icon="delete" :disabled="deleting" @click="doDelete">
+          <span class="text-red-600 dark:text-red-400">{{ deleting ? t('common.loading') : t('servers.remove_from_app_action') }}</span>
+        </Btn>
+      </Card>
+    </template>
   </div>
 
   <div v-else-if="loading" class="p-10 text-center text-[var(--ll-muted)]">{{ t('common.loading') }}</div>
@@ -315,13 +452,14 @@ import { computed, h, onMounted, ref, type PropType, type VNode } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import type { AlignedData, Options } from 'uplot';
-import { Card, Btn, Badge, Chart, DistroLogo } from '@spa/ui';
-import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint, type ServerCheckSeries } from '@spa/stores/servers';
+import { Card, Btn, Badge, Chart, DistroLogo, Select } from '@spa/ui';
+import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint, type ServerCheckSeries, type ServiceUnit, type ProcessRow } from '@spa/stores/servers';
 import {
   severity, formatUptime, formatGib, memoryNote, swapPct, swapNote, diskNote, fullestDisk,
 } from '@spa/lib/server-facts';
 import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';
+import { confirmAsk } from '@spa/composables/useConfirm';
 import ServerTerminal from '@spa/components/ServerTerminal.vue';
 import { fmtDate, fmtDateTime, fmtTime } from '@spa/lib/datetime';
 
@@ -399,16 +537,143 @@ const loadNote = computed(() => {
   return `${f.load.map((l) => l.toFixed(2)).join('  ')}${per}`;
 });
 
+// ---- services and processes ----
+
+const services = ref<ServiceUnit[]>([]);
+const processes = ref<ProcessRow[]>([]);
+const svcQuery = ref('');
+const procQuery = ref('');
+const svcBusy = ref(false);
+const procBusy = ref(false);
+const svcError = ref('');
+const procError = ref('');
+const acting = ref(false);
+const actionNote = ref('');
+const actionOk = ref(true);
+
+const filteredServices = computed(() => {
+  const q = svcQuery.value.trim().toLowerCase();
+  if (!q) return services.value;
+
+  return services.value.filter((u) => u.name.toLowerCase().includes(q) || u.description.toLowerCase().includes(q));
+});
+
+const filteredProcesses = computed(() => {
+  const q = procQuery.value.trim().toLowerCase();
+  if (!q) return processes.value;
+
+  return processes.value.filter((p) => p.command.toLowerCase().includes(q) || p.user.toLowerCase().includes(q) || String(p.pid) === q);
+});
+
+async function loadServices() {
+  const id = Number(route.params.id);
+  if (!Number.isFinite(id)) return;
+  svcBusy.value = true;
+  svcError.value = '';
+  try {
+    const r = await s.services(id);
+    services.value = r.units;
+    if (!r.ok) svcError.value = errorText(r.error);
+  } catch {
+    svcError.value = t('servers.status_fail');
+  } finally {
+    svcBusy.value = false;
+  }
+}
+
+async function loadProcesses() {
+  const id = Number(route.params.id);
+  if (!Number.isFinite(id)) return;
+  procBusy.value = true;
+  procError.value = '';
+  try {
+    const r = await s.processes(id);
+    processes.value = r.processes;
+    if (!r.ok) procError.value = errorText(r.error);
+  } catch {
+    procError.value = t('servers.status_fail');
+  } finally {
+    procBusy.value = false;
+  }
+}
+
+/**
+ * Whatever the host says comes back verbatim. A monitoring account without
+ * privilege will be refused, and showing that refusal is the point — a button
+ * that quietly does nothing is worse than one that explains itself.
+ */
+async function doService(unit: string, action: string) {
+  if (action !== 'start' && !(await confirmAsk(t('servers.svc_confirm', { action: t(`servers.svc_${action}`), unit })))) return;
+  const id = Number(route.params.id);
+  acting.value = true;
+  actionNote.value = '';
+  try {
+    const r = await s.serviceAction(id, unit, action);
+    actionOk.value = r.ok;
+    actionNote.value = r.output || (r.ok ? t('servers.action_ok') : t('servers.action_failed'));
+    await loadServices();
+  } catch {
+    actionOk.value = false;
+    actionNote.value = t('servers.action_failed');
+  } finally {
+    acting.value = false;
+  }
+}
+
+async function doSignal(p: ProcessRow, signal: string) {
+  if (!(await confirmAsk(t('servers.proc_confirm', { signal, pid: String(p.pid), command: p.command })))) return;
+  const id = Number(route.params.id);
+  acting.value = true;
+  actionNote.value = '';
+  try {
+    const r = await s.processSignal(id, p.pid, signal);
+    actionOk.value = r.ok;
+    actionNote.value = r.output || (r.ok ? t('servers.action_ok') : t('servers.action_failed'));
+    await loadProcesses();
+  } catch {
+    actionOk.value = false;
+    actionNote.value = t('servers.action_failed');
+  } finally {
+    acting.value = false;
+  }
+}
+
+// ---- removal ----
+
+const deleting = ref(false);
+
+/**
+ * Remove the server from the app. Deliberately separate from the instructions
+ * above it: deleting the row here changes nothing on the target, and the
+ * confirmation says so rather than letting someone assume it cleaned up.
+ */
+async function doDelete() {
+  const srv = server.value;
+  if (!srv) return;
+  if (!(await confirmAsk(t('servers.delete_confirm', { name: srv.name })))) return;
+  deleting.value = true;
+  try {
+    await s.remove(srv.id);
+    success(t('servers.removed'));
+    await router.push('/servers');
+  } catch {
+    deleting.value = false;
+  }
+}
+
 // ---- tabs ----
 
-type Tab = 'overview' | 'logs' | 'terminal';
+type Tab = 'overview' | 'logs' | 'services' | 'processes' | 'terminal' | 'removal';
 
 const tab = ref<Tab>('overview');
 
 const tabs = computed<{ id: Tab; label: string }[]>(() => [
   { id: 'overview', label: t('servers.tab_overview') },
   { id: 'logs', label: t('servers.tab_logs') },
+  { id: 'services', label: t('servers.tab_services') },
+  { id: 'processes', label: t('servers.tab_processes') },
   { id: 'terminal', label: t('servers.tab_terminal') },
+  { id: 'removal', label: t('servers.tab_removal') },
 ]);
 
 function setTab(next: Tab) {
@@ -417,6 +682,9 @@ function setTab(next: Tab) {
   // reason the id does — so a link lands where the sender was looking.
   void router.replace({ query: { ...route.query, tab: next === 'overview' ? undefined : next } });
   if (next === 'logs' && sources.value === null) void loadSources();
+  if (next === 'services' && !services.value.length) void loadServices();
+  if (next === 'processes' && !processes.value.length) void loadProcesses();
+  actionNote.value = '';
 }
 
 // ---- logs ----
@@ -432,6 +700,16 @@ const logErrorsOnly = ref(false);
 const logText = ref('');
 const logError = ref('');
 const logBusy = ref(false);
+
+const sourceOptions = computed(() => {
+  const src = sources.value;
+  const out: { title: string; value: string }[] = [];
+  if (src?.journal) out.push({ title: t('servers.log_journal'), value: 'journal' });
+  if (src?.containers.length) out.push({ title: t('servers.log_docker'), value: 'docker' });
+  if (src?.files.length) out.push({ title: t('servers.log_file'), value: 'file' });
+
+  return out;
+});
 
 const hasAnySource = computed(() => {
   const src = sources.value;
@@ -633,6 +911,14 @@ async function load() {
       void loadSources();
     } else if (route.query.tab === 'terminal') {
       tab.value = 'terminal';
+    } else if (route.query.tab === 'removal') {
+      tab.value = 'removal';
+    } else if (route.query.tab === 'services') {
+      tab.value = 'services';
+      void loadServices();
+    } else if (route.query.tab === 'processes') {
+      tab.value = 'processes';
+      void loadProcesses();
     }
   } catch {
     server.value = null;

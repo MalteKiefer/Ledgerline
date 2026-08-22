@@ -85,6 +85,7 @@ use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\PublicGalleryShareController;
 use App\Http\Controllers\PublicGalleryUploadController;
 use App\Http\Controllers\ReindexController;
+use App\Http\Controllers\ServerControlController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServerLogController;
 use App\Http\Controllers\ServerTerminalController;
@@ -339,6 +340,12 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/servers/{server}/terminal/{session}', [ServerTerminalController::class, 'poll'])->whereNumber('server')->whereAlphaNumeric('session')->middleware('throttle:1200,1')->name('api.servers.terminal.poll');
             Route::post('/servers/{server}/terminal/{session}/input', [ServerTerminalController::class, 'input'])->whereNumber('server')->whereAlphaNumeric('session')->middleware('throttle:1200,1')->name('api.servers.terminal.input');
             Route::delete('/servers/{server}/terminal/{session}', [ServerTerminalController::class, 'close'])->whereNumber('server')->whereAlphaNumeric('session')->middleware('throttle:60,1')->name('api.servers.terminal.close');
+            // Services and processes. Listing reads; the two action endpoints
+            // change the target and are audited, so they are throttled harder.
+            Route::get('/servers/{server}/services', [ServerControlController::class, 'services'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.services');
+            Route::post('/servers/{server}/services', [ServerControlController::class, 'serviceAction'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.service-action');
+            Route::get('/servers/{server}/processes', [ServerControlController::class, 'processes'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.processes');
+            Route::post('/servers/{server}/processes/signal', [ServerControlController::class, 'processSignal'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.process-signal');
         });
 
         Route::middleware('module:notes')->group(function (): void {

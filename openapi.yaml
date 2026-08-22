@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.702.1
+  version: 1.703.0
   license:
     name: Proprietary
   description: >
@@ -7548,6 +7548,169 @@ paths:
                 type: object
                 properties:
                   error: { type: string, enum: [invalid_selection, unreachable] }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/services:
+    get:
+      tags: [Servers]
+      operationId: serversServices
+      summary: List services
+      description: >
+        Every systemd service the host knows about, stopped ones included — a
+        service you cannot see is a service you cannot start. Opens an SSH
+        session inline with the interactive timeouts; throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  units:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        load: { type: string }
+                        active: { type: string, description: "active, inactive, failed …" }
+                        sub: { type: string, description: "running, dead, exited …" }
+                        description: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Servers]
+      operationId: serversServiceAction
+      summary: Start, stop, restart or reload a service
+      description: >
+        Changes the target, so it is audited with the server and unit named. The
+        verb comes from a fixed set and the unit is matched against a strict
+        pattern before anything is assembled.
+
+        These actions need privilege the module otherwise avoids: a monitoring
+        account set up as documented cannot control services, and the host's own
+        refusal is returned in `output` rather than swallowed. Throttled 20/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [unit, action]
+              properties:
+                unit: { type: string, maxLength: 128 }
+                action: { type: string, enum: [start, stop, restart, reload] }
+      responses:
+        "200":
+          description: The command ran; ok says whether it succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string, description: "Whatever the host said, verbatim." }
+                  error: { type: [string, "null"], enum: [command_failed, unreachable, null] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/processes:
+    get:
+      tags: [Servers]
+      operationId: serversProcesses
+      summary: List processes
+      description: >
+        The hundred largest processes by resident memory. Sorted by memory
+        rather than CPU: a snapshot cannot say anything honest about
+        instantaneous CPU load. Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  processes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        pid: { type: integer }
+                        user: { type: string }
+                        cpu: { type: number }
+                        mem: { type: number }
+                        rss_kb: { type: integer }
+                        command: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/processes/signal:
+    post:
+      tags: [Servers]
+      operationId: serversProcessSignal
+      summary: Signal a process
+      description: >
+        TERM asks, KILL insists. Audited with the server and pid named. pid 1 is
+        refused outright — signalling init takes the machine down, and no
+        interface should put that one mis-click away. Throttled 20/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pid, signal]
+              properties:
+                pid: { type: integer, minimum: 2, maximum: 4194304 }
+                signal: { type: string, enum: [TERM, KILL] }
+      responses:
+        "200":
+          description: The signal was sent; ok says whether it was accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string }
+                  error: { type: [string, "null"], enum: [command_failed, unreachable, null] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: Refused before reaching the host.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [invalid_selection, refused_pid1] }
         "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/terminal:
     post:
