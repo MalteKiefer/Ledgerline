@@ -577,6 +577,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/files/folders', [FilesController::class, 'folders'])->name('api.files.folders');
             Route::post('/files/folders', [FilesController::class, 'storeFolder'])->middleware('throttle:600,1')->name('api.files.folders.store');
             Route::put('/files/folders/{folder}', [FilesController::class, 'renameFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.folders.update');
+            Route::post('/files/folders/{folder}/copy', [FilesController::class, 'copyFolder'])->whereNumber('folder')->middleware('throttle:120,1')->name('api.files.folders.copy');
             Route::post('/files/folders/{folder}/move', [FilesController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('api.files.folders.move');
             Route::delete('/files/folders/{folder}', [FilesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.folders.destroy');
             Route::post('/files/folders/{id}/restore', [FilesController::class, 'restoreFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('api.files.folders.restore');
