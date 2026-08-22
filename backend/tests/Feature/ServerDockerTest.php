@@ -249,6 +249,68 @@ class ServerDockerTest extends TestCase
         $this->assertStringNotContainsString('--volumes', $sent);
     }
 
+    /**
+     * The payload has to answer "is there an engine here", not leave a caller
+     * to recombine two flags. This shipped wrong once: the tab drew "no
+     * container engine" over a host running seventeen containers, because
+     * `available` was only ever set on the failure paths.
+     */
+    #[Test]
+    public function the_payload_says_plainly_whether_an_engine_is_available(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+
+        $this->inspector(implode("\n", [
+            '##LL:version',
+            '27.1.1',
+            '##LL:ps',
+            "abc123def4567\tweb\tnginx:1.27\trunning\tUp 3 hours\t\t3 hours ago\tledgerline",
+            '##LL:end',
+            '',
+        ]));
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/servers/{$server->id}/docker")
+            ->assertOk()
+            ->assertJsonPath('available', true)
+            ->assertJsonPath('error', null)
+            // The compose project a container belongs to is what makes a busy
+            // host readable, so it travels with the container.
+            ->assertJsonPath('containers.0.compose', 'ledgerline');
+
+    }
+
+    #[Test]
+    public function an_engine_that_is_not_installed_is_not_available(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+        $this->inspector("##LL:version\n__absent__\n##LL:end\n");
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/servers/{$server->id}/docker")
+            ->assertOk()
+            ->assertJsonPath('available', false)
+            ->assertJsonPath('error', null);
+    }
+
+    #[Test]
+    public function an_engine_this_account_may_not_reach_is_not_available_either(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+        $this->inspector("##LL:version\npermission denied while trying to connect\n##LL:end\n");
+
+        // Present, but out of reach - the opposite answer to "not installed",
+        // and the reason the two never share a message.
+        $this->actingAs($user)
+            ->getJson("/api/v1/servers/{$server->id}/docker")
+            ->assertOk()
+            ->assertJsonPath('available', false)
+            ->assertJsonPath('error', 'no_access');
+    }
+
     #[Test]
     public function the_docker_endpoints_are_owner_scoped(): void
     {

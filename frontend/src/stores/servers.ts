@@ -178,7 +178,7 @@ export interface DockerContainer {
 }
 
 export interface DockerImage { id: string; repo: string; tag: string; size: string; created: string }
-export interface DockerVolume { name: string; driver: string; mount: string }
+export interface DockerVolume { name: string; driver: string; mount?: string }
 export interface DockerNetwork { name: string; driver: string; scope: string }
 export interface DockerDisk { type: string; total: string; active: string; size: string; reclaimable: string }
 
