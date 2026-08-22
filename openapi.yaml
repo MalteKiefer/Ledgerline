@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.711.1
+  version: 1.712.0
   license:
     name: Proprietary
   description: >
@@ -1351,6 +1351,106 @@ components:
       type: [object, "null"]
       description: "The parsed snapshot from the last successful probe. Every section is optional: a host without systemd or docker simply omits it."
       properties:
+        role:
+          type: object
+          description: >
+            What the machine is for, derived from installed services and running
+            container images. Both sources on purpose: on a modern host the
+            services are containers, and reading only systemd units would call a
+            machine running Postfix, Dovecot and Rspamd in containers "just a
+            Docker host" - true, and useless. A container is judged by its
+            image, never its name: one called "mail" running nginx is a web
+            server. `services` lists only what is installed, and carries
+            `installed` separately from `active`, because "installed but
+            stopped" and "not installed" are different answers that
+            `systemctl is-active` reports identically.
+          properties:
+            roles:
+              type: array
+              items: { type: string, enum: [mail, web, database, virtualisation, containers, storage, dns, media, identity, monitoring] }
+            platform:
+              type: [string, "null"]
+              description: "A distribution that is a role in itself: proxmox, truenas, opnsense, openmediavault."
+            services:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  installed: { type: boolean }
+                  active: { type: boolean }
+                  source: { type: string }
+        storage:
+          type: array
+          description: >
+            The physical disks, as opposed to the filesystems on them. `health`
+            is three-valued: `unknown` means the host could not tell us -
+            smartmontools absent, or a RAID controller hiding the members behind
+            one volume - and that is not the same as healthy. Reallocated and
+            pending sectors are the two figures that actually predict a failure.
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              size_b: { type: integer }
+              rotational: { type: boolean }
+              model: { type: string }
+              health: { type: string, enum: [ok, failing, unreadable, unknown] }
+              temp_c: { type: [number, "null"] }
+              hours: { type: [integer, "null"] }
+              reallocated: { type: [integer, "null"] }
+              pending: { type: [integer, "null"] }
+        arrays:
+          type: array
+          description: "Software RAID and ZFS pools. A degraded array keeps working right up until the second disk goes, which is why it carries its own flag."
+          items:
+            type: object
+            properties:
+              kind: { type: string }
+              name: { type: string }
+              state: { type: string }
+              detail: { type: string }
+              degraded: { type: boolean }
+        sensors:
+          type: array
+          description: "Temperatures read from /sys/class/hwmon rather than through lm-sensors, which is missing more often than it is present."
+          items:
+            type: object
+            properties:
+              chip: { type: string }
+              label: { type: string }
+              temp_c: { type: number }
+        timers:
+          type: object
+          description: "Scheduled work. Failed services are reported elsewhere; a failed timer is invisible, and that is where backups and certificate renewal live."
+          properties:
+            units:
+              type: array
+              items:
+                type: object
+                properties:
+                  unit: { type: string }
+                  next: { type: string, description: "Empty when the timer is not scheduled to run again, which is a real state." }
+                  last: { type: string }
+                  activates: { type: string }
+            failed:
+              type: array
+              items: { type: string }
+        backup_tools:
+          type: array
+          description: "Backup tools present on the host. Only that: the probe can see a binary, and claiming when it last ran would be a guess about somebody's data."
+          items: { type: string }
+        logins:
+          type: array
+          items:
+            type: object
+            properties:
+              user: { type: string }
+              from: { type: string, description: "Empty for a console login, which has no origin address." }
+              when: { type: string }
+        failed_logins:
+          type: [integer, "null"]
+          description: "Null where lastb is unavailable. \"Could not look\" and \"nobody tried\" are opposite answers."
         hostname: { type: [string, "null"] }
         os:
           type: object

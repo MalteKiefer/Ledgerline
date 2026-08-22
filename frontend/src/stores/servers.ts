@@ -6,7 +6,22 @@ import { ApiError, api, getToken } from '@spa/api/client';
 export type AuthType = 'key';
 
 export interface ServerDisk { fs: string; mount: string; size_kb: number; used_kb: number; avail_kb: number; used_pct: number }
-export interface ServerContainer { name: string; status: string }
+export interface ServerContainer { name: string; status: string; image?: string }
+
+/**
+ * What the machine is for, from its services and its container images.
+ *
+ * Both sources on purpose: on a modern host the services are containers, and
+ * reading only systemd units would call a machine running Postfix, Dovecot and
+ * Rspamd in containers "just a Docker host" — true, and useless.
+ */
+export interface ServerRole {
+  roles: string[];
+  /** A distribution that is a role in itself: proxmox, truenas, opnsense. */
+  platform: string | null;
+  /** Only what is installed; listing thirty absent services buries the rest. */
+  services: { name: string; installed: boolean; active: boolean; source: string }[];
+}
 
 export interface ServerFacts {
   hostname: string | null;
@@ -58,6 +73,7 @@ export interface ServerFacts {
   arrays: StorageArray[];
   /** Read from /sys/class/hwmon, because lm-sensors is usually not installed. */
   sensors: SensorReading[];
+  role?: ServerRole;
   network: {
     /** The host's default route. Per-interface gateways are on the interface. */
     gateway: string | null;

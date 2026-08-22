@@ -85,7 +85,7 @@ echo "##LL:cpustat"; grep -m1 "^cpu " /proc/stat 2>/dev/null; sleep 1; grep -m1 
 echo "##LL:reboot"; if [ -f /var/run/reboot-required ] || [ -f /run/reboot-required ]; then echo yes; else echo no; fi
 echo "##LL:failed"; systemctl --failed --no-legend --plain 2>/dev/null | head -20
 echo "##LL:ports"; ss -H -ltn 2>/dev/null | head -60
-echo "##LL:containers"; docker ps --format "{{.Names}}|{{.Status}}" 2>/dev/null | head -60
+echo "##LL:containers"; docker ps --format "{{.Names}}|{{.Status}}|{{.Image}}" 2>/dev/null | head -60
 echo "##LL:updates"; apt-get -s -o Debug::NoLocking=1 upgrade 2>/dev/null | grep -c "^Inst " || apk version -l "<" 2>/dev/null | tail -n +2 | wc -l
 echo "##LL:ip"; ip -o -4 addr show scope global 2>/dev/null | awk \'{print $2" "$4}\' | head -10
 echo "##LL:virt"; systemd-detect-virt 2>/dev/null
@@ -99,6 +99,8 @@ echo "##LL:mdstat"; cat /proc/mdstat 2>/dev/null | head -20
 echo "##LL:timers"; systemctl show "*.timer" --property=Id --property=Unit --property=NextElapseUSecRealtime --property=LastTriggerUSec --property=ActiveState 2>/dev/null | head -160
 echo "##LL:timersfailed"; systemctl list-units --type=timer --state=failed --no-legend --no-pager 2>/dev/null | head -10
 echo "##LL:backup"; for b in restic borg borgmatic rsnapshot duplicity rclone kopia; do command -v "$b" >/dev/null 2>&1 && echo "$b"; done
+echo "##LL:units"; systemctl show postfix dovecot rspamd opendkim exim4 nginx apache2 caddy traefik haproxy postgresql mariadb mysql redis-server valkey mongod docker containerd k3s kubelet libvirtd smbd nfs-server bind9 unbound named pdns squid vaultwarden gitea forgejo jellyfin plex --property=Id --property=LoadState --property=ActiveState 2>/dev/null | head -200
+echo "##LL:platform"; command -v pveversion >/dev/null 2>&1 && pveversion 2>/dev/null | head -1; [ -f /etc/pve/.version ] && echo "pve-cluster"; command -v truenas-admin >/dev/null 2>&1 && echo truenas; [ -d /etc/opnsense ] && echo opnsense; command -v omv-confdbadm >/dev/null 2>&1 && echo openmediavault
 echo "##LL:logins"; command -v last >/dev/null 2>&1 && (last -n 8 -w -F 2>/dev/null | head -8) || echo "__absent__"
 echo "##LL:badlogins"; command -v lastb >/dev/null 2>&1 && (lastb -n 40 2>/dev/null | wc -l) || echo "__absent__"
 echo "##LL:zpool"; command -v zpool >/dev/null 2>&1 && (zpool list -H -o name,size,alloc,free,health,frag 2>&1 | head -8) || echo "__absent__"

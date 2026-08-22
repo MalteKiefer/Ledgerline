@@ -56,6 +56,7 @@ final class FactParser
             'timers' => $this->timers($s['timers'] ?? '', $s['timersfailed'] ?? ''),
             'backup_tools' => $this->lines($s['backup'] ?? ''),
             'logins' => $this->logins($s['logins'] ?? ''),
+            'role' => (new RoleDetector)->detect($s['units'] ?? '', $s['platform'] ?? '', $this->containers($s['containers'] ?? '')),
             'failed_logins' => $this->failedLogins($s['badlogins'] ?? ''),
             'network' => $this->network($s['gateway'] ?? '', $s['dns'] ?? '', $s['netstat'] ?? '', $s),
         ];
@@ -1017,9 +1018,15 @@ final class FactParser
             if (! str_contains($line, '|')) {
                 continue;
             }
-            [$name, $status] = explode('|', trim($line), 2);
-            if (trim($name) !== '') {
-                $out[] = ['name' => trim($name), 'status' => trim($status)];
+            $parts = explode('|', trim($line), 3);
+            if (trim($parts[0]) !== '') {
+                $out[] = [
+                    'name' => trim($parts[0]),
+                    'status' => trim($parts[1] ?? ''),
+                    // The image is what says what a container is; the name is
+                    // whatever somebody typed in a compose file.
+                    'image' => trim($parts[2] ?? ''),
+                ];
             }
         }
 

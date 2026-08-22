@@ -78,7 +78,13 @@ class FactParserTest extends TestCase
         $this->assertTrue($f['reboot_required']);
         $this->assertSame(['nginx.service'], $f['failed_units']);
         $this->assertSame(['0.0.0.0:80', '0.0.0.0:22'], $f['ports']);
-        $this->assertSame([['name' => 'ledgerline-app-1', 'status' => 'Up 3 days (healthy)']], $f['containers']);
+        // The image comes through empty here because this fixture predates the
+        // column; what matters is that the key exists, since the image is what
+        // tells the role detector what a container actually is.
+        $this->assertSame(
+            [['name' => 'ledgerline-app-1', 'status' => 'Up 3 days (healthy)', 'image' => '']],
+            $f['containers'],
+        );
         $this->assertSame(7, $f['updates']);
     }
 
