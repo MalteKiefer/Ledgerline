@@ -66,6 +66,9 @@ class FilesController extends Controller
     private const THUMB_MAX_PIXELS = 100 * 1000 * 1000;
 
     /** ZIP export caps: abort 413 over either the file-count or cumulative-byte budget. */
+    /** A folder copy is one click; without a ceiling it can be forty gigabytes of one. */
+    private const COPY_MAX_FILES = 5000;
+
     private const ZIP_MAX_FILES = 5000;
 
     private const ZIP_MAX_BYTES = 2 * 1024 * 1024 * 1024;
@@ -353,6 +356,110 @@ class FilesController extends Controller
         });
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Copy a folder with everything under it.
+     *
+     * Moving a folder has always worked; copying one silently skipped it,
+     * because only files had a copy endpoint. The pair read as arbitrary.
+     */
+    public function copyFolder(Request $request, FileFolder $folder): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'parent_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+        ]);
+        $parentId = $request->filled('parent_id') ? $request->integer('parent_id') : $folder->parent_id;
+
+        // Copying a folder into itself would walk its own output forever.
+        if ($parentId !== null && $this->wouldCycle($folder->id, $parentId)) {
+            return response()->json(['error' => 'cycle'], 422);
+        }
+
+        $folderIds = $this->descendantFolderIds($folder->id);
+        $files = FileEntry::query()->whereIn('file_folder_id', $folderIds)->get();
+
+        if ($files->count() > self::COPY_MAX_FILES) {
+            return response()->json(['error' => 'too_many_files', 'max' => self::COPY_MAX_FILES], 413);
+        }
+
+        // Check the whole subtree against the quota before copying a single
+        // byte: a per-file check leaves half a folder behind when it trips.
+        $bytes = 0;
+        foreach ($files as $file) {
+            $bytes += (int) $file->size;
+        }
+        if ($over = $this->overQuota($uid, $bytes)) {
+            return $over;
+        }
+
+        $folders = FileFolder::query()->whereIn('id', $folderIds)->get();
+
+        /** @var list<string> $written */
+        $written = [];
+        try {
+            // Blobs first, outside the transaction: a rollback cannot unwrite a
+            // file, so the paths are collected and removed by hand on failure.
+            /** @var array<int,string> $blobFor */
+            $blobFor = [];
+            foreach ($files as $file) {
+                $src = $file->storage_path;
+                if (! is_string($src) || ! str_starts_with($src, 'files/') || ! $this->fs()->exists($src)) {
+                    continue;
+                }
+                $path = 'files/'.Str::uuid()->toString();
+                $this->fs()->copy($src, $path);
+                $written[] = $path;
+                $blobFor[(int) $file->id] = $path;
+            }
+
+            $root = DB::transaction(function () use ($folder, $folders, $files, $parentId, $blobFor): FileFolder {
+                // Old folder id to new, so children hang off the copies rather
+                // than the originals they were cloned from.
+                $map = [];
+                foreach ($folders as $src) {
+                    $copy = new FileFolder;
+                    $copy->fill([
+                        'name' => (int) $src->id === (int) $folder->id ? $this->copyName((string) $src->name) : (string) $src->name,
+                        'parent_id' => null,
+                    ]);
+                    $copy->save();
+                    $map[(int) $src->id] = $copy;
+                }
+                foreach ($folders as $src) {
+                    $copy = $map[(int) $src->id];
+                    $copy->parent_id = (int) $src->id === (int) $folder->id
+                        ? $parentId
+                        : ($map[(int) $src->parent_id]->id ?? $parentId);
+                    $copy->save();
+                }
+                foreach ($files as $file) {
+                    $path = $blobFor[(int) $file->id] ?? null;
+                    if ($path === null) {
+                        continue;
+                    }
+                    $this->persistFile(
+                        name: (string) $file->name,
+                        folderId: $map[(int) $file->file_folder_id]->id ?? null,
+                        path: $path,
+                        size: (int) $file->size,
+                        mime: $file->mime,
+                        sha: $file->sha256,
+                    );
+                }
+
+                return $map[(int) $folder->id];
+            });
+        } catch (\Throwable $e) {
+            foreach ($written as $path) {
+                $this->fs()->delete($path);
+            }
+
+            throw $e;
+        }
+
+        return response()->json(['folder' => $root->fresh()], 201);
     }
 
     /**

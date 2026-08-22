@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.715.0
+  version: 1.716.0
   license:
     name: Proprietary
   description: >
@@ -9476,6 +9476,38 @@ paths:
         "200": { description: Trashed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /files/folders/{folder}/copy:
+    post:
+      tags: [Files]
+      operationId: filesCopyFolder
+      summary: Copy a folder with everything under it
+      description: >
+        Moving a folder has always worked; copying one silently skipped it,
+        because only files had a copy endpoint. The subtree is checked against
+        the quota as a whole before a single byte is copied, so a folder that
+        does not fit is refused rather than half copied, and the file count is
+        capped because a folder copy is one click. Copying a folder into its own
+        descendant is refused (422 cycle). The root of the copy gets the
+        "(copy)" suffix; everything below keeps its name. Throttled 120/min.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: folder, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent_id:
+                  type: [integer, "null"]
+                  description: "Destination folder; omitted means beside the original."
+      responses:
+        "201": { description: "Copied; the new root folder.", content: { application/json: { schema: { type: object, properties: { folder: { $ref: "#/components/schemas/FileFolder" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Too many files in the subtree, or the quota would be exceeded.", content: { application/json: { schema: { type: object, properties: { error: { type: string }, max: { type: integer } } } } } }
+        "422": { description: "Cycle: the destination is inside the folder being copied.", content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [cycle] } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /files/folders/{folder}/move:
     post:
       tags: [Files]

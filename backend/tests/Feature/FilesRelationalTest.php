@@ -143,6 +143,62 @@ class FilesRelationalTest extends TestCase
         $this->assertSame(2, FileEntry::query()->count()); // original + copy
     }
 
+    public function test_copy_folder_duplicates_the_whole_subtree(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $src = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Project'])->json('folder.id');
+        $sub = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Notes', 'parent_id' => $src])->json('folder.id');
+        $dest = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Archive'])->json('folder.id');
+
+        $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('top.txt', 'top'), 'file_folder_id' => $src])->assertCreated();
+        $deep = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('deep.txt', 'deep'), 'file_folder_id' => $sub])->json('file.id');
+        $deepPath = FileEntry::findOrFail($deep)->storage_path;
+
+        $copyId = (int) $this->postJson(route('files.rel.folders.copy', $src), ['parent_id' => $dest])
+            ->assertCreated()->json('folder.id');
+
+        $copy = FileFolder::findOrFail($copyId);
+        $this->assertSame('Project (copy)', $copy->name);
+        $this->assertSame($dest, $copy->parent_id);
+
+        // The child folder hangs off the copy, not off the original it was
+        // cloned from -- getting that wrong is the whole difficulty here.
+        $subCopy = FileFolder::query()->where('parent_id', $copyId)->firstOrFail();
+        $this->assertSame('Notes', $subCopy->name);
+
+        $deepCopy = FileEntry::query()->where('file_folder_id', $subCopy->id)->firstOrFail();
+        $this->assertSame('deep.txt', $deepCopy->name);
+        $this->assertNotSame($deepPath, $deepCopy->storage_path);
+        Storage::disk(config('files.disk'))->assertExists($deepCopy->storage_path);
+
+        // Originals untouched, copies added: 3 folders + 2 files become
+        // 5 folders + 4 files.
+        $this->assertSame(5, FileFolder::query()->count());
+        $this->assertSame(4, FileEntry::query()->count());
+    }
+
+    public function test_copy_folder_refuses_to_copy_into_itself(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $src = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Project'])->json('folder.id');
+        $sub = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Notes', 'parent_id' => $src])->json('folder.id');
+
+        // Copying a folder into its own descendant would walk its own output.
+        $this->postJson(route('files.rel.folders.copy', $src), ['parent_id' => $sub])
+            ->assertStatus(422)->assertJsonPath('error', 'cycle');
+
+        $this->assertSame(2, FileFolder::query()->count());
+    }
+
+    public function test_copy_folder_is_owner_scoped(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $foreign = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Theirs'])->json('folder.id');
+
+        $this->actingAs(User::factory()->create());
+        $this->postJson(route('files.rel.folders.copy', $foreign))->assertNotFound();
+    }
+
     public function test_trash_restore_force_removes_bytes(): void
     {
         $this->actingAs(User::factory()->create());

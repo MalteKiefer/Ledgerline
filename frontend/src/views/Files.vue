@@ -1175,7 +1175,7 @@
           <button v-if="view==='files'" :class="ctxItemCls" @click="ctxRun(() => clipFrom('cut', ctxMenu.row as Row))">
             <Icon name="content_cut" :size="18" />{{ t('files.cut') }}
           </button>
-          <button v-if="view==='files' && !ctxMenu.row._folder" :class="ctxItemCls" @click="ctxRun(() => clipFrom('copy', ctxMenu.row as Row))">
+          <button v-if="view==='files'" :class="ctxItemCls" @click="ctxRun(() => clipFrom('copy', ctxMenu.row as Row))">
             <Icon name="content_copy" :size="18" />{{ t('files.copy') }}
           </button>
           <button v-if="canPaste" :class="ctxItemCls" @click="ctxRun(paste)">
@@ -1866,12 +1866,12 @@ async function paste() {
       } catch { failed++; }
     }
     for (const id of c.folders) {
-      // Folders have no copy endpoint; a cut moves them, a copy skips them
-      // rather than pretending to have duplicated a subtree.
-      if (c.mode !== 'cut') { failed++; continue; }
       const fo = (s.folders as FileFolder[]).find((x) => x.id === id);
       if (!fo) continue;
-      try { await s.moveFolder(fo, target); } catch { failed++; }
+      try {
+        if (c.mode === 'copy') await s.copyFolder(fo, target);
+        else await s.moveFolder(fo, target);
+      } catch { failed++; } // the server guards cycles and the quota (422/413)
     }
     if (c.mode === 'cut') clip.value = null;
     await s.load();
@@ -2287,7 +2287,7 @@ async function bulkTrash() {
 
 async function doBulk(target: number | null, copy: boolean) {
   const files = selectedFiles.value;
-  const folders = copy ? [] : selectedFolderObjs.value; // no folder-copy endpoint → move only
+  const folders = selectedFolderObjs.value;
   if (!files.length && !folders.length) return;
   const existing = entriesIn(target);
   conflictAll.value = false;
@@ -2305,8 +2305,11 @@ async function doBulk(target: number | null, copy: boolean) {
     }
     for (const fo of folders) {
       uploadState.value.name = fo.name;
-      if (fo.parent_id === target) { uploadState.value.done++; continue; } // already there
-      try { await s.moveFolder(fo, target); } catch { failed++; } // server guards cycles (422)
+      if (fo.parent_id === target && !copy) { uploadState.value.done++; continue; } // already there (move no-op)
+      try {
+        if (copy) await s.copyFolder(fo, target);
+        else await s.moveFolder(fo, target);
+      } catch { failed++; } // server guards cycles and the quota (422/413)
       uploadState.value.done++;
     }
     clearSelection();

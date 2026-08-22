@@ -143,6 +143,7 @@ export const useFilesStore = defineStore('files', () => {
   const forceFile = (id: number) => api.delete(`/api/v1/files/entries/${id}/force`);
   const renameFolder = (fo: FileFolder, name: string) => api.put(`/api/v1/files/folders/${fo.id}`, { name, version: fo.version });
   const moveFolder = (fo: FileFolder, parent: number | null) => api.post(`/api/v1/files/folders/${fo.id}/move`, { parent_id: parent });
+  const copyFolder = (fo: FileFolder, parent: number | null) => api.post<{ folder: FileFolder }>(`/api/v1/files/folders/${fo.id}/copy`, { parent_id: parent });
   const trashFolder = (fo: FileFolder) => api.delete(`/api/v1/files/folders/${fo.id}`);
   const restoreFolder = (id: number) => api.post(`/api/v1/files/folders/${id}/restore`);
   const forceFolder = (id: number) => api.delete(`/api/v1/files/folders/${id}/force`);
@@ -293,7 +294,7 @@ export const useFilesStore = defineStore('files', () => {
   return {
     folders, files, labels, usage,
     load, loadTrash, createFolder, createFolderId, upload, replaceContent, rename, move, copy, toggleFav,
-    trashFile, restoreFile, forceFile, renameFolder, moveFolder, trashFolder, restoreFolder, forceFolder, emptyTrash, search,
+    trashFile, restoreFile, forceFile, renameFolder, moveFolder, copyFolder, trashFolder, restoreFolder, forceFolder, emptyTrash, search,
     updateEntry, createLabel, updateLabel, deleteLabel, setFileLabels,
     versions, restoreVersion, versionRawUrl,
     loadUploadLinks, createUploadLink, deleteUploadLink, uploadLinkUrl, uploadLinkMeta, uploadLinkSend,
