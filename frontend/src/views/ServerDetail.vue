@@ -173,7 +173,7 @@
     </template>
 
     <template v-else-if="tab === 'services'">
-      <ServerServices :server-id="server.id" />
+      <ServerServices :server-id="server.id" :facts="facts" />
     </template>
 
 

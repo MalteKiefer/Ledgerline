@@ -1,5 +1,76 @@
 <template>
   <div class="space-y-6">
+    <!-- What the machine is judged by. A mail server lives or dies by its
+         queue, a Proxmox host by its guests — neither is visible in a list of
+         systemd units, which is what everything below this is. -->
+    <Card v-if="hasRoleDetail" :body-class="'p-4'">
+      <div class="mb-3 flex items-center justify-between gap-2">
+        <h2 class="text-sm font-semibold">{{ t('servers.role_details') }}</h2>
+        <Btn variant="ghost" size="sm" icon="refresh" :disabled="roleBusy" @click="loadRoleDetails">{{ t('servers.refresh') }}</Btn>
+      </div>
+
+      <div v-if="detail?.mail" class="mb-4">
+        <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.role_mail') }}</h3>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <div class="font-mono text-xl font-bold tabular-nums" :class="(detail.mail.queued ?? 0) > 50 ? 'text-amber-600 dark:text-amber-400' : ''">
+              {{ detail.mail.queued === null ? '—' : detail.mail.queued }}
+            </div>
+            <div class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.mail_queued') }}</div>
+          </div>
+          <div v-if="detail.mail.rspamd">
+            <div class="font-mono text-xl font-bold tabular-nums">{{ detail.mail.rspamd.scanned ?? 0 }}</div>
+            <div class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.mail_scanned') }}</div>
+          </div>
+          <div v-if="detail.mail.rspamd">
+            <div class="font-mono text-xl font-bold tabular-nums">{{ spamShare }}</div>
+            <div class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.mail_spam') }}</div>
+          </div>
+          <div>
+            <div class="font-mono text-xl font-bold tabular-nums">{{ detail.mail.sessions.length }}</div>
+            <div class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.mail_sessions') }}</div>
+          </div>
+        </div>
+        <div v-if="detail.mail.sessions.length" class="mt-2 flex flex-wrap gap-1.5">
+          <span v-for="(sn, i) in detail.mail.sessions" :key="`${sn.user}-${i}`" class="rounded-full bg-black/[0.04] px-2 py-0.5 font-mono text-[0.7rem] dark:bg-white/[0.06]">
+            {{ sn.user }}<span class="text-[var(--ll-muted)]"> · {{ sn.service }}</span>
+          </span>
+        </div>
+      </div>
+
+      <div v-if="detail?.guests?.length" class="mb-4">
+        <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.guests') }}</h3>
+        <div v-for="g in detail.guests" :key="`${g.kind}-${g.id}`" class="flex items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+          <Badge tone="gray">{{ g.kind }}</Badge>
+          <span class="font-mono text-[var(--ll-muted)]">{{ g.id }}</span>
+          <span class="font-medium">{{ g.name }}</span>
+          <Badge class="ml-auto" :tone="g.status === 'running' ? 'success' : 'gray'">{{ g.status }}</Badge>
+        </div>
+      </div>
+
+      <div v-if="detail?.databases?.length" class="mb-4">
+        <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.role_database') }}</h3>
+        <div v-for="(db, i) in detail.databases" :key="`${db.engine}-${db.name}-${i}`" class="flex items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+          <Badge tone="gray">{{ db.engine }}</Badge>
+          <span class="truncate font-mono">{{ db.name }}</span>
+          <span class="ml-auto shrink-0 tabular-nums text-[var(--ll-muted)]">
+            <template v-if="db.size_b !== null">{{ formatGib(db.size_b / 1024) }}</template>
+            <template v-else-if="db.used">{{ db.used }}</template>
+            <template v-if="db.connections !== null"> · {{ t('servers.db_connections', { n: String(db.connections) }) }}</template>
+          </span>
+        </div>
+      </div>
+
+      <div v-if="detail?.sites?.length">
+        <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.sites') }}</h3>
+        <div class="flex flex-wrap gap-1.5">
+          <span v-for="site in detail.sites" :key="site" class="rounded-full bg-black/[0.04] px-2 py-0.5 font-mono text-[0.7rem] dark:bg-white/[0.06]">{{ site }}</span>
+        </div>
+      </div>
+
+      <p v-if="roleBusy && !detail" class="text-sm text-[var(--ll-muted)]">{{ t('common.loading') }}</p>
+    </Card>
+
     <Card :body-class="'p-4'">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div class="flex flex-wrap items-center gap-2">
@@ -52,12 +123,12 @@
 import { computed, onMounted, ref } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Badge, Btn, Card, Select } from '@spa/ui';
-import { useServersStore, type ProcessRow, type ServiceUnit } from '@spa/stores/servers';
+import { useServersStore, type ProcessRow, type RoleDetails, type ServerFacts, type ServiceUnit } from '@spa/stores/servers';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { formatGib } from '@spa/lib/server-facts';
 
-const props = defineProps<{ serverId: number }>();
+const props = defineProps<{ serverId: number; facts?: ServerFacts | null }>();
 
 const s = useServersStore();
 const { success, error } = useToast();
@@ -77,6 +148,39 @@ const services = ref<ServiceUnit[]>([]);
 const processes = ref<ProcessRow[]>([]);
 const svcQuery = ref('');
 const procQuery = ref('');
+const detail = ref<RoleDetails | null>(null);
+const roleBusy = ref(false);
+
+/**
+ * Only ask when there is something to ask about. A host with no recognised
+ * role would spend an SSH round trip to learn nothing.
+ */
+const hasRoleDetail = computed(() => {
+  const roles = props.facts?.role?.roles ?? [];
+
+  return roles.some((r) => ['mail', 'virtualisation', 'database', 'web'].includes(r));
+});
+
+/** Share of scanned mail that was spam, which is the figure people quote. */
+const spamShare = computed(() => {
+  const st = detail.value?.mail?.rspamd;
+  if (!st || !st.scanned) return '—';
+
+  return `${Math.round(((st.treated_as_spam ?? 0) / st.scanned) * 1000) / 10}%`;
+});
+
+async function loadRoleDetails() {
+  if (!hasRoleDetail.value) return;
+  roleBusy.value = true;
+  try {
+    detail.value = await s.roleDetails(props.serverId);
+  } catch {
+    detail.value = null;
+  } finally {
+    roleBusy.value = false;
+  }
+}
+
 const svcBusy = ref(false);
 const procBusy = ref(false);
 const svcError = ref('');
@@ -218,5 +322,8 @@ async function doSignal(p: ProcessRow, signal: string) {
   }
 }
 
-onMounted(loadServices);
+onMounted(() => {
+  void loadServices();
+  void loadRoleDetails();
+});
 </script>

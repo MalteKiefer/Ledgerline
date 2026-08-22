@@ -9,6 +9,7 @@ use App\Models\AuditLog;
 use App\Models\Server;
 use App\Services\Servers\DiskUsageInspector;
 use App\Services\Servers\PackageManager;
+use App\Services\Servers\RoleInspector;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -24,7 +25,30 @@ class ServerMaintenanceController extends Controller
     public function __construct(
         private readonly DiskUsageInspector $disk,
         private readonly PackageManager $packages,
+        private readonly RoleInspector $roles,
     ) {}
+
+    /**
+     * The figures that only matter for what this machine is.
+     *
+     * The roles come from the stored snapshot, never from the request: what
+     * gets asked of the host is decided here, not by the caller.
+     */
+    public function roleDetails(Request $request, Server $server): JsonResponse
+    {
+        $this->requireUser($request);
+
+        $facts = $server->latestFact?->facts ?? [];
+        $role = is_array($facts['role'] ?? null) ? $facts['role'] : [];
+        $roles = [];
+        foreach (is_array($role['roles'] ?? null) ? $role['roles'] : [] as $entry) {
+            if (is_string($entry)) {
+                $roles[] = $entry;
+            }
+        }
+
+        return response()->json($this->roles->inspect($server, $roles))->header('Cache-Control', 'no-store');
+    }
 
     /** The largest directories under a path. */
     public function diskUsage(Request $request, Server $server): JsonResponse
