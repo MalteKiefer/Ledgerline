@@ -396,12 +396,26 @@ final class FactParser
             $name = $kv['NAME'];
             $attrs = $smartByDevice['/dev/'.$name] ?? null;
 
+            // A virtio or QEMU disk is not a drive: the physical one belongs
+            // to the hypervisor, and the guest cannot see it however the tools
+            // are installed. Saying "unreadable" there points somebody at a
+            // problem that does not exist.
+            $virtual = str_starts_with($name, 'vd')
+                || stripos($kv['MODEL'] ?? '', 'QEMU') !== false
+                || stripos($kv['MODEL'] ?? '', 'VBOX') !== false
+                || stripos($kv['MODEL'] ?? '', 'Virtual') !== false;
+
+            $health = $attrs['health'] ?? 'unknown';
+            if ($virtual && in_array($health, ['unreadable', 'unsupported', 'unknown'], true)) {
+                $health = 'virtual';
+            }
+
             $out[] = [
                 'name' => $name,
                 'size_b' => (int) ($kv['SIZE'] ?? '0'),
                 'rotational' => ($kv['ROTA'] ?? '') === '1',
                 'model' => $kv['MODEL'] ?? '',
-                'health' => $attrs['health'] ?? 'unknown',
+                'health' => $health,
                 'temp_c' => $attrs['temp_c'] ?? null,
                 'hours' => $attrs['hours'] ?? null,
                 'reallocated' => $attrs['reallocated'] ?? null,
@@ -492,6 +506,16 @@ final class FactParser
                 || stripos($line, 'Unable to detect device type') !== false
                 || stripos($line, 'Operation not supported') !== false) {
                 $out['health'] = 'unreadable';
+
+                continue;
+            }
+            // No drive at all: this is a guest looking at a disk the hypervisor
+            // made up. There is nothing to read, which is not the same as
+            // something we failed to read — and calling it "unreadable" reads
+            // like a fault where there is none.
+            if (stripos($line, 'device does not support SMART') !== false
+                || stripos($line, 'SMART support is: Unavailable') !== false) {
+                $out['health'] = 'unsupported';
 
                 continue;
             }
