@@ -7,7 +7,9 @@ namespace Tests\Feature;
 use App\Models\AuditLog;
 use App\Models\Server;
 use App\Models\User;
+use App\Services\Servers\FilePermissions;
 use App\Services\Servers\ServerProbe;
+use App\Services\Servers\ServerTarget;
 use App\Services\Servers\SftpBrowser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -205,7 +207,9 @@ class ServerFileBrowserTest extends TestCase
             ->getJson("/api/v1/servers/{$server->id}/files/read?path=/etc/motd")
             ->assertOk()
             ->assertJsonPath('ok', true)
-            ->assertJsonPath('content', "line one\nline two\n");
+            // Base64 on the wire: the framework trims request strings, which
+            // would otherwise eat the trailing newline of every file saved.
+            ->assertJsonPath('content', base64_encode("line one\nline two\n"));
     }
 
     #[Test]
@@ -219,7 +223,7 @@ class ServerFileBrowserTest extends TestCase
 
         $this->actingAs($user)
             ->withHeader('X-File-Grant', $token)
-            ->postJson("/api/v1/servers/{$server->id}/files/write", ['path' => '/etc/motd', 'content' => "hello\n"])
+            ->postJson("/api/v1/servers/{$server->id}/files/write", ['path' => '/etc/motd', 'content' => base64_encode("hello\n")])
             ->assertOk()
             ->assertJsonPath('ok', true);
 
@@ -245,6 +249,29 @@ class ServerFileBrowserTest extends TestCase
         // The staging name is cleaned up rather than left as litter next to a
         // file the operator will look at again.
         $this->assertStringContainsString('rm "/etc/motd.ll-upload-', end($sftp->sent));
+    }
+
+    #[Test]
+    public function a_trailing_newline_survives_a_save(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
+        $server = $this->server($user);
+        $sftp = $this->recorder();
+        $sftp->payload = 'config line
+';
+
+        $token = $this->unlock($user, $server);
+
+        // The exact byte the framework's string trimming would have eaten, and
+        // the one whose absence breaks a config file the next tool reads.
+        $read = $this->actingAs($user)
+            ->withHeader('X-File-Grant', $token)
+            ->getJson("/api/v1/servers/{$server->id}/files/read?path=/etc/x.conf")
+            ->assertOk()
+            ->json('content');
+
+        $this->assertSame('config line
+', base64_decode((string) $read, true));
     }
 
     #[Test]
@@ -287,12 +314,157 @@ class ServerFileBrowserTest extends TestCase
         $this->assertSame(1, AuditLog::query()->where('action', 'server.file_mutated')->count());
     }
 
+    #[Test]
+    public function permissions_report_missing_acl_tools_as_unreadable(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
+        $server = $this->server($user);
+        $this->recorder();
+        $this->swapPermissions('##LL:stat
+644 root root 0 0 regular file
+##LL:acl
+__absent__
+##LL:users
+root
+www-data
+##LL:groups
+root
+##LL:end
+');
+
+        $token = $this->unlock($user, $server);
+
+        $body = $this->actingAs($user)
+            ->withHeader('X-File-Grant', $token)
+            ->getJson("/api/v1/servers/{$server->id}/files/permissions?path=/etc/motd")
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('0644', $body['mode']);
+        $this->assertSame('root', $body['owner']);
+        // A host without the acl package is not a host without access control:
+        // saying "no ACLs" here would be the same lie as calling an unreadable
+        // firewall an empty one.
+        $this->assertFalse($body['acl_supported']);
+        $this->assertSame([], $body['acl']);
+        $this->assertSame(['root', 'www-data'], $body['users']);
+    }
+
+    #[Test]
+    public function acl_entries_are_reported_when_the_tools_exist(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
+        $server = $this->server($user);
+        $this->recorder();
+        $this->swapPermissions('##LL:stat
+2775 root staff 0 50 directory
+##LL:acl
+user::rwx
+user:alice:r-x
+group::r-x
+mask::r-x
+other::r-x
+##LL:users
+root
+##LL:groups
+staff
+##LL:end
+');
+
+        $token = $this->unlock($user, $server);
+
+        $body = $this->actingAs($user)
+            ->withHeader('X-File-Grant', $token)
+            ->getJson("/api/v1/servers/{$server->id}/files/permissions?path=/srv")
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('2775', $body['mode'], 'the setgid bit belongs in the mode, not silently dropped');
+        $this->assertTrue($body['acl_supported']);
+        $this->assertContains('user:alice:r-x', $body['acl']);
+    }
+
+    #[Test]
+    public function an_account_name_that_is_not_one_never_reaches_the_host(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
+        $server = $this->server($user);
+        $this->recorder();
+        $perms = $this->swapPermissions('');
+
+        $token = $this->unlock($user, $server);
+
+        $this->actingAs($user)
+            ->withHeader('X-File-Grant', $token)
+            ->postJson("/api/v1/servers/{$server->id}/files/permissions", [
+                'path' => '/etc/motd', 'owner' => 'root; rm -rf /',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'invalid_owner');
+
+        $this->actingAs($user)
+            ->withHeader('X-File-Grant', $token)
+            ->postJson("/api/v1/servers/{$server->id}/files/permissions", [
+                'path' => '/etc/motd', 'acl' => ['u:alice:rwx; reboot'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'invalid_acl');
+
+        $this->assertNull($perms->script);
+    }
+
+    #[Test]
+    public function a_permission_change_is_audited(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
+        $server = $this->server($user);
+        $this->recorder();
+        $perms = $this->swapPermissions('##LL:rc=0
+');
+
+        $token = $this->unlock($user, $server);
+
+        $this->actingAs($user)
+            ->withHeader('X-File-Grant', $token)
+            ->postJson("/api/v1/servers/{$server->id}/files/permissions", [
+                'path' => '/etc/motd', 'mode' => '4755', 'owner' => 'root', 'group' => 'staff',
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $script = (string) $perms->script;
+        $this->assertStringContainsString("chmod 4755 -- '/etc/motd'", $script);
+        $this->assertStringContainsString("chown 'root:staff' -- '/etc/motd'", $script);
+        $this->assertSame(1, AuditLog::query()->where('action', 'server.file_permissions')->count());
+    }
+
     private function unlock(User $user, Server $server): string
     {
         return (string) $this->actingAs($user)
             ->postJson("/api/v1/servers/{$server->id}/files/unlock", ['password' => 'correct-horse-battery'])
             ->assertOk()
             ->json('token');
+    }
+
+    private function swapPermissions(string $output): ServerProbe
+    {
+        $probe = new class($output) extends ServerProbe
+        {
+            public ?string $script = null;
+
+            public function __construct(private string $output) {}
+
+            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false): array
+            {
+                $this->script = $script;
+
+                return ['ok' => true, 'out' => $this->output, 'err' => '', 'exit' => 0];
+            }
+        };
+
+        $this->swap(FilePermissions::class, new FilePermissions($probe));
+
+        return $probe;
     }
 
     private function recorder(): RecordingSftpBrowser

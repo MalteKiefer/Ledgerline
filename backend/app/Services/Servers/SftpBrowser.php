@@ -102,6 +102,53 @@ class SftpBrowser
     }
 
     /**
+     * Fetch a directory as a compressed tar, built on the host.
+     *
+     * There is no sensible way to hand a browser a tree, and one archive is one
+     * transfer rather than one per file. Built through the shell path rather
+     * than SFTP because SFTP has no notion of "archive this" — and the tar is
+     * written to a temporary name on the target, fetched, then removed, so a
+     * failure does not leave a copy of somebody's directory lying around.
+     *
+     * @return array{ok:bool,file:DiskTempFile|null,error:string|null}
+     */
+    public function downloadDirectory(Server $server, string $path): array
+    {
+        $path = self::normalise($path);
+        if ($path === null || $path === '/') {
+            // Refusing / is not squeamishness: tarring a root filesystem over a
+            // web request is a way to take the machine down, not a feature.
+            return ['ok' => false, 'file' => null, 'error' => 'invalid_path'];
+        }
+
+        $remote = '/tmp/ll-dl-'.bin2hex(random_bytes(6)).'.tar.gz';
+        $name = basename($path);
+        $parent = dirname($path);
+
+        $script = 'tar -czf '.self::shq($remote).' -C '.self::shq($parent).' -- '.self::shq($name).' 2>&1; echo "##LL:rc=$?"';
+        $made = $this->probe->exec(ServerTarget::fromServer($server), (string) $server->host_key, $script, interactive: true);
+        if (! $made['ok'] && $made['out'] === '') {
+            return ['ok' => false, 'file' => null, 'error' => 'unreachable'];
+        }
+        if (preg_match('/##LL:rc=(\d+)/', $made['out'], $m) === 1 && $m[1] !== '0') {
+            return ['ok' => false, 'file' => null, 'error' => self::readError($made['out'])];
+        }
+
+        $got = $this->download($server, $remote);
+
+        // Clean up whatever happened: leaving a tar of somebody's directory in
+        // /tmp is litter at best and a disclosure at worst.
+        $this->probe->exec(
+            ServerTarget::fromServer($server),
+            (string) $server->host_key,
+            'rm -f '.self::shq($remote),
+            interactive: true,
+        );
+
+        return $got;
+    }
+
+    /**
      * Read a file as text, for preview or the editor.
      *
      * Refuses anything that is not text rather than handing the browser a
@@ -354,6 +401,18 @@ class SftpBrowser
         }
 
         return '/'.implode('/', $parts);
+    }
+
+    /**
+     * Single-quote for POSIX sh.
+     *
+     * A different dialect from q(): that one quotes for sftp's batch parser,
+     * this one for the shell that runs tar on the target. Mixing them would
+     * be the escapeshellarg mistake again, one layer along.
+     */
+    private static function shq(string $value): string
+    {
+        return "'".str_replace("'", "'\\''", $value)."'";
     }
 
     /**

@@ -357,8 +357,11 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/servers/{server}/files', [ServerFileController::class, 'index'])->whereNumber('server')->middleware('throttle:300,1')->name('api.servers.files.index');
             Route::get('/servers/{server}/files/read', [ServerFileController::class, 'read'])->whereNumber('server')->middleware('throttle:120,1')->name('api.servers.files.read');
             Route::get('/servers/{server}/files/download', [ServerFileController::class, 'download'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.download');
+            Route::get('/servers/{server}/files/download-dir', [ServerFileController::class, 'downloadDirectory'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.files.download-dir');
             Route::post('/servers/{server}/files/write', [ServerFileController::class, 'write'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.write');
             Route::post('/servers/{server}/files/upload', [ServerFileController::class, 'upload'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.files.upload');
+            Route::get('/servers/{server}/files/permissions', [ServerFileController::class, 'permissions'])->whereNumber('server')->middleware('throttle:120,1')->name('api.servers.files.permissions');
+            Route::post('/servers/{server}/files/permissions', [ServerFileController::class, 'setPermissions'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.set-permissions');
             Route::post('/servers/{server}/files/mutate', [ServerFileController::class, 'mutate'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.mutate');
             Route::get('/servers/{server}/bans', [ServerBanController::class, 'index'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.bans');
             Route::post('/servers/{server}/bans', [ServerBanController::class, 'act'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.ban-action');
