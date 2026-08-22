@@ -292,4 +292,6 @@ return [
     'view_source' => 'Quelltext',
     'view_rendered' => 'Gerendert',
     'saved' => 'Gespeichert',
+    'folder_contents' => ':n Dateien · :size',
+    'folder_empty' => 'Leer',
 ];

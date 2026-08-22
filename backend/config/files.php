@@ -44,4 +44,12 @@ return [
     */
     'blob_orphan_grace_hours' => (int) env('FILES_BLOB_ORPHAN_GRACE_HOURS', 24),
 
+    /*
+    | Days a trashed file stays recoverable before `files:prune-trash` removes
+    | it for good. Zero disables pruning, which is the default: a window that
+    | silently deletes something somebody meant to restore is worse than a full
+    | trash, so the operator picks the number.
+    */
+    'trash_retention_days' => (int) env('FILES_TRASH_RETENTION_DAYS', 0),
+
 ];

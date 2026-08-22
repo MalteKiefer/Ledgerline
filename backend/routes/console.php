@@ -59,6 +59,10 @@ Schedule::command('servers:prune-facts')->dailyAt('00:35')->withoutOverlapping()
 // Reachability history grows continuously; the window is what bounds it.
 Schedule::command('servers:prune-checks')->dailyAt('00:40')->withoutOverlapping();
 
+// Trashed files keep occupying the quota until something removes them.
+// A no-op unless files.trash_retention_days is set.
+Schedule::command('files:prune-trash')->dailyAt('00:45')->withoutOverlapping();
+
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();
 
