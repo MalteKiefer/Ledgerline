@@ -215,6 +215,29 @@ class CapacityForecastTest extends TestCase
         $this->assertNotNull($this->disk($forecast, '/data'));
     }
 
+    public function test_a_filesystem_that_has_since_gone_is_not_projected(): void
+    {
+        // A container host churns through overlay mounts. The window of history
+        // remembers them; the machine does not. Projecting one that no longer
+        // exists is noise in a list somebody is scanning for real problems.
+        $server = $this->server();
+        $rows = $this->ramp(60.0, 80.0, 17);
+        $count = count($rows);
+        foreach ($rows as $i => $pct) {
+            $disks = [['mount' => '/', 'used_pct' => $pct]];
+            // Present for everything except the newest handful of runs.
+            if ($i < $count - 3) {
+                $disks[] = ['mount' => '/var/lib/docker/overlay2/abc/merged', 'used_pct' => 70.0 + $i];
+            }
+            $this->fact($server, Carbon::now()->subMinutes((int) round(($count - 1 - $i) * 360)), ['disks' => $disks]);
+        }
+
+        $forecast = (new CapacityForecast)->forServer($server);
+
+        $this->assertNotNull($this->disk($forecast));
+        $this->assertNull($this->disk($forecast, '/var/lib/docker/overlay2/abc/merged'));
+    }
+
     public function test_failed_runs_are_left_out_of_the_series(): void
     {
         // A failed probe records the reason, not a snapshot. If one ever leaked

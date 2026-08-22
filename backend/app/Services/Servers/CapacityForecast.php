@@ -90,8 +90,23 @@ final class CapacityForecast
             }
         }
 
+        // Only what the machine still has. A window of history remembers
+        // filesystems that have since gone - a container host churns through
+        // overlay mounts, and a projection for one that no longer exists is
+        // noise in a list somebody is scanning for real problems.
+        $present = [];
+        $newestFacts = $rows[count($rows) - 1]->facts ?? [];
+        foreach (is_array($newestFacts['disks'] ?? null) ? $newestFacts['disks'] : [] as $d) {
+            if (is_array($d) && is_string($d['mount'] ?? null)) {
+                $present[$d['mount']] = true;
+            }
+        }
+
         $diskOut = [];
         foreach ($byMount as $mount => $series) {
+            if (! isset($present[$mount])) {
+                continue;
+            }
             $projection = $this->project($series);
             if ($projection === null) {
                 continue;
