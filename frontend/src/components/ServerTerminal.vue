@@ -8,7 +8,7 @@
       </div>
       <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('servers.terminal_unlock_intro') }}</p>
       <form @submit.prevent="start">
-        <TextField v-model="password" type="password" :label="t('account.current_password')" autocomplete="current-password" autofocus />
+        <TextField v-model="password" type="password" :label="t('account.password_current')" autocomplete="current-password" autofocus />
         <p v-if="closedNote" class="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">{{ closedNote }}</p>
         <p v-if="error" class="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
         <!-- type=submit: Btn defaults to type=button, so inside a form it looks

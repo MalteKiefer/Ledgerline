@@ -7749,6 +7749,135 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/download-dir:
+    get:
+      tags: [Servers]
+      operationId: serversFilesDownloadDir
+      summary: Download a directory as an archive
+      description: >
+        Tarred on the host and fetched as one transfer, because there is no
+        sensible way to hand a browser a tree and one archive beats one request
+        per file. The archive is written to a temporary name on the target and
+        removed afterwards whatever happens, so a failure does not leave a copy
+        of somebody's directory in /tmp. The filesystem root is refused: tarring
+        it over a web request is a way to take the machine down, not a feature.
+        Needs an unlock grant. Throttled 20/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The archive.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/permissions:
+    get:
+      tags: [Servers]
+      operationId: serversFilesPermissions
+      summary: Read ownership, mode and ACLs
+      description: >
+        Over the shell path rather than SFTP, which can set a numeric owner but
+        knows nothing about names, groups or POSIX ACLs. Also returns the
+        account and group names the host knows, so the interface can offer them
+        rather than ask an operator to remember them. When the acl tools are
+        missing, acl_supported is false and the list is empty - that means the
+        ACLs could not be read, not that there are none, and the interface says
+        so. Needs an unlock grant. Throttled 120/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: What governs access to the path.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  mode: { type: string, description: "Four octal digits, special bits first." }
+                  owner: { type: string }
+                  group: { type: string }
+                  uid: { type: integer }
+                  gid: { type: integer }
+                  type: { type: string }
+                  acl: { type: array, items: { type: string } }
+                  acl_supported: { type: boolean }
+                  users: { type: array, items: { type: string } }
+                  groups: { type: array, items: { type: string } }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Servers]
+      operationId: serversFilesSetPermissions
+      summary: Change mode, ownership or ACLs
+      description: >
+        The mode is validated as three or four octal digits and account names
+        against a narrow pattern, because both reach a command line. Recursion
+        is opt-in and named: chmod -R on the wrong directory ends an afternoon.
+        ACL entries are applied only after mode and ownership landed, so a
+        half-applied change is never reported as a success. Audited with the
+        path named. Needs an unlock grant. Throttled 60/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: { type: string }
+                mode: { type: [string, "null"], description: "Octal, three or four digits." }
+                owner: { type: [string, "null"] }
+                group: { type: [string, "null"] }
+                recursive: { type: boolean }
+                acl:
+                  type: array
+                  items: { type: string, example: "u:alice:rwx" }
+                acl_remove: { type: boolean, description: "Remove the given entries instead of adding them." }
+      responses:
+        "200":
+          description: What the host said.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/files/write:
     post:
       tags: [Servers]

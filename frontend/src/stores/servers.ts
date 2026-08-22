@@ -153,7 +153,23 @@ export interface FileEntry {
 
 export interface FileListing { ok: boolean; path: string; entries: FileEntry[]; error: string | null }
 export interface FileRead { ok: boolean; content: string; binary: boolean; size: number; error: string | null }
-export interface FileResult { ok: boolean; error: string | null }
+export interface FileResult { ok: boolean; error: string | null; output?: string }
+
+export interface FilePermissions {
+  ok: boolean;
+  mode: string;
+  owner: string;
+  group: string;
+  uid: number;
+  gid: number;
+  type: string;
+  acl: string[];
+  /** False means the tools are missing, not that there are no ACLs. */
+  acl_supported: boolean;
+  users: string[];
+  groups: string[];
+  error: string | null;
+}
 
 export interface ServiceUnit { name: string; load: string; active: string; sub: string; description: string }
 
@@ -285,9 +301,33 @@ export const useServersStore = defineStore('servers', () => {
     return api.upload<FileResult>(`/api/v1/servers/${id}/files/upload`, form, { 'X-File-Grant': grant });
   };
 
+  const filesPermissions = (id: number, grant: string, path: string) =>
+    api.get<FilePermissions>(`/api/v1/servers/${id}/files/permissions?path=${encodeURIComponent(path)}`, { 'X-File-Grant': grant });
+
+  const filesSetPermissions = (
+    id: number,
+    grant: string,
+    body: { path: string; mode?: string; owner?: string; group?: string; recursive?: boolean; acl?: string[]; acl_remove?: boolean },
+  ) => api.post<FileResult>(`/api/v1/servers/${id}/files/permissions`, body, { 'X-File-Grant': grant });
+
   /** Downloads go through fetch so the grant can ride in the header. */
   const filesDownload = async (id: number, grant: string, path: string): Promise<Blob> => {
     const res = await fetch(api.url(`/api/v1/servers/${id}/files/download?path=${encodeURIComponent(path)}`), {
+      headers: { Authorization: `Bearer ${getToken() ?? ''}`, 'X-File-Grant': grant },
+    });
+    if (!res.ok) throw new Error(String(res.status));
+
+    return res.blob();
+  };
+
+  /**
+   * A directory as a tar, built on the host.
+   *
+   * There is no sensible way to hand a browser a tree, and building the archive
+   * on the far side means one transfer rather than one per file.
+   */
+  const filesDownloadDir = async (id: number, grant: string, path: string): Promise<Blob> => {
+    const res = await fetch(api.url(`/api/v1/servers/${id}/files/download-dir?path=${encodeURIComponent(path)}`), {
       headers: { Authorization: `Bearer ${getToken() ?? ''}`, 'X-File-Grant': grant },
     });
     if (!res.ok) throw new Error(String(res.status));
@@ -339,5 +379,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });
