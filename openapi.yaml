@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.710.1
+  version: 1.711.0
   license:
     name: Proprietary
   description: >
@@ -8334,6 +8334,128 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/disk-usage:
+    get:
+      tags: [Servers]
+      operationId: serversDiskUsage
+      summary: What is using the space under a path
+      description: >
+        "94 percent full" is half an answer; the other half is which directory
+        to look in, and without it somebody runs du by hand over ssh anyway. On
+        demand rather than in the probe, because du walks the whole tree and has
+        no business doing that every five minutes. Bounded three ways - depth,
+        a hard timeout on both ends, and one filesystem only, since an unbounded
+        du on a host with a network mount is a way to make the machine unhappy
+        while you watch. Throttled 20/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+        - name: depth
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 3, default: 1 }
+      responses:
+        "200":
+          description: The largest directories, biggest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  path: { type: string }
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string }
+                        size_kb: { type: integer }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/updates:
+    get:
+      tags: [Servers]
+      operationId: serversUpdates
+      summary: Which updates are waiting
+      description: >
+        The snapshot counts them; a count decides nothing. Fourteen pending
+        updates might be a kernel and thirteen fonts, or thirteen fonts and one
+        remote hole. The security-relevant ones are separated out and listed
+        first. That flag comes from the origin apt reports in brackets, never
+        from the package name - a package called "security-tools" from an
+        ordinary repository is not a security update. Alpine's output does not
+        say, so nothing there is marked as one rather than guessed at.
+        Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Pending updates.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  kind: { type: string, enum: [apt, apk, none, unknown] }
+                  packages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        current: { type: string }
+                        version: { type: string }
+                        security: { type: boolean }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Servers]
+      operationId: serversUpdatesApply
+      summary: Install the pending updates
+      description: >
+        Queued, never inline: an upgrade takes minutes, and a request that holds
+        a worker for minutes is a mistake this application has already made
+        twice. Answers 202; the outcome arrives as a notification carrying the
+        tail of the host's own output. The command is fixed per package manager
+        and nothing from the request becomes part of it; it never adds a
+        repository, changes a source, or removes a package to satisfy a
+        dependency. Audited before dispatch, so a machine that does not come
+        back still leaves a record that an upgrade was started. Throttled 6/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queued: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/docker:
     get:

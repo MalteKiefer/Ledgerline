@@ -234,7 +234,7 @@ class ServerControlTest extends TestCase
     {
         $probe = new class extends ServerProbe
         {
-            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false): array
+            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false, ?int $timeout = null): array
             {
                 return ['ok' => false, 'out' => '', 'err' => 'closed', 'exit' => 255];
             }
@@ -252,7 +252,7 @@ class ServerControlTest extends TestCase
 
             public function __construct(private string $output) {}
 
-            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false): array
+            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false, ?int $timeout = null): array
             {
                 $this->script = $script;
 

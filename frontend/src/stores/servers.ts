@@ -42,6 +42,16 @@ export interface ServerFacts {
   /** Largest resident processes; memory, not CPU — see the parser for why. */
   processes: { name: string; rss_kb: number }[];
   temp_c: number | null;
+  /**
+   * Scheduled work. We already report failed services; a failed *timer* is
+   * invisible, and that is where backups and certificate renewal live.
+   */
+  timers?: { units: { unit: string; next: string; last: string; activates: string }[]; failed: string[] };
+  /** Backup tools present on the host — the question nobody asks in time. */
+  backup_tools?: string[];
+  logins?: { user: string; from: string; when: string }[];
+  /** Null when lastb is missing: "could not look" is not "nobody tried". */
+  failed_logins?: number | null;
   /** The disks themselves, as opposed to the filesystems on them. */
   storage: StorageDevice[];
   /** Software RAID and ZFS pools. A degraded one still works, until it does not. */
@@ -101,6 +111,23 @@ export interface CapacityForecast {
   samples: number;
   disks: (ForecastLine & { mount: string })[];
   memory: ForecastLine | null;
+}
+
+export interface PendingPackage { name: string; current: string; version: string; security: boolean }
+
+export interface PendingUpdates {
+  ok: boolean;
+  kind: 'apt' | 'apk' | 'none' | 'unknown' | string;
+  /** Security-relevant first; the flag comes from the origin, never the name. */
+  packages: PendingPackage[];
+  error: string | null;
+}
+
+export interface DiskUsage {
+  ok: boolean;
+  path: string;
+  entries: { path: string; size_kb: number }[];
+  error: string | null;
 }
 
 export interface ServerStatus { ok: boolean; error: string | null; collected_at: string; duration_ms: number }
@@ -489,6 +516,14 @@ export const useServersStore = defineStore('servers', () => {
 
   const docker = (id: number) => api.get<DockerState>(`/api/v1/servers/${id}/docker`);
 
+  const updates = (id: number) => api.get<PendingUpdates>(`/api/v1/servers/${id}/updates`);
+
+  /** Queued: the outcome arrives as a notification, not in this response. */
+  const applyUpdates = (id: number) => api.post<{ queued: boolean }>(`/api/v1/servers/${id}/updates`, {});
+
+  const diskUsage = (id: number, path: string, depth = 1) =>
+    api.get<DiskUsage>(`/api/v1/servers/${id}/disk-usage?path=${encodeURIComponent(path)}&depth=${depth}`);
+
   const dockerAction = (id: number, container: string, action: string) =>
     api.post<{ ok: boolean; output: string; error: string | null }>(
       `/api/v1/servers/${id}/docker/action`,
@@ -542,5 +577,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

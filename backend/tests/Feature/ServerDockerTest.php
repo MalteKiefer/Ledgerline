@@ -22,7 +22,7 @@ class DockerRecordingProbe extends ServerProbe
 
     public function __construct(private string $output = '##LL:rc=0') {}
 
-    public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false): array
+    public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false, ?int $timeout = null): array
     {
         $this->scripts[] = $script;
 
@@ -92,7 +92,7 @@ class ServerDockerTest extends TestCase
     {
         $probe = new class extends ServerProbe
         {
-            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false): array
+            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false, ?int $timeout = null): array
             {
                 return ['ok' => false, 'out' => '', 'err' => 'timeout', 'exit' => 255];
             }

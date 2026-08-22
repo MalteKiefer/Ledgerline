@@ -136,7 +136,7 @@ class ServerBanTest extends TestCase
 
             public function __construct(private string $output) {}
 
-            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false): array
+            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false, ?int $timeout = null): array
             {
                 $this->script = $script;
 
