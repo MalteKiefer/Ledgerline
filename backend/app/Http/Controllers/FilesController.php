@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\FileType;
 use App\Jobs\ExtractArchive;
+use App\Jobs\GenerateFileVideoThumbnail;
 use App\Models\AuditLog;
 use App\Models\CryptoRecipient;
 use App\Models\FileActivity;
@@ -1113,6 +1114,12 @@ class FilesController extends Controller
         ]);
         $file->save();
 
+        // A video's poster frame is produced in a worker, never here: ffmpeg on
+        // an untrusted container is exactly what must not run in a request.
+        if (is_string($mime) && str_starts_with($mime, 'video/')) {
+            GenerateFileVideoThumbnail::dispatch((int) $file->id);
+        }
+
         return $file;
     }
 
@@ -1150,6 +1157,26 @@ class FilesController extends Controller
     public function thumb(Request $request, FileEntry $file, ImageManagerFactory $images): StreamedResponse
     {
         $mime = (string) $file->mime;
+
+        // A video is served cache-only: the poster frame comes from a worker
+        // (GenerateFileVideoThumbnail), so a miss queues one and answers 404 —
+        // the client falls back to the type icon and picks the thumbnail up on
+        // the next listing rather than holding a request open through ffmpeg.
+        if (str_starts_with($mime, 'video/')) {
+            $videoThumb = 'files/thumb/'.$file->id.'-'.$file->version.'.webp';
+            if (! $this->fs()->exists($videoThumb)) {
+                GenerateFileVideoThumbnail::dispatch((int) $file->id);
+                abort(404);
+            }
+
+            return $this->fs()->response($videoThumb, 'thumb.webp', [
+                'Content-Type' => 'image/webp',
+                'X-Content-Type-Options' => 'nosniff',
+                'Content-Security-Policy' => "default-src 'none'; sandbox",
+                'Cache-Control' => 'private, max-age=86400',
+            ], 'inline');
+        }
+
         abort_unless(str_starts_with($mime, 'image/'), 404);
 
         // Don't decode arbitrarily large images in-request (memory / decompression
