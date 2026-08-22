@@ -151,7 +151,15 @@ class FactParserTest extends TestCase
         $this->assertSame(['eth0 192.168.3.200/24', 'wg0 10.8.0.2/32'], $f['addresses']);
         $this->assertSame('kvm', $f['virt']);
         $this->assertStringStartsWith('2025-', (string) $f['boot_at']);
-        $this->assertSame(['malte pts/0 2026-08-21 19:30 (10.0.0.5)'], $f['sessions']);
+        // Structured, because the tty is what an operator acts on: ending a
+        // session means signalling that terminal, and digging it back out of a
+        // display string would be guessing at our own output.
+        $this->assertSame([[
+            'user' => 'malte',
+            'tty' => 'pts/0',
+            'since' => '2026-08-21 19:30',
+            'from' => '10.0.0.5',
+        ]], $f['sessions']);
         $this->assertSame([['name' => 'mariadbd', 'rss_kb' => 812340], ['name' => 'php-fpm', 'rss_kb' => 204800]], $f['processes']);
         $this->assertSame(48.2, $f['temp_c']);
     }

@@ -16,9 +16,29 @@
         <p class="mt-0.5 font-mono text-xs text-[var(--ll-muted)]">{{ server.username }}@{{ server.host }}:{{ server.port }}</p>
       </div>
       <div class="flex items-center gap-2">
+        <!-- When the next collection is due, derived from the last one rather
+             than counted from page load. -->
+        <span v-if="nextRefresh" class="hidden font-mono text-xs tabular-nums text-[var(--ll-muted)] sm:inline">{{ nextRefresh }}</span>
         <Btn variant="ghost" icon="network_check" :disabled="testing" @click="retest">{{ testing ? t('servers.testing') : t('servers.test') }}</Btn>
         <Btn variant="ghost" icon="refresh" @click="doRefresh">{{ t('servers.refresh') }}</Btn>
         <Btn variant="ghost" icon="edit" @click="$router.push({ path: '/servers', query: { edit: String(server.id) } })">{{ t('servers.edit') }}</Btn>
+
+        <!-- Power. Kept behind a menu and behind a confirmation because these
+             are the only buttons here that can end the machine. -->
+        <div class="relative">
+          <Btn variant="ghost" icon="power_settings_new" :disabled="powerBusy" @click="powerOpen = !powerOpen">{{ t('servers.power') }}</Btn>
+          <div v-if="powerOpen" class="fixed inset-0 z-20" @click="powerOpen = false" />
+          <div
+            v-if="powerOpen"
+            class="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] py-1 shadow-lg"
+          >
+            <button class="block w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5" @click="doPower('reboot')">{{ t('servers.power_reboot') }}</button>
+            <button class="block w-full px-3 py-2 text-left text-sm text-amber-600 hover:bg-black/5 dark:text-amber-400 dark:hover:bg-white/5" @click="doPower('reboot_force')">{{ t('servers.power_reboot_force') }}</button>
+            <button class="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-black/5 dark:text-red-400 dark:hover:bg-white/5" @click="doPower('poweroff')">{{ t('servers.power_poweroff') }}</button>
+            <div class="my-1 border-t border-[var(--ll-border)]" />
+            <button class="block w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5" @click="doPower('cancel')">{{ t('servers.power_cancel') }}</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -186,8 +206,22 @@
 
         <!-- Sessions -->
         <Card v-if="facts.sessions.length" :title="t('servers.section_sessions')" :body-class="'p-4'">
-          <div class="space-y-0.5 font-mono text-xs">
-            <div v-for="line in facts.sessions" :key="line">{{ line }}</div>
+          <div class="space-y-1">
+            <div v-for="(ses, i) in facts.sessions" :key="i" class="flex items-center gap-2 font-mono text-xs">
+              <span class="font-semibold">{{ ses.user }}</span>
+              <span class="text-[var(--ll-muted)]">{{ ses.tty }}</span>
+              <span class="text-[var(--ll-muted)]">{{ ses.since }}</span>
+              <span v-if="ses.from" class="text-[var(--ll-muted)]">({{ ses.from }})</span>
+              <Btn
+                v-if="ses.tty"
+                variant="ghost"
+                size="sm"
+                icon="logout"
+                class="ml-auto"
+                :title="t('servers.session_kill')"
+                @click="killSession(ses)"
+              />
+            </div>
           </div>
         </Card>
       </div>
@@ -315,10 +349,25 @@
 
         <p v-if="logError" class="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ logError }}</p>
 
+        <!-- Filtering happens here, not on the host: the lines are already
+             fetched, and a second round trip to grep them would be slower and
+             would lose the surrounding context on the next search. -->
+        <div v-if="logText" class="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            v-model="logQuery"
+            :placeholder="t('servers.search_placeholder')"
+            class="w-72 rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm"
+          >
+          <label class="flex items-center gap-2 text-xs"><input v-model="logInvert" type="checkbox" class="accent-primary-500">{{ t('servers.log_invert') }}</label>
+          <label class="flex items-center gap-2 text-xs"><input v-model="logWrap" type="checkbox" class="accent-primary-500">{{ t('servers.log_wrap') }}</label>
+          <span class="text-xs text-[var(--ll-muted)]">{{ t('servers.log_match_count', { shown: String(logShown), total: String(logTotal) }) }}</span>
+        </div>
+
         <pre
           v-if="logText"
-          class="mt-3 max-h-[32rem] overflow-auto rounded-lg bg-black/[0.05] p-3 font-mono text-[0.7rem] leading-relaxed dark:bg-white/5"
-        >{{ logText }}</pre>
+          class="mt-2 max-h-[32rem] overflow-auto rounded-lg bg-black/[0.05] p-3 font-mono text-[0.7rem] leading-relaxed dark:bg-white/5"
+          :class="logWrap ? 'whitespace-pre-wrap break-all' : ''"
+        >{{ filteredLog }}</pre>
       </Card>
     </template>
 
@@ -326,7 +375,7 @@
          the session rather than leaving a shell waiting on the idle timeout. -->
     <template v-else-if="tab === 'terminal'">
       <Card :body-class="'p-4'">
-        <ServerTerminal :server-id="server.id" />
+        <ServerTerminal ref="terminalRef" :key="server.id" :server-id="server.id" />
       </Card>
     </template>
 
@@ -379,6 +428,74 @@
         </div>
       </Card>
 
+      <!-- Bans. Both daemons side by side rather than one treated as "the"
+           ban list: a host often runs fail2ban for sshd and CrowdSec for the
+           web tier, and an address banned by one is unknown to the other. -->
+      <Card :body-class="'p-4'">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-semibold">{{ t('servers.tab_bans') }}</h2>
+          <Btn variant="ghost" size="sm" icon="refresh" :disabled="banBusy" @click="loadBans">{{ t('servers.refresh') }}</Btn>
+        </div>
+
+        <p v-if="banBusy && !bans" class="text-sm text-[var(--ll-muted)]">{{ t('common.loading') }}</p>
+        <p v-else-if="banError" class="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ banError }}</p>
+
+        <template v-else-if="bans">
+          <p v-if="!bans.fail2ban.length && !bans.crowdsec.length" class="text-sm text-[var(--ll-muted)]">{{ t('servers.bans_none') }}</p>
+
+          <div v-for="jail in bans.fail2ban" :key="jail.jail" class="mb-3">
+            <div class="mb-1 flex items-center gap-2 text-xs">
+              <span class="font-semibold">fail2ban</span>
+              <span class="font-mono text-[var(--ll-muted)]">{{ jail.jail }}</span>
+              <span class="text-[var(--ll-muted)]">({{ jail.ips.length }})</span>
+            </div>
+            <div v-for="ip in jail.ips" :key="ip" class="flex items-center gap-2 border-b border-[var(--ll-border)] py-1.5 last:border-0">
+              <span class="font-mono text-xs">{{ ip }}</span>
+              <div class="ml-auto flex gap-1">
+                <Btn variant="ghost" size="sm" :disabled="banActing" @click="doBan('fail2ban', 'unban', ip, jail.jail)">{{ t('servers.ban_unban') }}</Btn>
+                <Btn variant="ghost" size="sm" :disabled="banActing" @click="doBan('fail2ban', 'allow', ip, jail.jail)">{{ t('servers.ban_allow') }}</Btn>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="bans.crowdsec.length" class="mb-3">
+            <div class="mb-1 text-xs font-semibold">CrowdSec</div>
+            <div v-for="(d, i) in bans.crowdsec" :key="`${d.ip}-${i}`" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1.5 last:border-0">
+              <span class="font-mono text-xs">{{ d.ip }}</span>
+              <span v-if="d.reason" class="truncate text-[0.7rem] text-[var(--ll-muted)]">{{ d.reason }}</span>
+              <span v-if="d.expires" class="text-[0.7rem] text-[var(--ll-muted)]">{{ d.expires }}</span>
+              <div class="ml-auto flex gap-1">
+                <Btn variant="ghost" size="sm" :disabled="banActing" @click="doBan('crowdsec', 'unban', d.ip)">{{ t('servers.ban_unban') }}</Btn>
+                <Btn variant="ghost" size="sm" :disabled="banActing" @click="doBan('crowdsec', 'allow', d.ip)">{{ t('servers.ban_allow') }}</Btn>
+              </div>
+            </div>
+          </div>
+
+          <!-- Banning by hand. The jail matters for fail2ban and does not exist
+               for CrowdSec, so the field appears only where it applies. -->
+          <div class="mt-3 flex flex-wrap items-end gap-2 border-t border-[var(--ll-border)] pt-3">
+            <Select v-model="banDaemon" class="w-36" :label="t('servers.tab_bans')" :options="banDaemonOptions" />
+            <Select
+              v-if="banDaemon === 'fail2ban'"
+              v-model="banJail"
+              class="w-40"
+              :label="t('servers.ban_jail')"
+              :options="jailOptions"
+            />
+            <label class="w-48">
+              <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.ban_ip') }}</span>
+              <input v-model="banIp" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 font-mono text-sm">
+            </label>
+            <Btn variant="solid" size="sm" :disabled="banActing || !banIp" class="mb-0.5" @click="doBan(banDaemon, 'ban', banIp, banJail)">{{ t('servers.ban_add') }}</Btn>
+            <Btn variant="ghost" size="sm" :disabled="banActing || !banIp" class="mb-0.5" @click="doBan(banDaemon, 'allow', banIp, banJail)">{{ t('servers.ban_allow') }}</Btn>
+          </div>
+
+          <div v-if="banNote" class="mt-3 rounded-lg px-3 py-2 text-sm" :class="banNoteOk ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'">
+            {{ banNote }}
+          </div>
+        </template>
+      </Card>
+
       <Card v-if="sec && Object.keys(sec.ssh).length" :body-class="'p-4'">
         <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_ssh') }}</h2>
         <!-- From sshd's own resolved configuration, not sshd_config: an Include
@@ -401,7 +518,14 @@
           </div>
           <div class="flex justify-between gap-3">
             <span class="text-[var(--ll-muted)]">{{ t('servers.reboot_required') }}</span>
-            <Badge :tone="sec.updates.reboot_required ? 'warning' : 'gray'">{{ sec.updates.reboot_required ? t('common.yes') : t('common.none') }}</Badge>
+            <!-- Amber on a grey row reads as decoration. A pending reboot is
+                 the one line here somebody has to act on, so it carries the
+                 weight. -->
+            <span
+              v-if="sec.updates.reboot_required"
+              class="rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300"
+            >{{ t('servers.reboot_required_badge') }}</span>
+            <Badge v-else tone="gray">{{ t('common.none') }}</Badge>
           </div>
         </div>
       </Card>
@@ -411,11 +535,15 @@
     <template v-else-if="tab === 'services'">
       <Card :body-class="'p-4'">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <input
-            v-model="svcQuery"
-            :placeholder="t('servers.filter')"
-            class="w-64 rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm"
-          >
+          <div class="flex flex-wrap items-center gap-2">
+            <input
+              v-model="svcQuery"
+              :placeholder="t('servers.filter')"
+              class="w-64 rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm"
+            >
+            <Select v-model="svcState" class="w-40" :options="svcStateOptions" />
+            <span class="text-xs text-[var(--ll-muted)]">{{ filteredServices.length }} / {{ services.length }}</span>
+          </div>
           <Btn variant="ghost" size="sm" icon="refresh" :disabled="svcBusy" @click="loadServices">{{ t('servers.refresh') }}</Btn>
         </div>
 
@@ -477,10 +605,11 @@
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-[var(--ll-border)] text-left text-[0.7rem] uppercase tracking-wide text-[var(--ll-muted)]">
-                <th class="py-1.5 pr-3 font-medium">PID</th>
-                <th class="py-1.5 pr-3 font-medium">{{ t('servers.proc_user') }}</th>
-                <th class="py-1.5 pr-3 font-medium">{{ t('servers.proc_command') }}</th>
-                <th class="py-1.5 pr-3 text-right font-medium">{{ t('servers.memory') }}</th>
+                <th class="cursor-pointer py-1.5 pr-3 font-medium select-none" @click="sortProc('pid')">PID{{ procArrow('pid') }}</th>
+                <th class="cursor-pointer py-1.5 pr-3 font-medium select-none" @click="sortProc('user')">{{ t('servers.proc_user') }}{{ procArrow('user') }}</th>
+                <th class="cursor-pointer py-1.5 pr-3 font-medium select-none" @click="sortProc('command')">{{ t('servers.proc_command') }}{{ procArrow('command') }}</th>
+                <th class="cursor-pointer py-1.5 pr-3 text-right font-medium select-none" @click="sortProc('cpu')">CPU{{ procArrow('cpu') }}</th>
+                <th class="cursor-pointer py-1.5 pr-3 text-right font-medium select-none" @click="sortProc('rss_kb')">{{ t('servers.memory') }}{{ procArrow('rss_kb') }}</th>
                 <th class="py-1.5 text-right font-medium" />
               </tr>
             </thead>
@@ -489,6 +618,7 @@
                 <td class="py-2 pr-3 font-mono text-xs tabular-nums">{{ p.pid }}</td>
                 <td class="py-2 pr-3 text-xs">{{ p.user }}</td>
                 <td class="py-2 pr-3 font-mono text-xs">{{ p.command }}</td>
+                <td class="py-2 pr-3 text-right font-mono text-xs tabular-nums">{{ p.cpu.toFixed(1) }}%</td>
                 <td class="py-2 pr-3 text-right font-mono text-xs tabular-nums">{{ formatGib(p.rss_kb) }}</td>
                 <td class="w-32 py-2 text-right">
                   <div class="flex justify-end gap-1">
@@ -539,12 +669,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, ref, type PropType, type VNode } from 'vue';
+import { computed, h, onBeforeUnmount, onMounted, ref, watch, type PropType, type VNode } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import type { AlignedData, Options } from 'uplot';
 import { Card, Btn, Badge, Chart, DistroLogo, Select } from '@spa/ui';
-import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint, type ServerCheckSeries, type ServiceUnit, type ProcessRow, type SecurityAudit } from '@spa/stores/servers';
+import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint, type ServerCheckSeries, type ServiceUnit, type ProcessRow, type SecurityAudit, type BanList } from '@spa/stores/servers';
 import {
   severity, formatUptime, formatGib, memoryNote, swapPct, swapNote, diskNote, fullestDisk,
 } from '@spa/lib/server-facts';
@@ -563,14 +693,22 @@ const AXIS_FONT = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
 const route = useRoute();
 const router = useRouter();
 const s = useServersStore();
-const { success } = useToast();
+const { success, error } = useToast();
 
 const server = ref<Server | null>(null);
 const history = ref<TrendPoint[]>([]);
 const loading = ref(true);
 const testing = ref(false);
 const retestResult = ref<ProbeResult | null>(null);
+/**
+ * Off when the account is root: there is nothing to elevate to, and prefixing
+ * sudo on a host that may not have it installed fails for no reason.
+ */
 const useSudo = ref(true);
+
+watch(server, (srv) => {
+  if (srv) useSudo.value = srv.username !== 'root';
+}, { immediate: true });
 
 const facts = computed(() => server.value?.facts ?? null);
 
@@ -628,6 +766,57 @@ const loadNote = computed(() => {
   return `${f.load.map((l) => l.toFixed(2)).join('  ')}${per}`;
 });
 
+// ---- refresh countdown ----
+
+/** The scheduler polls every five minutes; the next run is due five minutes
+ *  after the last one landed, not five minutes after this page opened. */
+const POLL_SECONDS = 300;
+const now = ref(Date.now());
+let ticker: number | null = null;
+
+const nextRefresh = computed(() => {
+  const at = server.value?.status?.collected_at;
+  if (!at) return null;
+  const left = Math.round((new Date(at).getTime() + POLL_SECONDS * 1000 - now.value) / 1000);
+  if (left <= 0) return t('servers.due_now');
+
+  return t('servers.next_in', { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` });
+});
+
+// ---- power ----
+
+const powerOpen = ref(false);
+const powerBusy = ref(false);
+
+/**
+ * Reboot, force-reboot or shut down.
+ *
+ * Confirmed every time and worded per action, because "reboot" and "force
+ * reboot" read alike and behave nothing alike: the forced one does not stop
+ * units in order.
+ */
+async function doPower(action: 'reboot' | 'reboot_force' | 'poweroff' | 'cancel') {
+  powerOpen.value = false;
+  const srv = server.value;
+  if (!srv) return;
+
+  if (action !== 'cancel') {
+    const key = action === 'reboot' ? 'power_confirm_reboot' : action === 'reboot_force' ? 'power_confirm_reboot_force' : 'power_confirm_poweroff';
+    if (!(await confirmAsk(t(`servers.${key}`, { name: srv.name })))) return;
+  }
+
+  powerBusy.value = true;
+  try {
+    const r = await s.power(srv.id, action);
+    if (r.ok) success(t('servers.power_sent'));
+    else error(r.output || errorText(r.error));
+  } catch {
+    error(t('servers.status_fail'));
+  } finally {
+    powerBusy.value = false;
+  }
+}
+
 // ---- security ----
 
 const sec = ref<SecurityAudit | null>(null);
@@ -670,6 +859,114 @@ function sshTone(key: string, value: string): string {
   return good ? 'text-emerald-600 dark:text-emerald-400' : '';
 }
 
+// ---- log filtering ----
+
+const logQuery = ref('');
+const logInvert = ref(false);
+const logWrap = ref(false);
+
+const logLinesArr = computed(() => (logText.value ? logText.value.split('\n') : []));
+
+const filteredLogLines = computed(() => {
+  const q = logQuery.value.trim().toLowerCase();
+  if (!q) return logLinesArr.value;
+
+  return logLinesArr.value.filter((l) => (l.toLowerCase().includes(q) ? !logInvert.value : logInvert.value));
+});
+
+const filteredLog = computed(() => filteredLogLines.value.join('\n'));
+const logShown = computed(() => filteredLogLines.value.length);
+const logTotal = computed(() => logLinesArr.value.length);
+
+// ---- sessions ----
+
+/**
+ * End somebody's login session.
+ *
+ * Signals everything attached to that terminal, which is what logging a user
+ * out actually means — killing only the shell leaves whatever it started
+ * running.
+ */
+async function killSession(ses: { user: string; tty: string }) {
+  const srv = server.value;
+  if (!srv) return;
+  if (!(await confirmAsk(t('servers.session_kill_confirm', { user: ses.user, tty: ses.tty })))) return;
+
+  try {
+    const r = await s.killSession(srv.id, ses.tty);
+    if (r.ok) {
+      success(t('servers.session_ended'));
+      await load();
+    } else {
+      error(r.output || errorText(r.error));
+    }
+  } catch {
+    error(t('servers.status_fail'));
+  }
+}
+
+// ---- bans ----
+
+const bans = ref<BanList | null>(null);
+const banBusy = ref(false);
+const banError = ref('');
+const banActing = ref(false);
+const banNote = ref('');
+const banNoteOk = ref(true);
+const banDaemon = ref<'fail2ban' | 'crowdsec'>('fail2ban');
+const banJail = ref('');
+const banIp = ref('');
+
+const banDaemonOptions = [
+  { title: 'fail2ban', value: 'fail2ban' },
+  { title: 'CrowdSec', value: 'crowdsec' },
+];
+
+/** Only jails the host reported — the browser never invents one. */
+const jailOptions = computed(() => (bans.value?.fail2ban ?? []).map((j) => ({ title: j.jail, value: j.jail })));
+
+async function loadBans() {
+  const id = Number(route.params.id);
+  if (!Number.isFinite(id)) return;
+  banBusy.value = true;
+  banError.value = '';
+  try {
+    const r = await s.bans(id);
+    bans.value = r;
+    if (!r.ok) banError.value = errorText(r.error);
+    if (!banJail.value && r.fail2ban.length) banJail.value = r.fail2ban[0]!.jail;
+  } catch {
+    banError.value = t('servers.status_fail');
+  } finally {
+    banBusy.value = false;
+  }
+}
+
+async function doBan(daemon: 'fail2ban' | 'crowdsec', action: 'unban' | 'ban' | 'allow', ip: string, jail = '') {
+  const srv = server.value;
+  if (!srv) return;
+
+  banActing.value = true;
+  banNote.value = '';
+  try {
+    const r = await s.banAction(srv.id, { daemon, action, ip, jail: jail || undefined });
+    // fail2ban has no runtime allow-list, so "allow" only unbans. Saying so is
+    // the difference between a working button and a lie the next restart shows.
+    banNoteOk.value = r.ok && r.error !== 'f2b_allow_is_manual';
+    banNote.value = r.error === 'f2b_allow_is_manual'
+      ? t('servers.ban_f2b_allow_manual')
+      : r.ok ? t('servers.ban_done') : (r.output || errorText(r.error));
+    if (r.ok) await loadBans();
+  } catch (e) {
+    banNoteOk.value = false;
+    banNote.value = e instanceof ApiError && typeof e.body === 'object' && e.body !== null && 'error' in e.body
+      ? errorText(String((e.body as { error: unknown }).error))
+      : t('servers.status_fail');
+  } finally {
+    banActing.value = false;
+  }
+}
+
 // ---- services and processes ----
 
 const services = ref<ServiceUnit[]>([]);
@@ -684,18 +981,66 @@ const acting = ref(false);
 const actionNote = ref('');
 const actionOk = ref(true);
 
+/** Name or state. A machine has hundreds of units and two of them matter. */
+const svcState = ref<'all' | 'running' | 'stopped' | 'failed'>('all');
+
+const svcStateOptions = computed(() => [
+  { title: t('servers.svc_state_all'), value: 'all' },
+  { title: t('servers.svc_state_running'), value: 'running' },
+  { title: t('servers.svc_state_stopped'), value: 'stopped' },
+  { title: t('servers.svc_state_failed'), value: 'failed' },
+]);
+
 const filteredServices = computed(() => {
   const q = svcQuery.value.trim().toLowerCase();
-  if (!q) return services.value;
+  const state = svcState.value;
 
-  return services.value.filter((u) => u.name.toLowerCase().includes(q) || u.description.toLowerCase().includes(q));
+  return services.value.filter((u) => {
+    if (q && !u.name.toLowerCase().includes(q) && !u.description.toLowerCase().includes(q)) return false;
+    if (state === 'running') return u.active === 'active';
+    if (state === 'failed') return u.active === 'failed';
+    // "stopped" means anything not running, failed units included: a unit that
+    // died is stopped, and hiding it here would be the wrong kind of tidy.
+    if (state === 'stopped') return u.active !== 'active';
+
+    return true;
+  });
 });
+
+/** Which column the process table is ordered by, and in which direction. */
+const procSort = ref<'pid' | 'user' | 'command' | 'cpu' | 'rss_kb'>('rss_kb');
+const procDesc = ref(true);
+
+function sortProc(key: typeof procSort.value) {
+  if (procSort.value === key) procDesc.value = !procDesc.value;
+  else {
+    procSort.value = key;
+    // Numbers are interesting from the top, names from the start.
+    procDesc.value = key === 'rss_kb' || key === 'cpu' || key === 'pid';
+  }
+}
+
+function procArrow(key: typeof procSort.value): string {
+  return procSort.value === key ? (procDesc.value ? ' ↓' : ' ↑') : '';
+}
 
 const filteredProcesses = computed(() => {
   const q = procQuery.value.trim().toLowerCase();
-  if (!q) return processes.value;
+  const rows = q
+    ? processes.value.filter((p) => p.command.toLowerCase().includes(q) || p.user.toLowerCase().includes(q) || String(p.pid).includes(q))
+    : processes.value.slice();
+  const key = procSort.value;
+  const dir = procDesc.value ? -1 : 1;
 
-  return processes.value.filter((p) => p.command.toLowerCase().includes(q) || p.user.toLowerCase().includes(q) || String(p.pid) === q);
+  // Copy before sorting: sorting the store array in place would reorder what
+  // the next fetch merges into.
+  return rows.slice().sort((a, b) => {
+    const x = a[key];
+    const y = b[key];
+    if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir;
+
+    return String(x).localeCompare(String(y)) * dir;
+  });
 });
 
 async function loadServices() {
@@ -810,13 +1155,22 @@ const tabs = computed<{ id: Tab; label: string }[]>(() => [
   { id: 'removal', label: t('servers.tab_removal') },
 ]);
 
+const terminalRef = ref<{ close: () => Promise<void> } | null>(null);
+
 function setTab(next: Tab) {
+  // Leaving the terminal ends the shell here rather than relying on unmount:
+  // unmount closes it too, but fire-and-forget, so a slow answer could leave a
+  // session running on somebody's server after the tab looked closed.
+  if (tab.value === 'terminal' && next !== 'terminal') void terminalRef.value?.close();
   tab.value = next;
   // The page is already deep-linkable; the tab belongs in the URL for the same
   // reason the id does — so a link lands where the sender was looking.
   void router.replace({ query: { ...route.query, tab: next === 'overview' ? undefined : next } });
   if (next === 'logs' && sources.value === null) void loadSources();
-  if (next === 'security' && sec.value === null) void loadSecurity();
+  if (next === 'security' && sec.value === null) {
+    void loadSecurity();
+    void loadBans();
+  }
   if (next === 'services' && !services.value.length) void loadServices();
   if (next === 'processes' && !processes.value.length) void loadProcesses();
   actionNote.value = '';
@@ -1051,6 +1405,7 @@ async function load() {
     } else if (route.query.tab === 'security') {
       tab.value = 'security';
       void loadSecurity();
+      void loadBans();
     } else if (route.query.tab === 'services') {
       tab.value = 'services';
       void loadServices();
@@ -1117,6 +1472,13 @@ async function copyRemoval() {
   success(t('common.copied'));
 }
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  ticker = window.setInterval(() => { now.value = Date.now(); }, 1000);
+});
+
+onBeforeUnmount(() => {
+  if (ticker !== null) window.clearInterval(ticker);
+});
 void router;
 </script>

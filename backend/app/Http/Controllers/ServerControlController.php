@@ -89,4 +89,55 @@ class ServerControlController extends Controller
         return response()->json($result, in_array($result['error'], ['invalid_selection', 'refused_pid1'], true) ? 422 : 200)
             ->header('Cache-Control', 'no-store');
     }
+
+    /**
+     * Reboot or shut the machine down.
+     *
+     * The most consequential endpoint in the module, so it is audited before
+     * the command is sent as well as after: a machine that never comes back
+     * should still leave a record of who asked and for what.
+     */
+    public function power(Request $request, Server $server): JsonResponse
+    {
+        $user = $this->requireUser($request);
+
+        $request->validate([
+            'action' => ['required', Rule::in(ServerControl::POWER_ACTIONS)],
+        ]);
+
+        $action = $request->string('action')->value();
+
+        AuditLog::record('server.power', $server, [
+            'server' => $server->name,
+            'host' => $server->host,
+            'action' => $action,
+        ], $user->id);
+
+        $result = $this->control->power($server, $action);
+
+        return response()->json($result, $result['error'] === 'invalid_selection' ? 422 : 200)
+            ->header('Cache-Control', 'no-store');
+    }
+
+    /** End somebody's login session on the host. */
+    public function killSession(Request $request, Server $server): JsonResponse
+    {
+        $user = $this->requireUser($request);
+
+        $request->validate([
+            'tty' => ['required', 'string', 'max:32'],
+        ]);
+
+        $tty = $request->string('tty')->value();
+        $result = $this->control->killSession($server, $tty);
+
+        AuditLog::record('server.session_killed', $server, [
+            'server' => $server->name,
+            'tty' => $tty,
+            'ok' => $result['ok'],
+        ], $user->id);
+
+        return response()->json($result, $result['error'] === 'invalid_selection' ? 422 : 200)
+            ->header('Cache-Control', 'no-store');
+    }
 }

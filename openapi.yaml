@@ -7549,6 +7549,180 @@ paths:
                 properties:
                   error: { type: string, enum: [invalid_selection, unreachable] }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/power:
+    post:
+      tags: [Servers]
+      operationId: serversPower
+      summary: Reboot or shut the machine down
+      description: >
+        The most consequential endpoint in the module. `reboot_force` is
+        deliberately separate from `reboot`: the ordinary one asks systemd to
+        stop units in order, the forced one skips that, and they read alike
+        while behaving nothing alike. Audited before the command is sent as
+        well as after, so a machine that never comes back still leaves a record
+        of who asked. A dropped connection is reported as success for the three
+        destructive verbs, because the link going away is what a reboot does;
+        for `cancel` it is reported as unreachable. Needs root on the target.
+        Throttled 10/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [reboot, reboot_force, poweroff, cancel] }
+      responses:
+        "200":
+          description: What the host said.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/sessions/kill:
+    post:
+      tags: [Servers]
+      operationId: serversKillSession
+      summary: End a login session
+      description: >
+        Signals everything attached to the terminal, which is what logging a
+        user out means — killing only the shell leaves whatever it started
+        running. The terminal name is matched against a strict pattern, so
+        anything that is not a tty never reaches the host. Audited. Needs root
+        unless the session belongs to the same account. Throttled 20/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tty]
+              properties:
+                tty: { type: string, example: "pts/3" }
+      responses:
+        "200":
+          description: What the host said.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/bans:
+    get:
+      tags: [Servers]
+      operationId: serversBans
+      summary: List banned addresses
+      description: >
+        fail2ban and CrowdSec side by side rather than one treated as "the" ban
+        list: a host often runs fail2ban for sshd and CrowdSec for the web tier,
+        and an address banned by one is unknown to the other. fail2ban groups by
+        jail; CrowdSec keeps one flat list of decisions. Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: The ban lists.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  fail2ban:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        jail: { type: string }
+                        ips: { type: array, items: { type: string } }
+                  crowdsec:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ip: { type: string }
+                        reason: { type: string }
+                        expires: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Servers]
+      operationId: serversBanAction
+      summary: Unban, ban or allow-list an address
+      description: >
+        The address is parsed as an address before anything is assembled, so a
+        value that only looks right is refused rather than quoted. fail2ban acts
+        per jail and has no runtime allow-list, so `allow` there only unbans and
+        answers with `f2b_allow_is_manual` — the permanent entry belongs in
+        jail.local, and claiming otherwise would be a lie the next restart
+        exposes. Audited with the address named. Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [daemon, action, ip]
+              properties:
+                daemon: { type: string, enum: [fail2ban, crowdsec] }
+                action: { type: string, enum: [unban, ban, allow] }
+                ip: { type: string }
+                jail: { type: [string, "null"], description: "Required for fail2ban." }
+      responses:
+        "200":
+          description: What the host said.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/security:
     get:
       tags: [Servers]

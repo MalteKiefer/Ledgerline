@@ -324,16 +324,31 @@ final class FactParser
         return is_numeric($seconds) ? gmdate('c', (int) $seconds) : null;
     }
 
-    /** @return list<string> */
+    /**
+     * Who is logged in.
+     *
+     * Structured rather than one string per line, because the terminal name is
+     * what an operator acts on — ending a session means signalling everything
+     * attached to that tty, and re-parsing a display string to find it would be
+     * guessing at our own output.
+     *
+     * @return list<array{user:string,tty:string,since:string,from:string}>
+     */
     private function sessions(string $text): array
     {
         $out = [];
-        foreach (explode("\n", trim($text)) as $line) {
+        foreach (preg_split('/\r\n|\r|\n/', trim($text)) ?: [] as $line) {
+            // "user pts/0 2026-08-21 19:30 (10.0.0.5)"
             $c = preg_split('/\s+/', trim($line)) ?: [];
-            if (($c[0] ?? '') !== '') {
-                // "user pts/0 2026-08-21 19:30 (10.0.0.5)"
-                $out[] = trim(implode(' ', array_slice($c, 0, 5)));
+            if (($c[0] ?? '') === '') {
+                continue;
             }
+            $out[] = [
+                'user' => $c[0],
+                'tty' => $c[1] ?? '',
+                'since' => trim(($c[2] ?? '').' '.($c[3] ?? '')),
+                'from' => trim($c[4] ?? '', '()'),
+            ];
         }
 
         return $out;

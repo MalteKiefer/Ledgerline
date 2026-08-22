@@ -276,6 +276,14 @@ function teardown() {
   window.removeEventListener('resize', onResize);
 }
 
+/**
+ * Let the page end the session before it unmounts us.
+ *
+ * Unmount alone would also close it, but only as fire-and-forget: the caller
+ * can await this one and know the shell is gone rather than hope.
+ */
+defineExpose({ close: stop });
+
 onBeforeUnmount(() => {
   // Leaving the page ends the session rather than leaving a shell open on
   // somebody's server waiting for the idle timeout.

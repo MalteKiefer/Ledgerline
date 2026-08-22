@@ -141,6 +141,109 @@ class ServerControlTest extends TestCase
             ->assertNotFound();
     }
 
+    #[Test]
+    public function a_reboot_is_audited_before_it_is_sent(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+        $probe = $this->fakeProbe('##LL:rc=0
+');
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/servers/{$server->id}/power", ['action' => 'reboot'])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $this->assertStringContainsString('systemctl reboot', (string) $probe->script);
+        // Audited even if the machine never answers again: a host that vanishes
+        // should still leave a record of who asked and for what.
+        $this->assertSame(1, AuditLog::query()->where('action', 'server.power')->count());
+    }
+
+    #[Test]
+    public function a_dropped_connection_during_a_reboot_is_success_not_failure(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+        // The link going away is exactly what a reboot does; calling it an
+        // error would teach the operator to ignore real errors.
+        $this->deadProbe();
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/servers/{$server->id}/power", ['action' => 'reboot'])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        // Cancelling a shutdown has no such excuse — silence there is a failure.
+        $this->actingAs($user)
+            ->postJson("/api/v1/servers/{$server->id}/power", ['action' => 'cancel'])
+            ->assertOk()
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('error', 'unreachable');
+    }
+
+    #[Test]
+    public function a_power_verb_that_is_not_offered_never_reaches_the_host(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+        $probe = $this->fakeProbe('should never run');
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/servers/{$server->id}/power", ['action' => 'halt; rm -rf /'])
+            ->assertStatus(422);
+
+        $this->assertNull($probe->script);
+    }
+
+    #[Test]
+    public function ending_a_session_signals_the_whole_terminal(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+        $probe = $this->fakeProbe('##LL:rc=0
+');
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/servers/{$server->id}/sessions/kill", ['tty' => 'pts/3'])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        // Everything attached to the terminal, not just the shell: killing the
+        // shell alone leaves whatever it started running.
+        $this->assertStringContainsString("pkill -KILL -t 'pts/3'", (string) $probe->script);
+        $this->assertSame(1, AuditLog::query()->where('action', 'server.session_killed')->count());
+    }
+
+    #[Test]
+    public function a_terminal_name_that_is_not_a_terminal_is_refused(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+        $probe = $this->fakeProbe('should never run');
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/servers/{$server->id}/sessions/kill", ['tty' => 'pts/3; reboot'])
+            ->assertStatus(422);
+
+        $this->assertNull($probe->script);
+    }
+
+    /** A probe whose host never answers — what a reboot looks like from here. */
+    private function deadProbe(): void
+    {
+        $probe = new class extends ServerProbe
+        {
+            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false): array
+            {
+                return ['ok' => false, 'out' => '', 'err' => 'closed', 'exit' => 255];
+            }
+        };
+
+        $this->swap(ServerProbe::class, $probe);
+        $this->swap(ServerControl::class, new ServerControl($probe));
+    }
+
     private function fakeProbe(string $output): ServerProbe
     {
         $probe = new class($output) extends ServerProbe

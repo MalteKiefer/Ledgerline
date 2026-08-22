@@ -99,6 +99,10 @@
     <!-- Create / edit -->
     <Modal v-model="formOpen" :title="editing ? t('servers.edit') : t('servers.add')" width="640px" persistent>
       <div class="space-y-4">
+        <!-- Said once, up front: everything past the snapshot is privileged, so
+             an unprivileged account would leave most of the module inert. -->
+        <p class="rounded-lg bg-[var(--ll-accent)]/10 px-3 py-2 text-xs">{{ t('servers.privilege_notice') }}</p>
+
         <!-- Step 1 — where to connect -->
         <Step :n="1" :title="t('servers.step_connection')" :done="stepConnectionDone">
           <TextField v-model="form.name" :label="t('servers.name')" />
@@ -107,10 +111,12 @@
             <TextField v-model="form.port" :label="t('servers.port')" type="number" />
           </div>
           <TextField v-model="form.username" class="mt-3" :label="t('servers.username')" />
-          <p v-if="form.username.trim() === 'root'" class="mt-1 rounded bg-amber-500/10 px-2 py-1.5 text-[0.7rem] text-amber-700 dark:text-amber-400">
+          <p class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.username_hint') }}</p>
+          <!-- Not a warning against root any more: the module needs privilege.
+               What is worth saying is what the key is worth if it leaks. -->
+          <p class="mt-2 rounded bg-amber-500/10 px-2 py-1.5 text-[0.7rem] text-amber-700 dark:text-amber-400">
             {{ t('servers.username_root_warning') }}
           </p>
-          <p v-else class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.username_hint') }}</p>
         </Step>
 
         <!-- Step 2 — the key -->
@@ -393,7 +399,7 @@ const form = ref<Form>(blank());
 
 function blank(): Form {
   return {
-    name: '', host: '', port: '22', username: '',
+    name: '', host: '', port: '22', username: 'root',
     private_key: '', passphrase: '', group: '', note: '',
     enabled: true, restricted_key: false, monitor_ports: [],
   };

@@ -37,7 +37,8 @@ export interface ServerFacts {
   /** Hypervisor, or null on bare metal — "none" is not reported as a type. */
   virt: string | null;
   boot_at: string | null;
-  sessions: string[];
+  /** Structured, because the tty is what an operator acts on when ending one. */
+  sessions: { user: string; tty: string; since: string; from: string }[];
   /** Largest resident processes; memory, not CPU — see the parser for why. */
   processes: { name: string; rss_kb: number }[];
   temp_c: number | null;
@@ -130,6 +131,14 @@ export interface SecurityAudit {
   error: string | null;
 }
 
+/** fail2ban groups its bans by jail; CrowdSec keeps one flat list of decisions. */
+export interface BanList {
+  ok: boolean;
+  fail2ban: { jail: string; ips: string[] }[];
+  crowdsec: { ip: string; reason: string; expires: string }[];
+  error: string | null;
+}
+
 export interface ServiceUnit { name: string; load: string; active: string; sub: string; description: string }
 
 export interface ProcessRow { pid: number; user: string; cpu: number; mem: number; rss_kb: number; command: string }
@@ -219,6 +228,19 @@ export const useServersStore = defineStore('servers', () => {
   const processSignal = (id: number, pid: number, signal: string) =>
     api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/processes/signal`, { pid, signal });
 
+  /** Reboot, force-reboot, shut down, or call off a pending shutdown. */
+  const power = (id: number, action: string) =>
+    api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/power`, { action });
+
+  /** End somebody's login session by the terminal they are on. */
+  const killSession = (id: number, tty: string) =>
+    api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/sessions/kill`, { tty });
+
+  const bans = (id: number) => api.get<BanList>(`/api/v1/servers/${id}/bans`);
+
+  const banAction = (id: number, body: { daemon: string; action: string; ip: string; jail?: string }) =>
+    api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/bans`, body);
+
   /** Reachability history. Bounded by hours so the answer does not shift with port count. */
   const checks = (id: number, hours = 24) =>
     api.get<{ hours: number; checks: ServerCheckSeries[] }>(`/api/v1/servers/${id}/checks?hours=${hours}`);
@@ -260,5 +282,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'details' => 'Details',
     'delete' => 'Delete',
     'restore' => 'Restore',
     'download' => 'Download',
