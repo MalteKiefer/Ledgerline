@@ -7549,6 +7549,327 @@ paths:
                 properties:
                   error: { type: string, enum: [invalid_selection, unreachable] }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/unlock:
+    post:
+      tags: [Servers]
+      operationId: serversFilesUnlock
+      summary: Unlock the file browser
+      description: >
+        Exchanges the account password for a short-lived grant. Unconditional -
+        no "recently confirmed" shortcut and no exemption for a native device
+        token, because with the root access this module requires the browser
+        reads and overwrites any file on the target. A terminal announces what
+        it is; a file listing looks harmless and is not. The grant lasts fifteen
+        minutes and is bound to one account and one server, so the value alone
+        is not a capability. It travels back in the X-File-Grant header on every
+        subsequent call, never in a URL. Audited. Throttled 10/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        "200":
+          description: The grant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expires_in: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: Wrong password.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [bad_password] }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/lock:
+    post:
+      tags: [Servers]
+      operationId: serversFilesLock
+      summary: Give the grant back
+      description: Leaving the browser should not leave it unlocked. Throttled 60/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Locked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files:
+    get:
+      tags: [Servers]
+      operationId: serversFilesIndex
+      summary: List a directory
+      description: >
+        Over SFTP rather than the shell path the rest of the module uses,
+        because ls output cannot be parsed unambiguously and this needs typed
+        entries. Paths are absolute, resolved here (so a parent reference cannot
+        walk past a later check) and refused if they carry a control character,
+        because the batch input is line-based and a newline could never be sent.
+        The timestamp is left as the host printed it - sftp gives no year for a
+        recent file, so an exact time would be invented. Needs an unlock grant.
+        Throttled 300/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  path: { type: string }
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        path: { type: string }
+                        type: { type: string, enum: [file, dir, link, special] }
+                        perms: { type: string }
+                        owner: { type: string }
+                        group: { type: string }
+                        size: { type: integer }
+                        modified: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: No unlock grant, or the module is off.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [locked] }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/read:
+    get:
+      tags: [Servers]
+      operationId: serversFilesRead
+      summary: Read a file as text
+      description: >
+        For preview and the editor. Refuses anything that is not text rather
+        than handing back a mangled string: a binary opened in an editor and
+        saved back is a destroyed file. That refusal answers 200 with binary
+        set, because it is not a mistake the caller made. Capped at 2 MiB.
+        Needs an unlock grant. Throttled 120/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The contents, or why not.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  content: { type: string }
+                  binary: { type: boolean }
+                  size: { type: integer }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/download:
+    get:
+      tags: [Servers]
+      operationId: serversFilesDownload
+      summary: Download a file
+      description: >
+        Fetched to a temporary file and streamed from there, so a large file
+        never sits in memory. Served as an attachment with nosniff and a
+        sandbox CSP, like every other byte stream in this application. Needs an
+        unlock grant. Throttled 60/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The bytes.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/write:
+    post:
+      tags: [Servers]
+      operationId: serversFilesWrite
+      summary: Save a file
+      description: >
+        Uploaded beside the target and renamed into place, because a transfer
+        cut short halfway is otherwise a half-written configuration file; the
+        rename is atomic on the same filesystem, so the file is either the old
+        one or the new one and never a fragment. If it fails, the staging name
+        is cleaned up rather than left as litter. Audited with the path named.
+        Needs an unlock grant. Throttled 60/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, content]
+              properties:
+                path: { type: string }
+                content: { type: string }
+      responses:
+        "200":
+          description: What the host said.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/upload:
+    post:
+      tags: [Servers]
+      operationId: serversFilesUpload
+      summary: Upload a file into a directory
+      description: >
+        Same staging-then-rename as a save. Audited with the path named. Needs
+        an unlock grant. Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [path, file]
+              properties:
+                path: { type: string, description: "The directory to place it in." }
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: What the host said.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/files/mutate:
+    post:
+      tags: [Servers]
+      operationId: serversFilesMutate
+      summary: Create, delete, rename or chmod
+      description: >
+        The mode is validated as three or four octal digits rather than quoted
+        around, because it reaches a command line. Audited with the path named.
+        Needs an unlock grant. Throttled 60/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, path]
+              properties:
+                action: { type: string, enum: [mkdir, rmdir, rm, rename, chmod] }
+                path: { type: string }
+                target: { type: [string, "null"], description: "New path, for rename." }
+                mode: { type: [string, "null"], description: "Octal, for chmod." }
+      responses:
+        "200":
+          description: What the host said.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/power:
     post:
       tags: [Servers]

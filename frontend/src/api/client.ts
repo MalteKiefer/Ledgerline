@@ -95,11 +95,11 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
 
 export const api = {
   get: <T>(path: string, headers?: Record<string, string>) => request<T>('GET', path, { headers }),
-  post: <T>(path: string, json?: unknown) => request<T>('POST', path, { json }),
+  post: <T>(path: string, json?: unknown, headers?: Record<string, string>) => request<T>('POST', path, { json, headers }),
   put: <T>(path: string, json?: unknown) => request<T>('PUT', path, { json }),
   patch: <T>(path: string, json?: unknown) => request<T>('PATCH', path, { json }),
   delete: <T>(path: string, json?: unknown) => request<T>('DELETE', path, { json }),
-  upload: <T>(path: string, form: FormData) => request<T>('POST', path, { form }),
+  upload: <T>(path: string, form: FormData, headers?: Record<string, string>) => request<T>('POST', path, { form, headers }),
   // Absolute, base-prefixed URL for a path — use for raw fetch() calls (blob
   // downloads/streams) so they respect VITE_API_URL just like the JSON client.
   url: (path: string) => apiUrl(path),
