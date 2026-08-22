@@ -334,6 +334,10 @@ return [
     ],
 
     'notify' => [
+        'temperature' => ':name is running at :temp C',
+        'memory' => 'Memory on :name is at :pct%',
+        'array' => 'An array on :name is degraded: :array',
+        'drive' => 'A drive on :name reports a problem: :drive',
         'check_host' => 'the host',
         'check_port' => 'port :port',
         'unreachable' => ':name: :what is not answering',
@@ -433,4 +437,12 @@ return [
     'finding_disk_failing' => ':n drives report a problem',
     'finding_array' => ':n arrays are degraded',
     'finding_hot' => ':n sensors are running hot',
+    'thresholds' => 'Alert thresholds',
+    'thresholds_hint' => 'Leave empty to use the defaults: 90% disk, 95% memory, 85 C. Worth changing on an archive that lives at 95% — a threshold that fires every day is one people learn to ignore.',
+    'threshold_disk' => 'Disk %',
+    'threshold_mem' => 'Memory %',
+    'threshold_temp' => 'Temp C',
+    'full_in' => 'full in :days days',
+    'growth_per_day' => '+:pct% per day',
+    'forecast_pending' => 'No projection yet: :h h of history so far.',
 ];

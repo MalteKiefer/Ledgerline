@@ -19,8 +19,12 @@ use Illuminate\Support\Carbon;
  */
 final class ServerMonitor
 {
-    /** A filesystem above this share is worth telling the owner about. */
+    /** Defaults, used where a server sets no threshold of its own. */
     private const DISK_ALERT_PCT = 90.0;
+
+    private const MEM_ALERT_PCT = 95.0;
+
+    private const TEMP_ALERT_C = 85.0;
 
     public function __construct(private readonly ServerProbe $probe) {}
 
@@ -78,17 +82,72 @@ final class ServerMonitor
         }
 
         // Disk pressure — only when it crosses the threshold, per filesystem.
+        $diskLimit = (float) ($server->disk_alert_pct ?? self::DISK_ALERT_PCT);
         foreach ($this->disks($facts) as $mount => $pct) {
-            if ($pct < self::DISK_ALERT_PCT) {
+            if ($pct < $diskLimit) {
                 continue;
             }
-            if (($this->disks($prev)[$mount] ?? 0.0) >= self::DISK_ALERT_PCT) {
+            if (($this->disks($prev)[$mount] ?? 0.0) >= $diskLimit) {
                 continue;
             }
             AppNotification::record(
                 $uid,
                 'warning',
                 __('servers.notify.disk', ['name' => $server->name, 'mount' => $mount, 'pct' => (string) $pct]),
+                null,
+                'server',
+            );
+        }
+
+        // A drive that has started remapping sectors is on its way out, whatever
+        // its overall verdict says — and unlike a full disk, nobody finds this
+        // by looking. Fires when a drive first goes bad, not on every poll.
+        $bad = $this->badDrives($facts);
+        $newlyBad = array_values(array_diff($bad, $this->badDrives($prev)));
+        if ($newlyBad !== []) {
+            AppNotification::record(
+                $uid,
+                'warning',
+                __('servers.notify.drive', ['name' => $server->name, 'drive' => implode(', ', $newlyBad)]),
+                null,
+                'server',
+            );
+        }
+
+        // Same for an array: it keeps working, right up until the second disk
+        // goes, which is why it has to be said out loud the first time.
+        $degraded = $this->degradedArrays($facts);
+        $newlyDegraded = array_values(array_diff($degraded, $this->degradedArrays($prev)));
+        if ($newlyDegraded !== []) {
+            AppNotification::record(
+                $uid,
+                'warning',
+                __('servers.notify.array', ['name' => $server->name, 'array' => implode(', ', $newlyDegraded)]),
+                null,
+                'server',
+            );
+        }
+
+        // Memory and temperature, both threshold crossings like the disk.
+        $memLimit = (float) ($server->mem_alert_pct ?? self::MEM_ALERT_PCT);
+        $memNow = $this->memPct($facts);
+        if ($memNow !== null && $memNow >= $memLimit && ($this->memPct($prev) ?? 0.0) < $memLimit) {
+            AppNotification::record(
+                $uid,
+                'warning',
+                __('servers.notify.memory', ['name' => $server->name, 'pct' => (string) $memNow]),
+                null,
+                'server',
+            );
+        }
+
+        $tempLimit = (float) ($server->temp_alert_c ?? self::TEMP_ALERT_C);
+        $hotNow = $this->hottest($facts);
+        if ($hotNow !== null && $hotNow >= $tempLimit && ($this->hottest($prev) ?? 0.0) < $tempLimit) {
+            AppNotification::record(
+                $uid,
+                'warning',
+                __('servers.notify.temperature', ['name' => $server->name, 'temp' => (string) $hotNow]),
                 null,
                 'server',
             );
@@ -106,6 +165,81 @@ final class ServerMonitor
                 'server',
             );
         }
+    }
+
+    /**
+     * Drives whose health has gone bad, named so two runs can be compared.
+     *
+     * `unknown` is not in here: a drive whose state could not be read has not
+     * failed, and waking somebody for a missing tool would train them to
+     * ignore the alert that matters.
+     *
+     * @param  array<string, mixed>  $facts
+     * @return list<string>
+     */
+    private function badDrives(array $facts): array
+    {
+        $out = [];
+        $drives = is_array($facts['storage'] ?? null) ? $facts['storage'] : [];
+        foreach ($drives as $d) {
+            if (! is_array($d) || ! is_string($d['name'] ?? null)) {
+                continue;
+            }
+            $failing = ($d['health'] ?? '') === 'failing';
+            // A count we cannot read is not a count of zero, so it is not
+            // treated as one: only a real number above zero counts.
+            $remapped = (is_numeric($d['reallocated'] ?? null) && (int) $d['reallocated'] > 0)
+                || (is_numeric($d['pending'] ?? null) && (int) $d['pending'] > 0);
+            if ($failing || $remapped) {
+                $out[] = $d['name'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $facts
+     * @return list<string>
+     */
+    private function degradedArrays(array $facts): array
+    {
+        $out = [];
+        $arrays = is_array($facts['arrays'] ?? null) ? $facts['arrays'] : [];
+        foreach ($arrays as $a) {
+            if (is_array($a) && ($a['degraded'] ?? false) === true && is_string($a['name'] ?? null)) {
+                $out[] = $a['name'];
+            }
+        }
+
+        return $out;
+    }
+
+    /** @param  array<string, mixed>  $facts */
+    private function memPct(array $facts): ?float
+    {
+        $mem = is_array($facts['mem'] ?? null) ? $facts['mem'] : [];
+
+        return is_numeric($mem['used_pct'] ?? null) ? (float) $mem['used_pct'] : null;
+    }
+
+    /**
+     * The hottest sensor on the box, which is the one that decides whether it
+     * is running hot — an average would hide it behind the cool ones.
+     *
+     * @param  array<string, mixed>  $facts
+     */
+    private function hottest(array $facts): ?float
+    {
+        $best = null;
+        $sensors = is_array($facts['sensors'] ?? null) ? $facts['sensors'] : [];
+        foreach ($sensors as $s) {
+            if (is_array($s) && is_numeric($s['temp_c'] ?? null)) {
+                $best = max($best ?? 0.0, (float) $s['temp_c']);
+            }
+        }
+
+        return $best;
     }
 
     /**

@@ -334,6 +334,10 @@ return [
     ],
 
     'notify' => [
+        'temperature' => ':name läuft mit :temp C',
+        'memory' => 'Der Speicher auf :name liegt bei :pct%',
+        'array' => 'Ein Verbund auf :name ist beeinträchtigt: :array',
+        'drive' => 'Ein Laufwerk auf :name meldet ein Problem: :drive',
         'check_host' => 'der Host',
         'check_port' => 'Port :port',
         'unreachable' => ':name: :what antwortet nicht',
@@ -433,4 +437,12 @@ return [
     'finding_disk_failing' => ':n Laufwerke melden ein Problem',
     'finding_array' => ':n Verbunde sind beeinträchtigt',
     'finding_hot' => ':n Sensoren laufen heiß',
+    'thresholds' => 'Schwellenwerte',
+    'thresholds_hint' => 'Leer lassen für die Standardwerte: 90% Platte, 95% Speicher, 85 C. Lohnt sich bei einem Archiv, das dauerhaft bei 95% liegt — eine Schwelle, die täglich auslöst, wird irgendwann ignoriert.',
+    'threshold_disk' => 'Platte %',
+    'threshold_mem' => 'Speicher %',
+    'threshold_temp' => 'Temp C',
+    'full_in' => 'voll in :days Tagen',
+    'growth_per_day' => '+:pct% pro Tag',
+    'forecast_pending' => 'Noch keine Prognose: bisher :h h Verlauf.',
 ];

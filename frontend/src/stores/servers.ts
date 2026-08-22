@@ -80,6 +80,29 @@ export interface StorageDevice {
 export interface StorageArray { kind: string; name: string; state: string; detail: string; degraded: boolean }
 export interface SensorReading { chip: string; label: string; temp_c: number }
 
+/**
+ * When a filesystem runs out, projected from the samples we already keep.
+ *
+ * `days_to_full` is null for anything flat, shrinking or merely noisy: a disk
+ * that has sat at 91% for months is not the emergency, and a date invented
+ * from noise is worse than no date.
+ */
+export interface ForecastLine {
+  used_pct: number;
+  per_day: number;
+  days_to_full: number | null;
+  fit: number;
+}
+
+export interface CapacityForecast {
+  /** False until there is enough history for a slope to mean anything. */
+  ready: boolean;
+  hours_of_history: number;
+  samples: number;
+  disks: (ForecastLine & { mount: string })[];
+  memory: ForecastLine | null;
+}
+
 export interface ServerStatus { ok: boolean; error: string | null; collected_at: string; duration_ms: number }
 
 export interface Server {
@@ -96,6 +119,10 @@ export interface Server {
   /** Whether the setup created the account; null for rows predating the field. */
   account_created: boolean | null;
   host_fingerprint: string | null;
+  /** Null means the built-in default, which is what most servers want. */
+  disk_alert_pct?: number | null;
+  mem_alert_pct?: number | null;
+  temp_alert_c?: number | null;
   /** Extra TCP ports to watch. The SSH port is always checked and is not listed here. */
   monitor_ports: { port: number; label: string | null }[];
   /** Only returned by show(): derived from the stored key for the removal steps. */
@@ -304,7 +331,8 @@ export const useServersStore = defineStore('servers', () => {
   const load = () => api.get<{ servers: Server[] }>('/api/v1/servers')
     .then((r) => { servers.value = r.servers ?? []; });
 
-  const show = (id: number) => api.get<{ server: Server; history: TrendPoint[] }>(`/api/v1/servers/${id}`);
+  const show = (id: number) =>
+    api.get<{ server: Server; history: TrendPoint[]; forecast: CapacityForecast }>(`/api/v1/servers/${id}`);
 
   /** What the host can offer: which log systems exist, and the units, containers and files really present. */
   const logSources = (id: number) =>
