@@ -291,4 +291,5 @@ return [
     'sort_type' => 'Type',
     'view_source' => 'Source',
     'view_rendered' => 'Rendered',
+    'saved' => 'Saved',
 ];

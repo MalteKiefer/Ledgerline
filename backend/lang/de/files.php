@@ -291,4 +291,5 @@ return [
     'sort_type' => 'Typ',
     'view_source' => 'Quelltext',
     'view_rendered' => 'Gerendert',
+    'saved' => 'Gespeichert',
 ];
