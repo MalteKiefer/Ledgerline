@@ -21,8 +21,13 @@ final class StorageUsage
     /** Bytes occupied by a user's files (incl. version history) plus gallery photos, all incl. trashed. */
     public static function bytesForUser(int $userId): int
     {
-        return FilesUsage::forUser($userId)
-            + (int) GalleryPhoto::query()->withoutGlobalScopes()->withTrashed()->where('user_id', $userId)->sum('size');
+        return FilesUsage::forUser($userId) + self::galleryBytesForUser($userId);
+    }
+
+    /** Bytes occupied by a user's gallery photos and videos, incl. trashed. */
+    public static function galleryBytesForUser(int $userId): int
+    {
+        return (int) GalleryPhoto::query()->withoutGlobalScopes()->withTrashed()->where('user_id', $userId)->sum('size');
     }
 
     /** The configured combined cap in bytes, or null when unlimited. */
@@ -37,11 +42,25 @@ final class StorageUsage
     /**
      * The usage snapshot shape used across API/page payloads.
      *
-     * @return array{used: int, quota: int|null}
+     * `used` is what the quota applies to; `files` and `gallery` break it down,
+     * because "how much is the gallery using" is a question the total cannot
+     * answer and a client would otherwise have to guess at (the desktop client
+     * did guess, and showed 0 B for both). Both queries already ran to produce
+     * the total, so the breakdown costs nothing extra.
+     *
+     * @return array{used: int, files: int, gallery: int, quota: int|null}
      */
     public static function snapshotForUser(int $userId): array
     {
-        return ['used' => self::bytesForUser($userId), 'quota' => self::quotaBytes()];
+        $files = FilesUsage::forUser($userId);
+        $gallery = self::galleryBytesForUser($userId);
+
+        return [
+            'used' => $files + $gallery,
+            'files' => $files,
+            'gallery' => $gallery,
+            'quota' => self::quotaBytes(),
+        ];
     }
 
     /** True (with a 413 already built) when `$incoming` more bytes would exceed the cap. */
