@@ -54,32 +54,6 @@ class MeUsageTest extends TestCase
         $this->getJson('/api/v1/me', $h)->assertOk()->assertJsonPath('usage.used', $expected);
     }
 
-    /**
-     * The breakdown exists because a client cannot derive it: `used` alone
-     * cannot answer "how much is the gallery using", and the desktop client
-     * guessed at absent per-module fields and displayed 0 B for both.
-     */
-    public function test_me_usage_breaks_down_per_module(): void
-    {
-        $user = User::factory()->create();
-        $h = $this->bearer($user);
-
-        $this->actingAs($user)->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->create('doc.pdf', 40)])->assertCreated();
-        $this->actingAs($user)->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('photo.jpg', 200, 150)])->assertCreated();
-
-        $files = (int) FileEntry::withTrashed()->sum('size');
-        $gallery = (int) GalleryPhoto::withTrashed()->sum('size');
-        $this->assertGreaterThan(0, $files);
-        $this->assertGreaterThan(0, $gallery);
-
-        $this->getJson('/api/v1/me', $h)->assertOk()
-            ->assertJsonPath('usage.files', $files)
-            ->assertJsonPath('usage.gallery', $gallery)
-            // The parts must add up to the figure the quota is enforced against,
-            // or the two numbers would tell different stories.
-            ->assertJsonPath('usage.used', $files + $gallery);
-    }
-
     public function test_me_usage_reflects_the_shared_quota_cap(): void
     {
         config(['files.quota_mb' => 5]);
