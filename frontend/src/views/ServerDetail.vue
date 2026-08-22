@@ -213,7 +213,7 @@
               <span class="text-[var(--ll-muted)]">{{ ses.since }}</span>
               <span v-if="ses.from" class="text-[var(--ll-muted)]">({{ ses.from }})</span>
               <Btn
-                v-if="ses.tty"
+                v-if="killable(ses.tty)"
                 variant="ghost"
                 size="sm"
                 icon="logout"
@@ -783,6 +783,24 @@ const nextRefresh = computed(() => {
   return t('servers.next_in', { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` });
 });
 
+/**
+ * Pick up the new snapshot once the countdown runs out.
+ *
+ * Without this the page shows "due" forever: the timestamp is fetched once on
+ * open and never again, so the counter reaches zero and stays there even though
+ * the worker has long since collected. Re-checked at most once a minute, so a
+ * worker that is genuinely behind does not turn this into a polling loop.
+ */
+let lastReload = 0;
+watch(now, () => {
+  const at = server.value?.status?.collected_at;
+  if (!at) return;
+  const due = new Date(at).getTime() + POLL_SECONDS * 1000;
+  if (now.value < due || now.value - lastReload < 60_000) return;
+  lastReload = now.value;
+  void load();
+});
+
 // ---- power ----
 
 const powerOpen = ref(false);
@@ -887,6 +905,17 @@ const logTotal = computed(() => logLinesArr.value.length);
  * out actually means — killing only the shell leaves whatever it started
  * running.
  */
+/**
+ * Only a real terminal can be signalled.
+ *
+ * `who` also lists rows whose "tty" is `sshd` or `seat0` — a service name and a
+ * login seat, not a terminal. Offering an End button there would produce a
+ * refusal on click; the honest interface is to not offer it.
+ */
+function killable(tty: string): boolean {
+  return /^(pts\/\d{1,4}|tty\d{1,3})$/.test(tty);
+}
+
 async function killSession(ses: { user: string; tty: string }) {
   const srv = server.value;
   if (!srv) return;

@@ -340,7 +340,28 @@ const POLL_SECONDS = 300;
 // One ticker for the whole list; each card reads it.
 const now = ref(Date.now());
 let ticker: number | null = null;
-onMounted(() => { ticker = window.setInterval(() => { now.value = Date.now(); }, 1000); });
+/**
+ * Pick up new snapshots once the soonest countdown runs out. Without it every
+ * card ends up reading "due" and staying there: the timestamps are fetched once
+ * and never again. At most once a minute, so a worker that is behind does not
+ * turn this into a polling loop.
+ */
+let lastReload = 0;
+
+onMounted(() => {
+  ticker = window.setInterval(() => {
+    now.value = Date.now();
+    const due = s.servers.some((srv) => {
+      const at = srv.status?.collected_at;
+
+      return at ? new Date(at).getTime() + POLL_SECONDS * 1000 <= now.value : false;
+    });
+    if (due && now.value - lastReload >= 60_000) {
+      lastReload = now.value;
+      void s.load();
+    }
+  }, 1000);
+});
 onBeforeUnmount(() => { if (ticker !== null) window.clearInterval(ticker); });
 
 function nextRefresh(srv: Server): string | null {
