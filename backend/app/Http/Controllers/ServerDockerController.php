@@ -26,7 +26,10 @@ class ServerDockerController extends Controller
     {
         $this->requireUser($request);
 
-        return response()->json($this->docker->inspect($server))->header('Cache-Control', 'no-store');
+        $state = $this->docker->inspect($server);
+
+        return response()->json(['available' => $state['present'] && $state['error'] === null] + $state)
+            ->header('Cache-Control', 'no-store');
     }
 
     public function act(Request $request, Server $server): JsonResponse

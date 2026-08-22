@@ -43,7 +43,7 @@ class DockerInspector
         echo "##LL:version"
         command -v docker >/dev/null 2>&1 && docker version --format '{{.Server.Version}}' 2>&1 || echo "__absent__"
         echo "##LL:ps"
-        docker ps -a --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}\t{{.Ports}}\t{{.RunningFor}}' 2>/dev/null | head -300
+        docker ps -a --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}\t{{.Ports}}\t{{.RunningFor}}\t{{.Label "com.docker.compose.project"}}' 2>/dev/null | head -300
         echo "##LL:stats"
         docker stats --no-stream --format '{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}' 2>/dev/null | head -300
         echo "##LL:images"
@@ -165,6 +165,7 @@ class DockerInspector
                 'status' => $f[4],
                 'ports' => $this->parsePorts($f[5] ?? ''),
                 'created' => $f[6] ?? '',
+                'compose' => $f[7] ?? '',
                 'cpu' => $stats[$name]['cpu'] ?? null,
                 'mem' => $stats[$name]['mem'] ?? null,
                 'mem_pct' => $stats[$name]['mem_pct'] ?? null,
@@ -259,7 +260,7 @@ class DockerInspector
             if ($f[0] === '') {
                 continue;
             }
-            $rows[] = ['name' => $f[0], 'driver' => $f[1] ?? ''];
+            $rows[] = ['name' => $f[0], 'driver' => $f[1] ?? '', 'mount' => ''];
         }
 
         return $rows;
