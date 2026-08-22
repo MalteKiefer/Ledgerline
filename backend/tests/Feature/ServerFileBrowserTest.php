@@ -320,7 +320,7 @@ class ServerFileBrowserTest extends TestCase
         $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
         $server = $this->server($user);
         $this->recorder();
-        $this->swapPermissions("##LL:stat
+        $this->swapPermissions('##LL:stat
 644 root root 0 0 regular file
 ##LL:acl
 __absent__
@@ -330,7 +330,7 @@ www-data
 ##LL:groups
 root
 ##LL:end
-");
+');
 
         $token = $this->unlock($user, $server);
 
@@ -356,7 +356,7 @@ root
         $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
         $server = $this->server($user);
         $this->recorder();
-        $this->swapPermissions("##LL:stat
+        $this->swapPermissions('##LL:stat
 2775 root staff 0 50 directory
 ##LL:acl
 user::rwx
@@ -369,7 +369,7 @@ root
 ##LL:groups
 staff
 ##LL:end
-");
+');
 
         $token = $this->unlock($user, $server);
 
@@ -419,8 +419,8 @@ staff
         $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
         $server = $this->server($user);
         $this->recorder();
-        $perms = $this->swapPermissions("##LL:rc=0
-");
+        $perms = $this->swapPermissions('##LL:rc=0
+');
 
         $token = $this->unlock($user, $server);
 
