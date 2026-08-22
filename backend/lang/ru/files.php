@@ -284,4 +284,11 @@ return [
     'nav_back' => 'Назад (Alt+←)',
     'nav_forward' => 'Вперёд (Alt+→)',
     'nav_up' => 'На уровень выше (Backspace)',
+    'sort' => 'Сортировка',
+    'sort_name' => 'Имя',
+    'sort_size' => 'Размер',
+    'sort_modified' => 'Изменён',
+    'sort_type' => 'Тип',
+    'view_source' => 'Исходник',
+    'view_rendered' => 'Отрисовка',
 ];

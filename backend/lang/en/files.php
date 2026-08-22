@@ -284,4 +284,11 @@ return [
     'nav_back' => 'Back (Alt+←)',
     'nav_forward' => 'Forward (Alt+→)',
     'nav_up' => 'Up one level (Backspace)',
+    'sort' => 'Sort',
+    'sort_name' => 'Name',
+    'sort_size' => 'Size',
+    'sort_modified' => 'Last changed',
+    'sort_type' => 'Type',
+    'view_source' => 'Source',
+    'view_rendered' => 'Rendered',
 ];

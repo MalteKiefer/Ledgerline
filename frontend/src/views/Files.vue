@@ -144,6 +144,17 @@
           <Btn v-if="view!=='mount'" variant="ghost" size="sm" icon="storage" @click="openStorage">{{ t('files.storage') }}</Btn>
           <Btn v-if="view!=='mount'" variant="ghost" size="sm" icon="history" @click="openActivity">{{ t('files.activity') }}</Btn>
           <Btn v-if="view==='trash' && trashFiles.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="emptyTrash">{{ t('files.empty_trash') }}</Btn>
+          <DropdownMenuRoot v-if="view!=='mount'">
+            <DropdownMenuTrigger as-child>
+              <Btn variant="ghost" size="sm" icon="sort" :title="t('files.sort')" />
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <DropdownMenuItem v-for="k in SORT_KEYS" :key="k" :class="menuItemCls" @select="setSort(k)">
+                <Icon :name="sortKey===k ? (sortAsc ? 'arrow_upward' : 'arrow_downward') : 'remove'" :size="18" :class="sortKey===k ? '' : 'opacity-0'" />
+                {{ t('files.sort_' + k) }}
+              </DropdownMenuItem>
+            </DropdownMenuContent></DropdownMenuPortal>
+          </DropdownMenuRoot>
           <Btn v-if="view!=='mount'" variant="ghost" size="sm" :icon="layout==='grid' ? 'view_list' : 'grid_view'" @click="layout = layout==='grid' ? 'list' : 'grid'" />
         </div>
       </div>
@@ -1016,13 +1027,21 @@
         <video v-else-if="previewKind(preview) === 'video'" :src="s.rawUrl(preview)" controls class="max-h-full max-w-full"></video>
         <audio v-else-if="previewKind(preview) === 'audio'" :src="s.rawUrl(preview)" controls></audio>
         <div v-else-if="previewKind(preview) === 'text'" class="relative h-full w-full overflow-auto rounded-lg bg-white dark:bg-[#1a1a1a]">
-          <div class="sticky top-0 z-10 flex justify-end border-b border-[var(--ll-border)] bg-white/90 px-2 py-1.5 backdrop-blur dark:bg-[#1a1a1a]/90">
+          <div class="sticky top-0 z-10 flex items-center justify-end gap-1 border-b border-[var(--ll-border)] bg-white/90 px-2 py-1.5 backdrop-blur dark:bg-[#1a1a1a]/90">
+            <!-- Markdown reads as a document, not as source. The rendered view
+                 is the default for it; the source stays one click away. -->
+            <Btn
+              v-if="isMarkdown(preview)" variant="ghost" size="sm"
+              :icon="mdRendered ? 'code' : 'visibility'"
+              @click="mdRendered = !mdRendered"
+            >{{ mdRendered ? t('files.view_source') : t('files.view_rendered') }}</Btn>
             <Btn variant="ghost" size="sm" icon="content_copy" :disabled="previewText === null" @click="copyPreviewText">{{ t('common.copy') }}</Btn>
           </div>
           <div v-if="previewTextLoading" class="p-10 text-center text-[var(--ll-muted)]">
             <Icon name="progress_activity" :size="28" class="animate-spin" />
           </div>
           <div v-else-if="previewTextError" class="p-10 text-center text-[var(--ll-muted)]">{{ t('common.error') }}</div>
+          <div v-else-if="isMarkdown(preview) && mdRendered" class="ll-prose p-4 text-sm" v-html="previewMarkdown"></div>
           <pre v-else class="hljs m-0 overflow-auto p-4 font-mono text-xs leading-5"><code v-html="previewHighlighted"></code></pre>
         </div>
         <div v-else class="p-10 text-center text-[var(--ll-muted)]">
@@ -1194,6 +1213,7 @@ import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type Fi
 import { useCryptoStore } from '@spa/stores/crypto';
 import { ApiError, api } from '@spa/api/client';
 import { highlightCode } from '@spa/lib/highlight';
+import { renderMarkdown } from '@spa/lib/markdown';
 import { useMountsStore, type Mount, type MountEntry, type MountType } from '@spa/stores/mounts';
 
 // Nextcloud and B2 are presets over WebDAV and S3 — the protocol is an
@@ -1224,6 +1244,59 @@ const s = useFilesStore();
 const { success, error } = useToast();
 const view = ref<'files' | 'favorites' | 'shared' | 'trash' | 'mount'>('files');
 const layout = ref<'grid' | 'list'>('list');
+
+// Folders stay above files whatever the sort — every file manager does that,
+// and mixing them by size puts an empty folder between two documents.
+const SORT_KEYS = ['name', 'size', 'modified', 'type'] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+const sortKey = ref<SortKey>((localStorage.getItem('ll_files_sort') as SortKey) || 'modified');
+const sortAsc = ref(localStorage.getItem('ll_files_sort_asc') === '1');
+
+function setSort(k: SortKey) {
+  // Same column twice reverses it; a new column starts in the direction that
+  // reads as "most interesting first" — newest and largest, but A-Z by name.
+  if (sortKey.value === k) sortAsc.value = !sortAsc.value;
+  else { sortKey.value = k; sortAsc.value = k === 'name' || k === 'type'; }
+  localStorage.setItem('ll_files_sort', sortKey.value);
+  localStorage.setItem('ll_files_sort_asc', sortAsc.value ? '1' : '0');
+}
+
+/** Extension, lowercased — what "sort by type" actually groups on. */
+function extOf(name: string): string {
+  const i = name.lastIndexOf('.');
+
+  return i > 0 ? name.slice(i + 1).toLowerCase() : '';
+}
+
+function sortRows(list: Row[]): Row[] {
+  const dir = sortAsc.value ? 1 : -1;
+  const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+  return [...list].sort((a, b) => {
+    // Folders first, always. Only their order among themselves is sorted.
+    if (a._folder !== b._folder) return a._folder ? -1 : 1;
+    if (sortKey.value === 'name') return dir * coll.compare(a.name, b.name);
+    if (sortKey.value === 'type') {
+      // A folder has no extension; sorting them by one would shuffle them
+      // arbitrarily, so they fall back to name.
+      const c = a._folder ? 0 : coll.compare(extOf(a.name), extOf(b.name));
+
+      return c !== 0 ? dir * c : dir * coll.compare(a.name, b.name);
+    }
+    if (sortKey.value === 'size') {
+      // A folder carries no size of its own, so it keeps its name order
+      // rather than pretending to be zero bytes.
+      if (a._folder) return coll.compare(a.name, b.name);
+      const c = ((a.raw as FileEntry).size ?? 0) - ((b.raw as FileEntry).size ?? 0);
+
+      return c !== 0 ? dir * c : coll.compare(a.name, b.name);
+    }
+    const at = new Date((a.raw as { updated_at?: string }).updated_at ?? 0).getTime();
+    const bt = new Date((b.raw as { updated_at?: string }).updated_at ?? 0).getTime();
+
+    return at === bt ? coll.compare(a.name, b.name) : dir * (at - bt);
+  });
+}
 const cwd = ref<number | null>(null);
 const query = ref('');
 const searching = ref(false);
@@ -1245,6 +1318,19 @@ const tagInput = ref('');
 const previewText = ref<string | null>(null);
 const previewTextLoading = ref(false);
 const previewTextError = ref(false);
+/** Rendered by default, because that is how a README is meant to be read. */
+const mdRendered = ref(true);
+
+function isMarkdown(f: FileEntry | null): boolean {
+  return !!f && (/\.(md|markdown)$/i.test(f.name) || (f.mime || '').toLowerCase() === 'text/markdown');
+}
+
+// The same sanitising renderer the notes module uses: user-authored markdown
+// reaches innerHTML here, so it goes through DOMPurify exactly as it does there.
+const previewMarkdown = computed(() => (
+  preview.value && previewText.value !== null ? renderMarkdown(previewText.value) : ''
+));
+
 const previewHighlighted = computed(() => (
   preview.value && previewText.value !== null ? highlightCode(previewText.value, preview.value.name) : ''
 ));
@@ -1466,11 +1552,11 @@ function labelMatch(f: FileEntry): boolean {
 const rows = computed<Row[]>(() => {
   const q = query.value.trim().toLowerCase();
   if (view.value === 'trash') {
-    return [...trashFolders.value.map(mapFolder), ...trashFiles.value.map(mapFile)].filter((r) => !q || r.name.toLowerCase().includes(q));
+    return sortRows([...trashFolders.value.map(mapFolder), ...trashFiles.value.map(mapFile)].filter((r) => !q || r.name.toLowerCase().includes(q)));
   }
   // Server-side content search drives the listing when a query is present.
   if (q && serverResults.value) {
-    return serverResults.value.filter(labelMatch).map(mapFile);
+    return sortRows(serverResults.value.filter(labelMatch).map(mapFile));
   }
   let files = s.files as FileEntry[];
   let folders: FileFolder[] = [];
@@ -1483,7 +1569,8 @@ const rows = computed<Row[]>(() => {
   files = files.filter(labelMatch);
   let out = [...folders.map(mapFolder), ...files.map(mapFile)];
   if (q) out = out.filter((r) => r.name.toLowerCase().includes(q));
-  return out;
+
+  return sortRows(out);
 });
 
 // Human-readable folder path for the preview sidebar (root → … → parent).
