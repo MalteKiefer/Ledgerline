@@ -783,6 +783,24 @@ const nextRefresh = computed(() => {
   return t('servers.next_in', { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` });
 });
 
+/**
+ * Pick up the new snapshot once the countdown runs out.
+ *
+ * Without this the page shows "due" forever: the timestamp is fetched once on
+ * open and never again, so the counter reaches zero and stays there even though
+ * the worker has long since collected. Re-checked at most once a minute, so a
+ * worker that is genuinely behind does not turn this into a polling loop.
+ */
+let lastReload = 0;
+watch(now, () => {
+  const at = server.value?.status?.collected_at;
+  if (!at) return;
+  const due = new Date(at).getTime() + POLL_SECONDS * 1000;
+  if (now.value < due || now.value - lastReload < 60_000) return;
+  lastReload = now.value;
+  void load();
+});
+
 // ---- power ----
 
 const powerOpen = ref(false);
