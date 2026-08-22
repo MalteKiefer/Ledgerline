@@ -50,6 +50,9 @@ class ServerProbe
 
     private const EXEC_TIMEOUT = 25;
 
+    /** Ceiling for callers that ask for longer. Nothing inline may exceed it. */
+    private const EXEC_TIMEOUT_MAX = 45;
+
     private const CONNECT_TIMEOUT_INTERACTIVE = 5;
 
     private const EXEC_TIMEOUT_INTERACTIVE = 10;
@@ -93,6 +96,11 @@ echo "##LL:temp"; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null
 echo "##LL:blockdev"; command -v lsblk >/dev/null 2>&1 && lsblk -dnb -P -o NAME,TYPE,SIZE,ROTA,MODEL 2>/dev/null | head -24 || echo "__absent__"
 echo "##LL:smart"; if command -v smartctl >/dev/null 2>&1; then for d in /dev/sd? /dev/nvme?n? /dev/vd?; do [ -b "$d" ] || continue; echo "##DEV:$d"; smartctl -H -A "$d" 2>&1 | head -40; done; else echo "__absent__"; fi
 echo "##LL:mdstat"; cat /proc/mdstat 2>/dev/null | head -20
+echo "##LL:timers"; systemctl show "*.timer" --property=Id --property=Unit --property=NextElapseUSecRealtime --property=LastTriggerUSec --property=ActiveState 2>/dev/null | head -160
+echo "##LL:timersfailed"; systemctl list-units --type=timer --state=failed --no-legend --no-pager 2>/dev/null | head -10
+echo "##LL:backup"; for b in restic borg borgmatic rsnapshot duplicity rclone kopia; do command -v "$b" >/dev/null 2>&1 && echo "$b"; done
+echo "##LL:logins"; command -v last >/dev/null 2>&1 && (last -n 8 -w -F 2>/dev/null | head -8) || echo "__absent__"
+echo "##LL:badlogins"; command -v lastb >/dev/null 2>&1 && (lastb -n 40 2>/dev/null | wc -l) || echo "__absent__"
 echo "##LL:zpool"; command -v zpool >/dev/null 2>&1 && (zpool list -H -o name,size,alloc,free,health,frag 2>&1 | head -8) || echo "__absent__"
 echo "##LL:hwmon"; for h in /sys/class/hwmon/hwmon*; do n=$(cat "$h/name" 2>/dev/null) || continue; for t in "$h"/temp*_input; do [ -f "$t" ] || continue; l=$(cat "${t%_input}_label" 2>/dev/null); printf "%s\t%s\t%s\t%s\n" "$n" "$(basename "$t")" "$l" "$(cat "$t" 2>/dev/null)"; done; done | head -40
 echo "##LL:gateway"; ip -o -4 route show default 2>/dev/null | head -3
@@ -183,7 +191,7 @@ echo "##LL:end"';
      *
      * @return array{ok: bool, out: string, err: string, exit: ?int}
      */
-    public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false): array
+    public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false, ?int $timeout = null): array
     {
         $pem = $this->usableKey($target);
         if ($pem === null) {
@@ -204,7 +212,11 @@ echo "##LL:end"';
         // means the shell we chose is the only one that ever parses it.
         return BinaryProcess::runCapture(
             $this->sshArgv($target, $keyFile->path(), $knownHosts->path(), $interactive),
-            $interactive ? self::EXEC_TIMEOUT_INTERACTIVE : self::EXEC_TIMEOUT,
+            // A caller may ask for longer, capped: walking a large tree takes
+            // more than the interactive limits allow, and holding a worker
+            // open indefinitely is the mistake this codebase has already made
+            // twice.
+            $timeout !== null ? min($timeout, self::EXEC_TIMEOUT_MAX) : ($interactive ? self::EXEC_TIMEOUT_INTERACTIVE : self::EXEC_TIMEOUT),
             input: $script,
         );
     }

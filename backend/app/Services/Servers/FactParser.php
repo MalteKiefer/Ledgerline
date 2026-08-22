@@ -53,6 +53,10 @@ final class FactParser
             'storage' => $this->storage($s['blockdev'] ?? '', $s['smart'] ?? ''),
             'arrays' => $this->arrays($s['mdstat'] ?? '', $s['zpool'] ?? ''),
             'sensors' => $this->sensors($s['hwmon'] ?? ''),
+            'timers' => $this->timers($s['timers'] ?? '', $s['timersfailed'] ?? ''),
+            'backup_tools' => $this->lines($s['backup'] ?? ''),
+            'logins' => $this->logins($s['logins'] ?? ''),
+            'failed_logins' => $this->failedLogins($s['badlogins'] ?? ''),
             'network' => $this->network($s['gateway'] ?? '', $s['dns'] ?? '', $s['netstat'] ?? '', $s),
         ];
 
@@ -239,6 +243,128 @@ final class FactParser
             'swap_total_kb' => $swapTotal,
             'swap_used_kb' => ($swapTotal !== null && $swapFree !== null) ? $swapTotal - $swapFree : null,
         ];
+    }
+
+    /**
+     * Non-empty trimmed lines. Every section that is a list wants this, and
+     * each writing its own split is how they drift apart.
+     *
+     * @return list<string>
+     */
+    private function lines(string $raw): array
+    {
+        $out = [];
+        foreach (preg_split('/
+|
+|
+/', trim($raw)) ?: [] as $line) {
+            if (trim($line) !== '') {
+                $out[] = trim($line);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Scheduled work, and whether any of it is failing.
+     *
+     * We already report failed services. A failed *timer* is invisible, and
+     * that is where backups, certificate renewal and cleanup jobs live — the
+     * things nobody notices are broken until they are needed.
+     *
+     * @return array{units:list<array{unit:string,next:string,last:string,activates:string}>,failed:list<string>}
+     */
+    private function timers(string $raw, string $failedRaw): array
+    {
+        $units = [];
+        // `systemctl show` emits one KEY=value block per unit, blank-line
+        // separated. `list-timers` prints dates containing spaces into
+        // space-separated columns, which cannot be split back apart — this can.
+        foreach (preg_split('/\n\s*\n/', trim($raw)) ?: [] as $block) {
+            $props = [];
+            foreach ($this->lines($block) as $line) {
+                $pair = explode('=', $line, 2);
+                if (count($pair) === 2) {
+                    $props[$pair[0]] = trim($pair[1]);
+                }
+            }
+            $id = $props['Id'] ?? '';
+            if (! str_ends_with($id, '.timer')) {
+                continue;
+            }
+            $units[] = [
+                'unit' => $id,
+                // Empty when the timer is not scheduled to run again, which is
+                // a real state and not a missing value.
+                'next' => $props['NextElapseUSecRealtime'] ?? '',
+                'last' => $props['LastTriggerUSec'] ?? '',
+                'activates' => $props['Unit'] ?? '',
+            ];
+        }
+
+        $failed = [];
+        foreach ($this->lines($failedRaw) as $line) {
+            $first = strtok(trim($line), ' ');
+            if ($first !== false && str_ends_with($first, '.timer')) {
+                $failed[] = $first;
+            }
+        }
+
+        return ['units' => $units, 'failed' => $failed];
+    }
+
+    /**
+     * Recent logins, as `last` prints them.
+     *
+     * Who has been on the machine, which is context a reader wants beside the
+     * sessions that are open right now.
+     *
+     * @return list<array{user:string,from:string,when:string}>
+     */
+    private function logins(string $raw): array
+    {
+        if (str_contains($raw, '__absent__')) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($this->lines($raw) as $line) {
+            if (str_starts_with($line, 'wtmp') || str_starts_with($line, 'reboot')) {
+                continue;
+            }
+            // A console login has no host, leaving that column empty, so the
+            // timestamp is found by its weekday rather than by counting fields.
+            if (preg_match('/^(\S+)\s+(\S+)\s+(.*?)\s*((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\w+\s+\d+\s+[\d:]+(?:\s+\d{4})?)/', $line, $m) !== 1) {
+                continue;
+            }
+            $out[] = [
+                'user' => $m[1],
+                'from' => trim($m[3]),
+                'when' => trim($m[4]),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * How many failed logins the host recorded.
+     *
+     * Null rather than zero when lastb is missing or unreadable: "we could not
+     * look" and "nobody tried" are opposite answers, and reporting the second
+     * for the first is how a brute-force attempt stays invisible.
+     */
+    private function failedLogins(string $raw): ?int
+    {
+        $text = trim($raw);
+        if ($text === '' || str_contains($text, '__absent__')) {
+            return null;
+        }
+
+        $first = strtok($text, "\n");
+
+        return $first !== false && ctype_digit(trim($first)) ? (int) trim($first) : null;
     }
 
     /**

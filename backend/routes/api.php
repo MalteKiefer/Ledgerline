@@ -91,6 +91,7 @@ use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServerDockerController;
 use App\Http\Controllers\ServerFileController;
 use App\Http\Controllers\ServerLogController;
+use App\Http\Controllers\ServerMaintenanceController;
 use App\Http\Controllers\ServerSecurityController;
 use App\Http\Controllers\ServerTerminalController;
 use App\Http\Controllers\SharedFolderController;
@@ -348,6 +349,9 @@ Route::prefix('v1')->group(function (): void {
             // change the target and are audited, so they are throttled harder.
             Route::get('/servers/{server}/services', [ServerControlController::class, 'services'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.services');
             Route::post('/servers/{server}/services', [ServerControlController::class, 'serviceAction'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.service-action');
+            Route::get('/servers/{server}/disk-usage', [ServerMaintenanceController::class, 'diskUsage'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.disk-usage');
+            Route::get('/servers/{server}/updates', [ServerMaintenanceController::class, 'updates'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.updates');
+            Route::post('/servers/{server}/updates', [ServerMaintenanceController::class, 'applyUpdates'])->whereNumber('server')->middleware('throttle:6,1')->name('api.servers.updates-apply');
             Route::get('/servers/{server}/docker', [ServerDockerController::class, 'show'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.docker');
             Route::post('/servers/{server}/docker/action', [ServerDockerController::class, 'act'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.docker-action');
             Route::post('/servers/{server}/docker/prune', [ServerDockerController::class, 'prune'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.docker-prune');

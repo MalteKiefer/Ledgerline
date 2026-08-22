@@ -164,6 +164,10 @@
 
 
     <!-- Services -->
+    <template v-else-if="tab === 'maintenance'">
+      <ServerMaintenance :server-id="server.id" :facts="facts" />
+    </template>
+
     <template v-else-if="tab === 'docker'">
       <ServerDocker :server-id="server.id" />
     </template>
@@ -231,6 +235,7 @@ import ServerOverview from '@spa/components/servers/ServerOverview.vue';
 import ServerProcesses from '@spa/components/servers/ServerProcesses.vue';
 import ServerSecurity from '@spa/components/servers/ServerSecurity.vue';
 import ServerDocker from '@spa/components/servers/ServerDocker.vue';
+import ServerMaintenance from '@spa/components/servers/ServerMaintenance.vue';
 import ServerServices from '@spa/components/servers/ServerServices.vue';
 import ServerTerminal from '@spa/components/ServerTerminal.vue';
 import { fmtDate, fmtDateTime, fmtTime } from '@spa/lib/datetime';
@@ -398,7 +403,7 @@ async function doDelete() {
 
 // ---- tabs ----
 
-type Tab = 'overview' | 'logs' | 'security' | 'services' | 'docker' | 'processes' | 'files' | 'terminal' | 'removal';
+type Tab = 'overview' | 'logs' | 'security' | 'services' | 'docker' | 'maintenance' | 'processes' | 'files' | 'terminal' | 'removal';
 
 const tab = ref<Tab>('overview');
 
@@ -414,6 +419,7 @@ const tabs = computed<{ id: Tab; label: string; icon: string }[]>(() => [
   { id: 'processes', label: t('servers.tab_processes'), icon: 'list_alt' },
   { id: 'logs', label: t('servers.tab_logs'), icon: 'article' },
   { id: 'security', label: t('servers.tab_security'), icon: 'shield' },
+  { id: 'maintenance', label: t('servers.tab_maintenance'), icon: 'build' },
   { id: 'files', label: t('servers.tab_files'), icon: 'folder' },
   { id: 'terminal', label: t('servers.tab_terminal'), icon: 'terminal' },
   { id: 'removal', label: t('servers.tab_removal'), icon: 'link_off' },
