@@ -335,6 +335,22 @@ export interface FilePermissions {
   error: string | null;
 }
 
+/** The figures that only matter for what a particular machine is. */
+export interface RoleDetails {
+  ok: boolean;
+  mail: {
+    /** Zero is an answer; null means the queue could not be read. */
+    queued: number | null;
+    queue_raw: string | null;
+    rspamd: Record<string, number> | null;
+    sessions: { user: string; service: string }[];
+  } | null;
+  guests: { kind: string; id: string; name: string; status: string }[] | null;
+  databases: { engine: string; name: string; size_b: number | null; connections: number | null; used?: string }[] | null;
+  sites: string[] | null;
+  error: string | null;
+}
+
 export interface ServiceUnit { name: string; load: string; active: string; sub: string; description: string }
 
 export interface ProcessRow { pid: number; user: string; cpu: number; mem: number; rss_kb: number; command: string }
@@ -536,6 +552,8 @@ export const useServersStore = defineStore('servers', () => {
 
   const updates = (id: number) => api.get<PendingUpdates>(`/api/v1/servers/${id}/updates`);
 
+  const roleDetails = (id: number) => api.get<RoleDetails>(`/api/v1/servers/${id}/role-details`);
+
   /** Queued: the outcome arrives as a notification, not in this response. */
   const applyUpdates = (id: number) => api.post<{ queued: boolean }>(`/api/v1/servers/${id}/updates`, {});
 
@@ -595,5 +613,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, roleDetails, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

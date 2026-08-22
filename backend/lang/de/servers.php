@@ -489,4 +489,12 @@ return [
     'health_virtual' => 'Virtuelle Platte',
     'health_unsupported' => 'Kein SMART',
     'smart_virtual' => 'Das sind virtuelle Platten. SMART gehört dem Hypervisor: die physische Platte kann ein Gast nicht sehen, egal welche Werkzeuge installiert sind. Hier ist nichts kaputt.',
+    'role_details' => 'Woran diese Maschine gemessen wird',
+    'mail_queued' => 'in der Warteschlange',
+    'mail_scanned' => 'geprüft',
+    'mail_spam' => 'Spam',
+    'mail_sessions' => 'verbunden',
+    'guests' => 'Gäste',
+    'sites' => 'Ausgelieferte Seiten',
+    'db_connections' => ':n Verbindungen',
 ];

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.712.1
+  version: 1.713.0
   license:
     name: Proprietary
   description: >
@@ -1786,7 +1786,9 @@ components:
       type: object
       description: "Combined Files (incl. version history) + Gallery storage usage vs. the one shared workspace-wide quota — both modules draw from a single cap."
       properties:
-        used: { type: integer, description: "Bytes occupied (Files + Gallery, incl. trashed)." }
+        used: { type: integer, description: "Bytes occupied (Files + Gallery, incl. trashed) — what the quota applies to." }
+        files: { type: integer, description: "The Files share of it (incl. version history)." }
+        gallery: { type: integer, description: "The Gallery share of it (photos and videos)." }
         quota: { type: integer, nullable: true, description: "Byte cap, or null when unlimited." }
     BankTransaction:
       type: object
@@ -8492,6 +8494,70 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/role-details:
+    get:
+      tags: [Servers]
+      operationId: serversRoleDetails
+      summary: The figures that only matter for what this machine is
+      description: >
+        A mail server is judged by its queue and how much of its post is spam, a
+        Proxmox host by its guests, a database server by its connections.
+        Showing all of that on every server would bury each of them, so only the
+        sections for the roles this host actually has are collected - and the
+        roles come from the stored snapshot, never from the request. One round
+        trip regardless of how many apply, because each one costs a full SSH
+        handshake. Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Whatever applies; every section is null where the role does not.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  mail:
+                    type: [object, "null"]
+                    properties:
+                      queued: { type: [integer, "null"], description: "Zero is an answer; null means the queue could not be read." }
+                      queue_raw: { type: [string, "null"] }
+                      rspamd: { type: [object, "null"], additionalProperties: { type: integer } }
+                      sessions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            user: { type: string }
+                            service: { type: string }
+                  guests:
+                    type: [array, "null"]
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string }
+                        id: { type: string }
+                        name: { type: string }
+                        status: { type: string }
+                  databases:
+                    type: [array, "null"]
+                    items:
+                      type: object
+                      properties:
+                        engine: { type: string }
+                        name: { type: string }
+                        size_b: { type: [integer, "null"] }
+                        connections: { type: [integer, "null"] }
+                  sites: { type: [array, "null"], items: { type: string } }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/updates:
     get:

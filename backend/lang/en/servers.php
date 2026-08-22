@@ -489,4 +489,12 @@ return [
     'health_virtual' => 'Virtual disk',
     'health_unsupported' => 'No SMART',
     'smart_virtual' => 'These are virtual disks. SMART belongs to the hypervisor: the physical drive is not something a guest can see, however the tools are installed. Nothing is wrong here.',
+    'role_details' => 'What this machine is judged by',
+    'mail_queued' => 'in the queue',
+    'mail_scanned' => 'scanned',
+    'mail_spam' => 'spam',
+    'mail_sessions' => 'connected',
+    'guests' => 'Guests',
+    'sites' => 'Sites served',
+    'db_connections' => ':n connections',
 ];
