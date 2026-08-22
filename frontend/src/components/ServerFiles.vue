@@ -42,6 +42,16 @@
           :disabled="downloading"
           @click="downloadSelected"
         >{{ downloading ? t('servers.files_downloading') : t('servers.files_download_n', { n: String(selected.size) }) }}</Btn>
+        <template v-if="selected.size && packFormats.length">
+          <Select v-model="packFormat" class="w-32" :options="packOptions" />
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon="folder_zip"
+            :disabled="downloading"
+            @click="downloadArchive"
+          >{{ t('servers.files_pack') }}</Btn>
+        </template>
         <Btn
           v-if="selected.size"
           variant="ghost"
@@ -123,6 +133,15 @@
               <td class="w-40 py-2 text-right" @click.stop>
                 <div class="flex justify-end gap-0.5">
                   <Btn v-if="e.type !== 'dir'" variant="ghost" size="sm" icon="download" :title="t('servers.files_download')" @click="download(e)" />
+                  <Btn
+                    v-if="canExtract(e)"
+                    variant="ghost"
+                    size="sm"
+                    icon="unarchive"
+                    :disabled="extracting"
+                    :title="t('servers.files_extract')"
+                    @click="extract(e)"
+                  />
                   <Btn variant="ghost" size="sm" icon="drive_file_rename_outline" :title="t('servers.files_rename')" @click="rename(e)" />
                   <Btn variant="ghost" size="sm" icon="lock_person" :title="t('servers.files_perm_title')" @click="openPerms(e)" />
                   <Btn variant="ghost" size="sm" icon="delete" :title="t('common.delete')" @click="remove(e)" />
@@ -264,7 +283,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { Btn, Icon, Modal, TextField } from '@spa/ui';
+import { Btn, Icon, Modal, Select, TextField } from '@spa/ui';
 import { ApiError } from '@spa/api/client';
 import { useServersStore, type FileEntry, type FilePermissions } from '@spa/stores/servers';
 import { useToast } from '@spa/composables/useToast';
@@ -362,6 +381,7 @@ async function unlock() {
     grant.value = r.token;
     password.value = '';
     await load('/');
+    await loadArchiveTools();
   } catch (e) {
     unlockError.value = e instanceof ApiError && e.status === 422
       ? t('servers.terminal_bad_password')
@@ -653,6 +673,95 @@ async function aclChange(entries: string[], remove: boolean) {
 
 const selected = ref(new Set<string>());
 const downloading = ref(false);
+const extracting = ref(false);
+
+/**
+ * What this host can pack and unpack, asked rather than assumed: a minimal
+ * machine often has tar and gzip and nothing else, and a zip button that always
+ * fails is worse than no button.
+ */
+const packFormats = ref<string[]>([]);
+const extractFormats = ref<string[]>([]);
+const packFormat = ref('tar.gz');
+
+const packOptions = computed(() => packFormats.value.map((f) => ({ value: f, title: f })));
+
+/** The extension decides the format; anything longer wins so .tar.gz beats .gz. */
+function formatOf(name: string): string | null {
+  const lower = name.toLowerCase();
+  const all = ['tar.gz', 'tar.xz', 'tar.bz2', 'tar.zst', 'tgz', 'tar', 'zip', '7z', 'rar', 'gz', 'xz', 'bz2', 'zst'];
+  const hit = all.find((f) => lower.endsWith(`.${f}`));
+
+  return hit === 'tgz' ? 'tar.gz' : (hit ?? null);
+}
+
+function canExtract(e: FileEntry): boolean {
+  if (e.type === 'dir') return false;
+  const format = formatOf(e.name);
+
+  return format !== null && extractFormats.value.includes(format);
+}
+
+async function loadArchiveTools() {
+  try {
+    const tools = await s.archiveTools(props.serverId, grant.value);
+    packFormats.value = tools.pack ?? [];
+    extractFormats.value = tools.extract ?? [];
+    if (packFormats.value.length && !packFormats.value.includes(packFormat.value)) {
+      packFormat.value = packFormats.value[0];
+    }
+  } catch {
+    // Not being able to ask is not a failure worth a message: the buttons
+    // simply do not appear.
+    packFormats.value = [];
+    extractFormats.value = [];
+  }
+}
+
+/** Pack the whole selection into one file, built on the host. */
+async function downloadArchive() {
+  downloading.value = true;
+  try {
+    const paths = [...selected.value];
+    const blob = await s.filesArchive(props.serverId, grant.value, paths, packFormat.value);
+    const base = paths.length === 1 ? (paths[0].split('/').pop() || 'archive') : (cwd.value.split('/').pop() || 'archive');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${base}.${packFormat.value}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    selected.value = new Set();
+  } catch {
+    fail(t('servers.status_fail'));
+  } finally {
+    downloading.value = false;
+  }
+}
+
+/**
+ * Unpack beside the archive, into a directory named after it — never straight
+ * into the current one, where an archive holding two hundred loose files would
+ * scatter them over somebody's working directory.
+ */
+async function extract(e: FileEntry) {
+  if (!(await confirmAsk(t('servers.files_extract_confirm', { name: e.name })))) return;
+
+  extracting.value = true;
+  try {
+    const res = await s.filesExtract(props.serverId, grant.value, e.path);
+    if (res.ok) {
+      success(t('servers.files_extracted', { path: res.dest ?? '' }));
+      await load(cwd.value);
+    } else {
+      fail(t(`servers.err_${res.error}`) === `servers.err_${res.error}` ? String(res.error) : t(`servers.err_${res.error}`));
+    }
+  } catch {
+    fail(t('servers.status_fail'));
+  } finally {
+    extracting.value = false;
+  }
+}
 const opening = ref('');
 
 const allSelected = computed(() => sorted.value.length > 0 && sorted.value.every((e) => selected.value.has(e.path)));

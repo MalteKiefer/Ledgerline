@@ -88,6 +88,7 @@ use App\Http\Controllers\ReindexController;
 use App\Http\Controllers\ServerBanController;
 use App\Http\Controllers\ServerControlController;
 use App\Http\Controllers\ServerController;
+use App\Http\Controllers\ServerDockerController;
 use App\Http\Controllers\ServerFileController;
 use App\Http\Controllers\ServerLogController;
 use App\Http\Controllers\ServerSecurityController;
@@ -347,6 +348,9 @@ Route::prefix('v1')->group(function (): void {
             // change the target and are audited, so they are throttled harder.
             Route::get('/servers/{server}/services', [ServerControlController::class, 'services'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.services');
             Route::post('/servers/{server}/services', [ServerControlController::class, 'serviceAction'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.service-action');
+            Route::get('/servers/{server}/docker', [ServerDockerController::class, 'show'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.docker');
+            Route::post('/servers/{server}/docker/action', [ServerDockerController::class, 'act'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.docker-action');
+            Route::post('/servers/{server}/docker/prune', [ServerDockerController::class, 'prune'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.docker-prune');
             Route::get('/servers/{server}/security', [ServerSecurityController::class, 'show'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.security');
             Route::get('/servers/{server}/processes', [ServerControlController::class, 'processes'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.processes');
             Route::post('/servers/{server}/processes/signal', [ServerControlController::class, 'processSignal'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.process-signal');
@@ -360,6 +364,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/servers/{server}/files/download-dir', [ServerFileController::class, 'downloadDirectory'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.files.download-dir');
             Route::post('/servers/{server}/files/write', [ServerFileController::class, 'write'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.write');
             Route::post('/servers/{server}/files/upload', [ServerFileController::class, 'upload'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.files.upload');
+            Route::get('/servers/{server}/files/archive-tools', [ServerFileController::class, 'archiveTools'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.archive-tools');
+            Route::post('/servers/{server}/files/archive', [ServerFileController::class, 'archive'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.files.archive');
+            Route::post('/servers/{server}/files/extract', [ServerFileController::class, 'extract'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.files.extract');
             Route::get('/servers/{server}/files/permissions', [ServerFileController::class, 'permissions'])->whereNumber('server')->middleware('throttle:120,1')->name('api.servers.files.permissions');
             Route::post('/servers/{server}/files/permissions', [ServerFileController::class, 'setPermissions'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.set-permissions');
             Route::post('/servers/{server}/files/mutate', [ServerFileController::class, 'mutate'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.mutate');

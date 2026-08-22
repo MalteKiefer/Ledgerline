@@ -1,5 +1,79 @@
 <template>
   <div class="space-y-6">
+    <!-- What somebody scanning this page needs first: how much of this machine
+         answers from outside, and whether anything here needs acting on. The
+         detail below explains each figure; this band is the summary. -->
+    <div v-if="sec" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <StatTile
+        :label="t('servers.sec_exposed')"
+        :value="String(sec.exposed.length)"
+        :note="t('servers.sec_exposed_note', { n: String(sec.listening.length) })"
+        icon="lan"
+        :pct="sec.listening.length ? (sec.exposed.length / sec.listening.length) * 100 : 0"
+        :warn-at="30"
+        :danger-at="60"
+      />
+      <StatTile
+        :label="t('servers.sec_findings')"
+        :value="String(sshProblems.length)"
+        :note="t('servers.sec_findings_note')"
+        icon="key"
+        :pct="sshProblems.length ? 100 : 0"
+        :warn-at="1"
+        :danger-at="100"
+      />
+      <StatTile
+        :label="t('servers.sec_firewall_short')"
+        :value="firewallVerdict"
+        :note="t('servers.sec_firewall_note', { n: String(sec.firewalls.length) })"
+        icon="shield"
+      />
+      <StatTile
+        :label="t('servers.sec_hygiene')"
+        :value="hygieneVerdict"
+        :note="t('servers.sec_hygiene_note')"
+        icon="verified_user"
+      />
+    </div>
+
+    <!-- The attack surface, listed. A port bound to 127.0.0.1 is not reachable
+         from anywhere else, so it is separated out rather than counted the
+         same: conflating the two would turn every developer database into a
+         finding. -->
+    <Card v-if="sec && sec.listening.length" :body-class="'p-4'">
+      <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_surface') }}</h2>
+      <p class="mb-3 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_surface_hint') }}</p>
+
+      <div v-if="sec.addresses.length" class="mb-3 flex flex-wrap gap-1.5">
+        <Badge v-for="a in sec.addresses" :key="a" tone="gray">{{ a }}</Badge>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-[var(--ll-border)] text-left text-[0.7rem] uppercase tracking-wide text-[var(--ll-muted)]">
+              <th class="w-20 py-2 pr-3 font-semibold">{{ t('servers.sec_port') }}</th>
+              <th class="w-24 py-2 pr-3 font-semibold">{{ t('servers.sec_proto') }}</th>
+              <th class="py-2 pr-3 font-semibold">{{ t('servers.sec_bound') }}</th>
+              <th class="py-2 font-semibold">{{ t('servers.sec_process') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(l, i) in sortedPorts" :key="`${l.proto}-${l.address}-${l.port}-${i}`" class="border-b border-[var(--ll-border)] last:border-0">
+              <td class="py-1.5 pr-3 font-mono text-xs font-semibold tabular-nums">{{ l.port }}</td>
+              <td class="py-1.5 pr-3"><Badge tone="gray">{{ l.proto }}</Badge></td>
+              <td class="py-1.5 pr-3">
+                <span class="font-mono text-xs">{{ l.address }}</span>
+                <Badge v-if="l.exposed" tone="warning" class="ml-2">{{ t('servers.sec_public') }}</Badge>
+                <Badge v-else tone="success" class="ml-2">{{ t('servers.sec_local_only') }}</Badge>
+              </td>
+              <td class="truncate py-1.5 font-mono text-xs text-[var(--ll-muted)]">{{ l.process || '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+
     <Card :body-class="'p-4'">
       <div class="mb-3 flex items-center justify-between">
         <h2 class="text-sm font-semibold">{{ t('servers.sec_firewalls') }}</h2>
@@ -128,6 +202,100 @@
       </div>
     </Card>
 
+    <!-- The judgements, not the raw settings: "PermitRootLogin yes" only means
+         something to a reader who already knows it is a problem. -->
+    <Card v-if="sec && sec.ssh_findings.length" :body-class="'p-4'">
+      <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_ssh_findings') }}</h2>
+      <div v-for="f in sec.ssh_findings" :key="f.key" class="flex items-start gap-2 border-b border-[var(--ll-border)] py-2 last:border-0">
+        <Icon :name="f.level === 'danger' ? 'error' : f.level === 'warn' ? 'warning' : 'check_circle'" :size="16" class="mt-0.5 shrink-0" :class="levelClass(f.level)" />
+        <div class="min-w-0">
+          <div class="font-mono text-xs">{{ f.key }}</div>
+          <div class="text-[0.7rem] text-[var(--ll-muted)]">{{ f.note }}</div>
+        </div>
+      </div>
+    </Card>
+
+    <div v-if="sec && (sec.ssh_host_keys.length || sec.ssh_authorized.length)" class="grid gap-4 lg:grid-cols-2">
+      <Card :body-class="'p-4'">
+        <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_host_keys') }}</h2>
+        <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_host_keys_hint') }}</p>
+        <div v-for="k in sec.ssh_host_keys" :key="k.fingerprint" class="border-b border-[var(--ll-border)] py-1.5 last:border-0">
+          <div class="flex items-center gap-2">
+            <Badge :tone="k.type === 'RSA' && k.bits < 3072 ? 'warning' : 'gray'">{{ k.type }}</Badge>
+            <span class="text-xs tabular-nums text-[var(--ll-muted)]">{{ k.bits }} bit</span>
+          </div>
+          <div class="truncate font-mono text-[0.7rem] text-[var(--ll-muted)]" :title="k.fingerprint">{{ k.fingerprint }}</div>
+        </div>
+      </Card>
+
+      <Card :body-class="'p-4'">
+        <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_authorized') }}</h2>
+        <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_authorized_hint') }}</p>
+        <div v-for="a in sec.ssh_authorized" :key="a.path" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1.5 last:border-0">
+          <span class="truncate font-mono text-xs" :title="a.path">{{ a.path }}</span>
+          <Badge :tone="a.keys > 4 ? 'warning' : 'gray'">{{ t('servers.sec_keys_n', { n: String(a.keys) }) }}</Badge>
+        </div>
+        <p v-if="!sec.ssh_authorized.length" class="py-2 text-xs text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+      </Card>
+    </div>
+
+    <div v-if="sec && (sec.web.length || sec.certificates.length)" class="grid gap-4 lg:grid-cols-2">
+      <Card v-if="sec.web.length" :body-class="'p-4'">
+        <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_web') }}</h2>
+        <div v-for="w in sec.web" :key="w.name" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1.5 last:border-0">
+          <div>
+            <div class="text-sm font-medium">{{ w.name }}</div>
+            <div class="font-mono text-[0.7rem] text-[var(--ll-muted)]">{{ w.version || '—' }}</div>
+          </div>
+          <Badge :tone="w.active === 'active' ? 'success' : 'gray'">{{ w.active || '—' }}</Badge>
+        </div>
+      </Card>
+
+      <Card v-if="sec.certificates.length" :body-class="'p-4'">
+        <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_certs') }}</h2>
+        <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_certs_hint') }}</p>
+        <div v-for="c in sec.certificates" :key="c.path" class="border-b border-[var(--ll-border)] py-1.5 last:border-0">
+          <div class="truncate font-mono text-xs" :title="c.path">{{ c.path }}</div>
+          <div class="text-[0.7rem] text-[var(--ll-muted)]">{{ c.expires }}</div>
+        </div>
+      </Card>
+    </div>
+
+    <div v-if="sec && (Object.keys(sec.sysctl).length || sec.sudoers_nopasswd.length || sec.accounts.uid_zero.length || sec.accounts.empty_password.length)" class="grid gap-4 lg:grid-cols-2">
+      <Card v-if="Object.keys(sec.sysctl).length" :body-class="'p-4'">
+        <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_kernel') }}</h2>
+        <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_kernel_hint') }}</p>
+        <div v-for="(v, k) in sec.sysctl" :key="k" class="flex justify-between gap-3 border-b border-[var(--ll-border)] py-1 last:border-0">
+          <span class="truncate font-mono text-[0.7rem] text-[var(--ll-muted)]" :title="String(k)">{{ k }}</span>
+          <span class="font-mono text-xs" :class="sysctlTone(String(k), v)">{{ v }}</span>
+        </div>
+      </Card>
+
+      <Card :body-class="'p-4'">
+        <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_accounts') }}</h2>
+
+        <!-- A second uid 0 account is a full root login under another name;
+             an empty password is one anybody can use. Both are listed
+             plainly because either is a finding on its own. -->
+        <div v-if="sec.accounts.uid_zero.filter((u) => u !== 'root').length" class="mb-2">
+          <div class="text-xs font-semibold text-red-600 dark:text-red-400">{{ t('servers.sec_uid_zero') }}</div>
+          <div class="font-mono text-xs">{{ sec.accounts.uid_zero.join(', ') }}</div>
+        </div>
+        <div v-if="sec.accounts.empty_password.length" class="mb-2">
+          <div class="text-xs font-semibold text-red-600 dark:text-red-400">{{ t('servers.sec_empty_pw') }}</div>
+          <div class="font-mono text-xs">{{ sec.accounts.empty_password.join(', ') }}</div>
+        </div>
+        <div v-if="sec.sudoers_nopasswd.length">
+          <div class="text-xs font-semibold text-amber-600 dark:text-amber-400">{{ t('servers.sec_nopasswd') }}</div>
+          <pre class="mt-1 max-h-40 overflow-auto rounded-lg bg-black/[0.05] p-2 font-mono text-[0.7rem] dark:bg-white/5">{{ sec.sudoers_nopasswd.join('\n') }}</pre>
+        </div>
+        <p
+          v-if="!sec.accounts.uid_zero.filter((u) => u !== 'root').length && !sec.accounts.empty_password.length && !sec.sudoers_nopasswd.length"
+          class="text-sm text-[var(--ll-muted)]"
+        >{{ t('servers.sec_accounts_clean') }}</p>
+      </Card>
+    </div>
+
     <Card v-if="sec" :body-class="'p-4'">
       <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_updates') }}</h2>
       <div class="space-y-1 text-sm">
@@ -154,10 +322,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { Badge, Btn, Card, Select } from '@spa/ui';
+import { Badge, Btn, Card, Icon, Select } from '@spa/ui';
 import { ApiError } from '@spa/api/client';
 import { useServersStore, type BanList, type SecurityAudit } from '@spa/stores/servers';
 import { useToast } from '@spa/composables/useToast';
+import StatTile from './StatTile.vue';
 
 const props = defineProps<{ serverId: number }>();
 
@@ -172,6 +341,60 @@ function errorText(code: string | null): string {
 
   return text === key ? code : text;
 }
+
+/** Only the settings worth acting on; the clean ones do not need a row. */
+const sshProblems = computed(() => (sec.value?.ssh_findings ?? []).filter((f) => f.level !== 'ok'));
+
+const sortedPorts = computed(() =>
+  // Exposed first, then by port: the reader is looking for what answers from
+  // outside, not for a numeric listing.
+  [...(sec.value?.listening ?? [])].sort((a, b) => Number(b.exposed) - Number(a.exposed) || a.port - b.port),
+);
+
+const firewallVerdict = computed(() => {
+  const fws = sec.value?.firewalls ?? [];
+  if (!fws.length) return t('servers.sec_none_short');
+  if (fws.some((f) => f.active === true)) return t('servers.sec_active');
+  if (fws.every((f) => !f.readable)) return t('servers.sec_unreadable');
+
+  return t('servers.sec_inactive');
+});
+
+const hygieneVerdict = computed(() => {
+  const a = sec.value?.accounts;
+  const extraRoot = (a?.uid_zero ?? []).filter((u) => u !== 'root').length;
+  if (extraRoot || (a?.empty_password ?? []).length) return t('servers.sec_problem');
+  if ((sec.value?.sudoers_nopasswd ?? []).length) return t('servers.sec_check');
+
+  return t('servers.sec_clean');
+});
+
+const levelClass = (level: string) => ({
+  danger: 'text-red-600 dark:text-red-400',
+  warn: 'text-amber-600 dark:text-amber-400',
+}[level] ?? 'text-emerald-600 dark:text-emerald-400');
+
+/**
+ * A handful of kernel switches where the safe value is not a matter of taste.
+ * Everything else is shown without a judgement rather than guessed at.
+ */
+const sysctlTone = (key: string, value: string) => {
+  const good: Record<string, string[]> = {
+    'kernel.randomize_va_space': ['2'],
+    'net.ipv4.conf.all.rp_filter': ['1', '2'],
+    'net.ipv4.conf.all.accept_redirects': ['0'],
+    'net.ipv4.conf.all.accept_source_route': ['0'],
+    'net.ipv4.tcp_syncookies': ['1'],
+    'kernel.kptr_restrict': ['1', '2'],
+    'kernel.dmesg_restrict': ['1'],
+  };
+  const want = good[key];
+  if (!want) return 'text-[var(--ll-text)]';
+
+  return want.includes(value.trim())
+    ? 'text-emerald-600 dark:text-emerald-400'
+    : 'text-amber-600 dark:text-amber-400';
+};
 
 // ---- security ----
 

@@ -52,7 +52,7 @@ class SftpBrowser
      */
     public function list(Server $server, string $path): array
     {
-        $path = self::normalise($path);
+        $path = self::normalisePath($path);
         if ($path === null) {
             return ['ok' => false, 'path' => '', 'entries' => [], 'error' => 'invalid_path'];
         }
@@ -79,7 +79,7 @@ class SftpBrowser
      */
     public function download(Server $server, string $path): array
     {
-        $path = self::normalise($path);
+        $path = self::normalisePath($path);
         if ($path === null) {
             return ['ok' => false, 'file' => null, 'error' => 'invalid_path'];
         }
@@ -114,7 +114,7 @@ class SftpBrowser
      */
     public function downloadDirectory(Server $server, string $path): array
     {
-        $path = self::normalise($path);
+        $path = self::normalisePath($path);
         if ($path === null || $path === '/') {
             // Refusing / is not squeamishness: tarring a root filesystem over a
             // web request is a way to take the machine down, not a feature.
@@ -190,7 +190,7 @@ class SftpBrowser
      */
     public function write(Server $server, string $path, string $content): array
     {
-        $path = self::normalise($path);
+        $path = self::normalisePath($path);
         if ($path === null) {
             return ['ok' => false, 'error' => 'invalid_path'];
         }
@@ -211,7 +211,7 @@ class SftpBrowser
      */
     public function upload(Server $server, string $localPath, string $remotePath): array
     {
-        $remotePath = self::normalise($remotePath);
+        $remotePath = self::normalisePath($remotePath);
         if ($remotePath === null) {
             return ['ok' => false, 'error' => 'invalid_path'];
         }
@@ -246,7 +246,7 @@ class SftpBrowser
      */
     public function mutate(Server $server, string $action, string $path, string $target = '', string $mode = ''): array
     {
-        $path = self::normalise($path);
+        $path = self::normalisePath($path);
         if ($path === null) {
             return ['ok' => false, 'error' => 'invalid_path'];
         }
@@ -265,7 +265,7 @@ class SftpBrowser
         }
 
         if ($action === 'rename') {
-            $to = self::normalise($target);
+            $to = self::normalisePath($target);
             if ($to === null) {
                 return ['ok' => false, 'error' => 'invalid_path'];
             }
@@ -375,7 +375,7 @@ class SftpBrowser
      * line-based, so a newline in a path could never be expressed and must be
      * refused rather than silently truncated.
      */
-    private static function normalise(string $path): ?string
+    public static function normalisePath(string $path): ?string
     {
         $path = trim($path);
         if ($path === '' || $path[0] !== '/' || strlen($path) > 4096) {
