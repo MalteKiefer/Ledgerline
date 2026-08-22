@@ -65,7 +65,16 @@ class ServerTerminal
             file_put_contents($knownHosts->path(), $this->probe->knownHostsFor($target, $hostKey));
 
             $input = new InputStream;
-            $process = new Process($this->argv($target, $keyFile->path(), $knownHosts->path()));
+            // TERM matters more than it looks. ssh copies it from its own
+            // environment into the pty request, and a queue worker has none —
+            // so the remote shell came up with TERM unset, fish said so on
+            // every session, and `clear` could not work without it, which left
+            // our own housekeeping line on screen.
+            $process = new Process(
+                $this->argv($target, $keyFile->path(), $knownHosts->path()),
+                null,
+                ['TERM' => 'xterm-256color'],
+            );
             $process->setInput($input);
             // The channel governs the lifetime, not Symfony: an interactive
             // session has no natural runtime to guess at.

@@ -267,4 +267,43 @@ none
         $this->assertSame('pop', $f['os']['id']);
         $this->assertSame('ubuntu debian', $f['os']['id_like']);
     }
+
+    public function test_network_reads_the_default_route_resolvers_and_counters(): void
+    {
+        // The three questions asked of a host that is up but reaching nothing:
+        // where does it route, who does it ask, and has anything moved.
+        $out = <<<'OUT'
+        ##LL:gateway
+        default via 192.168.3.1 dev eth0 proto dhcp metric 100
+        ##LL:dns
+        nameserver 192.168.3.1
+        nameserver 1.1.1.1
+        search fritz.box
+        ##LL:netstat
+          eth0: 1024000 900 0 0 0 0 0 0 2048000 700 0 0 0 0 0 0
+            lo: 500 5 0 0 0 0 0 0 500 5 0 0 0 0 0 0
+        ##LL:end
+        OUT;
+
+        $n = (new FactParser)->parse($out)['network'];
+
+        $this->assertSame('192.168.3.1', $n['gateway']);
+        $this->assertSame(['192.168.3.1', '1.1.1.1'], $n['dns']);
+        $this->assertSame('fritz.box', $n['search']);
+
+        // Loopback is not a network interface anyone is asking about.
+        $this->assertCount(1, $n['interfaces']);
+        $this->assertSame('eth0', $n['interfaces'][0]['name']);
+        $this->assertSame(1024000, $n['interfaces'][0]['rx_bytes']);
+        $this->assertSame(2048000, $n['interfaces'][0]['tx_bytes']);
+    }
+
+    public function test_network_is_empty_rather_than_wrong_on_a_host_without_it(): void
+    {
+        $n = (new FactParser)->parse('##LL:end')['network'];
+
+        $this->assertNull($n['gateway']);
+        $this->assertSame([], $n['dns']);
+        $this->assertSame([], $n['interfaces']);
+    }
 }

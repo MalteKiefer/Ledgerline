@@ -41,6 +41,14 @@ export interface ServerFacts {
   /** Largest resident processes; memory, not CPU — see the parser for why. */
   processes: { name: string; rss_kb: number }[];
   temp_c: number | null;
+  network: {
+    gateway: string | null;
+    dns: string[];
+    /** Search domain from resolv.conf. */
+    search: string | null;
+    /** Byte counters since boot, not a rate — one snapshot cannot give throughput. */
+    interfaces: { name: string; rx_bytes: number; tx_bytes: number }[];
+  };
 }
 
 export interface ServerStatus { ok: boolean; error: string | null; collected_at: string; duration_ms: number }
@@ -80,6 +88,10 @@ export interface TrendPoint {
 
 /** One reachability sample. */
 export interface CheckPoint { t: string; ms: number | null; ok: boolean }
+
+export interface ServiceUnit { name: string; load: string; active: string; sub: string; description: string }
+
+export interface ProcessRow { pid: number; user: string; cpu: number; mem: number; rss_kb: number; command: string }
 
 export interface ServerCheckSeries {
   /** 'icmp' (no port) or 'tcp'. */
@@ -150,6 +162,19 @@ export const useServersStore = defineStore('servers', () => {
   const terminalClose = (id: number, session: string) =>
     api.delete(`/api/v1/servers/${id}/terminal/${session}`);
 
+  const services = (id: number) =>
+    api.get<{ ok: boolean; units: ServiceUnit[]; error: string | null }>(`/api/v1/servers/${id}/services`);
+
+  /** Act on a service. The host's own refusal comes back in `output`. */
+  const serviceAction = (id: number, unit: string, action: string) =>
+    api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/services`, { unit, action });
+
+  const processes = (id: number) =>
+    api.get<{ ok: boolean; processes: ProcessRow[]; error: string | null }>(`/api/v1/servers/${id}/processes`);
+
+  const processSignal = (id: number, pid: number, signal: string) =>
+    api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/processes/signal`, { pid, signal });
+
   /** Reachability history. Bounded by hours so the answer does not shift with port count. */
   const checks = (id: number, hours = 24) =>
     api.get<{ hours: number; checks: ServerCheckSeries[] }>(`/api/v1/servers/${id}/checks?hours=${hours}`);
@@ -191,5 +216,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, services, serviceAction, processes, processSignal, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

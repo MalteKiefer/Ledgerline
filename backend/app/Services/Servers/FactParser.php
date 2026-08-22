@@ -50,6 +50,7 @@ final class FactParser
             'sessions' => $this->sessions($s['sessions'] ?? ''),
             'processes' => $this->processes($s['procs'] ?? ''),
             'temp_c' => $this->tempC($s['temp'] ?? ''),
+            'network' => $this->network($s['gateway'] ?? '', $s['dns'] ?? '', $s['netstat'] ?? ''),
         ];
 
         // Convenience for the list view: the fullest disk drives the status dot.
@@ -368,6 +369,67 @@ final class FactParser
         $celsius = round((float) $raw / 1000, 1);
 
         return ($celsius > 0 && $celsius < 150) ? $celsius : null;
+    }
+
+    /**
+     * Default route, resolvers, and per-interface byte counters.
+     *
+     * The counters are totals since boot, not a rate — two snapshots apart
+     * would be needed for throughput, and calling a since-boot total "traffic"
+     * would be the same mistake as reading /proc/stat once for CPU.
+     *
+     * @return array{gateway:string|null,dns:list<string>,search:string|null,interfaces:list<array{name:string,rx_bytes:int,tx_bytes:int}>}
+     */
+    private function network(string $gateway, string $dns, string $netstat): array
+    {
+        $gw = null;
+        foreach (explode("\n", trim($gateway)) as $line) {
+            // "default via 192.168.3.1 dev eth0 ..."
+            if (preg_match('/default via (\S+)/', $line, $m) === 1) {
+                $gw = $m[1];
+                break;
+            }
+        }
+
+        $servers = [];
+        $search = null;
+        foreach (explode("\n", trim($dns)) as $line) {
+            $f = preg_split('/\s+/', trim($line)) ?: [];
+            if (($f[0] ?? '') === 'nameserver' && isset($f[1])) {
+                $servers[] = $f[1];
+            }
+            if (in_array($f[0] ?? '', ['search', 'domain'], true) && isset($f[1])) {
+                $search ??= implode(' ', array_slice($f, 1));
+            }
+        }
+
+        $interfaces = [];
+        foreach (explode("\n", trim($netstat)) as $line) {
+            // "eth0: 1234 5 0 0 0 0 0 0 5678 ..." — receive first, transmit at 9.
+            if (preg_match('/^\s*([^:]+):\s*(.+)$/', $line, $m) !== 1) {
+                continue;
+            }
+            $name = trim($m[1]);
+            if ($name === 'lo') {
+                continue;
+            }
+            $cols = preg_split('/\s+/', trim($m[2])) ?: [];
+            if (count($cols) < 10) {
+                continue;
+            }
+            $interfaces[] = [
+                'name' => $name,
+                'rx_bytes' => (int) $cols[0],
+                'tx_bytes' => (int) $cols[8],
+            ];
+        }
+
+        return [
+            'gateway' => $gw,
+            'dns' => array_values(array_unique($servers)),
+            'search' => $search,
+            'interfaces' => $interfaces,
+        ];
     }
 
     /** @return list<string> */

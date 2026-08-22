@@ -9,6 +9,7 @@
       <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('servers.terminal_unlock_intro') }}</p>
       <form @submit.prevent="start">
         <TextField v-model="password" type="password" :label="t('account.current_password')" autocomplete="current-password" autofocus />
+        <p v-if="closedNote" class="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">{{ closedNote }}</p>
         <p v-if="error" class="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
         <Btn class="mt-3" variant="solid" icon="terminal" :disabled="busy || !password">
           {{ busy ? t('servers.terminal_opening') : t('servers.terminal_open') }}
@@ -25,20 +26,24 @@
           <span class="text-[var(--ll-muted)]">{{ phaseLabel }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <label class="flex items-center gap-1.5 text-xs text-[var(--ll-muted)]">
-            {{ t('servers.terminal_theme') }}
-            <select v-model="themeId" class="rounded-lg border border-[var(--ll-border)] bg-transparent px-2 py-1 text-xs" @change="applyTheme">
-              <option v-for="th in THEMES" :key="th.id" :value="th.id">{{ th.label }}</option>
-            </select>
-          </label>
+          <Select
+            v-model="themeId"
+            class="w-44"
+            :label="t('servers.terminal_theme')"
+            :options="THEMES.map((th) => ({ title: th.label, value: th.id }))"
+            @update:model-value="applyTheme"
+          />
           <Btn variant="ghost" size="sm" icon="close" @click="stop">{{ t('servers.terminal_close') }}</Btn>
         </div>
       </div>
 
+      <!-- The padding is on the container: xterm measures the inner box, so
+           the fit addon accounts for it and the text stops touching the edge. -->
       <div
         ref="host"
-        class="overflow-hidden rounded-xl border border-[var(--ll-border)]"
+        class="overflow-hidden rounded-xl border border-[var(--ll-border)] p-3"
         :style="{ background: theme.colors.background }"
+        @click="term?.focus()"
       />
 
       <p v-if="closedNote" class="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">{{ closedNote }}</p>
@@ -65,7 +70,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { Icon, Btn, TextField } from '@spa/ui';
+import { Icon, Btn, TextField, Select } from '@spa/ui';
 import { useServersStore } from '@spa/stores/servers';
 import { ApiError } from '@spa/api/client';
 import { TERMINAL_THEMES as THEMES, preferredTheme, rememberTheme, type TerminalTheme } from '@spa/lib/terminal-themes';
@@ -138,6 +143,10 @@ function mount() {
   terminal.loadAddon(fitAddon);
   terminal.open(host.value);
   fitAddon.fit();
+  // Without this the helper textarea never receives a keystroke. Pasting still
+  // worked, which made it look like the channel was fine and the keyboard was
+  // not — the session was simply never focused.
+  terminal.focus();
 
   terminal.onData((data) => {
     void send(data);
@@ -153,6 +162,10 @@ function mount() {
 
 function onResize() {
   fit.value?.fit();
+  // The remote pty was sized at connect; tell it about the new geometry, or
+  // anything full-screen keeps drawing to the old box.
+  const t2 = term.value;
+  if (t2 && phase.value === 'live') void send(`stty rows ${t2.rows} cols ${t2.cols} 2>/dev/null\n`);
 }
 
 function applyTheme() {
@@ -198,9 +211,7 @@ async function poll() {
     if (r.ready && phase.value === 'connecting') phase.value = 'live';
 
     if (r.closed) {
-      phase.value = 'over';
-      closedNote.value = t(`servers.terminal_closed_${r.closed}`) || t('servers.terminal_closed_closed');
-      teardown();
+      ended(t(`servers.terminal_closed_${r.closed}`) || t('servers.terminal_closed_closed'));
 
       return;
     }
@@ -214,9 +225,7 @@ async function poll() {
     schedule(interval);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) {
-      phase.value = 'over';
-      closedNote.value = t('servers.terminal_closed_closed');
-      teardown();
+      ended(t('servers.terminal_closed_closed'));
 
       return;
     }
@@ -234,8 +243,28 @@ async function stop() {
       // Closing is best effort; the session expires on its own regardless.
     }
   }
-  phase.value = 'over';
   teardown();
+  term.value?.dispose();
+  term.value = null;
+  session = '';
+  cursor = 0;
+  stopped = false;
+  // Back to the password rather than a dead black rectangle. Opening another
+  // shell has to cost the password again, so this is also the correct state.
+  phase.value = 'locked';
+  closedNote.value = '';
+}
+
+/** The shell is gone: say why, and offer the way back in rather than a frozen screen. */
+function ended(note: string) {
+  teardown();
+  term.value?.dispose();
+  term.value = null;
+  session = '';
+  cursor = 0;
+  stopped = false;
+  phase.value = 'locked';
+  closedNote.value = note;
 }
 
 function teardown() {

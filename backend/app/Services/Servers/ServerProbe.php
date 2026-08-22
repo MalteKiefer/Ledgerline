@@ -90,6 +90,9 @@ echo "##LL:boot"; grep -m1 "^btime" /proc/stat 2>/dev/null
 echo "##LL:sessions"; who 2>/dev/null | head -10
 echo "##LL:procs"; ps -eo rss=,comm= 2>/dev/null | sort -rn | head -6
 echo "##LL:temp"; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null
+echo "##LL:gateway"; ip -o -4 route show default 2>/dev/null | head -3
+echo "##LL:dns"; grep -E "^(nameserver|search|domain)" /etc/resolv.conf 2>/dev/null | head -8
+echo "##LL:netstat"; tail -n +3 /proc/net/dev 2>/dev/null | head -12
 echo "##LL:end"';
 
     /**
