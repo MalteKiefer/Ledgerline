@@ -111,13 +111,17 @@ class FilePermissions
 
         $q = self::sq($path);
         $r = $recursive ? '-R ' : '';
+        // Ownership first, mode second, and the order is not cosmetic: chown
+        // clears the setuid and setgid bits, so doing it after chmod silently
+        // drops exactly the bits somebody went out of their way to set. Proven
+        // against a real host — 4755 went in, 0755 came back.
         $parts = [];
-        if ($mode !== '') {
-            $parts[] = 'chmod '.$r.$mode.' -- '.$q.' 2>&1';
-        }
         if ($owner !== '' || $group !== '') {
             // "owner:group", "owner:" or ":group" — chown reads all three.
             $parts[] = 'chown '.$r.self::sq($owner.':'.$group).' -- '.$q.' 2>&1';
+        }
+        if ($mode !== '') {
+            $parts[] = 'chmod '.$r.$mode.' -- '.$q.' 2>&1';
         }
 
         $out = $this->run($server, implode("\n", $parts).';echo "##LL:rc=$?"');

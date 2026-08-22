@@ -435,6 +435,13 @@ staff
         $script = (string) $perms->script;
         $this->assertStringContainsString("chmod 4755 -- '/etc/motd'", $script);
         $this->assertStringContainsString("chown 'root:staff' -- '/etc/motd'", $script);
+        // Ownership before mode: chown clears setuid and setgid, so the other
+        // order silently drops the bits somebody deliberately set.
+        $this->assertLessThan(
+            strpos($script, 'chmod'),
+            strpos($script, 'chown'),
+            'chown must run before chmod, or the special bits are lost',
+        );
         $this->assertSame(1, AuditLog::query()->where('action', 'server.file_permissions')->count());
     }
 
