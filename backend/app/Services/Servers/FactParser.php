@@ -50,7 +50,7 @@ final class FactParser
             'sessions' => $this->sessions($s['sessions'] ?? ''),
             'processes' => $this->processes($s['procs'] ?? ''),
             'temp_c' => $this->tempC($s['temp'] ?? ''),
-            'network' => $this->network($s['gateway'] ?? '', $s['dns'] ?? '', $s['netstat'] ?? ''),
+            'network' => $this->network($s['gateway'] ?? '', $s['dns'] ?? '', $s['netstat'] ?? '', $s),
         ];
 
         // Convenience for the list view: the fullest disk drives the status dot.
@@ -378,9 +378,10 @@ final class FactParser
      * would be needed for throughput, and calling a since-boot total "traffic"
      * would be the same mistake as reading /proc/stat once for CPU.
      *
-     * @return array{gateway:string|null,dns:list<string>,search:string|null,interfaces:list<array{name:string,rx_bytes:int,tx_bytes:int}>}
+     * @param  array<string,string>  $s  every section, for the per-interface detail
+     * @return array{gateway:string|null,dns:list<string>,search:string|null,interfaces:list<array<string,mixed>>}
      */
-    private function network(string $gateway, string $dns, string $netstat): array
+    private function network(string $gateway, string $dns, string $netstat, array $s = []): array
     {
         $gw = null;
         foreach (explode("\n", trim($gateway)) as $line) {
@@ -428,8 +429,139 @@ final class FactParser
             'gateway' => $gw,
             'dns' => array_values(array_unique($servers)),
             'search' => $search,
-            'interfaces' => $interfaces,
+            'interfaces' => $this->enrichInterfaces($interfaces, $s),
         ];
+    }
+
+    /**
+     * Add to each interface what it actually is: kind (bridge, bond, vlan,
+     * tunnel, physical), whether it is up, its addresses, the route it carries,
+     * its MTU and MAC, and — where systemd-resolved is in charge — its own
+     * resolvers.
+     *
+     * A Docker or libvirt host is mostly bridges and veth pairs, and a list that
+     * calls them all "interface" says nothing about which one carries traffic.
+     *
+     * @param  list<array{name:string,rx_bytes:int,tx_bytes:int}>  $interfaces
+     * @param  array<string,string>  $s
+     * @return list<array<string,mixed>>
+     */
+    private function enrichInterfaces(array $interfaces, array $s): array
+    {
+        $bridges = [];
+        $bonds = [];
+        foreach (explode("\n", trim($s['bridges'] ?? '')) as $line) {
+            // /sys/class/net/<name>/bridge/bridge_id, or .../bonding/mode
+            if (preg_match('#/sys/class/net/([^/]+)/(bridge|bonding)/#', trim($line), $m) === 1) {
+                if ($m[2] === 'bridge') {
+                    $bridges[] = $m[1];
+                } else {
+                    $bonds[] = $m[1];
+                }
+            }
+        }
+
+        // "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ... link/ether aa:bb ..."
+        $link = [];
+        foreach (explode("\n", trim($s['iflink'] ?? '')) as $line) {
+            if (preg_match('/^\d+:\s*([^:@]+)[@:]/', trim($line), $m) !== 1) {
+                continue;
+            }
+            $name = trim($m[1]);
+            $up = str_contains($line, ',UP') || str_contains($line, '<UP');
+            $mtu = preg_match('/mtu (\d+)/', $line, $mm) === 1 ? (int) $mm[1] : null;
+            $mac = preg_match('#link/\w+ ([0-9a-f:]{17})#', $line, $ma) === 1 ? $ma[1] : null;
+            $link[$name] = ['up' => $up, 'mtu' => $mtu, 'mac' => $mac];
+        }
+
+        // "2: eth0    inet 192.168.3.5/24 brd ... scope global eth0"
+        $addrs = [];
+        foreach (explode("\n", trim($s['ifaddr'] ?? '')) as $line) {
+            $f = preg_split('/\s+/', trim($line)) ?: [];
+            if (count($f) < 4 || ! in_array($f[2], ['inet', 'inet6'], true)) {
+                continue;
+            }
+            $name = rtrim($f[1], ':');
+            // Link-local v6 is on every interface and tells a reader nothing.
+            if ($f[2] === 'inet6' && str_starts_with($f[3], 'fe80')) {
+                continue;
+            }
+            $addrs[$name][] = $f[3];
+        }
+
+        // Per-interface default route, which is what "gateway" means on a host
+        // with more than one uplink.
+        $gateways = [];
+        foreach (explode("\n", trim($s['routes'] ?? '')) as $line) {
+            if (preg_match('/^default via (\S+) dev (\S+)/', trim($line), $m) === 1) {
+                $gateways[$m[2]] ??= $m[1];
+            }
+        }
+
+        // "Link 2 (eth0): 192.168.3.1 1.1.1.1"
+        $resolvers = [];
+        $currentLink = null;
+        foreach (explode("\n", trim($s['resolved'] ?? '')) as $line) {
+            if (preg_match('/^Link \d+ \(([^)]+)\):(.*)$/', trim($line), $m) === 1) {
+                $currentLink = $m[1];
+                $found = preg_split('/\s+/', trim($m[2])) ?: [];
+                $resolvers[$currentLink] = array_values(array_filter($found, static fn (string $v): bool => $v !== ''));
+            }
+        }
+
+        $out = [];
+        foreach ($interfaces as $i) {
+            $name = $i['name'];
+            $out[] = $i + [
+                'kind' => $this->interfaceKind($name, $bridges, $bonds),
+                'up' => $link[$name]['up'] ?? null,
+                'mtu' => $link[$name]['mtu'] ?? null,
+                'mac' => $link[$name]['mac'] ?? null,
+                'addresses' => $addrs[$name] ?? [],
+                'gateway' => $gateways[$name] ?? null,
+                'dns' => $resolvers[$name] ?? [],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * What kind of interface this is. Named from the kernel where it says so
+     * (a bridge has a bridge/ directory), from the name where it does not —
+     * veth, tun and wireguard interfaces are conventional enough to read.
+     *
+     * @param  list<string>  $bridges
+     * @param  list<string>  $bonds
+     */
+    private function interfaceKind(string $name, array $bridges, array $bonds): string
+    {
+        if (in_array($name, $bridges, true)) {
+            return 'bridge';
+        }
+        if (in_array($name, $bonds, true)) {
+            return 'bond';
+        }
+        if (str_contains($name, '.')) {
+            return 'vlan';
+        }
+        if (str_starts_with($name, 'veth')) {
+            return 'veth';
+        }
+        if (str_starts_with($name, 'docker') || str_starts_with($name, 'br-')) {
+            return 'bridge';
+        }
+        if (str_starts_with($name, 'wg')) {
+            return 'wireguard';
+        }
+        if (str_starts_with($name, 'tun') || str_starts_with($name, 'tap')) {
+            return 'tunnel';
+        }
+        if (str_starts_with($name, 'wl')) {
+            return 'wireless';
+        }
+
+        return 'ethernet';
     }
 
     /** @return list<string> */

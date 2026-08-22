@@ -132,14 +132,28 @@
             </div>
           </template>
 
-          <!-- Totals since boot, not a rate. One snapshot cannot give throughput,
-               and calling it traffic would be the CPU mistake all over again. -->
+          <!-- Per interface: what it is, whether it is up, what it carries.
+               A Docker or libvirt host is mostly bridges and veth pairs, and a
+               list that calls them all "interface" hides which one matters. -->
           <template v-if="facts.network?.interfaces?.length">
-            <h3 class="mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.traffic_since_boot') }}</h3>
-            <div class="mb-3 space-y-0.5 text-xs">
-              <div v-for="n in facts.network.interfaces" :key="n.name" class="flex justify-between gap-3">
-                <span class="font-mono text-[var(--ll-muted)]">{{ n.name }}</span>
-                <span class="font-mono tabular-nums">↓ {{ formatGib(n.rx_bytes / 1024) }} · ↑ {{ formatGib(n.tx_bytes / 1024) }}</span>
+            <h3 class="mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.interfaces') }}</h3>
+            <div class="mb-3 space-y-2">
+              <div v-for="n in facts.network.interfaces" :key="n.name" class="rounded-lg border border-[var(--ll-border)] p-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-mono text-xs font-medium">{{ n.name }}</span>
+                  <Badge v-if="n.kind" tone="gray">{{ t(`servers.if_${n.kind}`) }}</Badge>
+                  <Badge v-if="n.up === false" tone="warning">{{ t('servers.if_down') }}</Badge>
+                  <span class="ml-auto font-mono text-[0.7rem] tabular-nums text-[var(--ll-muted)]">
+                    ↓ {{ formatGib(n.rx_bytes / 1024) }} · ↑ {{ formatGib(n.tx_bytes / 1024) }}
+                  </span>
+                </div>
+                <div v-if="n.addresses?.length" class="mt-1 font-mono text-[0.7rem]">{{ n.addresses.join(', ') }}</div>
+                <div class="mt-0.5 flex flex-wrap gap-3 text-[0.7rem] text-[var(--ll-muted)]">
+                  <span v-if="n.gateway">{{ t('servers.gateway') }}: <span class="font-mono">{{ n.gateway }}</span></span>
+                  <span v-if="n.dns?.length">DNS: <span class="font-mono">{{ n.dns.join(', ') }}</span></span>
+                  <span v-if="n.mtu">MTU {{ n.mtu }}</span>
+                  <span v-if="n.mac" class="font-mono">{{ n.mac }}</span>
+                </div>
               </div>
             </div>
           </template>
@@ -163,7 +177,7 @@
           <p class="mt-2 text-[0.65rem] text-[var(--ll-muted)]">{{ t('servers.processes_note') }}</p>
         </Card>
 
-        <!-- Services -->
+    <!-- Services -->
         <Card v-if="facts.failed_units.length" :title="t('servers.failed_units')" :body-class="'p-4'">
           <div class="flex flex-wrap gap-1.5">
             <Badge v-for="u in facts.failed_units" :key="u" tone="error">{{ u }}</Badge>
@@ -316,6 +330,83 @@
       </Card>
     </template>
 
+    <!-- Security -->
+    <template v-else-if="tab === 'security'">
+      <Card :body-class="'p-4'">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-semibold">{{ t('servers.sec_firewalls') }}</h2>
+          <Btn variant="ghost" size="sm" icon="refresh" :disabled="secBusy" @click="loadSecurity">{{ t('servers.refresh') }}</Btn>
+        </div>
+
+        <p v-if="secBusy && !sec" class="text-sm text-[var(--ll-muted)]">{{ t('common.loading') }}</p>
+        <p v-else-if="secError" class="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ secError }}</p>
+
+        <template v-else-if="sec">
+          <p v-if="!sec.firewalls.length" class="text-sm text-[var(--ll-muted)]">{{ t('servers.sec_no_firewall') }}</p>
+
+          <!-- Several layers on purpose: nftables underneath, iptables-nft on
+               top, ufw or firewalld driving either. Naming only the first would
+               hide the one actually deciding. -->
+          <div v-for="f in sec.firewalls" :key="f.name" class="mb-2 rounded-lg border border-[var(--ll-border)] p-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-medium">{{ f.name }}</span>
+              <Badge v-if="!f.readable" tone="warning">{{ t('servers.sec_unreadable') }}</Badge>
+              <Badge v-else-if="f.active === true" tone="success">{{ t('servers.sec_active') }}</Badge>
+              <Badge v-else-if="f.active === false" tone="gray">{{ t('servers.sec_inactive') }}</Badge>
+              <span v-if="f.readable" class="text-xs text-[var(--ll-muted)]">{{ f.summary }}</span>
+            </div>
+            <p v-if="!f.readable" class="mt-1 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_unreadable_hint') }}</p>
+            <details v-else-if="f.detail" class="mt-2">
+              <summary class="cursor-pointer text-xs text-[var(--ll-muted)]">{{ t('servers.sec_rules') }}</summary>
+              <pre class="mt-2 max-h-72 overflow-auto rounded-lg bg-black/[0.05] p-2 font-mono text-[0.7rem] dark:bg-white/5">{{ f.detail }}</pre>
+            </details>
+          </div>
+        </template>
+      </Card>
+
+      <Card v-if="sec && sec.bans.length" :body-class="'p-4'">
+        <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_bans') }}</h2>
+        <div v-for="b in sec.bans" :key="b.name" class="mb-2 rounded-lg border border-[var(--ll-border)] p-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-medium">{{ b.name }}</span>
+            <Badge v-if="!b.readable" tone="warning">{{ t('servers.sec_unreadable') }}</Badge>
+            <span v-else class="text-xs text-[var(--ll-muted)]">{{ b.summary }}</span>
+          </div>
+          <details v-if="b.readable && b.detail" class="mt-2">
+            <summary class="cursor-pointer text-xs text-[var(--ll-muted)]">{{ t('common.details') }}</summary>
+            <pre class="mt-2 max-h-72 overflow-auto rounded-lg bg-black/[0.05] p-2 font-mono text-[0.7rem] dark:bg-white/5">{{ b.detail }}</pre>
+          </details>
+        </div>
+      </Card>
+
+      <Card v-if="sec && Object.keys(sec.ssh).length" :body-class="'p-4'">
+        <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_ssh') }}</h2>
+        <!-- From sshd's own resolved configuration, not sshd_config: an Include
+             or a Match block makes the file and the running server disagree. -->
+        <p class="mb-3 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_ssh_hint') }}</p>
+        <div class="space-y-1 text-sm">
+          <div v-for="(v, k) in sec.ssh" :key="k" class="flex justify-between gap-3">
+            <span class="font-mono text-xs text-[var(--ll-muted)]">{{ k }}</span>
+            <span class="font-mono text-xs" :class="sshTone(String(k), v)">{{ v }}</span>
+          </div>
+        </div>
+      </Card>
+
+      <Card v-if="sec" :body-class="'p-4'">
+        <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_updates') }}</h2>
+        <div class="space-y-1 text-sm">
+          <div class="flex justify-between gap-3">
+            <span class="text-[var(--ll-muted)]">{{ t('servers.sec_unattended') }}</span>
+            <Badge :tone="sec.updates.unattended ? 'success' : 'gray'">{{ sec.updates.unattended ? t('common.yes') : t('common.none') }}</Badge>
+          </div>
+          <div class="flex justify-between gap-3">
+            <span class="text-[var(--ll-muted)]">{{ t('servers.reboot_required') }}</span>
+            <Badge :tone="sec.updates.reboot_required ? 'warning' : 'gray'">{{ sec.updates.reboot_required ? t('common.yes') : t('common.none') }}</Badge>
+          </div>
+        </div>
+      </Card>
+    </template>
+
     <!-- Services -->
     <template v-else-if="tab === 'services'">
       <Card :body-class="'p-4'">
@@ -453,7 +544,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import type { AlignedData, Options } from 'uplot';
 import { Card, Btn, Badge, Chart, DistroLogo, Select } from '@spa/ui';
-import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint, type ServerCheckSeries, type ServiceUnit, type ProcessRow } from '@spa/stores/servers';
+import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint, type ServerCheckSeries, type ServiceUnit, type ProcessRow, type SecurityAudit } from '@spa/stores/servers';
 import {
   severity, formatUptime, formatGib, memoryNote, swapPct, swapNote, diskNote, fullestDisk,
 } from '@spa/lib/server-facts';
@@ -536,6 +627,48 @@ const loadNote = computed(() => {
   const per = f.cpu.cores ? ` · ${Math.round((f.load[0] / f.cpu.cores) * 100)}%` : '';
   return `${f.load.map((l) => l.toFixed(2)).join('  ')}${per}`;
 });
+
+// ---- security ----
+
+const sec = ref<SecurityAudit | null>(null);
+const secBusy = ref(false);
+const secError = ref('');
+
+async function loadSecurity() {
+  const id = Number(route.params.id);
+  if (!Number.isFinite(id)) return;
+  secBusy.value = true;
+  secError.value = '';
+  try {
+    const r = await s.security(id);
+    sec.value = r;
+    if (!r.ok) secError.value = errorText(r.error);
+  } catch {
+    secError.value = t('servers.status_fail');
+  } finally {
+    secBusy.value = false;
+  }
+}
+
+/**
+ * Colour only the settings where one value is plainly worse than the other.
+ * Everything else stays neutral rather than implying a judgement we have not
+ * earned — a non-standard port is not insecure, it is just non-standard.
+ */
+function sshTone(key: string, value: string): string {
+  const bad =
+    (key === 'permitrootlogin' && value === 'yes') ||
+    (key === 'passwordauthentication' && value === 'yes') ||
+    (key === 'permitemptypasswords' && value === 'yes');
+  const good =
+    (key === 'permitrootlogin' && (value === 'no' || value === 'prohibit-password')) ||
+    (key === 'passwordauthentication' && value === 'no') ||
+    (key === 'pubkeyauthentication' && value === 'yes');
+
+  if (bad) return 'text-amber-600 dark:text-amber-400';
+
+  return good ? 'text-emerald-600 dark:text-emerald-400' : '';
+}
 
 // ---- services and processes ----
 
@@ -663,13 +796,14 @@ async function doDelete() {
 
 // ---- tabs ----
 
-type Tab = 'overview' | 'logs' | 'services' | 'processes' | 'terminal' | 'removal';
+type Tab = 'overview' | 'logs' | 'security' | 'services' | 'processes' | 'terminal' | 'removal';
 
 const tab = ref<Tab>('overview');
 
 const tabs = computed<{ id: Tab; label: string }[]>(() => [
   { id: 'overview', label: t('servers.tab_overview') },
   { id: 'logs', label: t('servers.tab_logs') },
+  { id: 'security', label: t('servers.tab_security') },
   { id: 'services', label: t('servers.tab_services') },
   { id: 'processes', label: t('servers.tab_processes') },
   { id: 'terminal', label: t('servers.tab_terminal') },
@@ -682,6 +816,7 @@ function setTab(next: Tab) {
   // reason the id does — so a link lands where the sender was looking.
   void router.replace({ query: { ...route.query, tab: next === 'overview' ? undefined : next } });
   if (next === 'logs' && sources.value === null) void loadSources();
+  if (next === 'security' && sec.value === null) void loadSecurity();
   if (next === 'services' && !services.value.length) void loadServices();
   if (next === 'processes' && !processes.value.length) void loadProcesses();
   actionNote.value = '';
@@ -913,6 +1048,9 @@ async function load() {
       tab.value = 'terminal';
     } else if (route.query.tab === 'removal') {
       tab.value = 'removal';
+    } else if (route.query.tab === 'security') {
+      tab.value = 'security';
+      void loadSecurity();
     } else if (route.query.tab === 'services') {
       tab.value = 'services';
       void loadServices();
