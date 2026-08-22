@@ -81,6 +81,66 @@
         </Card>
       </div>
 
+      <!-- The hardware under the filesystems. "Nearly full" and "about to
+           fail" are different problems with the same consequence, and they
+           belong next to each other. -->
+      <Card v-if="facts.storage?.length || facts.arrays?.length || facts.sensors?.length" :title="t('servers.section_hardware')" :body-class="'p-4'">
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div v-if="facts.storage?.length">
+            <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.drives') }}</h3>
+            <div v-for="d in facts.storage" :key="d.name" class="border-b border-[var(--ll-border)] py-2 last:border-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-mono text-xs font-semibold">{{ d.name }}</span>
+                <Badge :tone="healthTone(d.health)">{{ t(`servers.health_${d.health}`) }}</Badge>
+                <span class="text-[0.7rem] text-[var(--ll-muted)]">{{ d.rotational ? t('servers.drive_hdd') : t('servers.drive_ssd') }}</span>
+                <span class="ml-auto font-mono text-xs tabular-nums">{{ formatBytes(d.size_b) }}</span>
+              </div>
+              <div class="truncate text-[0.7rem] text-[var(--ll-muted)]" :title="d.model">{{ d.model || '—' }}</div>
+              <div class="mt-0.5 flex flex-wrap gap-3 text-[0.7rem] text-[var(--ll-muted)]">
+                <span v-if="d.temp_c !== null">{{ d.temp_c }} °C</span>
+                <span v-if="d.hours !== null">{{ t('servers.drive_hours', { n: String(d.hours) }) }}</span>
+                <!-- Zero is the answer you want here, so it is shown rather
+                     than hidden: an absent figure would look the same. -->
+                <span v-if="d.reallocated !== null" :class="d.reallocated > 0 ? 'font-semibold text-red-600 dark:text-red-400' : ''">
+                  {{ t('servers.drive_reallocated', { n: String(d.reallocated) }) }}
+                </span>
+                <span v-if="d.pending !== null" :class="d.pending > 0 ? 'font-semibold text-red-600 dark:text-red-400' : ''">
+                  {{ t('servers.drive_pending', { n: String(d.pending) }) }}
+                </span>
+              </div>
+            </div>
+            <p v-if="facts.storage.every((d) => d.health === 'unknown')" class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">
+              {{ t('servers.smart_unavailable') }}
+            </p>
+          </div>
+
+          <div>
+            <template v-if="facts.arrays?.length">
+              <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.arrays') }}</h3>
+              <div v-for="a in facts.arrays" :key="a.name" class="mb-3 border-b border-[var(--ll-border)] pb-2 last:border-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono text-xs font-semibold">{{ a.name }}</span>
+                  <Badge tone="gray">{{ a.kind }}</Badge>
+                  <Badge :tone="a.degraded ? 'error' : 'success'">{{ a.state }}</Badge>
+                </div>
+                <div class="truncate text-[0.7rem] text-[var(--ll-muted)]" :title="a.detail">{{ a.detail }}</div>
+              </div>
+            </template>
+
+            <template v-if="facts.sensors?.length">
+              <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.temperatures') }}</h3>
+              <div v-for="(s, i) in facts.sensors" :key="`${s.chip}-${s.label}-${i}`" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+                <span class="truncate">
+                  <span class="font-mono">{{ s.chip }}</span>
+                  <span class="text-[var(--ll-muted)]"> · {{ s.label }}</span>
+                </span>
+                <span class="shrink-0 font-mono tabular-nums" :class="tempClass(s.temp_c)">{{ s.temp_c }} °C</span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </Card>
+
       <!-- Network. Routing and resolution first, because they are what you
            check when a host is up but reaching nothing; the interface list
            follows, since on a container host it is mostly bridges. -->
@@ -196,7 +256,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Badge, Btn, Card } from '@spa/ui';
 import { fmtDateTime } from '@spa/lib/datetime';
 import {
-  cpuText, diskNote, formatGib, formatUptime, fullestDisk, memoryNote, swapNote, swapPct,
+  cpuText, diskNote, formatBytes, formatGib, formatUptime, fullestDisk, memoryNote, swapNote, swapPct,
 } from '@spa/lib/server-facts';
 import Findings from './Findings.vue';
 import StatTile from './StatTile.vue';
@@ -209,6 +269,20 @@ const props = defineProps({
 });
 
 defineEmits<{ go: [tab: string]; 'kill-session': [ses: { user: string; tty: string }] }>();
+
+/**
+ * Unknown health is not good health, so the two never share a colour: a drive
+ * whose state could not be read is amber-adjacent grey, never green.
+ */
+type Tone = 'success' | 'error' | 'warning' | 'gray';
+const healthTone = (health: string): Tone => (({
+  ok: 'success',
+  failing: 'error',
+  unreadable: 'warning',
+} as Record<string, Tone>)[health] ?? 'gray');
+
+/** 80 C is roughly where consumer hardware starts throttling itself. */
+const tempClass = (c: number) => (c >= 90 ? 'text-red-600 dark:text-red-400' : c >= 80 ? 'text-amber-600 dark:text-amber-400' : '');
 
 const allInterfaces = ref(false);
 

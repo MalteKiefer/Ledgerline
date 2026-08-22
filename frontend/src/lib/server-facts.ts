@@ -49,6 +49,25 @@ export function formatGib(kb: number | null | undefined): string {
   return kb === null || kb === undefined ? '—' : `${(kb / 1048576).toFixed(1)} GiB`;
 }
 
+/**
+ * A byte figure at the scale a disk is sold in.
+ *
+ * Decimal, not binary: a drive labelled 4 TB holds 4000 GB, and reporting it as
+ * 3.6 TiB makes the app disagree with the sticker for no gain.
+ */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined || bytes <= 0) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  let value = bytes;
+  let i = 0;
+  while (value >= 1000 && i < units.length - 1) {
+    value /= 1000;
+    i += 1;
+  }
+
+  return `${value.toFixed(value >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
 /** "used / total", derived from MemAvailable rather than MemFree. */
 export function memoryNote(facts: ServerFacts): string {
   const { total_kb: total, available_kb: available } = facts.mem;

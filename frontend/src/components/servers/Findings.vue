@@ -68,6 +68,46 @@ const items = computed<Finding[]>(() => {
     });
   }
 
+  // Above a full disk, because a full disk is inconvenient and a dying one
+  // loses data. Reallocated or pending sectors mean the drive has already
+  // started remapping, whatever its overall verdict claims.
+  const bad = (f.storage ?? []).filter(
+    (d) => d.health === 'failing' || (d.reallocated ?? 0) > 0 || (d.pending ?? 0) > 0,
+  );
+  if (bad.length) {
+    out.push({
+      key: 'smart',
+      level: 'danger',
+      icon: 'hard_drive',
+      title: t('servers.finding_disk_failing', { n: String(bad.length) }),
+      detail: bad.map((d) => `${d.name} ${d.model}`.trim()).join(', '),
+    });
+  }
+
+  const degraded = (f.arrays ?? []).filter((a) => a.degraded);
+  if (degraded.length) {
+    out.push({
+      key: 'array',
+      level: 'danger',
+      icon: 'dns',
+      title: t('servers.finding_array', { n: String(degraded.length) }),
+      detail: degraded.map((a) => `${a.name} ${a.state}`).join(', '),
+    });
+  }
+
+  // 70 C is where consumer hardware starts throttling; sustained above that is
+  // a cooling problem, not a workload.
+  const hot = (f.sensors ?? []).filter((s) => s.temp_c >= 80);
+  if (hot.length) {
+    out.push({
+      key: 'temp',
+      level: 'warn',
+      icon: 'thermostat',
+      title: t('servers.finding_hot', { n: String(hot.length) }),
+      detail: hot.map((s) => `${s.label} ${s.temp_c} °C`).join(', '),
+    });
+  }
+
   const full = f.disks.filter((d) => d.used_pct >= 90);
   if (full.length) {
     out.push({

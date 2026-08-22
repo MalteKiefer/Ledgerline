@@ -50,6 +50,9 @@ final class FactParser
             'sessions' => $this->sessions($s['sessions'] ?? ''),
             'processes' => $this->processes($s['procs'] ?? ''),
             'temp_c' => $this->tempC($s['temp'] ?? ''),
+            'storage' => $this->storage($s['blockdev'] ?? '', $s['smart'] ?? ''),
+            'arrays' => $this->arrays($s['mdstat'] ?? '', $s['zpool'] ?? ''),
+            'sensors' => $this->sensors($s['hwmon'] ?? ''),
             'network' => $this->network($s['gateway'] ?? '', $s['dns'] ?? '', $s['netstat'] ?? '', $s),
         ];
 
@@ -236,6 +239,275 @@ final class FactParser
             'swap_total_kb' => $swapTotal,
             'swap_used_kb' => ($swapTotal !== null && $swapFree !== null) ? $swapTotal - $swapFree : null,
         ];
+    }
+
+    /**
+     * The physical disks, with their health where the host can tell us.
+     *
+     * `health` is deliberately three-valued. smartmontools is missing on a lot
+     * of machines, and a disk whose health could not be read is not a healthy
+     * disk — reporting the two the same way is how a dying drive goes
+     * unnoticed. A hardware RAID controller presents one virtual volume and
+     * hides the members behind it, which is the same situation.
+     *
+     * @return list<array{name:string,size_b:int,rotational:bool,model:string,health:string,temp_c:float|null,hours:int|null,reallocated:int|null,pending:int|null}>
+     */
+    private function storage(string $blockdev, string $smart): array
+    {
+        if (trim($blockdev) === '' || str_contains($blockdev, '__absent__')) {
+            return [];
+        }
+
+        $smartByDevice = $this->smartSections($smart);
+        $out = [];
+
+        foreach (explode("\n", trim($blockdev)) as $line) {
+            $kv = $this->keyValues($line);
+            if (($kv['TYPE'] ?? '') !== 'disk' || ($kv['NAME'] ?? '') === '') {
+                continue;
+            }
+            $name = $kv['NAME'];
+            $attrs = $smartByDevice['/dev/'.$name] ?? null;
+
+            $out[] = [
+                'name' => $name,
+                'size_b' => (int) ($kv['SIZE'] ?? '0'),
+                'rotational' => ($kv['ROTA'] ?? '') === '1',
+                'model' => $kv['MODEL'] ?? '',
+                'health' => $attrs['health'] ?? 'unknown',
+                'temp_c' => $attrs['temp_c'] ?? null,
+                'hours' => $attrs['hours'] ?? null,
+                'reallocated' => $attrs['reallocated'] ?? null,
+                'pending' => $attrs['pending'] ?? null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * One `KEY="value" KEY="value"` line, as lsblk -P prints it.
+     *
+     * @return array<string,string>
+     */
+    private function keyValues(string $line): array
+    {
+        $out = [];
+        if (preg_match_all('/([A-Z_]+)="([^"]*)"/', trim($line), $m, PREG_SET_ORDER)) {
+            foreach ($m as $pair) {
+                $out[$pair[1]] = $pair[2];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * smartctl output, split per device and reduced to the handful of numbers
+     * that actually predict a failure.
+     *
+     * Reallocated and pending sectors are the two that matter: a drive that has
+     * started remapping is a drive on its way out, whatever the overall verdict
+     * says. Power-on hours are context, not a warning.
+     *
+     * @return array<string,array{health:string,temp_c:float|null,hours:int|null,reallocated:int|null,pending:int|null}>
+     */
+    private function smartSections(string $raw): array
+    {
+        if (trim($raw) === '' || str_contains($raw, '__absent__')) {
+            return [];
+        }
+
+        // Split first, read second: one pass that both tracks the current
+        // device and accumulates its attributes reads worse than two obvious
+        // steps.
+        $blocks = [];
+        $device = '';
+        foreach (explode("\n", $raw) as $line) {
+            if (str_starts_with($line, '##DEV:')) {
+                $device = trim(substr($line, 6));
+                $blocks[$device] = '';
+
+                continue;
+            }
+            if ($device !== '') {
+                $blocks[$device] .= $line."\n";
+            }
+        }
+
+        $out = [];
+        foreach ($blocks as $name => $block) {
+            $out[$name] = $this->smartAttributes($block);
+        }
+
+        return $out;
+    }
+
+    /**
+     * One device's smartctl block.
+     *
+     * @return array{health:string,temp_c:float|null,hours:int|null,reallocated:int|null,pending:int|null}
+     */
+    private function smartAttributes(string $block): array
+    {
+        $out = ['health' => 'unknown', 'temp_c' => null, 'hours' => null, 'reallocated' => null, 'pending' => null];
+
+        foreach (explode("\n", $block) as $line) {
+            if (stripos($line, 'overall-health') !== false || stripos($line, 'SMART Health Status') !== false) {
+                $passed = stripos($line, 'PASSED') !== false || stripos($line, ': OK') !== false;
+                $out['health'] = $passed ? 'ok' : 'failing';
+
+                continue;
+            }
+            // A controller that will not pass SMART through says so plainly.
+            // Recording that as a healthy disk would be the worst kind of wrong.
+            if (stripos($line, 'Unknown USB bridge') !== false
+                || stripos($line, 'Unable to detect device type') !== false
+                || stripos($line, 'Operation not supported') !== false) {
+                $out['health'] = 'unreadable';
+
+                continue;
+            }
+
+            $f = preg_split('/\s+/', trim($line)) ?: [];
+            $raw_value = $f[9] ?? '';
+            $first = strtok($raw_value, ' ');
+            if ($first === false || ! is_numeric($first)) {
+                continue;
+            }
+            $value = (int) $first;
+
+            match (strtolower($f[1] ?? '')) {
+                'reallocated_sector_ct' => $out['reallocated'] = $value,
+                'current_pending_sector' => $out['pending'] = $value,
+                'power_on_hours' => $out['hours'] = $value,
+                'temperature_celsius', 'airflow_temperature_cel' => $out['temp_c'] = (float) $value,
+                default => null,
+            };
+        }
+
+        return $out;
+    }
+
+    /**
+     * Software RAID and ZFS pools.
+     *
+     * A degraded array is the classic silent failure: everything still works,
+     * and it keeps working right up until the second disk goes.
+     *
+     * @return list<array{kind:string,name:string,state:string,detail:string,degraded:bool}>
+     */
+    private function arrays(string $mdstat, string $zpool): array
+    {
+        $out = [];
+
+        // /proc/mdstat describes one array over two lines: the header names it,
+        // and the block line beneath carries the member status — "[2/1] [U_]".
+        // A missing member is only ever visible on that second line, so the
+        // header alone can never tell a degraded array from a healthy one.
+        // Hence two passes: find the short arrays, then describe them.
+        $missingMember = $this->mdMissingMembers($mdstat);
+
+        foreach (explode("\n", trim($mdstat)) as $line) {
+            if (preg_match('/^(md\d+)\s*:\s*(\S+)\s+(.*)$/', trim($line), $m) !== 1) {
+                continue;
+            }
+            $out[] = [
+                'kind' => 'mdraid',
+                'name' => $m[1],
+                'state' => $m[2],
+                'detail' => trim($m[3]),
+                'degraded' => $m[2] !== 'active' || in_array($m[1], $missingMember, true),
+            ];
+        }
+
+        if (trim($zpool) !== '' && ! str_contains($zpool, '__absent__')) {
+            foreach (explode("\n", trim($zpool)) as $line) {
+                $f = preg_split('/\t|\s{2,}/', trim($line)) ?: [];
+                if (count($f) < 5 || $f[0] === '') {
+                    continue;
+                }
+                $health = $f[4];
+                $out[] = [
+                    'kind' => 'zfs',
+                    'name' => $f[0],
+                    'state' => $health,
+                    'detail' => $f[1].' total, '.$f[2].' used, '.$f[3].' free',
+                    'degraded' => strtoupper($health) !== 'ONLINE',
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The arrays whose member map is short a disk — "[U_]" rather than "[UU]".
+     *
+     * That marker lives on the block line under the header, so it has to be
+     * read against whichever array was named last.
+     *
+     * @return list<string>
+     */
+    private function mdMissingMembers(string $mdstat): array
+    {
+        $out = [];
+        $current = null;
+        foreach (explode("\n", trim($mdstat)) as $line) {
+            $line = trim($line);
+            if (preg_match('/^(md\d+)\s*:/', $line, $m) === 1) {
+                $current = $m[1];
+
+                continue;
+            }
+            // A blank line ends the array's block; anything after it belongs to
+            // no array at all.
+            if ($line === '') {
+                $current = null;
+
+                continue;
+            }
+            if ($current !== null && preg_match('/\[([U_]+)\]/', $line, $m) === 1 && str_contains($m[1], '_')) {
+                $out[] = $current;
+                $current = null;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Temperatures straight out of /sys/class/hwmon.
+     *
+     * Read there rather than through lm-sensors, which is missing more often
+     * than it is present; the kernel exposes the same values either way.
+     *
+     * @return list<array{chip:string,label:string,temp_c:float}>
+     */
+    private function sensors(string $raw): array
+    {
+        $out = [];
+        foreach (explode("\n", trim($raw)) as $line) {
+            $f = preg_split('/\t/', trim($line)) ?: [];
+            if (count($f) < 4 || ! is_numeric(trim($f[3]))) {
+                continue;
+            }
+            $milli = (int) trim($f[3]);
+            // Millidegrees, and a reading of zero means the sensor is not
+            // wired up rather than that the machine is frozen.
+            if ($milli <= 0 || $milli > 200000) {
+                continue;
+            }
+            $out[] = [
+                'chip' => trim($f[0]),
+                // Falling back to the sysfs file name, minus the '_input' suffix that
+                // means nothing to a reader.
+                'label' => trim($f[2]) !== '' ? trim($f[2]) : str_replace('_input', '', trim($f[1])),
+                'temp_c' => round($milli / 1000, 1),
+            ];
+        }
+
+        return $out;
     }
 
     /**

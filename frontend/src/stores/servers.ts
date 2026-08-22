@@ -42,6 +42,12 @@ export interface ServerFacts {
   /** Largest resident processes; memory, not CPU — see the parser for why. */
   processes: { name: string; rss_kb: number }[];
   temp_c: number | null;
+  /** The disks themselves, as opposed to the filesystems on them. */
+  storage: StorageDevice[];
+  /** Software RAID and ZFS pools. A degraded one still works, until it does not. */
+  arrays: StorageArray[];
+  /** Read from /sys/class/hwmon, because lm-sensors is usually not installed. */
+  sensors: SensorReading[];
   network: {
     /** The host's default route. Per-interface gateways are on the interface. */
     gateway: string | null;
@@ -51,6 +57,28 @@ export interface ServerFacts {
     interfaces: NetInterface[];
   };
 }
+
+/**
+ * A physical disk.
+ *
+ * `health` is three-valued on purpose: `unknown` means the host could not tell
+ * us — smartmontools missing, or a RAID controller hiding the members — and
+ * that is not the same as healthy.
+ */
+export interface StorageDevice {
+  name: string;
+  size_b: number;
+  rotational: boolean;
+  model: string;
+  health: 'ok' | 'failing' | 'unreadable' | 'unknown' | string;
+  temp_c: number | null;
+  hours: number | null;
+  reallocated: number | null;
+  pending: number | null;
+}
+
+export interface StorageArray { kind: string; name: string; state: string; detail: string; degraded: boolean }
+export interface SensorReading { chip: string; label: string; temp_c: number }
 
 export interface ServerStatus { ok: boolean; error: string | null; collected_at: string; duration_ms: number }
 
