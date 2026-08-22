@@ -85,6 +85,7 @@ use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\PublicGalleryShareController;
 use App\Http\Controllers\PublicGalleryUploadController;
 use App\Http\Controllers\ReindexController;
+use App\Http\Controllers\ServerBanController;
 use App\Http\Controllers\ServerControlController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServerLogController;
@@ -348,6 +349,10 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/servers/{server}/security', [ServerSecurityController::class, 'show'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.security');
             Route::get('/servers/{server}/processes', [ServerControlController::class, 'processes'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.processes');
             Route::post('/servers/{server}/processes/signal', [ServerControlController::class, 'processSignal'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.process-signal');
+            Route::post('/servers/{server}/power', [ServerControlController::class, 'power'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.power');
+            Route::post('/servers/{server}/sessions/kill', [ServerControlController::class, 'killSession'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.session-kill');
+            Route::get('/servers/{server}/bans', [ServerBanController::class, 'index'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.bans');
+            Route::post('/servers/{server}/bans', [ServerBanController::class, 'act'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.ban-action');
         });
 
         Route::middleware('module:notes')->group(function (): void {

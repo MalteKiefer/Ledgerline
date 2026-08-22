@@ -30,6 +30,18 @@ class ServerControl
     /** What may be asked of a process. Two signals: ask politely, then insist. */
     public const PROCESS_SIGNALS = ['TERM', 'KILL'];
 
+    /**
+     * What may be asked of the machine itself.
+     *
+     * `reboot_force` is deliberately separate from `reboot`: the ordinary one
+     * asks systemd to stop units in order, the forced one skips that. They read
+     * alike and behave nothing alike, so they are never the same button.
+     */
+    public const POWER_ACTIONS = ['reboot', 'reboot_force', 'poweroff', 'cancel'];
+
+    /** tty names as `who` prints them. Anything else never reaches the host. */
+    private const TTY_PATTERN = '/^(pts\/\d{1,4}|tty\d{1,3})$/';
+
     private const UNIT_PATTERN = '/^[A-Za-z0-9@:._\-]{1,128}$/';
 
     public function __construct(private ServerProbe $probe) {}
@@ -143,6 +155,76 @@ class ServerControl
         }
 
         return $this->outcome($out);
+    }
+
+    /**
+     * Reboot or shut the machine down.
+     *
+     * The most consequential thing this module can do, so it is its own verb
+     * set rather than a special case of a service action: nothing here should
+     * be reachable by passing an unusual unit name.
+     *
+     * @return array{ok:bool,output:string,error:string|null}
+     */
+    public function power(Server $server, string $action): array
+    {
+        if (! in_array($action, self::POWER_ACTIONS, true)) {
+            return ['ok' => false, 'output' => '', 'error' => 'invalid_selection'];
+        }
+
+        // A reboot cuts the connection, which is success, not failure. Detaching
+        // and answering immediately is the only honest reading — waiting would
+        // report a timeout for a machine that did exactly what was asked.
+        $script = match ($action) {
+            'reboot' => 'systemctl reboot 2>&1 || shutdown -r +0 2>&1; echo "##LL:rc=$?"',
+            // Two --force: the first skips the ordered shutdown, the second is
+            // the immediate kernel reboot. This is the "it is wedged" button.
+            'reboot_force' => 'systemctl reboot --force --force 2>&1; echo "##LL:rc=$?"',
+            'poweroff' => 'systemctl poweroff 2>&1 || shutdown -h +0 2>&1; echo "##LL:rc=$?"',
+            'cancel' => 'shutdown -c 2>&1; echo "##LL:rc=$?"',
+        };
+
+        $out = $this->run($server, $script);
+        if ($out === null) {
+            // The link dropping mid-reboot is the expected outcome for the
+            // three destructive verbs, and reporting it as an error would
+            // teach the operator to ignore real errors.
+            return $action === 'cancel'
+                ? ['ok' => false, 'output' => '', 'error' => 'unreachable']
+                : ['ok' => true, 'output' => '', 'error' => null];
+        }
+
+        return $this->outcome($out);
+    }
+
+    /**
+     * End somebody's login session.
+     *
+     * Signals every process attached to the terminal, which is what "log a user
+     * out" actually means — killing only the shell leaves whatever it started
+     * behind.
+     *
+     * @return array{ok:bool,output:string,error:string|null}
+     */
+    public function killSession(Server $server, string $tty): array
+    {
+        if (preg_match(self::TTY_PATTERN, $tty) !== 1) {
+            return ['ok' => false, 'output' => '', 'error' => 'invalid_selection'];
+        }
+
+        $out = $this->run($server, 'pkill -KILL -t '.self::sq($tty).' 2>&1; echo "##LL:rc=$?"');
+        if ($out === null) {
+            return ['ok' => false, 'output' => '', 'error' => 'unreachable'];
+        }
+
+        $result = $this->outcome($out);
+        // pkill exits 1 when it matched nothing, which here means the session
+        // had already ended — the state the caller wanted either way.
+        if (! $result['ok'] && $result['output'] === '') {
+            return ['ok' => true, 'output' => '', 'error' => null];
+        }
+
+        return $result;
     }
 
     /**

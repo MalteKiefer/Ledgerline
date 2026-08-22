@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'details' => 'Подробности',
     'delete' => 'Удалить',
     'restore' => 'Восстановить',
     'download' => 'Скачать',
