@@ -384,6 +384,10 @@
                     </span>
                     <div class="min-w-0">
                       <div class="truncate">{{ row.name }}</div>
+                      <div v-if="row._folder && view!=='trash'" class="text-xs text-[var(--ll-muted)]">
+                        <span v-if="folderSize(row.id).files" class="ll-mono">{{ t('files.folder_contents', { n: String(folderSize(row.id).files), size: fmt(folderSize(row.id).bytes) }) }}</span>
+                        <span v-else>{{ t('files.folder_empty') }}</span>
+                      </div>
                       <div v-if="!row._folder" class="flex flex-wrap items-center gap-1 text-xs text-[var(--ll-muted)]">
                         <span class="ll-mono">{{ fmt((row.raw as FileEntry).size) }}</span>
                         <span
@@ -1282,6 +1286,39 @@ function extOf(name: string): string {
   return i > 0 ? name.slice(i + 1).toLowerCase() : '';
 }
 
+/**
+ * Bytes and file count per folder, including everything below it.
+ *
+ * "Where are my 40 GB" was only answerable from the storage dialog, never in
+ * the folder you were standing in. Computed once per data change: each file is
+ * charged to its folder and then to every ancestor, so a subtree costs one walk
+ * up the chain rather than a traversal per folder.
+ */
+const folderTotals = computed<Map<number, { bytes: number; files: number }>>(() => {
+  const parentOf = new Map<number, number | null>();
+  for (const fo of s.folders as FileFolder[]) parentOf.set(fo.id, fo.parent_id);
+
+  const totals = new Map<number, { bytes: number; files: number }>();
+  for (const f of s.files as FileEntry[]) {
+    let id = f.file_folder_id;
+    const guard = new Set<number>(); // a cycle would otherwise spin forever
+    while (id != null && !guard.has(id)) {
+      guard.add(id);
+      const cur = totals.get(id) ?? { bytes: 0, files: 0 };
+      cur.bytes += f.size ?? 0;
+      cur.files += 1;
+      totals.set(id, cur);
+      id = parentOf.get(id) ?? null;
+    }
+  }
+
+  return totals;
+});
+
+function folderSize(id: number): { bytes: number; files: number } {
+  return folderTotals.value.get(id) ?? { bytes: 0, files: 0 };
+}
+
 function sortRows(list: Row[]): Row[] {
   const dir = sortAsc.value ? 1 : -1;
   const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -1298,12 +1335,12 @@ function sortRows(list: Row[]): Row[] {
       return c !== 0 ? dir * c : dir * coll.compare(a.name, b.name);
     }
     if (sortKey.value === 'size') {
-      // A folder carries no size of its own, so it keeps its name order
-      // rather than pretending to be zero bytes.
-      if (a._folder) return coll.compare(a.name, b.name);
-      const c = ((a.raw as FileEntry).size ?? 0) - ((b.raw as FileEntry).size ?? 0);
+      // A folder is sized by what it contains, so it sorts alongside files
+      // rather than falling back to its name.
+      const av = a._folder ? folderSize(a.id).bytes : ((a.raw as FileEntry).size ?? 0);
+      const bv = b._folder ? folderSize(b.id).bytes : ((b.raw as FileEntry).size ?? 0);
 
-      return c !== 0 ? dir * c : coll.compare(a.name, b.name);
+      return av === bv ? coll.compare(a.name, b.name) : dir * (av - bv);
     }
     const at = new Date((a.raw as { updated_at?: string }).updated_at ?? 0).getTime();
     const bt = new Date((b.raw as { updated_at?: string }).updated_at ?? 0).getTime();

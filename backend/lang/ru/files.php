@@ -292,4 +292,6 @@ return [
     'view_source' => 'Исходник',
     'view_rendered' => 'Отрисовка',
     'saved' => 'Сохранено',
+    'folder_contents' => 'файлов: :n · :size',
+    'folder_empty' => 'Пусто',
 ];

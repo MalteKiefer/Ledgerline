@@ -292,4 +292,6 @@ return [
     'view_source' => 'Source',
     'view_rendered' => 'Rendered',
     'saved' => 'Saved',
+    'folder_contents' => ':n files · :size',
+    'folder_empty' => 'Empty',
 ];
