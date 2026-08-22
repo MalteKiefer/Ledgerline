@@ -90,6 +90,11 @@ echo "##LL:boot"; grep -m1 "^btime" /proc/stat 2>/dev/null
 echo "##LL:sessions"; who 2>/dev/null | head -10
 echo "##LL:procs"; ps -eo rss=,comm= 2>/dev/null | sort -rn | head -6
 echo "##LL:temp"; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null
+echo "##LL:blockdev"; command -v lsblk >/dev/null 2>&1 && lsblk -dnb -P -o NAME,TYPE,SIZE,ROTA,MODEL 2>/dev/null | head -24 || echo "__absent__"
+echo "##LL:smart"; if command -v smartctl >/dev/null 2>&1; then for d in /dev/sd? /dev/nvme?n? /dev/vd?; do [ -b "$d" ] || continue; echo "##DEV:$d"; smartctl -H -A "$d" 2>&1 | head -40; done; else echo "__absent__"; fi
+echo "##LL:mdstat"; cat /proc/mdstat 2>/dev/null | head -20
+echo "##LL:zpool"; command -v zpool >/dev/null 2>&1 && (zpool list -H -o name,size,alloc,free,health,frag 2>&1 | head -8) || echo "__absent__"
+echo "##LL:hwmon"; for h in /sys/class/hwmon/hwmon*; do n=$(cat "$h/name" 2>/dev/null) || continue; for t in "$h"/temp*_input; do [ -f "$t" ] || continue; l=$(cat "${t%_input}_label" 2>/dev/null); printf "%s\t%s\t%s\t%s\n" "$n" "$(basename "$t")" "$l" "$(cat "$t" 2>/dev/null)"; done; done | head -40
 echo "##LL:gateway"; ip -o -4 route show default 2>/dev/null | head -3
 echo "##LL:dns"; grep -E "^(nameserver|search|domain)" /etc/resolv.conf 2>/dev/null | head -8
 echo "##LL:netstat"; tail -n +3 /proc/net/dev 2>/dev/null | head -12

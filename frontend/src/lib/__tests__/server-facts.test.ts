@@ -36,6 +36,9 @@ function facts(over: Partial<ServerFacts> = {}): ServerFacts {
     sessions: [],
     processes: [],
     temp_c: null,
+    storage: [],
+    arrays: [],
+    sensors: [],
     network: { gateway: null, dns: [], search: null, interfaces: [] },
     ...over,
   };

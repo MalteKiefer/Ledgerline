@@ -367,4 +367,228 @@ none
         $this->assertSame([], $n['dns']);
         $this->assertSame([], $n['interfaces']);
     }
+
+    /**
+     * lsblk -P is used precisely because a model name contains spaces: column
+     * splitting turns "MARVELL Raid VD" into three fields and loses the disk.
+     */
+    public function test_storage_keeps_a_model_name_that_contains_spaces(): void
+    {
+        $out = implode("\n", [
+            '##LL:blockdev',
+            'NAME="sda" TYPE="disk" SIZE="4000630046720" ROTA="1" MODEL="MARVELL Raid VD"',
+            '##LL:smart',
+            '__absent__',
+            '##LL:end',
+        ]);
+
+        $disks = (new FactParser)->parse($out)['storage'];
+
+        $this->assertCount(1, $disks);
+        $this->assertSame('sda', $disks[0]['name']);
+        $this->assertSame('MARVELL Raid VD', $disks[0]['model']);
+        $this->assertSame(4000630046720, $disks[0]['size_b']);
+        $this->assertTrue($disks[0]['rotational']);
+    }
+
+    public function test_a_disk_without_smartctl_reads_unknown_rather_than_ok(): void
+    {
+        // The important one: smartmontools is missing on plenty of machines,
+        // and a disk whose state could not be read is not a healthy disk.
+        // Reporting the two the same way is how a dying drive goes unnoticed.
+        $out = implode("\n", [
+            '##LL:blockdev',
+            'NAME="sda" TYPE="disk" SIZE="500107862016" ROTA="0" MODEL="Samsung SSD 860"',
+            '##LL:smart',
+            '__absent__',
+            '##LL:end',
+        ]);
+
+        $disk = (new FactParser)->parse($out)['storage'][0];
+
+        $this->assertSame('unknown', $disk['health']);
+        $this->assertNull($disk['temp_c']);
+        $this->assertNull($disk['reallocated']);
+        $this->assertNull($disk['pending']);
+        $this->assertFalse($disk['rotational']);
+    }
+
+    public function test_smart_health_covers_passed_failed_and_unreadable_per_device(): void
+    {
+        // Three disks in one run: the verdicts must not bleed between blocks,
+        // and a controller that refuses to pass SMART through is its own state
+        // rather than a healthy drive.
+        $out = implode("\n", [
+            '##LL:blockdev',
+            'NAME="sda" TYPE="disk" SIZE="1000204886016" ROTA="1" MODEL="WDC WD10EZEX"',
+            'NAME="sdb" TYPE="disk" SIZE="2000398934016" ROTA="1" MODEL="ST2000DM008"',
+            'NAME="sdc" TYPE="disk" SIZE="500107862016" ROTA="0" MODEL="Crucial CT500"',
+            '##LL:smart',
+            '##DEV:/dev/sda',
+            'SMART overall-health self-assessment test result: PASSED',
+            '##DEV:/dev/sdb',
+            'SMART overall-health self-assessment test result: FAILED!',
+            '##DEV:/dev/sdc',
+            '/dev/sdc: Unable to detect device type',
+            'Please specify device type with the -d option.',
+            '##LL:end',
+        ]);
+
+        $health = array_column((new FactParser)->parse($out)['storage'], 'health', 'name');
+
+        $this->assertSame(['sda' => 'ok', 'sdb' => 'failing', 'sdc' => 'unreadable'], $health);
+    }
+
+    public function test_a_controller_that_refuses_smart_is_unreadable(): void
+    {
+        $out = implode("\n", [
+            '##LL:blockdev',
+            'NAME="sda" TYPE="disk" SIZE="4000630046720" ROTA="1" MODEL="MARVELL Raid VD"',
+            '##LL:smart',
+            '##DEV:/dev/sda',
+            'Read Device Identity failed: Operation not supported',
+            'A mandatory SMART command failed, exiting.',
+            '##LL:end',
+        ]);
+
+        $this->assertSame('unreadable', (new FactParser)->parse($out)['storage'][0]['health']);
+    }
+
+    public function test_reallocated_and_pending_sectors_come_from_the_attribute_table(): void
+    {
+        // Column 10 is RAW_VALUE. Those two attributes are the ones that
+        // actually predict a failure: a drive that has started remapping is on
+        // its way out whatever the overall verdict says.
+        $out = implode("\n", [
+            '##LL:blockdev',
+            'NAME="sda" TYPE="disk" SIZE="1000204886016" ROTA="1" MODEL="WDC WD10EZEX"',
+            'NAME="sdb" TYPE="disk" SIZE="1000204886016" ROTA="1" MODEL="WDC WD10EZEX"',
+            '##LL:smart',
+            '##DEV:/dev/sda',
+            'SMART overall-health self-assessment test result: PASSED',
+            '',
+            'SMART Attributes Data Structure revision number: 16',
+            'Vendor Specific SMART Attributes with Thresholds:',
+            'ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE',
+            '  1 Raw_Read_Error_Rate     0x000f   118   099   006    Pre-fail  Always       -       178534728',
+            '  5 Reallocated_Sector_Ct   0x0033   100   100   010    Pre-fail  Always       -       8',
+            '  9 Power_On_Hours          0x0032   089   089   000    Old_age   Always       -       10321',
+            '194 Temperature_Celsius     0x0022   032   040   000    Old_age   Always       -       32 (Min/Max 20/40)',
+            '197 Current_Pending_Sector  0x0012   100   100   000    Old_age   Always       -       2',
+            '##DEV:/dev/sdb',
+            'SMART overall-health self-assessment test result: PASSED',
+            'ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE',
+            '  9 Power_On_Hours          0x0032   100   100   000    Old_age   Always       -       12',
+            '##LL:end',
+        ]);
+
+        $disks = array_column((new FactParser)->parse($out)['storage'], null, 'name');
+
+        $this->assertSame(8, $disks['sda']['reallocated']);
+        $this->assertSame(2, $disks['sda']['pending']);
+        $this->assertSame(10321, $disks['sda']['hours']);
+        $this->assertSame(32.0, $disks['sda']['temp_c']);
+
+        // The second device is its own block: no attribute may leak across.
+        $this->assertSame(12, $disks['sdb']['hours']);
+        $this->assertNull($disks['sdb']['reallocated']);
+        $this->assertNull($disks['sdb']['pending']);
+    }
+
+    public function test_a_degraded_md_array_is_flagged_and_a_clean_one_is_not(): void
+    {
+        // The classic silent failure: everything still works, right up until
+        // the second disk goes. The [U_] marker sits on the block line beneath
+        // the array, not on the header line.
+        $out = implode("\n", [
+            '##LL:mdstat',
+            'Personalities : [raid1] [raid10]',
+            'md1 : active raid1 sda2[0] sdb2[1]',
+            '      975296 blocks super 1.2 [2/2] [UU]',
+            '',
+            'md2 : active raid1 sda3[0](F) sdb3[1]',
+            '      527000000 blocks super 1.2 [2/1] [U_]',
+            '',
+            'md0 : inactive sda1[0](S)',
+            '      1046528 blocks super 1.2',
+            '',
+            'unused devices: <none>',
+            '##LL:zpool',
+            '__absent__',
+            '##LL:end',
+        ]);
+
+        $arrays = array_column((new FactParser)->parse($out)['arrays'], null, 'name');
+
+        $this->assertCount(3, $arrays);
+        $this->assertSame('mdraid', $arrays['md1']['kind']);
+        $this->assertFalse($arrays['md1']['degraded']);
+        $this->assertTrue($arrays['md2']['degraded'], 'an array reporting [U_] is degraded');
+        // "inactive" is not a state anyone should have to read past.
+        $this->assertTrue($arrays['md0']['degraded']);
+        $this->assertSame('inactive', $arrays['md0']['state']);
+    }
+
+    public function test_zpool_health_other_than_online_is_degraded(): void
+    {
+        $out = implode("\n", [
+            '##LL:mdstat',
+            '',
+            '##LL:zpool',
+            "tank\t1.81T\t500G\t1.31T\tONLINE\t5%",
+            "backup\t3.62T\t2.00T\t1.62T\tDEGRADED\t12%",
+            "old\t900G\t100G\t800G\tFAULTED\t1%",
+            '##LL:end',
+        ]);
+
+        $pools = array_column((new FactParser)->parse($out)['arrays'], null, 'name');
+
+        $this->assertSame('zfs', $pools['tank']['kind']);
+        $this->assertFalse($pools['tank']['degraded']);
+        $this->assertSame('1.81T total, 500G used, 1.31T free', $pools['tank']['detail']);
+        $this->assertTrue($pools['backup']['degraded']);
+        $this->assertTrue($pools['old']['degraded']);
+    }
+
+    public function test_sensors_prefer_a_label_and_discard_implausible_readings(): void
+    {
+        $out = implode("\n", [
+            '##LL:hwmon',
+            "k10temp\ttemp1_input\t\t78500",
+            "jc42\ttemp1_input\t\t42500",
+            "amdgpu\ttemp1_input\tedge\t78000",
+            // A sensor reading zero is not wired up rather than frozen, and
+            // 250 degrees is a bad read rather than a fire.
+            "nct6797\ttemp5_input\t\t0",
+            "nct6797\ttemp6_input\tAUXTIN3\t250000",
+            '##LL:end',
+        ]);
+
+        $sensors = (new FactParser)->parse($out)['sensors'];
+
+        $this->assertCount(3, $sensors);
+        // Without a label the sysfs file name stands in, minus the '_input'
+        // suffix, which means nothing to a reader.
+        $this->assertSame(['chip' => 'k10temp', 'label' => 'temp1', 'temp_c' => 78.5], $sensors[0]);
+        $this->assertSame(42.5, $sensors[1]['temp_c']);
+        // A label is what a human reads; the sensor name is only the fallback.
+        $this->assertSame('edge', $sensors[2]['label']);
+        $this->assertSame(78.0, $sensors[2]['temp_c']);
+    }
+
+    public function test_missing_hardware_sections_yield_empty_lists_rather_than_throwing(): void
+    {
+        // A container, a VM without lsblk, a host without smartmontools: every
+        // one of these sections is optional.
+        $f = (new FactParser)->parse("##LL:blockdev\n__absent__\n##LL:smart\n__absent__\n##LL:zpool\n__absent__\n##LL:end");
+
+        $this->assertSame([], $f['storage']);
+        $this->assertSame([], $f['arrays']);
+        $this->assertSame([], $f['sensors']);
+
+        $empty = (new FactParser)->parse('');
+        $this->assertSame([], $empty['storage']);
+        $this->assertSame([], $empty['arrays']);
+        $this->assertSame([], $empty['sensors']);
+    }
 }
