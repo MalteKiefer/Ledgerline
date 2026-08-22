@@ -35,13 +35,13 @@ final class DiskUsageInspector
     /**
      * The largest directories under one path.
      *
-     * @return array{ok:bool,path:string,entries:list<array{path:string,size_kb:int}>,error:string|null}
+     * @return array{ok:bool,path:string,entries:list<array{path:string,size_kb:int}>,truncated:bool,error:string|null}
      */
     public function inspect(Server $server, string $path, int $depth = 1): array
     {
         $path = SftpBrowser::normalisePath($path);
         if ($path === null) {
-            return ['ok' => false, 'path' => '', 'entries' => [], 'error' => 'invalid_path'];
+            return ['ok' => false, 'path' => '', 'entries' => [], 'truncated' => false, 'error' => 'invalid_path'];
         }
 
         $depth = max(1, min(3, $depth));
@@ -52,22 +52,35 @@ final class DiskUsageInspector
         // into anything that parses it further.
         // `timeout` on the target as well as here: without it the far side
         // keeps walking the tree long after we have stopped listening.
-        $script = 'timeout '.self::TIMEOUT.' du -x -k --max-depth='.$depth.' -- '.self::quote($path)
-            .' 2>/dev/null | sort -rn | head -40';
+        //
+        // The output is held in a variable rather than piped straight into
+        // sort, because a pipe throws away du's exit status — and 124 is the
+        // one status that matters here. A tree too large to finish returns a
+        // partial answer that looks exactly like a complete one, so it has to
+        // say so.
+        $script = 'out=$(timeout '.self::TIMEOUT.' du -x -k --max-depth='.$depth.' -- '.self::quote($path).' 2>/dev/null); '
+            .'rc=$?; printf "%s" "$out" | sort -rn | head -40; echo; echo "##LL:rc=$rc"';
 
         $key = (string) $server->host_key;
         if ($key === '') {
-            return ['ok' => false, 'path' => $path, 'entries' => [], 'error' => 'no_host_key'];
+            return ['ok' => false, 'path' => $path, 'entries' => [], 'truncated' => false, 'error' => 'no_host_key'];
         }
 
         $result = $this->probe->exec(ServerTarget::fromServer($server), $key, $script, timeout: self::TIMEOUT + 5);
         if (! $result['ok'] && $result['out'] === '') {
-            return ['ok' => false, 'path' => $path, 'entries' => [], 'error' => 'unreachable'];
+            return ['ok' => false, 'path' => $path, 'entries' => [], 'truncated' => false, 'error' => 'unreachable'];
         }
         $out = substr($result['out'], 0, 256 * 1024);
 
+        // 124 is `timeout` killing du, which means the numbers below cover
+        // only part of the tree.
+        $truncated = str_contains($out, '##LL:rc=124');
+
         $entries = [];
         foreach (preg_split('/\r\n|\r|\n/', trim($out)) ?: [] as $line) {
+            if (str_starts_with($line, '##LL:rc=')) {
+                continue;
+            }
             $parts = preg_split('/\t/', trim($line), 2) ?: [];
             if (count($parts) < 2 || ! ctype_digit(trim($parts[0]))) {
                 continue;
@@ -79,7 +92,7 @@ final class DiskUsageInspector
         // the thing being broken down.
         $entries = array_values(array_filter($entries, static fn (array $e): bool => $e['path'] !== $path));
 
-        return ['ok' => true, 'path' => $path, 'entries' => $entries, 'error' => null];
+        return ['ok' => true, 'path' => $path, 'entries' => $entries, 'truncated' => $truncated, 'error' => null];
     }
 
     /** Single quotes for POSIX sh on the target. Never escapeshellarg. */

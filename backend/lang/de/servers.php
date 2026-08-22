@@ -471,4 +471,5 @@ return [
     'login_local' => 'Konsole',
     'failed_logins' => ':n fehlgeschlagene Anmeldeversuche erfasst.',
     'failed_logins_unknown' => 'Fehlversuche nicht lesbar: lastb ist auf diesem Host nicht verfügbar. Das ist nicht dasselbe wie keine.',
+    'disk_usage_truncated' => 'Abgebrochen: der Baum war zu groß für die Zeitgrenze, diese Zahlen decken nur einen Teil ab.',
 ];
