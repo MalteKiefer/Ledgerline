@@ -68,6 +68,13 @@
         </div>
       </div>
 
+      <!-- The tools for these roles are not on the host: on a Docker host,
+           Postgres and Caddy run in containers and psql is nowhere to be
+           found. Showing an empty list would claim there is nothing there. -->
+      <p v-if="detail?.unreadable?.length" class="mt-1 text-xs text-[var(--ll-muted)]">
+        {{ t('servers.role_unreadable', { roles: detail.unreadable.map((r) => t(`servers.role_${r}`)).join(', ') }) }}
+      </p>
+
       <p v-if="roleBusy && !detail" class="text-sm text-[var(--ll-muted)]">{{ t('common.loading') }}</p>
     </Card>
 
