@@ -93,6 +93,11 @@ echo "##LL:temp"; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null
 echo "##LL:gateway"; ip -o -4 route show default 2>/dev/null | head -3
 echo "##LL:dns"; grep -E "^(nameserver|search|domain)" /etc/resolv.conf 2>/dev/null | head -8
 echo "##LL:netstat"; tail -n +3 /proc/net/dev 2>/dev/null | head -12
+echo "##LL:iflink"; ip -o link show 2>/dev/null | head -24
+echo "##LL:ifaddr"; ip -o addr show 2>/dev/null | head -40
+echo "##LL:routes"; ip -o route show 2>/dev/null | head -40
+echo "##LL:resolved"; resolvectl dns 2>/dev/null | head -24
+echo "##LL:bridges"; ls -1 /sys/class/net/*/bridge/bridge_id 2>/dev/null | head -12; ls -1 /sys/class/net/*/bonding/mode 2>/dev/null | head -8
 echo "##LL:end"';
 
     /**

@@ -7549,6 +7549,67 @@ paths:
                 properties:
                   error: { type: string, enum: [invalid_selection, unreachable] }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/security:
+    get:
+      tags: [Servers]
+      operationId: serversSecurity
+      summary: Read the security posture
+      description: >
+        Firewalls, ban daemons, the resolved sshd configuration and update
+        hygiene, in one SSH round trip. Reports every packet filter found, not
+        the first one: a real host often runs nftables underneath with
+        iptables-nft on top and ufw or firewalld driving either. Listing rules
+        needs root on most systems, so a firewall an unprivileged account
+        cannot read comes back as readable=false, which means "cannot tell",
+        not "no rules". Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: The audit.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  firewalls:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        present: { type: boolean }
+                        readable: { type: boolean, description: "False means the rules could not be read, not that there are none." }
+                        active: { type: [boolean, "null"] }
+                        summary: { type: string }
+                        detail: { type: string }
+                  bans:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        present: { type: boolean }
+                        readable: { type: boolean }
+                        summary: { type: string }
+                        detail: { type: string }
+                  ssh:
+                    type: object
+                    additionalProperties: { type: string }
+                  updates:
+                    type: object
+                    properties:
+                      unattended: { type: boolean }
+                      reboot_required: { type: boolean }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/services:
     get:
       tags: [Servers]

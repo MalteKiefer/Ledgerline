@@ -11,7 +11,9 @@
         <TextField v-model="password" type="password" :label="t('account.current_password')" autocomplete="current-password" autofocus />
         <p v-if="closedNote" class="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">{{ closedNote }}</p>
         <p v-if="error" class="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
-        <Btn class="mt-3" variant="solid" icon="terminal" :disabled="busy || !password">
+        <!-- type=submit: Btn defaults to type=button, so inside a form it looks
+             clickable and does nothing. Submitting also makes Enter work. -->
+        <Btn class="mt-3" type="submit" variant="solid" icon="terminal" :disabled="busy || !password">
           {{ busy ? t('servers.terminal_opening') : t('servers.terminal_open') }}
         </Btn>
       </form>

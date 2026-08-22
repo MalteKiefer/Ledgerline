@@ -298,6 +298,59 @@ none
         $this->assertSame(2048000, $n['interfaces'][0]['tx_bytes']);
     }
 
+    public function test_interfaces_carry_their_kind_addresses_gateway_and_resolvers(): void
+    {
+        // A Docker host is mostly bridges and veth pairs. A list that calls
+        // them all "interface" hides the one the operator cares about.
+        $out = <<<'OUT'
+        ##LL:gateway
+        default via 192.168.3.1 dev eth0 proto dhcp metric 100
+        ##LL:dns
+        nameserver 192.168.3.1
+        ##LL:netstat
+          eth0: 1024000 900 0 0 0 0 0 0 2048000 700 0 0 0 0 0 0
+        docker0: 100 1 0 0 0 0 0 0 200 2 0 0 0 0 0 0
+        vethab12: 5 1 0 0 0 0 0 0 5 1 0 0 0 0 0 0
+           wg0: 7 1 0 0 0 0 0 0 7 1 0 0 0 0 0 0
+        ##LL:iflink
+        2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP link/ether aa:bb:cc:dd:ee:ff brd ff:ff:ff:ff:ff:ff
+        3: docker0: <NO-CARRIER,BROADCAST,MULTICAST> mtu 1500 qdisc noqueue state DOWN link/ether 02:42:0a:0b:0c:0d brd ff:ff:ff:ff:ff:ff
+        ##LL:ifaddr
+        2: eth0    inet 192.168.3.5/24 brd 192.168.3.255 scope global eth0
+        2: eth0    inet6 fe80::1/64 scope link
+        2: eth0    inet6 2001:db8::5/64 scope global
+        ##LL:routes
+        default via 192.168.3.1 dev eth0 proto dhcp metric 100
+        ##LL:resolved
+        Link 2 (eth0): 192.168.3.1 1.1.1.1
+        ##LL:bridges
+        /sys/class/net/docker0/bridge/bridge_id
+        ##LL:end
+        OUT;
+
+        $i = collect((new FactParser)->parse($out)['network']['interfaces'])->keyBy('name');
+
+        $this->assertSame('ethernet', $i['eth0']['kind']);
+        $this->assertTrue($i['eth0']['up']);
+        $this->assertSame(1500, $i['eth0']['mtu']);
+        $this->assertSame('aa:bb:cc:dd:ee:ff', $i['eth0']['mac']);
+        // Link-local v6 is on every interface and tells a reader nothing.
+        $this->assertSame(['192.168.3.5/24', '2001:db8::5/64'], $i['eth0']['addresses']);
+        $this->assertSame('192.168.3.1', $i['eth0']['gateway']);
+        $this->assertSame(['192.168.3.1', '1.1.1.1'], $i['eth0']['dns']);
+
+        // From the kernel, not from the name: docker0 has a bridge/ directory.
+        $this->assertSame('bridge', $i['docker0']['kind']);
+        $this->assertFalse($i['docker0']['up']);
+        $this->assertSame('veth', $i['vethab12']['kind']);
+        $this->assertSame('wireguard', $i['wg0']['kind']);
+
+        // An interface the host said nothing about must read null, not false:
+        // "down" and "not reported" are different answers.
+        $this->assertNull($i['wg0']['up']);
+        $this->assertSame([], $i['wg0']['addresses']);
+    }
+
     public function test_network_is_empty_rather_than_wrong_on_a_host_without_it(): void
     {
         $n = (new FactParser)->parse('##LL:end')['network'];

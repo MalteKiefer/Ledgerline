@@ -57,7 +57,6 @@ use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\PublicGalleryShareController;
 use App\Http\Controllers\PublicGalleryUploadController;
 use App\Http\Controllers\ReindexController;
-use App\Http\Controllers\ServerController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CalendarController as SettingsCalendarController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
@@ -479,22 +478,6 @@ Route::middleware('auth')->group(function (): void {
 
     // Notes (plaintext-relational, Markdown). Static collection routes are
     // declared before /notes/{note} so they win over the model binding.
-    // Server monitoring over plain SSH (no agent on the target). Collection runs
-    // in the queue — see ServerController; the only SSH a request performs is the
-    // explicit connection test.
-    Route::middleware('module:servers')->group(function (): void {
-        Route::get('/servers', [ServerController::class, 'index'])->name('servers.index');
-        Route::get('/servers/probe-script', [ServerController::class, 'probeScript'])->name('servers.probe-script');
-        Route::post('/servers/keypair', [ServerController::class, 'keypair'])->middleware('throttle:20,1')->name('servers.keypair');
-        Route::post('/servers', [ServerController::class, 'store'])->middleware('throttle:60,1')->name('servers.store');
-        Route::post('/servers/test', [ServerController::class, 'test'])->middleware('throttle:20,1')->name('servers.test');
-        Route::post('/servers/refresh', [ServerController::class, 'refreshAll'])->middleware('throttle:20,1')->name('servers.refresh-all');
-        Route::get('/servers/{server}', [ServerController::class, 'show'])->whereNumber('server')->name('servers.show');
-        Route::put('/servers/{server}', [ServerController::class, 'update'])->whereNumber('server')->middleware('throttle:60,1')->name('servers.update');
-        Route::delete('/servers/{server}', [ServerController::class, 'destroy'])->whereNumber('server')->middleware('throttle:60,1')->name('servers.destroy');
-        Route::post('/servers/{server}/refresh', [ServerController::class, 'refresh'])->whereNumber('server')->middleware('throttle:60,1')->name('servers.refresh');
-        Route::post('/servers/{server}/test', [ServerController::class, 'testStored'])->whereNumber('server')->middleware('throttle:20,1')->name('servers.test-stored');
-    });
 
     Route::middleware('module:notes')->group(function (): void {
         Route::get('/notes/data', [NotesController::class, 'data'])->name('notes.data');

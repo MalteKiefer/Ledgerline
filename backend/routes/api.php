@@ -88,6 +88,7 @@ use App\Http\Controllers\ReindexController;
 use App\Http\Controllers\ServerControlController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\ServerLogController;
+use App\Http\Controllers\ServerSecurityController;
 use App\Http\Controllers\ServerTerminalController;
 use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedGalleryController;
@@ -344,6 +345,7 @@ Route::prefix('v1')->group(function (): void {
             // change the target and are audited, so they are throttled harder.
             Route::get('/servers/{server}/services', [ServerControlController::class, 'services'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.services');
             Route::post('/servers/{server}/services', [ServerControlController::class, 'serviceAction'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.service-action');
+            Route::get('/servers/{server}/security', [ServerSecurityController::class, 'show'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.security');
             Route::get('/servers/{server}/processes', [ServerControlController::class, 'processes'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.processes');
             Route::post('/servers/{server}/processes/signal', [ServerControlController::class, 'processSignal'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.process-signal');
         });

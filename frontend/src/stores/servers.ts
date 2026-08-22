@@ -42,12 +42,12 @@ export interface ServerFacts {
   processes: { name: string; rss_kb: number }[];
   temp_c: number | null;
   network: {
+    /** The host's default route. Per-interface gateways are on the interface. */
     gateway: string | null;
     dns: string[];
     /** Search domain from resolv.conf. */
     search: string | null;
-    /** Byte counters since boot, not a rate — one snapshot cannot give throughput. */
-    interfaces: { name: string; rx_bytes: number; tx_bytes: number }[];
+    interfaces: NetInterface[];
   };
 }
 
@@ -88,6 +88,47 @@ export interface TrendPoint {
 
 /** One reachability sample. */
 export interface CheckPoint { t: string; ms: number | null; ok: boolean }
+
+/**
+ * One interface. Byte counters are totals since boot, not a rate — one snapshot
+ * cannot give throughput.
+ */
+export interface NetInterface {
+  name: string;
+  rx_bytes: number;
+  tx_bytes: number;
+  /** bridge, bond, vlan, veth, wireguard, tunnel, wireless or ethernet. */
+  kind?: string;
+  up?: boolean | null;
+  mtu?: number | null;
+  mac?: string | null;
+  addresses?: string[];
+  /** This interface's own default route, where it has one. */
+  gateway?: string | null;
+  /** Per-link resolvers, where systemd-resolved is in charge. */
+  dns?: string[];
+}
+
+export interface FirewallInfo {
+  name: string;
+  present: boolean;
+  /** False means we saw it but could not read its rules — not that it has none. */
+  readable: boolean;
+  active: boolean | null;
+  summary: string;
+  detail: string;
+}
+
+export interface BanInfo { name: string; present: boolean; readable: boolean; summary: string; detail: string }
+
+export interface SecurityAudit {
+  ok: boolean;
+  firewalls: FirewallInfo[];
+  bans: BanInfo[];
+  ssh: Record<string, string>;
+  updates: { unattended: boolean; reboot_required: boolean };
+  error: string | null;
+}
 
 export interface ServiceUnit { name: string; load: string; active: string; sub: string; description: string }
 
@@ -162,6 +203,9 @@ export const useServersStore = defineStore('servers', () => {
   const terminalClose = (id: number, session: string) =>
     api.delete(`/api/v1/servers/${id}/terminal/${session}`);
 
+  /** Firewalls, ban daemons, sshd posture and update hygiene, in one round trip. */
+  const security = (id: number) => api.get<SecurityAudit>(`/api/v1/servers/${id}/security`);
+
   const services = (id: number) =>
     api.get<{ ok: boolean; units: ServiceUnit[]; error: string | null }>(`/api/v1/servers/${id}/services`);
 
@@ -216,5 +260,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, services, serviceAction, processes, processSignal, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

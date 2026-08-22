@@ -22,10 +22,16 @@
         {{ grp.name || t('servers.group_other') }}
       </h2>
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        <Card v-for="srv in grp.items" :key="srv.id" :body-class="'p-4'">
+        <Card
+          v-for="srv in grp.items"
+          :key="srv.id"
+          :body-class="'p-4'"
+          class="cursor-pointer transition-shadow hover:shadow-md"
+          @click="$router.push(`/servers/${srv.id}`)"
+        >
           <!-- Title row: status dot, name, host -->
           <div class="flex items-start justify-between gap-2">
-            <button class="flex min-w-0 flex-1 items-start gap-2.5 text-left" @click="$router.push(`/servers/${srv.id}`)">
+            <div class="flex min-w-0 flex-1 items-start gap-2.5 text-left">
               <DistroLogo :id="srv.facts?.os.id" :id-like="srv.facts?.os.id_like" :size="34" :title="srv.facts?.os.name" />
               <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
@@ -35,8 +41,8 @@
               </div>
               <div class="mt-0.5 truncate font-mono text-xs text-[var(--ll-muted)]">{{ srv.username }}@{{ srv.host }}<span v-if="srv.port !== 22">:{{ srv.port }}</span></div>
               </div>
-            </button>
-            <div class="flex shrink-0 items-center gap-1">
+            </div>
+            <div class="flex shrink-0 items-center gap-1" @click.stop>
               <Btn variant="ghost" size="sm" icon="refresh" :disabled="busy" :title="t('servers.refresh')" @click="doRefresh(srv)" />
               <Btn variant="ghost" size="sm" icon="edit" :title="t('servers.edit')" @click="openEdit(srv)" />
             </div>
@@ -81,7 +87,10 @@
               <Badge v-if="srv.facts.containers.length" tone="gray">{{ srv.facts.containers.length }} × {{ t('servers.containers') }}</Badge>
             </div>
 
-            <p class="mt-3 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.checked') }}: {{ fmtDateTime(srv.status?.collected_at ?? '') }}</p>
+            <p class="mt-3 flex flex-wrap items-center gap-x-2 text-[0.7rem] text-[var(--ll-muted)]">
+            <span>{{ t('servers.checked') }}: {{ fmtDateTime(srv.status?.collected_at ?? '') }}</span>
+            <span v-if="nextRefresh(srv)" class="tabular-nums">· {{ t('servers.next_in', { time: nextRefresh(srv)! }) }}</span>
+          </p>
           </template>
         </Card>
       </div>
@@ -221,7 +230,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, h, type PropType, type VNode } from 'vue';
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch, h, type PropType, type VNode } from 'vue';
 import { useRoute } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Card, Btn, Badge, Modal, TextField, DistroLogo } from '@spa/ui';
@@ -312,6 +321,33 @@ const grouped = computed(() => {
     .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
     .map(([name, items]) => ({ name, items }));
 });
+
+// ---- refresh countdown ----
+
+/**
+ * The scheduler polls every five minutes, so the next run is due five minutes
+ * after the last one landed. Derived rather than tracked: a countdown that
+ * counted from page load would be wrong for anyone who arrived mid-interval.
+ */
+const POLL_SECONDS = 300;
+
+// One ticker for the whole list; each card reads it.
+const now = ref(Date.now());
+let ticker: number | null = null;
+onMounted(() => { ticker = window.setInterval(() => { now.value = Date.now(); }, 1000); });
+onBeforeUnmount(() => { if (ticker !== null) window.clearInterval(ticker); });
+
+function nextRefresh(srv: Server): string | null {
+  const at = srv.status?.collected_at;
+  if (!at) return null;
+  const due = new Date(at).getTime() + POLL_SECONDS * 1000;
+  const left = Math.round((due - now.value) / 1000);
+  // Past due means the run is in flight or the worker is behind; saying "due"
+  // is honest, a negative countdown is not.
+  if (left <= 0) return t('servers.due_now');
+
+  return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}
 
 // ---- actions ----
 
