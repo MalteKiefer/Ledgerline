@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.713.0
+  version: 1.713.1
   license:
     name: Proprietary
   description: >
@@ -8554,6 +8554,15 @@ paths:
                         size_b: { type: [integer, "null"] }
                         connections: { type: [integer, "null"] }
                   sites: { type: [array, "null"], items: { type: string } }
+                  unreadable:
+                    type: array
+                    items: { type: string }
+                    description: >
+                      Roles whose tools are not installed on the host, so nobody
+                      could look. On a Docker host, Postgres and Caddy run inside
+                      containers and psql is absent - an empty list there would
+                      claim there are no databases. Those sections come back null
+                      and are named here instead.
                   error: { type: [string, "null"] }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

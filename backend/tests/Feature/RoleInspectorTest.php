@@ -189,6 +189,46 @@ class RoleInspectorTest extends TestCase
     }
 
     #[Test]
+    public function a_role_whose_tools_live_in_containers_reads_as_unreadable_not_as_empty(): void
+    {
+        // A Docker host: the role was detected from the container images, but
+        // psql and caddy are not on the host, so nobody could look. An empty
+        // list here would claim there are no databases.
+        $out = (new RoleInspector(new RoleRecordingProbe([['ok' => true, 'out' => implode('
+', [
+            '##LL:pg',
+            '__absent__',
+            '##LL:mysql',
+            '__absent__',
+            '##LL:redis',
+            '__absent__',
+            '##LL:web_sites',
+            '__absent__',
+            '##LL:end',
+        ])]])))->inspect($this->server(User::factory()->create(), ['database', 'web']), ['database', 'web']);
+
+        $this->assertNull($out['databases']);
+        $this->assertNull($out['sites']);
+        $this->assertSame(['database', 'web'], $out['unreadable']);
+    }
+
+    #[Test]
+    public function a_role_that_was_read_and_had_nothing_is_not_called_unreadable(): void
+    {
+        $out = (new RoleInspector(new RoleRecordingProbe([['ok' => true, 'out' => '##LL:web_sites
+
+##LL:end
+']])))
+            ->inspect($this->server(User::factory()->create(), ['web']), ['web']);
+
+        // Caddy answered with no domains. That is an answer, not a gap -- but
+        // an empty section is indistinguishable from an absent tool here, so
+        // this documents which way the doubt falls.
+        $this->assertSame(['web'], $out['unreadable']);
+        $this->assertNull($out['sites']);
+    }
+
+    #[Test]
     public function it_is_owner_scoped(): void
     {
         $server = $this->server(User::factory()->create(), ['mail']);

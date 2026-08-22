@@ -55,7 +55,7 @@ final class RoleInspector
      * Everything worth showing for the roles this host has.
      *
      * @param  list<string>  $roles
-     * @return array{ok:bool,mail:array<string,mixed>|null,guests:list<array<string,string>>|null,databases:list<array<string,mixed>>|null,sites:list<string>|null,error:string|null}
+     * @return array{ok:bool,mail:array<string,mixed>|null,guests:list<array<string,string>>|null,databases:list<array<string,mixed>>|null,sites:list<string>|null,unreadable:list<string>,error:string|null}
      */
     public function inspect(Server $server, array $roles): array
     {
@@ -66,32 +66,76 @@ final class RoleInspector
             }
         }
 
-        $empty = ['ok' => true, 'mail' => null, 'guests' => null, 'databases' => null, 'sites' => null, 'error' => null];
+        $empty = ['ok' => true, 'mail' => null, 'guests' => null, 'databases' => null, 'sites' => null, 'unreadable' => [], 'error' => null];
         if ($parts === []) {
             return $empty;
         }
 
         $key = (string) $server->host_key;
         if ($key === '') {
-            return ['ok' => false, 'mail' => null, 'guests' => null, 'databases' => null, 'sites' => null, 'error' => 'no_host_key'];
+            return ['ok' => false, 'mail' => null, 'guests' => null, 'databases' => null, 'sites' => null, 'unreadable' => [], 'error' => 'no_host_key'];
         }
 
         $script = implode("\n", $parts)."\necho \"##LL:end\"";
         $result = $this->probe->exec(ServerTarget::fromServer($server), $key, $script, timeout: self::TIMEOUT);
         if (! $result['ok'] && $result['out'] === '') {
-            return ['ok' => false, 'mail' => null, 'guests' => null, 'databases' => null, 'sites' => null, 'error' => 'unreachable'];
+            return ['ok' => false, 'mail' => null, 'guests' => null, 'databases' => null, 'sites' => null, 'unreadable' => [], 'error' => 'unreachable'];
         }
 
         $s = $this->sections(substr($result['out'], 0, 256 * 1024));
 
+        // A role whose tools are not on the host at all is not the same as a
+        // role with nothing to report: on a Docker host, Postgres and Caddy run
+        // inside containers, psql and caddy are absent from the host, and an
+        // empty list there would read as "no databases" when it means "nobody
+        // could look". Say which ones those were and show no list for them.
+        $unreadable = [];
+
+        $guests = in_array('virtualisation', $roles, true) ? $this->guests($s) : null;
+        if ($guests === [] && $this->allAbsent($s, ['pve_vm', 'pve_ct', 'libvirt'])) {
+            $guests = null;
+            $unreadable[] = 'virtualisation';
+        }
+
+        $databases = in_array('database', $roles, true) ? $this->databases($s) : null;
+        if ($databases === [] && $this->allAbsent($s, ['pg', 'mysql', 'redis'])) {
+            $databases = null;
+            $unreadable[] = 'database';
+        }
+
+        $sites = in_array('web', $roles, true) ? $this->sites($s['web_sites'] ?? '') : null;
+        if ($sites === [] && $this->allAbsent($s, ['web_sites'])) {
+            $sites = null;
+            $unreadable[] = 'web';
+        }
+
         return [
             'ok' => true,
             'mail' => in_array('mail', $roles, true) ? $this->mail($s) : null,
-            'guests' => in_array('virtualisation', $roles, true) ? $this->guests($s) : null,
-            'databases' => in_array('database', $roles, true) ? $this->databases($s) : null,
-            'sites' => in_array('web', $roles, true) ? $this->sites($s['web_sites'] ?? '') : null,
+            'guests' => $guests,
+            'databases' => $databases,
+            'sites' => $sites,
+            'unreadable' => $unreadable,
             'error' => null,
         ];
+    }
+
+    /**
+     * True when every one of these sections said the tool was not installed.
+     *
+     * @param  array<string,string>  $s
+     * @param  list<string>  $keys
+     */
+    private function allAbsent(array $s, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            $raw = trim($s[$key] ?? '');
+            if ($raw !== '' && ! str_contains($raw, '__absent__') && ! str_contains($raw, '__noaccess__')) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

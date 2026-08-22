@@ -497,4 +497,5 @@ return [
     'guests' => 'Gäste',
     'sites' => 'Ausgelieferte Seiten',
     'db_connections' => ':n Verbindungen',
+    'role_unreadable' => 'Vom Host nicht lesbar (:roles) — die Werkzeuge dafür laufen vermutlich in Containern.',
 ];

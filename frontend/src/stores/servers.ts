@@ -348,6 +348,8 @@ export interface RoleDetails {
   guests: { kind: string; id: string; name: string; status: string }[] | null;
   databases: { engine: string; name: string; size_b: number | null; connections: number | null; used?: string }[] | null;
   sites: string[] | null;
+  /** Roles whose tools are not installed on the host: nobody could look. */
+  unreadable: string[];
   error: string | null;
 }
 
