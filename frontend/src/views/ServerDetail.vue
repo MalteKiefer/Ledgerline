@@ -213,7 +213,7 @@
               <span class="text-[var(--ll-muted)]">{{ ses.since }}</span>
               <span v-if="ses.from" class="text-[var(--ll-muted)]">({{ ses.from }})</span>
               <Btn
-                v-if="ses.tty"
+                v-if="killable(ses.tty)"
                 variant="ghost"
                 size="sm"
                 icon="logout"
@@ -887,6 +887,17 @@ const logTotal = computed(() => logLinesArr.value.length);
  * out actually means — killing only the shell leaves whatever it started
  * running.
  */
+/**
+ * Only a real terminal can be signalled.
+ *
+ * `who` also lists rows whose "tty" is `sshd` or `seat0` — a service name and a
+ * login seat, not a terminal. Offering an End button there would produce a
+ * refusal on click; the honest interface is to not offer it.
+ */
+function killable(tty: string): boolean {
+  return /^(pts\/\d{1,4}|tty\d{1,3})$/.test(tty);
+}
+
 async function killSession(ses: { user: string; tty: string }) {
   const srv = server.value;
   if (!srv) return;
