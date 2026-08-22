@@ -97,6 +97,30 @@
         </Card>
       </div>
 
+      <!-- What the box is for, and what of that is running. Named before the
+           numbers, because "mail server" changes how every figure below it
+           reads. -->
+      <Card v-if="facts.role?.roles.length || facts.role?.services.length" :body-class="'p-4'">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-sm font-semibold">{{ t('servers.role') }}</h2>
+          <Badge v-if="facts.role?.platform" tone="primary">{{ facts.role.platform }}</Badge>
+          <Badge v-for="r in facts.role?.roles ?? []" :key="r" tone="gray">{{ t(`servers.role_${r}`) }}</Badge>
+        </div>
+
+        <div v-if="facts.role?.services.length" class="mt-2 flex flex-wrap gap-1.5">
+          <span
+            v-for="sv in facts.role.services"
+            :key="sv.name"
+            class="rounded-full px-2 py-0.5 font-mono text-[0.7rem]"
+            :class="sv.active
+              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+              : 'bg-black/[0.04] text-[var(--ll-muted)] dark:bg-white/[0.06]'"
+            :title="sv.active ? t('servers.svc_running') : t('servers.svc_stopped')"
+          >{{ sv.name }}</span>
+        </div>
+        <p class="mt-1.5 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.role_hint') }}</p>
+      </Card>
+
       <!-- The hardware under the filesystems. "Nearly full" and "about to
            fail" are different problems with the same consequence, and they
            belong next to each other. -->
