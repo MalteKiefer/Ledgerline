@@ -89,6 +89,10 @@ class GenerateFileVideoThumbnail implements ShouldQueue
         $probe = VideoProcessor::probe($tmp->path());
         $duration = is_array($probe) && is_numeric($probe['duration'] ?? null) ? (int) $probe['duration'] : null;
         if (! VideoProcessor::poster($tmp->path(), $poster->path(), $duration)) {
+            // Nothing to take a frame from. Record that, or every listing
+            // queues ffmpeg again for a frame this file does not have.
+            $disk->put($thumbPath.'.none', '');
+
             return;
         }
 
@@ -97,7 +101,9 @@ class GenerateFileVideoThumbnail implements ShouldQueue
                 ->cover(400, 400)->encode(new WebpEncoder(quality: 78));
             $disk->put($thumbPath, $webp);
         } catch (\Throwable) {
-            // A clip whose first frame will not decode keeps its type icon.
+            // A clip whose first frame will not decode keeps its type icon,
+            // and is not retried on every listing either.
+            $disk->put($thumbPath.'.none', '');
         }
     }
 }
