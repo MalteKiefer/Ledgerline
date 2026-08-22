@@ -78,6 +78,7 @@
       <ServerOverview
         :facts="facts"
         :checks="checks"
+        :forecast="forecast"
         :note="server.note ?? ''"
         @go="setTab($event as Tab)"
         @kill-session="killSession"
@@ -217,7 +218,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import type { AlignedData, Options } from 'uplot';
 import { Card, Btn, Badge, Chart, DistroLogo, Select } from '@spa/ui';
-import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint, type ServerCheckSeries, type ServiceUnit, type ProcessRow, type SecurityAudit, type BanList } from '@spa/stores/servers';
+import { useServersStore, type Server, type ServerFacts, type ProbeResult, type TrendPoint, type ServerCheckSeries, type ServiceUnit, type ProcessRow, type SecurityAudit, type BanList , type CapacityForecast } from '@spa/stores/servers';
 import {
   severity, formatGib,
 } from '@spa/lib/server-facts';
@@ -248,6 +249,7 @@ const { success, error } = useToast();
 const server = ref<Server | null>(null);
 const history = ref<TrendPoint[]>([]);
 const loading = ref(true);
+const forecast = ref<CapacityForecast | null>(null);
 const testing = ref(false);
 const retestResult = ref<ProbeResult | null>(null);
 /**
@@ -569,6 +571,7 @@ async function load() {
     const r = await s.show(id);
     server.value = r.server;
     history.value = r.history;
+    forecast.value = r.forecast ?? null;
     void loadChecks();
     // The tab comes from the URL if it names a real one; the component behind
     // it loads its own data when it mounts.

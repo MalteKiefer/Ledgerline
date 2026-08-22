@@ -32,6 +32,9 @@ use Illuminate\Support\Carbon;
  * @property bool $restricted_key
  * @property bool|null $account_created
  * @property array<int, array{port:int,label:string|null}>|null $monitor_ports
+ * @property int|null $disk_alert_pct
+ * @property int|null $mem_alert_pct
+ * @property int|null $temp_alert_c
  * @property string|null $group
  * @property string|null $note
  * @property bool $enabled
@@ -44,7 +47,7 @@ class Server extends Model
     use OwnsUserData;
 
     /** Secrets, the host key pin and the owner are server-set — never mass-assigned. */
-    protected $fillable = ['name', 'host', 'port', 'username', 'auth_type', 'group', 'note', 'enabled', 'restricted_key', 'account_created', 'monitor_ports'];
+    protected $fillable = ['name', 'host', 'port', 'username', 'auth_type', 'group', 'note', 'enabled', 'restricted_key', 'account_created', 'monitor_ports', 'disk_alert_pct', 'mem_alert_pct', 'temp_alert_c'];
 
     protected function casts(): array
     {
@@ -55,6 +58,9 @@ class Server extends Model
             'restricted_key' => 'boolean',
             'account_created' => 'boolean',
             'monitor_ports' => 'array',
+            'disk_alert_pct' => 'integer',
+            'mem_alert_pct' => 'integer',
+            'temp_alert_c' => 'integer',
         ];
     }
 

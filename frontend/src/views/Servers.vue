@@ -217,6 +217,25 @@
               {{ t('servers.monitor_port_add') }}
             </Btn>
           </div>
+          <div class="mt-3">
+            <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.thresholds') }}</span>
+            <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.thresholds_hint') }}</p>
+            <div class="grid grid-cols-3 gap-2">
+              <label class="block">
+                <span class="mb-1 block text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.threshold_disk') }}</span>
+                <input v-model="form.disk_alert_pct" type="number" min="50" max="99" placeholder="90" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
+              </label>
+              <label class="block">
+                <span class="mb-1 block text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.threshold_mem') }}</span>
+                <input v-model="form.mem_alert_pct" type="number" min="50" max="99" placeholder="95" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
+              </label>
+              <label class="block">
+                <span class="mb-1 block text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.threshold_temp') }}</span>
+                <input v-model="form.temp_alert_c" type="number" min="40" max="120" placeholder="85" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-1.5 text-sm">
+              </label>
+            </div>
+          </div>
+
           <label class="mt-3 block">
             <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.note') }}</span>
             <textarea v-model="form.note" rows="2" class="w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-2 text-sm" />
@@ -411,6 +430,10 @@ interface Form {
   group: string; note: string; enabled: boolean; restricted_key: boolean;
   /** Kept as strings while editing so a half-typed port is not coerced to 0. */
   monitor_ports: { port: string; label: string }[];
+  /** Empty string means "use the default" — see payload(). */
+  disk_alert_pct: string;
+  mem_alert_pct: string;
+  temp_alert_c: string;
 }
 
 const formOpen = ref(false);
@@ -423,6 +446,7 @@ function blank(): Form {
     name: '', host: '', port: '22', username: 'root',
     private_key: '', passphrase: '', group: '', note: '',
     enabled: true, restricted_key: false, monitor_ports: [],
+    disk_alert_pct: '', mem_alert_pct: '', temp_alert_c: '',
   };
 }
 
@@ -461,6 +485,9 @@ function openEdit(srv: Server) {
     group: srv.group ?? '', note: srv.note ?? '',
     enabled: srv.enabled, restricted_key: srv.restricted_key,
     monitor_ports: (srv.monitor_ports ?? []).map((p) => ({ port: String(p.port), label: p.label ?? '' })),
+    disk_alert_pct: srv.disk_alert_pct == null ? '' : String(srv.disk_alert_pct),
+    mem_alert_pct: srv.mem_alert_pct == null ? '' : String(srv.mem_alert_pct),
+    temp_alert_c: srv.temp_alert_c == null ? '' : String(srv.temp_alert_c),
   };
   probe.value = null;
   generatedKey.value = null;
@@ -500,6 +527,11 @@ function payload(): Record<string, unknown> {
     monitor_ports: f.monitor_ports
       .filter((p) => Number(p.port) >= 1 && Number(p.port) <= 65535)
       .map((p) => ({ port: Number(p.port), label: p.label.trim() || null })),
+    // An emptied field clears the override rather than being dropped: null is
+    // a real value here and means "use the default".
+    disk_alert_pct: f.disk_alert_pct === '' ? null : Number(f.disk_alert_pct),
+    mem_alert_pct: f.mem_alert_pct === '' ? null : Number(f.mem_alert_pct),
+    temp_alert_c: f.temp_alert_c === '' ? null : Number(f.temp_alert_c),
   };
 }
 

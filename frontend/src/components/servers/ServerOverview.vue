@@ -75,9 +75,25 @@
           <Meter v-if="facts.mem.swap_total_kb" class="mt-2.5" :label="t('servers.swap')" :pct="swapPct(facts)" :note="swapNote(facts)" />
           <div v-for="d in facts.disks" :key="d.mount" class="mt-2.5">
             <Meter :label="d.mount" :pct="d.used_pct" :note="diskNote(d)" />
-            <p class="mt-0.5 font-mono text-[0.65rem] text-[var(--ll-muted)]">{{ d.fs }}</p>
+            <p class="mt-0.5 flex flex-wrap items-center gap-2 font-mono text-[0.65rem] text-[var(--ll-muted)]">
+              <span>{{ d.fs }}</span>
+              <!-- "How full is it" is the easy question. "When does it matter"
+                   is the useful one, and ranks a disk climbing two points a day
+                   above one that has sat at 91% for months. -->
+              <span v-if="fullIn(d.mount)" class="font-sans font-medium" :class="fullInClass(d.mount)">
+                {{ t('servers.full_in', { days: String(fullIn(d.mount)) }) }}
+              </span>
+              <span v-else-if="growth(d.mount)" class="font-sans">
+                {{ t('servers.growth_per_day', { pct: String(growth(d.mount)) }) }}
+              </span>
+            </p>
           </div>
           <p v-if="!facts.disks.length" class="text-xs text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+          <!-- Said once, plainly, rather than leaving a reader to wonder why no
+               projection appears. -->
+          <p v-else-if="forecast && !forecast.ready" class="mt-2 text-[0.65rem] text-[var(--ll-muted)]">
+            {{ t('servers.forecast_pending', { h: String(Math.round(forecast.hours_of_history)) }) }}
+          </p>
         </Card>
       </div>
 
@@ -260,12 +276,13 @@ import {
 } from '@spa/lib/server-facts';
 import Findings from './Findings.vue';
 import StatTile from './StatTile.vue';
-import type { ServerFacts, ServerCheckSeries } from '@spa/stores/servers';
+import type { CapacityForecast, ServerFacts, ServerCheckSeries } from '@spa/stores/servers';
 
 const props = defineProps({
   facts: { type: Object as PropType<ServerFacts | null>, default: null },
   checks: { type: Array as PropType<ServerCheckSeries[]>, default: () => [] },
   note: { type: String, default: '' },
+  forecast: { type: Object as PropType<CapacityForecast | null>, default: null },
 });
 
 defineEmits<{ go: [tab: string]; 'kill-session': [ses: { user: string; tty: string }] }>();
@@ -274,6 +291,27 @@ defineEmits<{ go: [tab: string]; 'kill-session': [ses: { user: string; tty: stri
  * Unknown health is not good health, so the two never share a colour: a drive
  * whose state could not be read is amber-adjacent grey, never green.
  */
+/** Days until this mount fills, or null when the trend says nothing useful. */
+const fullIn = (mount: string) => {
+  const line = props.forecast?.disks.find((d) => d.mount === mount);
+
+  return line?.days_to_full ?? null;
+};
+
+/** Growth worth mentioning even when the date is too far out to quote. */
+const growth = (mount: string) => {
+  const line = props.forecast?.disks.find((d) => d.mount === mount);
+
+  return line && line.per_day >= 0.1 ? line.per_day : null;
+};
+
+const fullInClass = (mount: string) => {
+  const days = fullIn(mount);
+  if (days === null) return '';
+
+  return days <= 7 ? 'text-red-600 dark:text-red-400' : days <= 30 ? 'text-amber-600 dark:text-amber-400' : '';
+};
+
 type Tone = 'success' | 'error' | 'warning' | 'gray';
 const healthTone = (health: string): Tone => (({
   ok: 'success',

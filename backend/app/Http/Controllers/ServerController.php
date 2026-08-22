@@ -8,6 +8,7 @@ use App\Jobs\CollectServerFacts;
 use App\Models\Server;
 use App\Models\ServerCheck;
 use App\Models\ServerFact;
+use App\Services\Servers\CapacityForecast;
 use App\Services\Servers\ServerProbe;
 use App\Services\Servers\ServerTarget;
 use Illuminate\Http\JsonResponse;
@@ -44,7 +45,10 @@ class ServerController extends Controller
     /** How long a generated keypair waits in the cache for the user to finish setup. */
     private const KEYPAIR_TTL_MINUTES = 30;
 
-    public function __construct(private readonly ServerProbe $probe) {}
+    public function __construct(
+        private readonly ServerProbe $probe,
+        private readonly CapacityForecast $forecast,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -77,6 +81,9 @@ class ServerController extends Controller
                 'public_key' => $this->publicKey($server),
             ],
             'history' => $history,
+            // Computed here rather than in the client: the client only ever
+            // holds a window of the history, and the slope needs all of it.
+            'forecast' => $this->forecast->forServer($server),
         ]);
     }
 
@@ -400,6 +407,9 @@ class ServerController extends Controller
             'monitor_ports' => ['sometimes', 'array', 'max:20'],
             'monitor_ports.*.port' => ['required', 'integer', 'min:1', 'max:65535'],
             'monitor_ports.*.label' => ['nullable', 'string', 'max:40'],
+            'disk_alert_pct' => ['nullable', 'integer', 'min:50', 'max:99'],
+            'mem_alert_pct' => ['nullable', 'integer', 'min:50', 'max:99'],
+            'temp_alert_c' => ['nullable', 'integer', 'min:40', 'max:120'],
             'keypair_token' => ['nullable', 'string', 'max:64'],
         ]);
 
@@ -438,6 +448,18 @@ class ServerController extends Controller
                 'monitor_ports' => $request->has('monitor_ports')
                     ? $this->monitorPorts($request)
                     : $server?->monitor_ports,
+                // Null is a real value here — it means "use the default" — so
+                // an empty field has to clear the override rather than be
+                // ignored.
+                'disk_alert_pct' => $request->has('disk_alert_pct')
+                    ? ($request->integer('disk_alert_pct') ?: null)
+                    : $server?->disk_alert_pct,
+                'mem_alert_pct' => $request->has('mem_alert_pct')
+                    ? ($request->integer('mem_alert_pct') ?: null)
+                    : $server?->mem_alert_pct,
+                'temp_alert_c' => $request->has('temp_alert_c')
+                    ? ($request->integer('temp_alert_c') ?: null)
+                    : $server?->temp_alert_c,
             ],
             'credentials' => $credentials,
             'fingerprint' => $request->has('host_fingerprint')
@@ -494,6 +516,9 @@ class ServerController extends Controller
             'restricted_key' => $server->restricted_key,
             'account_created' => $server->account_created,
             'monitor_ports' => $server->monitorPorts(),
+            'disk_alert_pct' => $server->disk_alert_pct,
+            'mem_alert_pct' => $server->mem_alert_pct,
+            'temp_alert_c' => $server->temp_alert_c,
             'host_fingerprint' => $server->host_fingerprint,
             'status' => $fact === null ? null : [
                 'ok' => $fact->ok,
