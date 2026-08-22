@@ -220,6 +220,24 @@ class FilesRelationalTest extends TestCase
         $this->get(route('files.rel.thumb', $id))->assertOk()->assertHeader('Content-Type', 'image/webp');
     }
 
+    public function test_a_file_with_no_video_track_is_not_requeued_on_every_listing(): void
+    {
+        Queue::fake();
+        $this->actingAs(User::factory()->create());
+
+        // A .wma is sniffed as video/x-ms-asf and has no frame to grab. Without
+        // the marker every listing would run ffmpeg again for a frame that does
+        // not exist.
+        $id = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->create('song.wma', 8, 'video/x-ms-asf')])->json('file.id');
+        $file = FileEntry::findOrFail($id);
+        Storage::disk(config('files.disk'))->put('files/thumb/'.$file->id.'-'.$file->version.'.webp.none', '');
+
+        Queue::fake(); // forget the upload dispatch; only the listing matters here
+        $this->get(route('files.rel.thumb', $id))->assertNotFound();
+
+        Queue::assertNotPushed(GenerateFileVideoThumbnail::class);
+    }
+
     public function test_trash_restore_force_removes_bytes(): void
     {
         $this->actingAs(User::factory()->create());

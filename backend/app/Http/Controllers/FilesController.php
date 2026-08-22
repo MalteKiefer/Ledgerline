@@ -1165,7 +1165,14 @@ class FilesController extends Controller
         if (str_starts_with($mime, 'video/')) {
             $videoThumb = 'files/thumb/'.$file->id.'-'.$file->version.'.webp';
             if (! $this->fs()->exists($videoThumb)) {
-                GenerateFileVideoThumbnail::dispatch((int) $file->id);
+                // A file with no video track to grab a frame from -- a .wma is
+                // sniffed as video/x-ms-asf and has none -- leaves a marker, or
+                // every listing would queue ffmpeg again for a frame that does
+                // not exist. The marker is version-scoped, so replacing the
+                // file's content is a fresh attempt.
+                if (! $this->fs()->exists($videoThumb.'.none')) {
+                    GenerateFileVideoThumbnail::dispatch((int) $file->id);
+                }
                 abort(404);
             }
 
