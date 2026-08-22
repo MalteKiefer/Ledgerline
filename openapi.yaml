@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.711.0
+  version: 1.711.1
   license:
     name: Proprietary
   description: >
@@ -8377,6 +8377,9 @@ paths:
                       properties:
                         path: { type: string }
                         size_kb: { type: integer }
+                  truncated:
+                    type: boolean
+                    description: "du ran out of time and these figures cover only part of the tree. A partial answer that looks like a complete one is the worst kind, so it is labelled."
                   error: { type: [string, "null"] }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

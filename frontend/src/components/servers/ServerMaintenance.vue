@@ -135,7 +135,13 @@
         {{ usage.error === 'invalid_path' ? t('servers.files_err_invalid_path') : t('servers.status_fail') }}
       </p>
 
-      <div v-else-if="usage?.entries.length">
+      <!-- A partial answer that looks like a complete one is the worst kind,
+           so it says which it is. -->
+      <p v-if="usage?.truncated" class="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[0.7rem] text-amber-700 dark:text-amber-400">
+        {{ t('servers.disk_usage_truncated') }}
+      </p>
+
+      <div v-if="usage?.entries.length">
         <div v-for="e in usage.entries" :key="e.path" class="border-b border-[var(--ll-border)] py-1.5 last:border-0">
           <div class="flex items-center justify-between gap-3">
             <button class="truncate text-left font-mono text-xs hover:text-[var(--ll-accent)]" :title="e.path" @click="scan(e.path)">
@@ -203,7 +209,7 @@ const scan = async (target?: string) => {
   try {
     usage.value = await store.diskUsage(props.serverId, path.value);
   } catch {
-    usage.value = { ok: false, path: path.value, entries: [], error: 'unreachable' };
+    usage.value = { ok: false, path: path.value, entries: [], truncated: false, error: 'unreachable' };
   } finally {
     scanning.value = false;
   }

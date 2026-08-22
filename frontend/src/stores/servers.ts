@@ -127,6 +127,8 @@ export interface DiskUsage {
   ok: boolean;
   path: string;
   entries: { path: string; size_kb: number }[];
+  /** du ran out of time: these numbers cover only part of the tree. */
+  truncated: boolean;
   error: string | null;
 }
 

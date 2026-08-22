@@ -471,4 +471,5 @@ return [
     'login_local' => 'console',
     'failed_logins' => ':n failed login attempts recorded.',
     'failed_logins_unknown' => 'Failed attempts could not be read: lastb is not available on this host. That is not the same as none.',
+    'disk_usage_truncated' => 'Cut short: the tree was too large to finish inside the time limit, so these figures cover only part of it.',
 ];
