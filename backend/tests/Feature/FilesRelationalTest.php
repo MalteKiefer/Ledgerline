@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\GenerateFileVideoThumbnail;
 use App\Models\FileEntry;
 use App\Models\FileFolder;
 use App\Models\FileLabel;
@@ -11,6 +12,7 @@ use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -197,6 +199,25 @@ class FilesRelationalTest extends TestCase
 
         $this->actingAs(User::factory()->create());
         $this->postJson(route('files.rel.folders.copy', $foreign))->assertNotFound();
+    }
+
+    public function test_video_upload_queues_a_poster_frame_and_thumb_is_cache_only(): void
+    {
+        Queue::fake();
+        $this->actingAs(User::factory()->create());
+
+        $id = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->create('clip.mp4', 12, 'video/mp4')])->json('file.id');
+
+        Queue::assertPushed(GenerateFileVideoThumbnail::class, fn ($job): bool => $job->fileId === $id);
+
+        // Cache-only: no poster yet, so the client gets a 404 and falls back to
+        // the type icon rather than the request holding open through ffmpeg.
+        $this->get(route('files.rel.thumb', $id))->assertNotFound();
+
+        $file = FileEntry::findOrFail($id);
+        Storage::disk(config('files.disk'))->put('files/thumb/'.$file->id.'-'.$file->version.'.webp', 'WEBPBYTES');
+
+        $this->get(route('files.rel.thumb', $id))->assertOk()->assertHeader('Content-Type', 'image/webp');
     }
 
     public function test_trash_restore_force_removes_bytes(): void

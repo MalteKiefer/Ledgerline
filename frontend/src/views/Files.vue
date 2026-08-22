@@ -310,7 +310,10 @@
                 :checked="isRowSelected(row)"
                 @click.stop="onRowCheck(ri, row, $event)"
               >
-              <img v-if="row._img" :src="s.thumbUrl(row.raw as FileEntry)" class="h-full w-full object-cover" >
+              <img
+                v-if="row._img && !brokenThumbs.has(row.id)" :src="s.thumbUrl(row.raw as FileEntry)"
+                class="h-full w-full object-cover" @error="brokenThumbs.add(row.id)"
+              >
               <Icon v-else :name="row._icon" :size="40" :class="row._folder ? 'text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" />
             </div>
             <div class="flex items-center gap-1 p-2">
@@ -1652,7 +1655,12 @@ const expiryOptions = computed(() => [
 const quotaPct = computed(() => (s.usage?.quota ? Math.min(100, (s.usage.used / s.usage.quota) * 100) : 0));
 function fmt(n: number) { return formatBytes(n); }
 
-function mapFile(f: FileEntry): Row { return { _k: `f${f.id}`, _folder: false, _icon: categoryMsym(f.name, f.mime), _tint: categoryTint(f.name, f.mime), _img: isImage(f.name, f.mime), _labels: f.labels ?? [], id: f.id, name: f.name, raw: f }; }
+// A video's poster frame is produced by a worker, so the endpoint answers 404
+// until it exists. Without this the tile would show a broken-image glyph rather
+// than the type icon it falls back to everywhere else.
+const brokenThumbs = ref(new Set<number>());
+
+function mapFile(f: FileEntry): Row { return { _k: `f${f.id}`, _folder: false, _icon: categoryMsym(f.name, f.mime), _tint: categoryTint(f.name, f.mime), _img: isImage(f.name, f.mime) || (f.mime || '').startsWith('video/'), _labels: f.labels ?? [], id: f.id, name: f.name, raw: f }; }
 function mapFolder(fo: FileFolder): Row { return { _k: `d${fo.id}`, _folder: true, _icon: 'folder', _tint: FOLDER_TINT, _img: false, _labels: [], id: fo.id, name: fo.name, raw: fo }; }
 
 function labelMatch(f: FileEntry): boolean {
