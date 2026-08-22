@@ -291,4 +291,5 @@ return [
     'sort_type' => 'Тип',
     'view_source' => 'Исходник',
     'view_rendered' => 'Отрисовка',
+    'saved' => 'Сохранено',
 ];

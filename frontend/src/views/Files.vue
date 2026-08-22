@@ -1035,12 +1035,26 @@
               :icon="mdRendered ? 'code' : 'visibility'"
               @click="mdRendered = !mdRendered"
             >{{ mdRendered ? t('files.view_source') : t('files.view_rendered') }}</Btn>
-            <Btn variant="ghost" size="sm" icon="content_copy" :disabled="previewText === null" @click="copyPreviewText">{{ t('common.copy') }}</Btn>
+            <template v-if="editing">
+              <Btn variant="ghost" size="sm" @click="cancelEdit">{{ t('common.cancel') }}</Btn>
+              <Btn variant="soft" size="sm" icon="save" :loading="saving" :disabled="editText === previewText" @click="saveEdit">{{ t('common.save') }}</Btn>
+            </template>
+            <template v-else>
+              <Btn
+                v-if="canEdit" variant="ghost" size="sm" icon="edit"
+                :disabled="previewText === null" @click="startEdit"
+              >{{ t('common.edit') }}</Btn>
+              <Btn variant="ghost" size="sm" icon="content_copy" :disabled="previewText === null" @click="copyPreviewText">{{ t('common.copy') }}</Btn>
+            </template>
           </div>
           <div v-if="previewTextLoading" class="p-10 text-center text-[var(--ll-muted)]">
             <Icon name="progress_activity" :size="28" class="animate-spin" />
           </div>
           <div v-else-if="previewTextError" class="p-10 text-center text-[var(--ll-muted)]">{{ t('common.error') }}</div>
+          <textarea
+            v-else-if="editing" v-model="editText" spellcheck="false"
+            class="h-[calc(100%-2.5rem)] w-full resize-none border-0 bg-transparent p-4 font-mono text-xs leading-5 outline-none"
+          ></textarea>
           <div v-else-if="isMarkdown(preview) && mdRendered" class="ll-prose p-4 text-sm" v-html="previewMarkdown"></div>
           <pre v-else class="hljs m-0 overflow-auto p-4 font-mono text-xs leading-5"><code v-html="previewHighlighted"></code></pre>
         </div>
@@ -1352,6 +1366,66 @@ async function loadPreviewText(f: FileEntry): Promise<void> {
     if (requestId === previewTextRequest) previewTextLoading.value = false;
   }
 }
+/**
+ * A NUL byte means the file was never text; U+FFFD means reading it as text
+ * already lost bytes. Either way what is on screen is not what is on disk.
+ */
+const CONTROL_OR_DAMAGE_RE = new RegExp('[' + String.fromCharCode(0) + String.fromCharCode(0xfffd) + ']');
+
+const editing = ref(false);
+const editText = ref('');
+const saving = ref(false);
+
+/**
+ * Whether this text can be written back at all.
+ *
+ * Reading a file as text replaces anything that is not valid UTF-8 with the
+ * replacement character, and a NUL byte means it was never text. Saving either
+ * back would overwrite the real bytes with the damage the read introduced, so
+ * the editor stays shut rather than offering to destroy the file.
+ */
+const canEdit = computed(() => (
+  !!preview.value
+    && view.value === 'files'
+    && previewText.value !== null
+    && !CONTROL_OR_DAMAGE_RE.test(previewText.value)
+));
+
+function startEdit(): void {
+  if (previewText.value === null) return;
+  editText.value = previewText.value;
+  editing.value = true;
+}
+
+function cancelEdit(): void {
+  editing.value = false;
+  editText.value = '';
+}
+
+async function saveEdit(): Promise<void> {
+  const f = preview.value;
+  if (!f || saving.value) return;
+  saving.value = true;
+  try {
+    // Reuse the ordinary replace-content path rather than inventing a second
+    // way to write a file: it keeps the version history, the quota check and
+    // the server-side mime sniffing that the upload path already has.
+    const blob = new File([editText.value], f.name, { type: f.mime || 'text/plain' });
+    await s.replaceContent(f, blob);
+    previewText.value = editText.value;
+    editing.value = false;
+    await s.load();
+    // The row carries a new version, and the preview pane holds the old one.
+    const fresh = (s.files as FileEntry[]).find((x) => x.id === f.id);
+    if (fresh) preview.value = fresh;
+    success(t('files.saved'));
+  } catch {
+    error(t('common.error'));
+  } finally {
+    saving.value = false;
+  }
+}
+
 async function copyPreviewText(): Promise<void> {
   if (previewText.value === null) return;
   try {
@@ -1362,6 +1436,7 @@ async function copyPreviewText(): Promise<void> {
   }
 }
 watch(preview, (f) => {
+  cancelEdit();
   if (f && previewKind(f) === 'text') loadPreviewText(f);
   else { previewText.value = null; previewTextError.value = false; }
 });
