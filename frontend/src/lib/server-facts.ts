@@ -1,3 +1,4 @@
+import { trans as t } from 'laravel-vue-i18n';
 import type { Server, ServerDisk, ServerFacts } from '@spa/stores/servers';
 
 /**
@@ -74,4 +75,11 @@ export function diskNote(disk: ServerDisk): string {
 export function fullestDisk(facts: ServerFacts): ServerDisk | null {
   if (facts.disks.length === 0) return null;
   return facts.disks.reduce((worst, d) => (d.used_pct > worst.used_pct ? d : worst));
+}
+
+/** Model and core count, whichever of the two the host reported. */
+export function cpuText(facts: ServerFacts): string {
+  const cores = facts.cpu.cores === null ? '' : t('servers.cores', { n: String(facts.cpu.cores) });
+
+  return [facts.cpu.model, cores].filter(Boolean).join(' · ');
 }

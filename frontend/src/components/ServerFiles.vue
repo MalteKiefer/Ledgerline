@@ -87,41 +87,40 @@
               <th class="cursor-pointer py-1.5 pr-3 text-right font-medium select-none" @click="sortBy('size')">{{ t('servers.files_size') }}{{ arrow('size') }}</th>
               <th class="py-1.5 pr-3 font-medium">{{ t('servers.files_modified') }}</th>
               <th class="py-1.5 pr-3 font-medium">{{ t('servers.files_perms') }}</th>
-              <th class="py-1.5 pr-3 font-medium">{{ t('servers.files_owner') }}</th>
+              <th class="cursor-pointer py-1.5 pr-3 font-medium select-none" @click="sortBy('owner')">{{ t('servers.files_owner') }}{{ arrow('owner') }}</th>
               <th class="py-1.5 text-right font-medium" />
             </tr>
           </thead>
           <tbody>
-<tr
+<!-- The whole row opens the entry, not just the name: a two-word file
+                 name is a tiny target, and everything else in the row already
+                 describes the same thing. The checkbox and the action buttons
+                 stop the click so they keep doing their own job. -->
+            <tr
               v-for="e in sorted"
               :key="e.path"
-              class="border-b border-[var(--ll-border)] last:border-0 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
-              :class="selected.has(e.path) ? 'bg-[var(--ll-accent)]/5' : ''"
+              class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 transition-colors hover:bg-black/[0.02] active:bg-[var(--ll-accent)]/10 dark:hover:bg-white/[0.03]"
+              :class="[selected.has(e.path) ? 'bg-[var(--ll-accent)]/5' : '', opening === e.path ? 'bg-[var(--ll-accent)]/10' : '']"
+              @click="open(e)"
             >
-              <td class="py-2">
+              <td class="py-2" @click.stop>
                 <input type="checkbox" class="accent-primary-500" :checked="selected.has(e.path)" @change="toggle(e)">
               </td>
               <td class="py-2 pr-3">
-                <!-- A press that shows it landed: opening a directory takes a
-                     round trip, and a row that does not react reads as broken. -->
-                <button
-                  class="flex items-center gap-2 rounded px-1 py-0.5 text-left transition-all duration-100 active:scale-[0.98] active:bg-[var(--ll-accent)]/10"
-                  :class="opening === e.path ? 'bg-[var(--ll-accent)]/10' : ''"
-                  @click="open(e)"
-                >
+                <div class="flex items-center gap-2">
                   <Icon
                     :name="opening === e.path ? 'hourglass_empty' : iconFor(e)"
                     :size="16"
                     :class="e.type === 'dir' ? 'text-[var(--ll-accent)]' : 'text-[var(--ll-muted)]'"
                   />
                   <span class="font-mono text-xs" :class="e.type === 'dir' ? 'font-semibold' : ''">{{ e.name }}</span>
-                </button>
+                </div>
               </td>
               <td class="py-2 pr-3 text-right font-mono text-xs tabular-nums text-[var(--ll-muted)]">{{ e.type === 'dir' ? '—' : humanSize(e.size) }}</td>
               <td class="py-2 pr-3 font-mono text-[0.7rem] text-[var(--ll-muted)]">{{ e.modified }}</td>
               <td class="py-2 pr-3 font-mono text-[0.7rem] text-[var(--ll-muted)]">{{ e.perms }}</td>
               <td class="py-2 pr-3 text-[0.7rem] text-[var(--ll-muted)]">{{ e.owner }}:{{ e.group }}</td>
-              <td class="w-40 py-2 text-right">
+              <td class="w-40 py-2 text-right" @click.stop>
                 <div class="flex justify-end gap-0.5">
                   <Btn v-if="e.type !== 'dir'" variant="ghost" size="sm" icon="download" :title="t('servers.files_download')" @click="download(e)" />
                   <Btn variant="ghost" size="sm" icon="drive_file_rename_outline" :title="t('servers.files_rename')" @click="rename(e)" />
@@ -290,7 +289,7 @@ const query = ref('');
 const uploading = ref(false);
 const uploadInput = ref<HTMLInputElement | null>(null);
 
-const sortKey = ref<'name' | 'size'>('name');
+const sortKey = ref<'name' | 'size' | 'owner'>('name');
 const sortDesc = ref(false);
 
 const viewerOpen = ref(false);
@@ -317,6 +316,7 @@ const sorted = computed(() => {
   return rows.sort((a, b) => {
     if ((a.type === 'dir') !== (b.type === 'dir')) return a.type === 'dir' ? -1 : 1;
     if (sortKey.value === 'size') return (a.size - b.size) * dir;
+    if (sortKey.value === 'owner') return `${a.owner}:${a.group}`.localeCompare(`${b.owner}:${b.group}`) * dir;
 
     return a.name.localeCompare(b.name) * dir;
   });
@@ -324,15 +324,16 @@ const sorted = computed(() => {
 
 const highlighted = computed(() => highlightCode(viewerContent.value, viewerPath.value));
 
-function sortBy(key: 'name' | 'size') {
+function sortBy(key: 'name' | 'size' | 'owner') {
   if (sortKey.value === key) sortDesc.value = !sortDesc.value;
   else {
     sortKey.value = key;
+    // Numbers are interesting from the top, names from the start.
     sortDesc.value = key === 'size';
   }
 }
 
-function arrow(key: 'name' | 'size'): string {
+function arrow(key: 'name' | 'size' | 'owner'): string {
   return sortKey.value === key ? (sortDesc.value ? ' ↓' : ' ↑') : '';
 }
 
