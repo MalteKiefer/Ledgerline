@@ -486,4 +486,7 @@ return [
     'role_monitoring' => 'Monitoring',
     'svc_running' => 'running',
     'svc_stopped' => 'installed, not running',
+    'health_virtual' => 'Virtual disk',
+    'health_unsupported' => 'No SMART',
+    'smart_virtual' => 'These are virtual disks. SMART belongs to the hypervisor: the physical drive is not something a guest can see, however the tools are installed. Nothing is wrong here.',
 ];

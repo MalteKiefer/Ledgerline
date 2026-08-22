@@ -597,4 +597,50 @@ none
         $this->assertSame([], $empty['arrays']);
         $this->assertSame([], $empty['sensors']);
     }
+
+    #[Test]
+    public function a_virtio_disk_reports_as_virtual_rather_than_unreadable(): void
+    {
+        // Reported from a live mail server: smartmontools was installed and the
+        // app still said "not readable", which reads as a fault. There is no
+        // fault - a guest cannot see the physical drive behind a virtio disk,
+        // whatever is installed. The two need different words.
+        $out = implode('
+', [
+            '##LL:blockdev',
+            'NAME="vda" TYPE="disk" SIZE="274877906944" ROTA="1" MODEL=""',
+            '##LL:smart',
+            '##DEV:/dev/vda',
+            'smartctl 7.4 2023-08-01 r5530 [x86_64-linux-6.12.101-amd64] (local build)',
+            '/dev/vda: Unable to detect device type',
+            '##LL:end',
+            '',
+        ]);
+
+        $drive = (new FactParser)->parse($out)['storage'][0];
+
+        $this->assertSame('virtual', $drive['health']);
+    }
+
+    #[Test]
+    public function a_physical_disk_that_cannot_be_read_is_still_unreadable(): void
+    {
+        // The distinction has to cut both ways: a real drive behind a
+        // controller that will not pass SMART through is a thing worth
+        // knowing about, and must not be waved away as virtual.
+        $out = implode('
+', [
+            '##LL:blockdev',
+            'NAME="sda" TYPE="disk" SIZE="4000630046720" ROTA="1" MODEL="MARVELL Raid VD"',
+            '##LL:smart',
+            '##DEV:/dev/sda',
+            '/dev/sda: Unable to detect device type',
+            '##LL:end',
+            '',
+        ]);
+
+        $drive = (new FactParser)->parse($out)['storage'][0];
+
+        $this->assertSame('unreadable', $drive['health']);
+    }
 }

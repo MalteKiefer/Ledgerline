@@ -486,4 +486,7 @@ return [
     'role_monitoring' => 'Überwachung',
     'svc_running' => 'läuft',
     'svc_stopped' => 'installiert, läuft nicht',
+    'health_virtual' => 'Virtuelle Platte',
+    'health_unsupported' => 'Kein SMART',
+    'smart_virtual' => 'Das sind virtuelle Platten. SMART gehört dem Hypervisor: die physische Platte kann ein Gast nicht sehen, egal welche Werkzeuge installiert sind. Hier ist nichts kaputt.',
 ];

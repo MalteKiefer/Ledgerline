@@ -149,7 +149,13 @@
                 </span>
               </div>
             </div>
-            <p v-if="facts.storage.every((d) => d.health === 'unknown')" class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">
+            <!-- Two different reasons for having no health, and they need
+                 different sentences: a missing tool is worth fixing, a virtual
+                 disk is not. -->
+            <p v-if="facts.storage.every((d) => d.health === 'virtual')" class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">
+              {{ t('servers.smart_virtual') }}
+            </p>
+            <p v-else-if="facts.storage.every((d) => d.health === 'unknown')" class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">
               {{ t('servers.smart_unavailable') }}
             </p>
           </div>
@@ -341,6 +347,10 @@ const healthTone = (health: string): Tone => (({
   ok: 'success',
   failing: 'error',
   unreadable: 'warning',
+  // Virtual and unsupported are grey, not amber: there is nothing wrong, there
+  // is simply nothing to read.
+  virtual: 'gray',
+  unsupported: 'gray',
 } as Record<string, Tone>)[health] ?? 'gray');
 
 /** 80 C is roughly where consumer hardware starts throttling itself. */

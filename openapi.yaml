@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.712.0
+  version: 1.712.1
   license:
     name: Proprietary
   description: >
@@ -1395,7 +1395,14 @@ components:
               size_b: { type: integer }
               rotational: { type: boolean }
               model: { type: string }
-              health: { type: string, enum: [ok, failing, unreadable, unknown] }
+              health:
+                type: string
+                enum: [ok, failing, unreadable, unsupported, virtual, unknown]
+                description: >
+                  "unknown" means smartmontools is absent; "unreadable" means a
+                  controller would not pass SMART through; "virtual" means there
+                  is no drive to ask, because the guest is looking at a disk the
+                  hypervisor made up. Only the middle one is worth chasing.
               temp_c: { type: [number, "null"] }
               hours: { type: [integer, "null"] }
               reallocated: { type: [integer, "null"] }
