@@ -193,6 +193,17 @@
           </template>
         </Step>
 
+        <!-- Ticked by default: adding a server normally means wanting it
+             watched. Unticked it is still fully usable, just never woken on a
+             timer, which is what the hint says in as many words. -->
+        <label class="flex items-start gap-2 rounded-lg border border-[var(--ll-border)] p-3 text-sm">
+          <input v-model="form.enabled" type="checkbox" class="mt-0.5 accent-primary-500">
+          <span>
+            {{ t('servers.enabled') }}
+            <span class="mt-0.5 block text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.enabled_hint') }}</span>
+          </span>
+        </label>
+
         <!-- Optional metadata, out of the way of the four required steps -->
         <details class="rounded-lg border border-[var(--ll-border)] p-3">
           <summary class="cursor-pointer text-xs font-medium">{{ t('servers.more_options') }}</summary>
@@ -247,7 +258,6 @@
             <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('servers.note') }}</span>
             <textarea v-model="form.note" rows="2" class="w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2.5 py-2 text-sm" />
           </label>
-          <label class="mt-3 flex items-center gap-2 text-sm"><input v-model="form.enabled" type="checkbox" class="accent-primary-500">{{ t('servers.enabled') }}</label>
         </details>
       </div>
       <template #footer>

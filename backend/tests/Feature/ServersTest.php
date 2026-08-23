@@ -9,6 +9,7 @@ use App\Models\Server;
 use App\Models\ServerFact;
 use App\Models\User;
 use App\Services\Servers\ProbeResult;
+use App\Services\Servers\ServerMonitor;
 use App\Services\Servers\ServerProbe;
 use App\Services\Servers\ServerTarget;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -372,5 +373,34 @@ class ServersTest extends TestCase
             'duration_ms' => 120,
             'collected_at' => $at,
         ])->save();
+    }
+
+    public function test_a_paused_server_still_answers_the_refresh_button(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+        $server->forceFill(['enabled' => false])->save();
+
+        Queue::fake();
+        $this->actingAs($user)->postJson("/api/v1/servers/{$server->id}/refresh")->assertStatus(202);
+
+        // Pausing silences the schedule, not the button, so the queued job must
+        // be the forced one -- otherwise it would bail out without a word and
+        // the button would do nothing at all.
+        Queue::assertPushed(CollectServerFacts::class, fn (CollectServerFacts $job): bool => $job->serverId === $server->id && $job->force);
+    }
+
+    public function test_the_scheduled_probe_still_skips_a_paused_server(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+        $server->forceFill(['enabled' => false])->save();
+
+        // A probe would need the transport; if the job ran, this would try to
+        // reach 10.0.0.9. Instead it must return without touching anything, so
+        // no snapshot appears.
+        (new CollectServerFacts($server->id))->handle(app(ServerMonitor::class));
+
+        $this->assertSame(0, ServerFact::query()->where('server_id', $server->id)->count());
     }
 }
