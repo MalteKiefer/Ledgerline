@@ -6,7 +6,7 @@ Self-hosted **klartext-relationale Personal Cloud** (Laravel). **Der Zero-Knowle
 **In v1.526.0 ERSATZLOS ENTFERNT (Owner-Entscheidung „alles außer Finanzen weg", nutzt Obsidian/andere Tools):** Dashboard (separates), Dateien, Galerie (inkl. ML/Faces), Notizen, Todos, Lesezeichen, Health, Explore + alle File/Folder/Gallery-Shares + Maps. Deren Tabellen gedroppt (Migrationen 106000/107000/108000), Nav neu = Finanz-Sektionen als Top-Nav, Root `/`→`finance.index`. **Früher (Pivot) entfernt:** Passwortmanager + Passkeys + Kontakte + Cross-User-Sharing — Owner bleibt bei 1Password.
 **Kontakte-Modul (Stufe 1) NEU seit v1.553.0** (plaintext-relational, CardDAV): Adressbücher + Kontakte (rohe vCard 4.0 = Quelle der Wahrheit + denormalisierte Spalten), Sync über den EINEN vereinheitlichten `/dav`-Sabre-Server (CardDAV neben Files, ein `WebDavAuth`/`users.webdav_password`), VCF-Import/-Export, Foto-Upload+Crop→vCard PHOTO, Union-Find-Dublettenerkennung+Merge, OSM-Link an Adressen, Apple `.mobileconfig`. Sharing (P3) + Kalender/CalDAV (P2) folgen. Modul-Gate `module:contacts`.
 
-Version **v1.731.0** (live https://home.pinlo.me, `/up`=200).
+Version **v1.731.1** (live https://home.pinlo.me, `/up`=200).
 Die frühere **Browser-Extension** (Chromium, MV3, für den entfernten ZK-Passwortmanager) ist **ersatzlos ENTFERNT (v1.542.5)** — `extension/` + `.github/workflows/extension-release.yml` + `build:ext`-Script gelöscht (verwaist, sprach tote Endpunkte, nie Teil der served App).
 
 `README.md` ist die maßgebliche, gepflegte Feature-Beschreibung. Diese Datei =
