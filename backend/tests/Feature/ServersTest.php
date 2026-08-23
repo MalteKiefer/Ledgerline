@@ -466,6 +466,14 @@ class ServersTest extends TestCase
         $public = $response->json('public_key');
         $this->assertIsString($public);
         $this->assertStringStartsWith('ssh-ed25519 ', $public);
+
+        // The fingerprint is the same one ssh-keygen prints, so it can be held
+        // against the host's authorized_keys without comparing base64 by eye.
+        $fingerprint = $response->json('key_fingerprint');
+        $this->assertIsString($fingerprint);
+        $this->assertStringStartsWith('SHA256:', $fingerprint);
+        $blob = base64_decode(explode(' ', $public)[1], true);
+        $this->assertSame('SHA256:'.rtrim(base64_encode(hash('sha256', (string) $blob, true)), '='), $fingerprint);
         // The private half never comes back.
         $this->assertStringNotContainsString('PRIVATE KEY', $response->getContent() ?: '');
     }

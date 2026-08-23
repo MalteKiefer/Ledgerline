@@ -514,6 +514,8 @@ return [
     'docker_storage_slow' => 'The engine took too long to add this up. Try again, or look on the host.',
     'auth_failed_hint' => 'The host refused this key. It must be listed in the authorized_keys of that account — this is the line:',
     'key_test_first' => '<run the connection test first to see the public key>',
+    'auth_failed_verify' => 'Your own terminal also offers whatever your ssh agent holds, so a login there can succeed with a different key. This command offers only the key above — run it and compare:',
+    'key_file' => 'key file',
     'tab_panels' => 'Panel',
     'panel_title' => 'Hosting control panel',
     'panel_none' => 'No hosting control panel found. Services on this host were configured by hand.',

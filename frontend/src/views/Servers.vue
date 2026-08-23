@@ -183,9 +183,20 @@
           <p v-if="!probe" class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.test_first') }}</p>
           <template v-else>
             <p v-if="!probe.ok" class="mt-2 rounded bg-red-500/10 px-2 py-1.5 text-[0.7rem] text-red-600 dark:text-red-400">{{ errorText(probe.error) }}</p>
-            <div v-if="!probe.ok && probe.error === 'auth_failed' && probe.public_key" class="mt-2 rounded-lg border border-[var(--ll-border)] p-2">
-              <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.auth_failed_hint') }}</p>
-              <pre class="mt-1 overflow-x-auto rounded bg-black/[0.05] p-2 font-mono text-[0.65rem] break-all whitespace-pre-wrap dark:bg-white/5">{{ probe.public_key }}</pre>
+            <div v-if="!probe.ok && probe.error === 'auth_failed' && probe.public_key" class="mt-2 space-y-2 rounded-lg border border-[var(--ll-border)] p-2">
+              <div>
+                <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.auth_failed_hint') }}</p>
+                <pre class="mt-1 overflow-x-auto rounded bg-black/[0.05] p-2 font-mono text-[0.65rem] break-all whitespace-pre-wrap dark:bg-white/5">{{ probe.public_key }}</pre>
+                <p v-if="probe.key_fingerprint" class="mt-1 font-mono text-[0.65rem] text-[var(--ll-muted)]">{{ probe.key_fingerprint }}</p>
+              </div>
+              <!-- The one that catches most people: their own terminal also
+                   offers whatever the agent holds, so a key that looks like the
+                   working one may never have been the one that worked. This
+                   command offers nothing else, exactly as the app does. -->
+              <div>
+                <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.auth_failed_verify') }}</p>
+                <pre class="mt-1 overflow-x-auto rounded bg-black/[0.05] p-2 font-mono text-[0.65rem] break-all whitespace-pre-wrap dark:bg-white/5">{{ verifyCommand }}</pre>
+              </div>
             </div>
             <template v-else>
               <p class="mt-2 text-[0.7rem] text-emerald-700 dark:text-emerald-400">{{ t('servers.test_ok') }}</p>
@@ -650,6 +661,17 @@ async function doGenerateKey() {
  * quotes are safe around a key line — those never contain one, though they do
  * contain the double quotes of a forced command.
  */
+/**
+ * The same offer the app makes, for somebody to run themselves.
+ *
+ * `IdentitiesOnly` and no agent are the point: an ordinary `ssh -i key host`
+ * still offers every key the agent holds, so it can succeed with a key that is
+ * not the one in the field.
+ */
+const verifyCommand = computed(() =>
+  `ssh -i <${t('servers.key_file')}> -o IdentitiesOnly=yes -o IdentityAgent=none -o PasswordAuthentication=no `
+  + `${form.value.username || 'root'}@${form.value.host || '<host>'}${Number(form.value.port) && Number(form.value.port) !== 22 ? ` -p ${form.value.port}` : ''} true`);
+
 const setupCommands = computed(() => {
   const user = form.value.username || 'ledgerline';
   // A pasted key has no public half until a test derives it, so the commands

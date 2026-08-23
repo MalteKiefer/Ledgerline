@@ -181,6 +181,22 @@ class ServerController extends Controller
         }
     }
 
+    /** SHA256 fingerprint of the public half, in the form ssh-keygen prints. */
+    private function keyFingerprintFor(Request $request): ?string
+    {
+        $public = $this->publicKeyFor($request);
+        if ($public === null) {
+            return null;
+        }
+
+        $parts = explode(' ', trim($public));
+        $blob = base64_decode($parts[1] ?? '', true);
+
+        return $blob === false || $blob === ''
+            ? null
+            : 'SHA256:'.rtrim(base64_encode(hash('sha256', $blob, true)), '=');
+    }
+
     /** Queue a fresh probe. 202: the answer arrives in a later index/show. */
     public function refresh(Request $request, Server $server): JsonResponse
     {
@@ -246,6 +262,10 @@ class ServerController extends Controller
             // which is exactly what "authentication was rejected" is about. The
             // private half is not returned, and this is the public one.
             'public_key' => $this->publicKeyFor($request),
+            // The fingerprint of what we offered, so it can be held against
+            // `ssh-keygen -lf ~/.ssh/authorized_keys` on the host without
+            // comparing two long base64 blobs by eye.
+            'key_fingerprint' => $this->keyFingerprintFor($request),
             'facts' => $result->ok ? $result->facts : null,
             'duration_ms' => $result->durationMs,
         ], $result->ok ? 200 : 422);
