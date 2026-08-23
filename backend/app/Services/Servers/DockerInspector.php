@@ -27,6 +27,15 @@ class DockerInspector
     /** What may be pruned. Nothing here touches a running container. */
     public const PRUNE_TARGETS = ['images', 'containers', 'volumes', 'networks', 'builder'];
 
+    /** Long enough for the container sweep on a busy engine; measured, not guessed. */
+    private const SWEEP_TIMEOUT = 30;
+
+    /** Images and `system df` walk the layer store and are slow by nature. */
+    private const STORAGE_TIMEOUT = 45;
+
+    /** A prune may outlive this; the probe's own ceiling decides. */
+    private const PRUNE_TIMEOUT = 45;
+
     /** Container and object names as Docker allows them. */
     private const NAME_PATTERN = '/^[a-zA-Z0-9][a-zA-Z0-9_.\-]{0,127}$/';
 
@@ -46,29 +55,29 @@ class DockerInspector
         docker ps -a --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}\t{{.Ports}}\t{{.RunningFor}}\t{{.Label "com.docker.compose.project"}}' 2>/dev/null | head -300
         echo "##LL:stats"
         docker stats --no-stream --format '{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}' 2>/dev/null | head -300
-        echo "##LL:images"
-        docker images --format '{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedSince}}' 2>/dev/null | head -300
         echo "##LL:volumes"
         docker volume ls --format '{{.Name}}\t{{.Driver}}' 2>/dev/null | head -300
         echo "##LL:networks"
         docker network ls --format '{{.Name}}\t{{.Driver}}\t{{.Scope}}' 2>/dev/null | head -100
-        echo "##LL:df"
-        docker system df 2>/dev/null | tail -n +2
         echo "##LL:compose"
         docker compose ls --format json 2>/dev/null | head -20
         echo "##LL:health"
-        for c in $(docker ps -q 2>/dev/null | head -100); do
-          docker inspect --format '{{.Name}}\t{{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}}\t{{.RestartCount}}' "$c" 2>/dev/null
-        done
+        ids=$(docker ps -q 2>/dev/null | head -100)
+        [ -n "$ids" ] && docker inspect --format '{{.Name}}\t{{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}}\t{{.RestartCount}}' $ids 2>/dev/null
         echo "##LL:end"
         SH;
 
-        $out = $this->run($server, $script, 120);
-        if ($out === null) {
-            return self::empty('unreachable');
+        // Measured on a real host with 23 containers: this sweep is about four
+        // seconds. `docker images` and `docker system df` used to be in it and
+        // cost fourteen and twenty-three seconds on their own, which put the
+        // whole tab past every sane ceiling and left it empty. They have their
+        // own call now, so what somebody opens the tab for arrives at once.
+        $result = $this->run($server, $script, self::SWEEP_TIMEOUT);
+        if ($result['out'] === null) {
+            return self::empty($result['error']);
         }
 
-        $s = $this->sections($out);
+        $s = $this->sections($result['out']);
         $version = trim($s['version'] ?? '');
         if ($version === '' || str_contains($version, '__absent__')) {
             return self::empty(null) + ['present' => false];
@@ -87,11 +96,46 @@ class DockerInspector
             'present' => true,
             'version' => $version,
             'containers' => $this->parseContainers($s['ps'] ?? '', $stats, $health),
-            'images' => $this->parseImages($s['images'] ?? ''),
+            'images' => [],
             'volumes' => $this->parseVolumes($s['volumes'] ?? ''),
             'networks' => $this->parseNetworks($s['networks'] ?? ''),
-            'disk' => $this->parseDiskUsage($s['df'] ?? ''),
+            'disk' => [],
             'compose' => $this->parseCompose($s['compose'] ?? ''),
+            'error' => null,
+        ];
+    }
+
+    /**
+     * Images and reclaimable space, asked for separately.
+     *
+     * Both are slow on any host with a real image collection -- `docker system
+     * df` walks the layer store to work out what could be freed -- so they are
+     * fetched when their section is opened rather than holding up the list of
+     * running containers.
+     *
+     * @return array{ok:bool,images:list<array<string,mixed>>,disk:list<array<string,mixed>>,error:string|null}
+     */
+    public function storage(Server $server): array
+    {
+        $script = <<<'SH'
+        echo "##LL:images"
+        docker images --format '{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedSince}}' 2>/dev/null | head -300
+        echo "##LL:df"
+        docker system df 2>/dev/null | tail -n +2
+        echo "##LL:end"
+        SH;
+
+        $result = $this->run($server, $script, self::STORAGE_TIMEOUT);
+        if ($result['out'] === null) {
+            return ['ok' => false, 'images' => [], 'disk' => [], 'error' => $result['error']];
+        }
+
+        $s = $this->sections($result['out']);
+
+        return [
+            'ok' => true,
+            'images' => $this->parseImages($s['images'] ?? ''),
+            'disk' => $this->parseDiskUsage($s['df'] ?? ''),
             'error' => null,
         ];
     }
@@ -112,12 +156,12 @@ class DockerInspector
         // a separate click.
         $verb = $action === 'remove' ? 'rm' : $action;
 
-        $out = $this->run($server, 'docker '.$verb.' '.self::shq($name).' 2>&1; echo "##LL:rc=$?"');
-        if ($out === null) {
-            return ['ok' => false, 'output' => '', 'error' => 'unreachable'];
+        $result = $this->run($server, 'docker '.$verb.' '.self::shq($name).' 2>&1; echo "##LL:rc=$?"');
+        if ($result['out'] === null) {
+            return ['ok' => false, 'output' => '', 'error' => $result['error']];
         }
 
-        return $this->outcome($out);
+        return $this->outcome($result['out']);
     }
 
     /**
@@ -135,12 +179,15 @@ class DockerInspector
             return ['ok' => false, 'output' => '', 'error' => 'invalid_selection'];
         }
 
-        $out = $this->run($server, 'docker '.$target.' prune -f 2>&1; echo "##LL:rc=$?"', 600);
-        if ($out === null) {
-            return ['ok' => false, 'output' => '', 'error' => 'unreachable'];
+        // The probe caps how long a request may wait. A large prune can outlast
+        // that; it then reports a timeout while the engine finishes the job on
+        // the host, which the interface says rather than calling it a failure.
+        $result = $this->run($server, 'docker '.$target.' prune -f 2>&1; echo "##LL:rc=$?"', self::PRUNE_TIMEOUT);
+        if ($result['out'] === null) {
+            return ['ok' => false, 'output' => '', 'error' => $result['error']];
         }
 
-        return $this->outcome($out);
+        return $this->outcome($result['out']);
     }
 
     /**
@@ -245,7 +292,16 @@ class DockerInspector
             if (count($f) < 3) {
                 continue;
             }
-            $rows[] = ['name' => $f[0], 'id' => substr($f[1], 0, 12), 'size' => $f[2], 'created' => $f[3] ?? ''];
+            // Split at the last colon: a repository may carry a registry with
+            // a port in it, and "registry:5000/app" is not a tag.
+            $cut = strrpos($f[0], ':');
+            $rows[] = [
+                'repo' => $cut === false ? $f[0] : substr($f[0], 0, $cut),
+                'tag' => $cut === false ? '' : substr($f[0], $cut + 1),
+                'id' => substr($f[1], 0, 12),
+                'size' => $f[2],
+                'created' => $f[3] ?? '',
+            ];
         }
 
         return $rows;
@@ -395,18 +451,28 @@ class DockerInspector
         return "'".str_replace("'", "'\\''", $value)."'";
     }
 
-    private function run(Server $server, string $script, int $timeout = 60): ?string
+    /**
+     * @return array{out:string|null,error:string|null}
+     */
+    private function run(Server $server, string $script, int $timeout = 30): array
     {
         $key = (string) $server->host_key;
         if ($key === '') {
-            return null;
+            return ['out' => null, 'error' => 'no_host_key'];
         }
 
-        $result = $this->probe->exec(ServerTarget::fromServer($server), $key, $script, interactive: true);
+        // The timeout used to be accepted and thrown away, so every call ran on
+        // the ten-second interactive ceiling; on a busy engine that is how this
+        // tab came up empty. The probe still caps it, which is the point.
+        $result = $this->probe->exec(ServerTarget::fromServer($server), $key, $script, interactive: true, timeout: $timeout);
         if (! $result['ok'] && $result['out'] === '') {
-            return null;
+            // A command that outlived its budget is not an unreachable host, and
+            // it usually keeps running on the far side after we stop waiting.
+            $ranOutOfBudget = str_contains(strtolower($result['err']), 'exceeded the timeout');
+
+            return ['out' => null, 'error' => $ranOutOfBudget ? 'timeout' : 'unreachable'];
         }
 
-        return substr($result['out'], 0, 512 * 1024);
+        return ['out' => substr($result['out'], 0, 512 * 1024), 'error' => null];
     }
 }

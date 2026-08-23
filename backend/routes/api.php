@@ -357,6 +357,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/servers/{server}/updates', [ServerMaintenanceController::class, 'updates'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.updates');
             Route::post('/servers/{server}/updates', [ServerMaintenanceController::class, 'applyUpdates'])->whereNumber('server')->middleware('throttle:6,1')->name('api.servers.updates-apply');
             Route::get('/servers/{server}/docker', [ServerDockerController::class, 'show'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.docker');
+            Route::get('/servers/{server}/docker/storage', [ServerDockerController::class, 'storage'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.docker-storage');
             Route::post('/servers/{server}/docker/action', [ServerDockerController::class, 'act'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.docker-action');
             Route::post('/servers/{server}/docker/prune', [ServerDockerController::class, 'prune'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.docker-prune');
             Route::get('/servers/{server}/security', [ServerSecurityController::class, 'show'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.security');
