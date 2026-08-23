@@ -452,7 +452,7 @@ class ServersTest extends TestCase
     public function test_a_failed_test_returns_the_public_key_that_was_offered(): void
     {
         $user = User::factory()->create();
-        $private = \phpseclib3\Crypt\EC::createKey('Ed25519')->toString('OpenSSH');
+        $private = EC::createKey('Ed25519')->toString('OpenSSH');
 
         // No host answers here, so the probe fails -- which is the case that
         // matters: "authentication was rejected" is nearly always this key
