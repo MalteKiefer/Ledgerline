@@ -109,6 +109,49 @@ final class VpnInspector
             ];
         }
 
+        // DNS servers the overlay hands out, and for which domains. An entry
+        // that failed carries its own error, which is the answer to "why does
+        // that name not resolve" and is worth more than a count.
+        $dns = [];
+        foreach ($this->arr($data['dnsServers'] ?? null) as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $domains = [];
+            foreach ($this->arr($entry['domains'] ?? null) as $domain) {
+                if (is_string($domain)) {
+                    $domains[] = $domain;
+                }
+            }
+            $dns[] = [
+                'servers' => implode(', ', array_filter(array_map(
+                    fn ($v): ?string => $this->str($v),
+                    $this->arr($entry['servers'] ?? null),
+                ))) ?: $this->str($entry['server'] ?? null),
+                'domains' => implode(', ', $domains),
+                'enabled' => $this->flag($entry['enabled'] ?? true),
+                'error' => $this->str($entry['error'] ?? null),
+            ];
+        }
+
+        // Routed networks: what this peer reaches beyond the overlay itself.
+        $networks = [];
+        foreach ($this->arr($data['networks'] ?? null) as $network) {
+            if (is_array($network)) {
+                $networks[] = [
+                    'id' => $this->str($network['network'] ?? $network['id'] ?? null),
+                    'name' => $this->str($network['id'] ?? $network['network'] ?? null),
+                    'status' => $this->flag($network['selected'] ?? null) ? 'selected' : null,
+                    'device' => null,
+                    'address' => $this->str($network['range'] ?? null),
+                ];
+            } elseif (is_string($network)) {
+                $networks[] = ['id' => $network, 'name' => $network, 'status' => null, 'device' => null, 'address' => null];
+            }
+        }
+
+        $ssh = $this->sub($data, 'sshServer');
+
         return [
             'id' => 'netbird',
             'name' => 'NetBird',
@@ -119,16 +162,64 @@ final class VpnInspector
             'hostname' => $this->str($data['fqdn'] ?? null),
             'version' => $this->str($data['daemonVersion'] ?? null),
             'facts' => array_filter([
+                'daemon' => $this->str($data['daemonStatus'] ?? null),
                 'management' => $this->flag($this->sub($data, 'management')['connected'] ?? null) ? 'connected' : null,
                 'signal' => $this->flag($this->sub($data, 'signal')['connected'] ?? null) ? 'connected' : null,
                 'relays' => $this->relayCount($data),
-                'interface' => $this->flag($data['usesKernelInterface'] ?? null) ? 'kernel' : null,
+                'interface' => $this->flag($data['usesKernelInterface'] ?? null) ? 'kernel' : 'userspace',
                 'port' => $this->int($data['wireguardPort'] ?? null) ?: null,
+                'profile' => $this->str($data['profileName'] ?? null),
+                // The CLI and the daemon are separate binaries; a mismatch after
+                // an upgrade explains behaviour that otherwise looks like a bug.
+                'cli' => $this->str($data['cliVersion'] ?? null) !== $this->str($data['daemonVersion'] ?? null)
+                    ? $this->str($data['cliVersion'] ?? null)
+                    : null,
+                'post_quantum' => $this->flag($data['quantumResistance'] ?? null) ? 'on' : 'off',
+                'lazy' => $this->flag($data['lazyConnectionEnabled'] ?? null) ? 'on' : null,
+                'ssh' => isset($ssh['enabled']) ? ($this->flag($ssh['enabled']) ? 'enabled' : 'disabled') : null,
+                'ssh_sessions' => count($this->arr($ssh['sessions'] ?? null)) ?: null,
+                'forwarding' => $this->int($data['forwardingRules'] ?? null) ?: null,
+                'key' => $this->str($data['publicKey'] ?? null),
             ], fn ($v): bool => $v !== null && $v !== ''),
+            'dns' => $dns,
+            'networks' => $networks,
+            'events' => $this->events($data),
             'peers' => $peers,
             'peers_connected' => $this->int($this->sub($data, 'peers')['connected'] ?? null),
             'peers_total' => $this->int($this->sub($data, 'peers')['total'] ?? null),
         ];
+    }
+
+    /**
+     * The daemon's own log of what changed, newest first.
+     *
+     * A status flag says what is true now; these say what happened, which is
+     * the difference between "not connected" and "lost the management channel
+     * four minutes ago".
+     *
+     * @param  array<mixed>  $data
+     * @return list<array<string,string|null>>
+     */
+    private function events(array $data): array
+    {
+        $out = [];
+        foreach ($this->arr($data['events'] ?? null) as $event) {
+            if (! is_array($event)) {
+                continue;
+            }
+            $out[] = [
+                'at' => $this->str($event['timestamp'] ?? null),
+                'severity' => $this->str($event['severity'] ?? null),
+                'category' => $this->str($event['category'] ?? null),
+                // The user-facing message when there is one; the internal one
+                // is better than nothing but is written for a developer.
+                'message' => $this->str($event['userMessage'] ?? null) ?? $this->str($event['message'] ?? null),
+            ];
+        }
+
+        usort($out, fn (array $a, array $b): int => strcmp((string) $b['at'], (string) $a['at']));
+
+        return array_slice($out, 0, 12);
     }
 
     /**
@@ -205,6 +296,22 @@ final class VpnInspector
 
         $selfIps = $this->arr($self['TailscaleIPs'] ?? null);
 
+        // Tailscale reports its own problems. Dropping them and showing a green
+        // "Running" would hide the one thing it is trying to say.
+        $health = [];
+        foreach ($this->arr($data['Health'] ?? null) as $line) {
+            if (is_string($line) && $line !== '') {
+                $health[] = ['at' => null, 'severity' => 'WARNING', 'category' => 'HEALTH', 'message' => $line];
+            }
+        }
+
+        $exit = null;
+        foreach ($this->arr($data['Peer'] ?? null) as $peer) {
+            if (is_array($peer) && $this->flag($peer['ExitNode'] ?? null)) {
+                $exit = $this->str($peer['HostName'] ?? null);
+            }
+        }
+
         return [
             'id' => 'tailscale',
             'name' => 'Tailscale',
@@ -217,8 +324,19 @@ final class VpnInspector
             'facts' => array_filter([
                 'state' => $this->str($data['BackendState'] ?? null),
                 'tailnet' => $this->str($this->sub($data, 'CurrentTailnet')['Name'] ?? null),
-                'exit_node' => $this->flag($self['ExitNode'] ?? null) ? 'yes' : null,
+                'magic_dns' => $this->str($data['MagicDNSSuffix'] ?? null),
+                'dns_name' => $this->str($self['DNSName'] ?? null),
+                'exit_node' => $exit,
+                'offers_exit' => $this->flag($self['ExitNodeOption'] ?? null) ? 'yes' : null,
+                // RunningLatest false means an update is waiting, which is worth
+                // one word here rather than a trip to the host.
+                'update' => isset($this->sub($data, 'ClientVersion')['RunningLatest'])
+                    && ! $this->flag($this->sub($data, 'ClientVersion')['RunningLatest'])
+                    ? 'available'
+                    : null,
+                'key_expiry' => $this->str($self['KeyExpiry'] ?? null),
             ], fn ($v): bool => $v !== null && $v !== ''),
+            'events' => $health,
             'peers' => $peers,
             'peers_connected' => count(array_filter($peers, fn (array $p): bool => $p['status'] === 'Connected')),
             'peers_total' => count($peers),
@@ -244,12 +362,30 @@ final class VpnInspector
                 continue;
             }
             $addresses = $this->arr($net['assignedAddresses'] ?? null);
+            $routes = [];
+            foreach ($this->arr($net['routes'] ?? null) as $route) {
+                if (is_array($route) && isset($route['target']) && is_string($route['target'])) {
+                    $routes[] = $route['target'];
+                }
+            }
+            $dnsServers = [];
+            foreach ($this->arr($this->sub($net, 'dns')['servers'] ?? null) as $server) {
+                if (is_string($server)) {
+                    $dnsServers[] = $server;
+                }
+            }
+
             $networks[] = [
                 'id' => $this->str($net['id'] ?? $net['nwid'] ?? null),
                 'name' => $this->str($net['name'] ?? null),
                 'status' => $this->str($net['status'] ?? null),
                 'device' => $this->str($net['portDeviceName'] ?? null),
                 'address' => $this->str($addresses[0] ?? null),
+                'type' => $this->str($net['type'] ?? null),
+                'mtu' => $this->int($net['mtu'] ?? null) ?: null,
+                'bridge' => $this->flag($net['bridge'] ?? null) ? 'yes' : null,
+                'routes' => implode(', ', array_slice($routes, 0, 6)),
+                'dns' => implode(', ', $dnsServers),
             ];
         }
 

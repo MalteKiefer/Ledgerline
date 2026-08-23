@@ -39,14 +39,39 @@
             </span>
           </div>
 
-          <!-- ZeroTier joins networks; the others do not have the concept. -->
+          <!-- Which resolver answers for which domains over the overlay. A
+               failed one carries its own reason, which is the answer to "why
+               does that name not resolve". -->
+          <div v-if="p.dns?.length" class="mt-3">
+            <h3 :class="sectionCls">{{ t('servers.vpn_dns') }}</h3>
+            <div v-for="(d, i) in p.dns" :key="i" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+              <span class="ll-mono">{{ d.servers || '—' }}</span>
+              <span v-if="d.domains" class="text-[var(--ll-muted)]">{{ d.domains }}</span>
+              <span v-if="d.error" class="text-red-600 dark:text-red-400">{{ d.error }}</span>
+              <Badge class="ml-auto" :tone="d.error ? 'error' : (d.enabled ? 'success' : 'gray')">
+                {{ d.error ? t('servers.vpn_dns_failed') : (d.enabled ? t('servers.vpn_dns_active') : t('servers.vpn_dns_off')) }}
+              </Badge>
+            </div>
+          </div>
+
+          <!-- ZeroTier joins networks; NetBird routes them; the rest have no
+               such concept. -->
           <div v-if="p.networks?.length" class="mt-3">
             <h3 :class="sectionCls">{{ t('servers.vpn_networks') }}</h3>
-            <div v-for="n in p.networks" :key="n.id ?? ''" class="flex items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
-              <span class="ll-mono text-[var(--ll-muted)]">{{ n.id }}</span>
-              <span class="font-medium">{{ n.name }}</span>
-              <span v-if="n.address" class="ll-mono">{{ n.address }}</span>
-              <Badge class="ml-auto" :tone="n.status === 'OK' ? 'success' : 'gray'">{{ n.status }}</Badge>
+            <div v-for="n in p.networks" :key="n.id ?? ''" class="border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="ll-mono text-[var(--ll-muted)]">{{ n.id }}</span>
+                <span class="font-medium">{{ n.name }}</span>
+                <span v-if="n.address" class="ll-mono">{{ n.address }}</span>
+                <span v-if="n.device" class="text-[var(--ll-muted)]">{{ n.device }}</span>
+                <Badge v-if="n.status" class="ml-auto" :tone="n.status === 'OK' ? 'success' : 'gray'">{{ n.status }}</Badge>
+              </div>
+              <div v-if="n.routes || n.dns || n.mtu" class="mt-0.5 flex flex-wrap gap-x-3 text-[0.7rem] text-[var(--ll-muted)]">
+                <span v-if="n.routes">{{ t('servers.vpn_routes') }} <span class="ll-mono">{{ n.routes }}</span></span>
+                <span v-if="n.dns">DNS <span class="ll-mono">{{ n.dns }}</span></span>
+                <span v-if="n.mtu">MTU {{ n.mtu }}</span>
+                <span v-if="n.type">{{ n.type }}</span>
+              </div>
             </div>
           </div>
 
@@ -65,6 +90,20 @@
               <span class="font-mono">{{ u.name }}</span>
               <Badge class="ml-auto" :tone="u.active === 'active' ? 'success' : 'gray'">{{ u.sub }}</Badge>
               <Btn variant="ghost" size="xs" icon="restart_alt" :disabled="acting" @click="act(p, 'restart', u.name)">{{ t('servers.vpn_restart') }}</Btn>
+            </div>
+          </div>
+
+          <!-- What happened, rather than only what is true now: "lost the
+               management channel four minutes ago" is the useful form. -->
+          <div v-if="p.events?.length" class="mt-3">
+            <h3 :class="sectionCls">{{ t('servers.vpn_events') }}</h3>
+            <div v-for="(e, i) in p.events" :key="i" class="flex items-start gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+              <Icon
+                :name="e.severity === 'ERROR' ? 'error' : (e.severity === 'WARNING' ? 'warning' : 'info')" :size="15"
+                :class="e.severity === 'ERROR' ? 'text-red-600 dark:text-red-400' : (e.severity === 'WARNING' ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--ll-muted)]')"
+              />
+              <span class="min-w-0 flex-1">{{ e.message }}</span>
+              <span v-if="e.at" class="shrink-0 text-[0.7rem] text-[var(--ll-muted)]">{{ fmtWhen(e.at) }}</span>
             </div>
           </div>
 
@@ -163,6 +202,18 @@ async function act(provider: VpnProvider, action: 'up' | 'down' | 'restart', uni
   } finally {
     acting.value = false;
   }
+}
+
+/** A timestamp as "4 min", because the gap is what matters, not the clock. */
+function fmtWhen(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 1) return t('servers.vpn_just_now');
+  if (mins < 60) return `${mins} min`;
+  if (mins < 1440) return `${Math.round(mins / 60)} h`;
+
+  return `${Math.round(mins / 1440)} d`;
 }
 
 function fmtBytes(n: number | null): string {

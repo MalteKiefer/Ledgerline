@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.722.4
+  version: 1.723.0
   license:
     name: Proprietary
   description: >
@@ -8647,7 +8647,27 @@ paths:
                               rx: { type: [integer, "null"] }
                               tx: { type: [integer, "null"] }
                               latency_ns: { type: [integer, "null"] }
-                        networks: { type: array, description: "ZeroTier only.", items: { type: object } }
+                        dns:
+                          type: array
+                          description: "Which resolver serves which domains over the overlay; a failed one carries its own error."
+                          items:
+                            type: object
+                            properties:
+                              servers: { type: [string, "null"] }
+                              domains: { type: string }
+                              enabled: { type: boolean }
+                              error: { type: [string, "null"] }
+                        events:
+                          type: array
+                          description: "What the daemon says happened, newest first. Tailscale contributes its health warnings here."
+                          items:
+                            type: object
+                            properties:
+                              at: { type: [string, "null"], format: date-time }
+                              severity: { type: [string, "null"] }
+                              category: { type: [string, "null"] }
+                              message: { type: [string, "null"] }
+                        networks: { type: array, description: "ZeroTier and NetBird: joined or routed networks.", items: { type: object } }
                         interfaces: { type: array, description: "WireGuard only.", items: { type: object } }
                         units: { type: array, description: "OpenVPN only.", items: { type: object } }
         "401": { $ref: "#/components/responses/Unauthorized" }

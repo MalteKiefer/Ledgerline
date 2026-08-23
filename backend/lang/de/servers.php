@@ -517,4 +517,11 @@ return [
     'vpn_tunnels' => 'Tunnel',
     'vpn_confirm_down' => ':p stoppen? Diese App erreicht den Host über ein Overlay-Netz, die Verbindung kann dabei abreißen.',
     'vpn_confirm_restart' => ':p neu starten? Die Verbindung zum Host kann währenddessen abreißen.',
+    'vpn_dns' => 'DNS',
+    'vpn_dns_active' => 'Aktiv',
+    'vpn_dns_off' => 'Aus',
+    'vpn_dns_failed' => 'Fehlgeschlagen',
+    'vpn_events' => 'Letzte Ereignisse',
+    'vpn_routes' => 'Routen',
+    'vpn_just_now' => 'gerade eben',
 ];
