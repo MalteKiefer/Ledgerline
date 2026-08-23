@@ -61,14 +61,48 @@
     <Card class="w-72 shrink-0 overflow-y-auto" body-class="p-0">
       <div class="border-b border-[var(--ll-border)] p-3">
         <TextField v-model="query" icon="search" :placeholder="t('common.search')" @update:model-value="onSearch" />
+        <div class="mt-2 flex items-center gap-1">
+          <Select v-model="sortKey" :options="sortOptions" class="flex-1" />
+          <button
+            class="rounded-lg p-1.5 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10"
+            :title="sortDesc ? t('notes.sort_desc') : t('notes.sort_asc')"
+            @click="sortDesc = !sortDesc"
+          ><Icon :name="sortDesc ? 'arrow_downward' : 'arrow_upward'" :size="16" /></button>
+          <button
+            class="rounded-lg p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10"
+            :class="picking ? 'text-primary-500' : 'text-[var(--ll-muted)]'"
+            :title="t('notes.select_mode')"
+            @click="togglePicking"
+          ><Icon name="checklist" :size="16" /></button>
+        </div>
+      </div>
+
+      <!-- Acting on several notes at once. Kept to what is genuinely a bulk
+           action: moving, tagging, pinning and discarding. -->
+      <div v-if="picking && !showTrash" class="flex flex-wrap items-center gap-1 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2">
+        <span class="text-xs font-medium">{{ t('notes.selected_n', { n: String(selected.length) }) }}</span>
+        <button class="ml-auto rounded-md px-1.5 py-0.5 text-xs text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" @click="selectAllVisible">{{ t('notes.select_all') }}</button>
+        <div class="flex w-full items-center gap-1 pt-1">
+          <Btn variant="ghost" size="xs" icon="drive_file_move" :disabled="!selected.length || bulkBusy" @click="moveOpen = true">{{ t('notes.move_to') }}</Btn>
+          <Btn variant="ghost" size="xs" icon="sell" :disabled="!selected.length || bulkBusy" @click="bulkTag">{{ t('notes.add_tag') }}</Btn>
+          <Btn variant="ghost" size="xs" icon="push_pin" :disabled="!selected.length || bulkBusy" @click="bulkPin">{{ t('notes.pin') }}</Btn>
+          <Btn variant="ghost" size="xs" icon="delete" class="text-red-600" :disabled="!selected.length || bulkBusy" @click="bulkDelete">{{ t('common.delete') }}</Btn>
+        </div>
       </div>
       <template v-if="!showTrash">
-        <button
+        <div
           v-for="row in visibleNotes" :key="row.id"
-          class="block w-full border-b border-[var(--ll-border)] px-4 py-3 text-left last:border-0"
-          :class="current?.id === row.id ? 'bg-primary-500/10' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]'"
-          @click="openNote(row.id)"
+          class="flex w-full cursor-pointer items-start gap-2 border-b border-[var(--ll-border)] px-4 py-3 text-left last:border-0"
+          :class="rowClass(row.id)"
+          @click="picking ? toggleSelect(row.id) : openNote(row.id)"
         >
+          <input
+            v-if="picking"
+            type="checkbox" class="mt-1 h-4 w-4 shrink-0 rounded border-[var(--ll-border)] accent-[var(--color-primary-500)]"
+            :checked="selected.includes(row.id)"
+            @click.stop="toggleSelect(row.id)"
+          >
+          <div class="min-w-0 flex-1">
           <div class="flex items-center gap-1">
             <Icon v-if="row.pinned" name="push_pin" :size="14" class="text-primary-500" />
             <Icon v-if="row.favorite" name="star" :size="14" class="text-amber-500" />
@@ -78,7 +112,8 @@
           <div v-if="row.tags.length" class="mt-1 flex flex-wrap gap-1">
             <span v-for="tg in row.tags" :key="tg" class="rounded bg-black/[0.05] px-1.5 text-[10px] text-[var(--ll-muted)] dark:bg-white/10">#{{ tg }}</span>
           </div>
-        </button>
+          </div>
+        </div>
         <div v-if="!visibleNotes.length" class="px-4 py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('notes.empty') }}</div>
       </template>
       <template v-else>
@@ -90,6 +125,14 @@
         <div v-if="!trashNotes.length" class="px-4 py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('notes.trash_empty') }}</div>
       </template>
     </Card>
+
+    <Modal v-model="moveOpen" :title="t('notes.move_to')">
+      <Select v-model.number="moveTarget" :options="folderOptions" />
+      <template #footer>
+        <Btn variant="ghost" @click="moveOpen = false">{{ t('common.cancel') }}</Btn>
+        <Btn variant="solid" @click="applyMove">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
 
     <!-- Right: editor -->
     <Card class="min-w-0 flex-1 overflow-hidden" body-class="flex h-full flex-col p-0">
@@ -253,13 +296,143 @@ const folderOptions = computed(() => [
   ...n.folders.map((f: NoteFolder) => ({ title: f.name, value: f.id })),
 ]);
 
+// --- sorting ----------------------------------------------------------------
+// Only fields the row actually carries. Offering "oldest first" over a created
+// date the list does not have would be a promise the data cannot keep.
+const sortKey = ref(localStorage.getItem('ll_notes_sort') || 'updated');
+const sortDesc = ref(localStorage.getItem('ll_notes_sort_dir') !== 'asc');
+
+const sortOptions = computed(() => [
+  { title: t('notes.sort_updated'), value: 'updated' },
+  { title: t('notes.sort_title'), value: 'title' },
+  { title: t('notes.sort_pinned'), value: 'pinned' },
+]);
+
+watch([sortKey, sortDesc], () => {
+  localStorage.setItem('ll_notes_sort', sortKey.value);
+  localStorage.setItem('ll_notes_sort_dir', sortDesc.value ? 'desc' : 'asc');
+});
+
+const collator = new Intl.Collator(document.documentElement.lang || 'de', { numeric: true, sensitivity: 'base' });
+
+function sortNotes(rows: NoteRow[]): NoteRow[] {
+  const dir = sortDesc.value ? -1 : 1;
+
+  return [...rows].sort((a, b) => {
+    // Pinned notes stay on top whatever else is chosen -- that is what pinning
+    // means, and a sort that buries them would make the pin useless.
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    if (sortKey.value === 'title') return dir * collator.compare(a.title || '', b.title || '');
+    if (sortKey.value === 'pinned') return dir * ((a.favorite ? 1 : 0) - (b.favorite ? 1 : 0));
+
+    return dir * ((a.updated_at || '') < (b.updated_at || '') ? -1 : 1);
+  });
+}
+
 const visibleNotes = computed(() => {
-  if (searchHits.value) return searchHits.value;
-  return n.notes.filter((r) =>
+  const rows = searchHits.value ?? n.notes.filter((r) =>
     (activeFolder.value === null || r.note_folder_id === activeFolder.value)
     && (activeTag.value === null || r.tags.includes(activeTag.value)),
   );
+
+  return sortNotes(rows);
 });
+
+// --- selecting several notes -------------------------------------------------
+const picking = ref(false);
+const selected = ref<number[]>([]);
+const bulkBusy = ref(false);
+
+function togglePicking() {
+  picking.value = !picking.value;
+  if (!picking.value) selected.value = [];
+}
+
+function toggleSelect(id: number) {
+  const i = selected.value.indexOf(id);
+  if (i === -1) selected.value.push(id);
+  else selected.value.splice(i, 1);
+}
+
+function selectAllVisible() {
+  selected.value = visibleNotes.value.map((r) => r.id);
+}
+
+function rowClass(id: number): string {
+  if (picking.value && selected.value.includes(id)) return 'bg-primary-500/[0.12]';
+  if (!picking.value && current.value?.id === id) return 'bg-primary-500/10';
+
+  return 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]';
+}
+
+/**
+ * Apply one patch to every selected note.
+ *
+ * Each call is a partial update: it names only what changes, so the body and
+ * everything else the note carries stays where it is.
+ */
+async function bulkPatch(patch: (row: NoteRow) => Record<string, unknown> | null): Promise<void> {
+  if (!selected.value.length || bulkBusy.value) return;
+  bulkBusy.value = true;
+  try {
+    for (const id of [...selected.value]) {
+      const row = n.notes.find((r) => r.id === id);
+      if (!row) continue;
+      const body = patch(row);
+      if (body) await n.update(id, body);
+    }
+    selected.value = [];
+    await n.load();
+    if (current.value?.id) await openNote(current.value.id);
+  } catch {
+    error(t('common.error'));
+  } finally {
+    bulkBusy.value = false;
+  }
+}
+
+const moveOpen = ref(false);
+const moveTarget = ref(0);
+
+async function applyMove(): Promise<void> {
+  moveOpen.value = false;
+  const target = moveTarget.value || null;
+  await bulkPatch(() => ({ note_folder_id: target }));
+}
+
+async function bulkTag(): Promise<void> {
+  const raw = await promptAsk(t('notes.add_tag_ph'), { value: '' });
+  if (raw === null) return;
+  const tags = raw.split(',').map((x) => x.trim()).filter(Boolean);
+  if (!tags.length) return;
+  // Added, never replaced: a bulk tag is not a reason to lose the tags a note
+  // already had.
+  await bulkPatch((row) => ({ tags: [...new Set([...row.tags, ...tags])] }));
+}
+
+async function bulkPin(): Promise<void> {
+  // Mixed selections pin rather than unpin: the visible effect is the same for
+  // every note picked, which a toggle-each would not be.
+  const allPinned = selected.value.every((id) => n.notes.find((r) => r.id === id)?.pinned);
+  await bulkPatch(() => ({ pinned: !allPinned }));
+}
+
+async function bulkDelete(): Promise<void> {
+  if (!await confirmAsk(t('notes.delete_n_confirm', { n: String(selected.value.length) }), { danger: true })) return;
+  if (bulkBusy.value) return;
+  bulkBusy.value = true;
+  try {
+    const ids = [...selected.value];
+    for (const id of ids) await n.destroy(id);
+    selected.value = [];
+    if (current.value?.id && ids.includes(current.value.id)) current.value = null;
+    await n.load();
+  } catch {
+    error(t('common.error'));
+  } finally {
+    bulkBusy.value = false;
+  }
+}
 
 function notesInFolder(id: number | null) {
   return n.notes.filter((r) => (id === null ? true : r.note_folder_id === id));
