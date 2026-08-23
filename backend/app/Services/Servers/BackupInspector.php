@@ -102,12 +102,30 @@ final class BackupInspector
     {
         $paths = [];
         foreach ($this->lines($raw) as $line) {
-            if (preg_match('#>>?\s*(/[^\s|>]+)#', $line, $m) === 1) {
-                $paths[$m[1]] = true;
+            $path = $this->logPath($line);
+            if ($path !== null) {
+                $paths[$path] = true;
             }
         }
 
         return array_slice(array_keys($paths), 0, 10);
+    }
+
+    /**
+     * The log a command redirects into, if it keeps one.
+     *
+     * `>/dev/null` is where output goes to be thrown away. Its timestamp moves
+     * for reasons that have nothing to do with this job, so treating it as
+     * evidence would put a confident "last ran 8 days ago" under a backup that
+     * runs every quarter hour.
+     */
+    private function logPath(string $command): ?string
+    {
+        if (preg_match('#>>?\s*(/[^\s|>]+)#', $command, $m) !== 1) {
+            return null;
+        }
+
+        return str_starts_with($m[1], '/dev/') ? null : $m[1];
     }
 
     /**
@@ -217,15 +235,28 @@ final class BackupInspector
             }
             $unit = $parts[$count - 2];
             $activates = $parts[$count - 1];
-            $rest = array_slice($parts, 0, $count - 2);
-            $joined = implode(' ', $rest);
+            $times = implode(' ', array_slice($parts, 0, $count - 2));
+
+            // NEXT ends at its "left"/"n/a", LAST at its "ago"/"n/a".
+            $next = null;
+            $last = null;
+            if (preg_match('/^(.*?)\s+(?:\d\S*\s+)?(?:left|n\/a)\s+(.*?)\s+(?:\d\S*\s+)?(?:ago|n\/a)\s*$/', $times, $m) === 1) {
+                $next = trim($m[1]) !== '' ? trim($m[1]) : null;
+                $last = trim($m[2]) !== '' ? trim($m[2]) : null;
+            }
+
+            $stamp = $last !== null ? strtotime($last) : false;
+
             $out[] = [
                 'kind' => 'timer',
                 'name' => $unit,
                 'runs' => $activates,
-                'schedule' => $joined,
+                // What it is set to do, in the same shape as a cron expression.
+                'schedule' => $next !== null ? $next : $times,
                 'log' => null,
-                'last_run' => null,
+                // A timer records when it last fired, so it needs no log to be
+                // held to the same standard as a cron job.
+                'last_run' => $stamp === false ? null : $stamp,
                 'log_size' => null,
             ];
         }
@@ -268,7 +299,7 @@ final class BackupInspector
                 $command = $split[1] ?? $command;
             }
 
-            $log = preg_match('#>>?\s*(/[^\s|>]+)#', $command, $m) === 1 ? $m[1] : null;
+            $log = $this->logPath($command);
             $stat = $log !== null ? ($logs[$log] ?? null) : null;
 
             $out[] = [

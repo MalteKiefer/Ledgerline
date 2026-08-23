@@ -127,6 +127,27 @@ class ServerBackupInspectorTest extends TestCase
         $this->assertSame('timer', $job['kind']);
         $this->assertSame('dpkg-db-backup.timer', $job['name']);
         $this->assertSame('dpkg-db-backup.service', $job['runs']);
+        // Split rather than shown as one run-on string, and the last firing is
+        // a real timestamp so a timer is judged like any other job.
+        $this->assertSame('Mon 2026-08-24 00:00:00 CEST', $job['schedule']);
+        $this->assertSame(strtotime('Sun 2026-08-23 00:00:01 CEST'), $job['last_run']);
+    }
+
+    #[Test]
+    public function output_thrown_at_dev_null_is_not_evidence_of_a_run(): void
+    {
+        $probe = new VpnRecordingProbe([['ok' => true, 'out' => "##LL:tools\n##LL:cron\n"
+            ."/etc/cron.d/plesk|2,17,32,47 * * * * root /opt/psa/admin/sbin/backupmng >/dev/null 2>&1\n"
+            ."##LL:end\n"]]);
+
+        $job = (new BackupInspector($probe))->inspect($this->server())['schedules'][0];
+
+        // /dev/null's timestamp moves for reasons unrelated to this job, so
+        // using it would put a confident "last ran days ago" under a backup
+        // that runs every quarter hour.
+        $this->assertNull($job['log']);
+        $this->assertNull($job['last_run']);
+        $this->assertStringNotContainsString('stat -c', $probe->sent());
     }
 
     #[Test]
