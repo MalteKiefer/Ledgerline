@@ -616,6 +616,17 @@ Register aller bewussten Sicherheits-Trade-offs. **Jede neue Aufweichung hier ei
 
 ---
 
+## LOKALE ENTWICKLUNGSUMGEBUNG (Windows, nach Neuinstallation wiederherstellen)
+Die Gates laufen lokal ohne globale Installation — was gebraucht wird:
+- **PHP 8.5 portable** unter `~/php/php.exe` (NTS x64) + eine eigene `php.ini` unter **`~/ll-scratch/php.ini`**, aufgerufen als `PHPRC=$HOME/ll-scratch ~/php/php.exe …`. Nötige Extensions (sonst scheitern Tests/PHPStan wortlos an fehlenden Klassen): `extension_dir` auf `~/php/ext` + `curl fileinfo gd intl mbstring openssl pdo_sqlite sodium sqlite3 zip exif`, `memory_limit = 2G`.
+- **composer.phar** liegt unter `~/ll-scratch/composer.phar` (kein globales composer) → `PHPRC=$HOME/ll-scratch ~/php/php.exe ~/ll-scratch/composer.phar install` in `backend/`.
+- **Node 24** (`node -v` = v24.x) + **yarn** (das Frontend hat `yarn.lock`, kein package-lock) → `cd frontend && yarn install`.
+- **Python 3.14** unter `…/AppData/Local/Programs/Python/Python314/python` — für Skript-Edits an großen Dateien immer mit `-X utf8` aufrufen (sonst zerschießt cp1252 die Umlaute in `CLAUDE.md`/`lang/de`).
+- **gh** (GitHub CLI, authentifiziert) für `gh run list` im Release-Ritual; **kein `jq`** vorhanden — JSON per `python`/`tr` filtern.
+- **SSH-Schlüssel** liegen NICHT im Repo und müssen aus dem eigenen Backup zurück: `~/.ssh/id_priv` (Deploy-Box `192.168.3.200:2222`) und die Schlüssel für die überwachten Hosts; `~/.ssh/config` gehört dazu (es wählt bei `apps.intellytec.de` den Schlüssel `id_intellytec_malte` — der ähnlich heißende `id_intellytec` wird vom Host **abgelehnt**, das hat schon einmal eine Stunde gekostet).
+- **Fallstrick:** ein Bash-Heredoc mit PHP-Code voller verschachtelter Anführungszeichen bricht hier mit „unexpected EOF" ab — solche Dateien mit dem Write-Werkzeug schreiben, nicht per `cat <<EOF`.
+- Bekannt rot **nur lokal**: 3 `KeyServerControllerTest`-Tests brauchen `gpg` (unter Windows nicht installiert) — in CI grün.
+
 ## DEPLOY-RITUAL — GHCR-Pull bevorzugt (2026-08-09)
 **Bevorzugt (Box zu schwach für On-Box-Builds):** GitHub Actions (`.github/workflows/build-image.yml`) baut das Image bei jedem Push auf `main`/`develop`/`feat/vue-vuetify-spa`/Tags und pusht nach **`ghcr.io/maltekiefer/ledgerline:<branch-slug|sha-…|vX.Y.Z>`**. Die Box **zieht nur**:
 ```
