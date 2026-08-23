@@ -393,6 +393,14 @@ export interface HostingPanel {
   facts: Record<string, string>;
   counts: Record<string, number>;
   note: string | null;
+  /** Panel-specific detail; only Plesk fills this in so far. */
+  details?: {
+    php?: { handler: string; version: string | null; count: number }[];
+    domains?: { name: string; active: boolean; ssl: boolean; php: string | null; size_mb: number | null }[];
+    clients?: { name: string; active: boolean; domains: number }[];
+    extensions?: string[];
+    disk_gb?: number;
+  };
 }
 
 /** A port a panel usually uses, with nothing claiming it -- a guess, and named as one. */

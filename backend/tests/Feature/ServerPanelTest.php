@@ -52,7 +52,7 @@ class ServerPanelTest extends TestCase
     public function it_reads_plesk_with_its_version_counts_and_unit(): void
     {
         $out = "##LL:plesk\nProduct version: Plesk Obsidian 18.0.62\nOS version:      Debian 12\nBuild date:      2026/01/09 12:00\n"
-            ."##LL:plesk_counts\ndomains=14\nsubscriptions=9\ncustomers=3\n"
+            ."##LL:plesk_counts\n49\t32\t5\t6\t0\t20\t196.4\n"
             ."##LL:units\npsa.service active running\n"
             ."##LL:listen\nLISTEN 0 128 0.0.0.0:8443 0.0.0.0:* users:((\"sw-cp-server\",pid=900,fd=6))\n";
 
@@ -62,7 +62,10 @@ class ServerPanelTest extends TestCase
         $plesk = $result['panels'][0];
         $this->assertSame('plesk', $plesk['id']);
         $this->assertSame('Plesk Obsidian 18.0.62', $plesk['version']);
-        $this->assertSame(['domains' => 14, 'subscriptions' => 9, 'customers' => 3], $plesk['counts']);
+        $this->assertSame(
+            ['domains' => 49, 'domains_active' => 32, 'subscriptions' => 5, 'customers' => 6, 'mailboxes' => 0, 'databases' => 20],
+            $plesk['counts'],
+        );
         $this->assertSame('psa.service', $plesk['unit']);
         $this->assertTrue($plesk['running']);
         $this->assertSame([8443], $plesk['ports']);
@@ -70,6 +73,53 @@ class ServerPanelTest extends TestCase
 
         // The port is claimed, so it must not also appear as an unexplained lead.
         $this->assertSame([], $result['candidates']);
+    }
+
+    #[Test]
+    public function plesk_reports_the_sites_it_runs_and_which_php_they_are_on(): void
+    {
+        $out = "##LL:plesk\nProduct version: Plesk Obsidian 18.0.80.3\n"
+            ."##LL:plesk_counts\n49\t32\t5\t6\t0\t20\t196.4\n"
+            ."##LL:plesk_php\nplesk-php82-fpm-dedicated\t35\nplesk-php74-fpm-dedicated\t8\n"
+            ."##LL:plesk_domains\n"
+            ."big.example\t0\ttrue\tplesk-php82-fpm-dedicated\t114723\n"
+            ."old.example\t2\tfalse\tplesk-php74-fpm-dedicated\t120\n"
+            ."##LL:plesk_clients\nLemmer GmbH\t0\t25\n"
+            ."##LL:plesk_ext\nfirewall - Firewall\ngit - Git\n"
+            ."##LL:units\npsa.service active running\n##LL:listen\n";
+
+        $plesk = $this->inspect($out)['panels'][0];
+        $details = $plesk['details'];
+
+        // The version is what turns into work: a handler out of support is not
+        // a detail, and the count says how much of the machine it is.
+        $this->assertSame([
+            ['handler' => 'plesk-php82-fpm-dedicated', 'version' => '8.2', 'count' => 35],
+            ['handler' => 'plesk-php74-fpm-dedicated', 'version' => '7.4', 'count' => 8],
+        ], $details['php']);
+
+        $this->assertSame('big.example', $details['domains'][0]['name']);
+        $this->assertTrue($details['domains'][0]['active']);
+        $this->assertTrue($details['domains'][0]['ssl']);
+        $this->assertSame(114723, $details['domains'][0]['size_mb']);
+
+        // Plesk's status is a bitmask where only zero is unambiguous, so
+        // anything else is reported as "not active" rather than guessed at.
+        $this->assertFalse($details['domains'][1]['active']);
+        $this->assertFalse($details['domains'][1]['ssl']);
+        $this->assertSame('7.4', $details['domains'][1]['php']);
+
+        $this->assertSame([['name' => 'Lemmer GmbH', 'active' => true, 'domains' => 25]], $details['clients']);
+        $this->assertSame(['Firewall', 'Git'], $details['extensions']);
+        $this->assertSame(196.4, $details['disk_gb']);
+    }
+
+    #[Test]
+    public function a_panel_that_is_not_plesk_carries_no_plesk_detail(): void
+    {
+        $out = "##LL:cockpit\nVersion: 320\n##LL:plesk\n__absent__\n##LL:units\n##LL:listen\n";
+
+        $this->assertSame([], $this->inspect($out)['panels'][0]['details']);
     }
 
     #[Test]
