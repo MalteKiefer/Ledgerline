@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\Server;
+use App\Services\Servers\PanelInspector;
 use App\Services\Servers\ServerControl;
 use App\Services\Servers\VpnInspector;
 use Illuminate\Http\JsonResponse;
@@ -28,7 +29,16 @@ class ServerControlController extends Controller
     public function __construct(
         private ServerControl $control,
         private VpnInspector $vpn,
+        private PanelInspector $panels,
     ) {}
+
+    /** Which hosting control panel owns this machine, if any. */
+    public function panels(Request $request, Server $server): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json($this->panels->inspect($server))->header('Cache-Control', 'no-store');
+    }
 
     /** Which overlay network this host is on, and how it is doing. */
     public function vpn(Request $request, Server $server): JsonResponse
