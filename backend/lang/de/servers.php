@@ -275,7 +275,7 @@ return [
     'secret_kept' => 'Leer lassen, um das gespeicherte Geheimnis zu behalten.',
     'group' => 'Gruppe',
     'note' => 'Notiz',
-    'enabled' => 'Regelmäßig abfragen',
+    'enabled' => 'Aktive Prüfungen',
     'restricted_key' => 'Schlüssel ist auf dem Ziel eingeschränkt (Forced Command)',
     'restricted_key_hint' => 'Nur Überwachung. Der Schlüssel gibt dann selbst gestohlen nur die Momentaufnahme aus — Dienste, Prozesse, Sicherheits-Aktionen und Terminal funktionieren dann alle nicht mehr.',
 
@@ -501,6 +501,7 @@ return [
     'files_upload_folder' => 'Ordner hochladen',
     'files_drop_here' => 'Dateien oder Ordner hier ablegen',
     'files_upload_some_failed' => ':n nicht hochgeladen',
+    'enabled_hint' => 'Angehakt: Momentaufnahme und Erreichbarkeit laufen nach Zeitplan. Abgewählt wird der Server nur passiv geführt — er bleibt gelistet, manuelles Aktualisieren, Terminal und alle Aktionen funktionieren weiter; von allein wird er nie kontaktiert.',
     'monitoring_off' => 'Prüfungen pausiert',
     'monitoring_pause' => 'Prüfungen pausieren',
     'monitoring_resume' => 'Prüfungen fortsetzen',

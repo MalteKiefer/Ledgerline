@@ -275,7 +275,7 @@ return [
     'secret_kept' => 'Leave blank to keep the stored secret.',
     'group' => 'Group',
     'note' => 'Note',
-    'enabled' => 'Poll on a schedule',
+    'enabled' => 'Active checks',
     'restricted_key' => 'Key is restricted on the target (forced command)',
     'restricted_key_hint' => 'Read-only monitoring. The key can then only print the snapshot, even if stolen — but services, processes, security actions and the terminal will all stop working.',
 
@@ -501,6 +501,7 @@ return [
     'files_upload_folder' => 'Upload folder',
     'files_drop_here' => 'Drop files or folders here',
     'files_upload_some_failed' => ':n did not upload',
+    'enabled_hint' => 'Ticked: snapshot and reachability run on a schedule. Unticked the server is kept passively — it stays listed, and manual refresh, the terminal and every action still work; nothing is ever contacted on its own.',
     'monitoring_off' => 'Checks paused',
     'monitoring_pause' => 'Pause checks',
     'monitoring_resume' => 'Resume checks',
