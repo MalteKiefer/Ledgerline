@@ -112,6 +112,8 @@ return [
     ],
 
     'actions' => [
+        'selected_n' => 'выбрано: :n',
+        'clear_selection' => 'Снять выделение',
         'mark_read' => 'Отметить прочитанным',
         'mark_unread' => 'Отметить непрочитанным',
         'trash' => 'В корзину',

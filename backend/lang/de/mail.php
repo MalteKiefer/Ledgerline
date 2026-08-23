@@ -112,6 +112,8 @@ return [
     ],
 
     'actions' => [
+        'selected_n' => ':n ausgewählt',
+        'clear_selection' => 'Auswahl aufheben',
         'mark_read' => 'Als gelesen markieren',
         'mark_unread' => 'Als ungelesen markieren',
         'trash' => 'In den Papierkorb',
