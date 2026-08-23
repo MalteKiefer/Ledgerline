@@ -306,6 +306,9 @@ class ServerFileController extends Controller
         $request->validate([
             'path' => ['required', 'string', 'max:4096'],
             'file' => ['required', 'file', 'max:'.(int) (SftpBrowser::MAX_UPLOAD_BYTES / 1024)],
+            // Set when a folder is dropped: the file's path relative to the
+            // folder that was dropped, so the tree is rebuilt on the host.
+            'relative_path' => ['nullable', 'string', 'max:4096'],
         ]);
 
         $upload = $request->file('file');
@@ -313,8 +316,24 @@ class ServerFileController extends Controller
             return response()->json(['ok' => false, 'error' => 'failed'], 422)->header('Cache-Control', 'no-store');
         }
 
-        $dir = rtrim($request->string('path')->value(), '/');
-        $remote = $dir.'/'.$upload->getClientOriginalName();
+        $dir = SftpBrowser::normalisePath($request->string('path')->value());
+        if ($dir === null) {
+            return response()->json(['ok' => false, 'error' => 'invalid_path'], 422)->header('Cache-Control', 'no-store');
+        }
+
+        // The name comes from the client, so it has to be confined here. A
+        // relative path resolving upwards would still land somewhere valid
+        // after normalisation -- just not where the browser says it went, and
+        // a file quietly written to /etc instead of /tmp is the whole problem.
+        $name = $request->filled('relative_path')
+            ? $request->string('relative_path')->value()
+            : $upload->getClientOriginalName();
+
+        $remote = SftpBrowser::normalisePath(rtrim($dir, '/').'/'.$name);
+        $prefix = $dir === '/' ? '/' : $dir.'/';
+        if ($remote === null || ! str_starts_with($remote, $prefix) || $remote === $dir) {
+            return response()->json(['ok' => false, 'error' => 'invalid_path'], 422)->header('Cache-Control', 'no-store');
+        }
 
         $result = $this->sftp->upload($server, $upload->getRealPath() ?: '', $remote);
 

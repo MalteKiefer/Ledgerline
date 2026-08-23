@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.718.1
+  version: 1.719.0
   license:
     name: Proprietary
   description: >
@@ -8199,6 +8199,19 @@ paths:
       description: >
         Same staging-then-rename as a save. Audited with the path named. Needs
         an unlock grant. Throttled 30/min.
+
+
+        The destination name comes from the client, so it is confined to `path`
+        here: the resolved target must sit under that directory or the upload is
+        refused. A relative path climbing upwards still resolves to something
+        valid, just not to where the browser says it went, and a file quietly
+        written to /etc instead of /tmp is the problem worth refusing.
+
+
+        Directories are not created implicitly. A folder upload issues the
+        mkdir calls first (shallowest first) through
+        `/servers/{server}/files/mutate`, so each one is audited like any other
+        change.
       parameters:
         - name: server
           in: path
@@ -8214,6 +8227,14 @@ paths:
               properties:
                 path: { type: string, description: "The directory to place it in." }
                 file: { type: string, format: binary }
+                relative_path:
+                  type: string
+                  description: >
+                    Set when a folder was dropped: the file's position inside
+                    that folder ("conf/nginx/site.conf"), so the tree is rebuilt
+                    on the host rather than every file landing flat in one
+                    directory. Confined under `path`; omitted for a plain file
+                    upload, where the uploaded name is used.
       responses:
         "200":
           description: What the host said.
@@ -8227,7 +8248,15 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422":
+          description: "Invalid input, or a destination that resolves outside `path` (`invalid_path`)."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
         "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/files/mutate:
     post:
