@@ -28,20 +28,20 @@ final class VpnInspector
      * answers and an empty section cannot tell them apart.
      */
     private const SCRIPT = <<<'SH'
-    echo "##LL:netbird"; if command -v netbird >/dev/null 2>&1; then netbird status --json 2>/dev/null || echo "__error__"; else echo "__absent__"; fi
-    echo "##LL:netbird_unit"; systemctl show netbird --property=LoadState --property=ActiveState --property=SubState 2>/dev/null || echo "__absent__"
-    echo "##LL:tailscale"; if command -v tailscale >/dev/null 2>&1; then tailscale status --json 2>/dev/null || echo "__error__"; else echo "__absent__"; fi
-    echo "##LL:tailscale_unit"; systemctl show tailscaled --property=LoadState --property=ActiveState --property=SubState 2>/dev/null || echo "__absent__"
-    echo "##LL:zt_info"; if command -v zerotier-cli >/dev/null 2>&1; then zerotier-cli -j info 2>/dev/null || echo "__error__"; else echo "__absent__"; fi
-    echo "##LL:zt_networks"; command -v zerotier-cli >/dev/null 2>&1 && zerotier-cli -j listnetworks 2>/dev/null || echo "__absent__"
-    echo "##LL:zt_peers"; command -v zerotier-cli >/dev/null 2>&1 && zerotier-cli -j peers 2>/dev/null || echo "__absent__"
-    echo "##LL:zt_unit"; systemctl show zerotier-one --property=LoadState --property=ActiveState --property=SubState 2>/dev/null || echo "__absent__"
-    echo "##LL:wg"; if command -v wg >/dev/null 2>&1; then wg show all dump 2>/dev/null || echo "__noaccess__"; else echo "__absent__"; fi
-    echo "##LL:wg_units"; systemctl list-units --type=service --all --no-legend --plain 'wg-quick@*' 2>/dev/null | head -20 || echo "__absent__"
-    echo "##LL:ovpn_units"; systemctl list-units --type=service --all --no-legend --plain 'openvpn*' 2>/dev/null | head -20 || echo "__absent__"
-    echo "##LL:ovpn_conf"; ls /etc/openvpn/*.conf /etc/openvpn/client/*.conf /etc/openvpn/server/*.conf 2>/dev/null | head -20
-    echo "##LL:links"; ip -o link 2>/dev/null | awk -F': ' '{print $2}' | head -60
-    echo "##LL:end"
+    printf "\n##LL:netbird\n"; if command -v netbird >/dev/null 2>&1; then netbird status --json 2>/dev/null || echo "__error__"; else echo "__absent__"; fi
+    printf "\n##LL:netbird_unit\n"; systemctl show netbird --property=LoadState --property=ActiveState --property=SubState 2>/dev/null || echo "__absent__"
+    printf "\n##LL:tailscale\n"; if command -v tailscale >/dev/null 2>&1; then tailscale status --json 2>/dev/null || echo "__error__"; else echo "__absent__"; fi
+    printf "\n##LL:tailscale_unit\n"; systemctl show tailscaled --property=LoadState --property=ActiveState --property=SubState 2>/dev/null || echo "__absent__"
+    printf "\n##LL:zt_info\n"; if command -v zerotier-cli >/dev/null 2>&1; then zerotier-cli -j info 2>/dev/null || echo "__error__"; else echo "__absent__"; fi
+    printf "\n##LL:zt_networks\n"; command -v zerotier-cli >/dev/null 2>&1 && zerotier-cli -j listnetworks 2>/dev/null || echo "__absent__"
+    printf "\n##LL:zt_peers\n"; command -v zerotier-cli >/dev/null 2>&1 && zerotier-cli -j peers 2>/dev/null || echo "__absent__"
+    printf "\n##LL:zt_unit\n"; systemctl show zerotier-one --property=LoadState --property=ActiveState --property=SubState 2>/dev/null || echo "__absent__"
+    printf "\n##LL:wg\n"; if command -v wg >/dev/null 2>&1; then wg show all dump 2>/dev/null || echo "__noaccess__"; else echo "__absent__"; fi
+    printf "\n##LL:wg_units\n"; systemctl list-units --type=service --all --no-legend --plain 'wg-quick@*' 2>/dev/null | head -20 || echo "__absent__"
+    printf "\n##LL:ovpn_units\n"; systemctl list-units --type=service --all --no-legend --plain 'openvpn*' 2>/dev/null | head -20 || echo "__absent__"
+    printf "\n##LL:ovpn_conf\n"; ls /etc/openvpn/*.conf /etc/openvpn/client/*.conf /etc/openvpn/server/*.conf 2>/dev/null | head -20
+    printf "\n##LL:links\n"; ip -o link 2>/dev/null | awk -F': ' '{print $2}' | head -60
+    printf "\n##LL:end\n"
     SH;
 
     public function __construct(private ServerProbe $probe) {}
