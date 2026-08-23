@@ -582,11 +582,21 @@ class NotesController extends Controller
             'note_folder_id' => ['nullable', 'integer', "exists:note_folders,id,user_id,{$uid}"],
         ]);
 
-        $patch = [
-            'title' => $request->has('title') ? $request->string('title')->value() : null,
-            'body' => $request->has('body') ? $request->string('body')->value() : null,
-            'note_folder_id' => $request->filled('note_folder_id') ? $request->integer('note_folder_id') : null,
-        ];
+        // Only what the request actually carried. Filling the absent keys with
+        // null instead would mean a partial update -- moving a note to a folder,
+        // or pinning it -- silently erased its title and body, which is the one
+        // mistake a notes API must not make.
+        $patch = [];
+        foreach (['title', 'body'] as $key) {
+            if ($request->has($key)) {
+                $patch[$key] = $request->string($key)->value();
+            } elseif ($creating) {
+                $patch[$key] = '';
+            }
+        }
+        if ($request->has('note_folder_id') || $creating) {
+            $patch['note_folder_id'] = $request->filled('note_folder_id') ? $request->integer('note_folder_id') : null;
+        }
         if ($request->has('tags')) {
             $patch['tags'] = array_values(array_filter($request->array('tags'), 'is_string'));
         }

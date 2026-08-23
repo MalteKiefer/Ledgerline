@@ -213,4 +213,36 @@ class NotesFeatureTest extends TestCase
             ->assertOk()->assertJsonCount(1, 'notes')->assertJsonPath('notes.0.title', 'Recipe');
         $this->getJson(route('notes.search', ['q' => '']))->assertOk()->assertJsonCount(0, 'notes');
     }
+
+    public function test_partial_update_leaves_the_fields_it_did_not_mention_alone(): void
+    {
+        $user = User::factory()->create();
+        $folder = NoteFolder::forceCreate(['user_id' => $user->id, 'name' => 'Work']);
+        $note = $this->actingAs($user)->postJson('/api/v1/notes', [
+            'title' => 'Recipe', 'body' => 'Flour, water, salt.', 'tags' => ['food'],
+        ])->json('note');
+
+        // Moving a note is not an edit of its text. Filling absent keys with null
+        // would have erased the body here, which is the worst thing a notes API
+        // can do quietly.
+        $this->actingAs($user)
+            ->putJson("/api/v1/notes/{$note['id']}", ['note_folder_id' => $folder->id])
+            ->assertOk();
+
+        $after = $this->actingAs($user)->getJson("/api/v1/notes/{$note['id']}")->json('note');
+        $this->assertSame('Recipe', $after['title']);
+        $this->assertSame('Flour, water, salt.', $after['body']);
+        $this->assertSame(['food'], $after['tags']);
+        $this->assertSame($folder->id, $after['note_folder_id']);
+
+        // Pinning must not move it back out of the folder either.
+        $this->actingAs($user)->putJson("/api/v1/notes/{$note['id']}", ['pinned' => true])->assertOk();
+        $pinned = $this->actingAs($user)->getJson("/api/v1/notes/{$note['id']}")->json('note');
+        $this->assertSame($folder->id, $pinned['note_folder_id']);
+        $this->assertSame('Flour, water, salt.', $pinned['body']);
+
+        // An explicit null still clears -- absent and null are different requests.
+        $this->actingAs($user)->putJson("/api/v1/notes/{$note['id']}", ['note_folder_id' => null])->assertOk();
+        $this->assertNull($this->actingAs($user)->getJson("/api/v1/notes/{$note['id']}")->json('note.note_folder_id'));
+    }
 }
