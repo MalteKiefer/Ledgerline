@@ -39,6 +39,29 @@ class ServerControl
      */
     public const POWER_ACTIONS = ['reboot', 'reboot_force', 'poweroff', 'cancel'];
 
+    /**
+     * What may be asked of an overlay network.
+     *
+     * `down` and `restart` will usually drop the connection this very command
+     * arrived over -- the app reaches these hosts through one of these networks.
+     * That is not a failure, and the caller treats a dropped connection as
+     * success for exactly those two, the same way a reboot does.
+     */
+    public const VPN_ACTIONS = ['up', 'down', 'restart'];
+
+    /**
+     * How each provider is asked. Fixed in source: nothing from a request ever
+     * becomes part of these, and a provider not named here cannot be actioned.
+     *
+     * WireGuard and OpenVPN run per tunnel, so their unit carries the tunnel
+     * name and is validated against the same unit pattern as any other service.
+     */
+    private const VPN_COMMANDS = [
+        'netbird' => ['up' => 'netbird up', 'down' => 'netbird down', 'restart' => 'systemctl restart netbird'],
+        'tailscale' => ['up' => 'tailscale up', 'down' => 'tailscale down', 'restart' => 'systemctl restart tailscaled'],
+        'zerotier' => ['up' => 'systemctl start zerotier-one', 'down' => 'systemctl stop zerotier-one', 'restart' => 'systemctl restart zerotier-one'],
+    ];
+
     /** tty names as `who` prints them. Anything else never reaches the host. */
     private const TTY_PATTERN = '/^(pts\/\d{1,4}|tty\d{1,3})$/';
 
@@ -128,6 +151,47 @@ class ServerControl
         $out = $this->run($server, 'systemctl '.$action.' '.self::sq($unit).' 2>&1; echo "##LL:rc=$?"');
         if ($out === null) {
             return ['ok' => false, 'output' => '', 'error' => 'unreachable'];
+        }
+
+        return $this->outcome($out);
+    }
+
+    /**
+     * Bring an overlay network up, down or round again.
+     *
+     * The provider decides the command; a per-tunnel provider (WireGuard,
+     * OpenVPN) additionally names its unit, which is validated like any other.
+     * A dropped connection counts as success for `down` and `restart`, because
+     * the drop IS the effect: reporting it as a failure would teach the reader
+     * to ignore real ones.
+     *
+     * @return array{ok:bool,output:string,error:string|null}
+     */
+    public function vpnAction(Server $server, string $provider, string $action, string $unit = ''): array
+    {
+        if (! in_array($action, self::VPN_ACTIONS, true)) {
+            return ['ok' => false, 'output' => '', 'error' => 'invalid_selection'];
+        }
+
+        if (isset(self::VPN_COMMANDS[$provider])) {
+            $command = self::VPN_COMMANDS[$provider][$action];
+        } elseif (in_array($provider, ['wireguard', 'openvpn'], true)) {
+            if (preg_match(self::UNIT_PATTERN, $unit) !== 1) {
+                return ['ok' => false, 'output' => '', 'error' => 'invalid_selection'];
+            }
+            $verb = $action === 'up' ? 'start' : ($action === 'down' ? 'stop' : 'restart');
+            $command = 'systemctl '.$verb.' '.self::sq($unit);
+        } else {
+            return ['ok' => false, 'output' => '', 'error' => 'invalid_selection'];
+        }
+
+        $out = $this->run($server, $command.' 2>&1; echo "##LL:rc=$?"');
+        if ($out === null) {
+            // Losing the link is the expected outcome of taking the network
+            // down that carries it.
+            return $action === 'up'
+                ? ['ok' => false, 'output' => '', 'error' => 'unreachable']
+                : ['ok' => true, 'output' => '', 'error' => null];
         }
 
         return $this->outcome($out);

@@ -335,6 +335,41 @@ export interface FilePermissions {
   error: string | null;
 }
 
+/** One peer on an overlay network, in whichever provider's terms. */
+export interface VpnPeer {
+  name: string | null;
+  address: string | null;
+  status: string | null;
+  /** "P2P" or "Relayed" -- a direct link, or a hop through someone else's server. */
+  route: string | null;
+  relay: string | null;
+  last_handshake: string | null;
+  rx: number | null;
+  tx: number | null;
+  latency_ns: number | null;
+}
+
+export interface VpnProvider {
+  id: string;
+  name: string;
+  installed: boolean;
+  unit: { load: string; active: string; sub: string } | null;
+  connected: boolean;
+  address: string | null;
+  hostname: string | null;
+  version: string | null;
+  facts: Record<string, string>;
+  peers: VpnPeer[];
+  peers_connected: number;
+  peers_total: number;
+  /** ZeroTier joins networks; WireGuard has interfaces; OpenVPN has units. */
+  networks?: { id: string | null; name: string | null; status: string | null; device: string | null; address: string | null }[];
+  interfaces?: { name: string; public_key: string; port: number }[];
+  units?: { name: string; active: string; sub: string }[];
+}
+
+export interface VpnStatus { ok: boolean; providers: VpnProvider[]; error: string | null }
+
 /** The figures that only matter for what a particular machine is. */
 export interface RoleDetails {
   ok: boolean;
@@ -564,6 +599,10 @@ export const useServersStore = defineStore('servers', () => {
 
   const roleDetails = (id: number) => api.get<RoleDetails>(`/api/v1/servers/${id}/role-details`);
 
+  const vpn = (id: number) => api.get<VpnStatus>(`/api/v1/servers/${id}/vpn`);
+  const vpnAction = (id: number, body: { provider: string; action: 'up' | 'down' | 'restart'; unit?: string }) =>
+    api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/vpn/action`, body);
+
   /** Queued: the outcome arrives as a notification, not in this response. */
   const applyUpdates = (id: number) => api.post<{ queued: boolean }>(`/api/v1/servers/${id}/updates`, {});
 
@@ -623,5 +662,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, roleDetails, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, roleDetails, vpn, vpnAction, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

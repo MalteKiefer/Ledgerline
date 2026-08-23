@@ -141,6 +141,10 @@
     </template>
 
 
+    <template v-else-if="tab === 'vpn'">
+      <ServerVpn :server-id="server.id" />
+    </template>
+
     <!-- Files. Mounted only while its tab is open, so leaving the tab gives
          the unlock grant back rather than leaving a filesystem open. -->
     <template v-else-if="tab === 'files'">
@@ -230,6 +234,7 @@ import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import ServerFiles from '@spa/components/ServerFiles.vue';
+import ServerVpn from '@spa/components/servers/ServerVpn.vue';
 import ServerLogs from '@spa/components/servers/ServerLogs.vue';
 import ServerOverview from '@spa/components/servers/ServerOverview.vue';
 import ServerProcesses from '@spa/components/servers/ServerProcesses.vue';
@@ -403,7 +408,7 @@ async function doDelete() {
 
 // ---- tabs ----
 
-type Tab = 'overview' | 'logs' | 'security' | 'services' | 'docker' | 'maintenance' | 'processes' | 'files' | 'terminal' | 'removal';
+type Tab = 'overview' | 'logs' | 'security' | 'services' | 'docker' | 'vpn' | 'maintenance' | 'processes' | 'files' | 'terminal' | 'removal';
 
 const tab = ref<Tab>('overview');
 
@@ -420,6 +425,7 @@ const tabs = computed<{ id: Tab; label: string; icon: string }[]>(() => [
   { id: 'logs', label: t('servers.tab_logs'), icon: 'article' },
   { id: 'security', label: t('servers.tab_security'), icon: 'shield' },
   { id: 'maintenance', label: t('servers.tab_maintenance'), icon: 'build' },
+  { id: 'vpn', label: t('servers.tab_vpn'), icon: 'vpn_lock' },
   { id: 'files', label: t('servers.tab_files'), icon: 'folder' },
   { id: 'terminal', label: t('servers.tab_terminal'), icon: 'terminal' },
   { id: 'removal', label: t('servers.tab_removal'), icon: 'link_off' },
