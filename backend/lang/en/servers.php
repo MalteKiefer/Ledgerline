@@ -498,4 +498,7 @@ return [
     'sites' => 'Sites served',
     'db_connections' => ':n connections',
     'role_unreadable' => 'Not readable from the host (:roles) — the tools for these most likely run inside containers.',
+    'files_upload_folder' => 'Upload folder',
+    'files_drop_here' => 'Drop files or folders here',
+    'files_upload_some_failed' => ':n did not upload',
 ];

@@ -476,10 +476,18 @@ export const useServersStore = defineStore('servers', () => {
   const filesMutate = (id: number, grant: string, body: { action: string; path: string; target?: string; mode?: string }) =>
     api.post<FileResult>(`/api/v1/servers/${id}/files/mutate`, body, { 'X-File-Grant': grant });
 
-  const filesUpload = (id: number, grant: string, path: string, file: File) => {
+  /**
+   * Upload one file into `path`.
+   *
+   * `relativePath` is set when a folder was dropped: it is the file's position
+   * inside that folder, so the tree is rebuilt on the host rather than every
+   * file landing in one directory. The server confines it under `path`.
+   */
+  const filesUpload = (id: number, grant: string, path: string, file: File, relativePath?: string) => {
     const form = new FormData();
     form.append('path', path);
     form.append('file', file);
+    if (relativePath) form.append('relative_path', relativePath);
 
     return api.upload<FileResult>(`/api/v1/servers/${id}/files/upload`, form, { 'X-File-Grant': grant });
   };

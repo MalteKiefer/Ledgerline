@@ -23,15 +23,51 @@
     </div>
 
     <template v-else>
-      <!-- Toolbar -->
-      <div class="mb-3 flex flex-wrap items-center gap-2">
+      <div
+        class="relative"
+        @dragover.prevent="onDragOver" @dragenter.prevent="onDragEnter"
+        @dragleave="onDragLeave" @drop.prevent="onDrop"
+      >
+        <!-- Overlay, not a border change: dropping onto a remote filesystem as
+             root deserves to say where it is going before it happens. -->
+        <div
+          v-if="dragDepth > 0"
+          class="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/10 backdrop-blur-[1px]"
+        >
+          <div class="text-center">
+            <Icon name="upload" :size="32" class="mb-1 text-primary-600 dark:text-primary-300" />
+            <div class="text-sm font-medium">{{ t('servers.files_drop_here') }}</div>
+            <div class="ll-mono text-xs text-[var(--ll-muted)]">{{ cwd }}</div>
+          </div>
+        </div>
+
+        <!-- Sending: a count and the current name, because a folder of two
+             hundred files is otherwise a spinner that never seems to move. -->
+        <div v-if="uploading && uploadTotal > 1" class="mb-3 rounded-lg border border-[var(--ll-border)] p-3">
+          <div class="mb-1.5 flex items-center justify-between gap-2 text-xs">
+            <span class="truncate ll-mono text-[var(--ll-muted)]">{{ uploadName }}</span>
+            <span class="shrink-0 tabular-nums">{{ uploadDone }} / {{ uploadTotal }}</span>
+          </div>
+          <div class="h-1.5 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
+            <div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: uploadTotal ? (uploadDone / uploadTotal) * 100 + '%' : '0%' }"></div>
+          </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="mb-3 flex flex-wrap items-center gap-2">
         <Btn variant="ghost" size="sm" icon="arrow_upward" :disabled="cwd === '/'" :title="t('servers.files_up')" @click="up" />
         <Btn variant="ghost" size="sm" icon="refresh" :disabled="busy" @click="load(cwd)">{{ t('servers.refresh') }}</Btn>
         <Btn variant="ghost" size="sm" icon="create_new_folder" @click="mkdir">{{ t('servers.files_mkdir') }}</Btn>
         <label class="inline-flex">
-          <input ref="uploadInput" type="file" class="hidden" @change="onUpload">
+          <input ref="uploadInput" type="file" multiple class="hidden" @change="onUpload">
           <Btn variant="ghost" size="sm" icon="upload" :disabled="uploading" @click="uploadInput?.click()">
             {{ uploading ? t('servers.files_uploading') : t('servers.files_upload') }}
+          </Btn>
+        </label>
+        <label class="inline-flex">
+          <input ref="uploadDirInput" type="file" webkitdirectory multiple class="hidden" @change="onUploadDir">
+          <Btn variant="ghost" size="sm" icon="drive_folder_upload" :disabled="uploading" @click="uploadDirInput?.click()">
+            {{ t('servers.files_upload_folder') }}
           </Btn>
         </label>
 <Btn
@@ -151,6 +187,7 @@
           </tbody>
         </table>
         <p v-if="!busy && !sorted.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+        </div>
       </div>
     </template>
 
@@ -307,6 +344,11 @@ const error = ref('');
 const query = ref('');
 const uploading = ref(false);
 const uploadInput = ref<HTMLInputElement | null>(null);
+const uploadDirInput = ref<HTMLInputElement | null>(null);
+const dragDepth = ref(0);
+const uploadDone = ref(0);
+const uploadTotal = ref(0);
+const uploadName = ref('');
 
 const sortKey = ref<'name' | 'size' | 'owner'>('name');
 const sortDesc = ref(false);
@@ -485,22 +527,131 @@ async function download(e: FileEntry) {
   }
 }
 
+/** One file to send, and where it goes relative to the current directory. */
+interface Pending { file: File; rel: string }
+
 async function onUpload(ev: Event) {
   const input = ev.target as HTMLInputElement;
-  const file = input.files?.[0];
+  const files = [...(input.files ?? [])];
   input.value = '';
-  if (!file) return;
+  await send(files.map((file) => ({ file, rel: file.name })));
+}
+
+async function onUploadDir(ev: Event) {
+  const input = ev.target as HTMLInputElement;
+  const files = [...(input.files ?? [])];
+  input.value = '';
+  // webkitRelativePath is "folder/sub/file.ext" — exactly the layout to rebuild.
+  await send(files.map((file) => ({ file, rel: file.webkitRelativePath || file.name })));
+}
+
+/**
+ * Create every directory the batch needs, then send the files.
+ *
+ * mkdir before put, because sftp will not create a parent on the way: a file
+ * whose directory is missing simply fails. Each one is attempted once and its
+ * result ignored — "already exists" is the common case and not a problem.
+ */
+async function send(items: Pending[]) {
+  if (!items.length || uploading.value) return;
+
+  const dir = cwd.value === '/' ? '' : cwd.value;
+  const dirs = new Set<string>();
+  for (const it of items) {
+    const parts = it.rel.split('/').slice(0, -1);
+    for (let i = 1; i <= parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
+  }
 
   uploading.value = true;
+  uploadDone.value = 0;
+  uploadTotal.value = items.length;
+  let failed = 0;
   try {
-    const r = await s.filesUpload(props.serverId, grant.value, cwd.value, file);
-    if (r.ok) { success(t('servers.files_uploaded')); await load(cwd.value); }
-    else fail(errorText(r.error));
-  } catch {
-    fail(t('servers.status_fail'));
+    // Shallowest first, or a nested directory is created before its parent.
+    for (const rel of [...dirs].sort((a, b) => a.split('/').length - b.split('/').length)) {
+      try { await s.filesMutate(props.serverId, grant.value, { action: 'mkdir', path: `${dir}/${rel}` }); } catch { /* already there */ }
+    }
+
+    for (const it of items) {
+      uploadName.value = it.rel;
+      try {
+        const r = await s.filesUpload(props.serverId, grant.value, cwd.value, it.file, it.rel);
+        if (!r.ok) failed++;
+      } catch { failed++; }
+      uploadDone.value++;
+    }
+
+    if (failed) fail(t('servers.files_upload_some_failed', { n: String(failed) }));
+    else success(t('servers.files_uploaded'));
+    await load(cwd.value);
   } finally {
     uploading.value = false;
+    uploadName.value = '';
   }
+}
+
+/**
+ * Walk a dropped entry into a flat list of files with their paths.
+ *
+ * A drop carries FileSystemEntry objects, not Files: without walking them a
+ * dropped folder arrives as nothing at all, which is how "drag and drop" ends
+ * up meaning "drag and drop single files".
+ */
+async function walkEntry(entry: FileSystemEntry, prefix: string, out: Pending[]): Promise<void> {
+  if (entry.isFile) {
+    const file = await new Promise<File | null>((resolve) => {
+      (entry as FileSystemFileEntry).file((f) => resolve(f), () => resolve(null));
+    });
+    if (file) out.push({ file, rel: prefix + entry.name });
+
+    return;
+  }
+  if (!entry.isDirectory) return;
+
+  const reader = (entry as FileSystemDirectoryEntry).createReader();
+  // readEntries returns at most ~100 at a time and signals the end with an
+  // empty batch, so a folder of 300 files needs the loop.
+  for (;;) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve) => {
+      reader.readEntries((e) => resolve([...e]), () => resolve([]));
+    });
+    if (!batch.length) break;
+    for (const child of batch) await walkEntry(child, `${prefix}${entry.name}/`, out);
+  }
+}
+
+function onDragOver(ev: DragEvent) {
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+}
+
+function onDragEnter(ev: DragEvent) {
+  if ([...(ev.dataTransfer?.types ?? [])].includes('Files')) dragDepth.value++;
+}
+
+function onDragLeave() {
+  // A counter, not a flag: dragging across a child element fires leave on the
+  // one being left before enter on the one being entered, and a flag flickers.
+  if (dragDepth.value > 0) dragDepth.value--;
+}
+
+async function onDrop(ev: DragEvent) {
+  dragDepth.value = 0;
+  const dt = ev.dataTransfer;
+  if (!dt) return;
+
+  const items = [...dt.items].filter((i) => i.kind === 'file');
+  const out: Pending[] = [];
+  // Take the entries before awaiting anything: the DataTransfer is emptied as
+  // soon as the drop handler yields.
+  const entries = items.map((i) => i.webkitGetAsEntry?.() ?? null);
+  if (entries.some(Boolean)) {
+    for (const entry of entries) if (entry) await walkEntry(entry, '', out);
+  } else {
+    // A browser without the entry API still drops plain files.
+    for (const file of [...dt.files]) out.push({ file, rel: file.name });
+  }
+
+  await send(out);
 }
 
 async function mkdir() {

@@ -12,6 +12,7 @@ use App\Services\Servers\ServerProbe;
 use App\Services\Servers\ServerTarget;
 use App\Services\Servers\SftpBrowser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -233,6 +234,53 @@ class ServerFileBrowserTest extends TestCase
         $this->assertMatchesRegularExpression('/put ".+" "\/etc\/motd\.ll-upload-[0-9a-f]{8}"/', $sent);
         $this->assertMatchesRegularExpression('/rename "\/etc\/motd\.ll-upload-[0-9a-f]{8}" "\/etc\/motd"/', $sent);
         $this->assertSame(1, AuditLog::query()->where('action', 'server.file_written')->count());
+    }
+
+    #[Test]
+    public function a_dropped_folder_rebuilds_its_tree_under_the_current_directory(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
+        $server = $this->server($user);
+        $sftp = $this->recorder();
+        $token = $this->unlock($user, $server);
+
+        $this->actingAs($user)
+            ->withHeader('X-File-Grant', $token)
+            ->post("/api/v1/servers/{$server->id}/files/upload", [
+                'path' => '/srv/app',
+                'relative_path' => 'conf/nginx/site.conf',
+                'file' => UploadedFile::fake()->createWithContent('site.conf', 'server {}'),
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        // The file lands at its position inside the dropped folder, not flat in
+        // the directory it was dropped on.
+        $this->assertMatchesRegularExpression('#rename ".+" "/srv/app/conf/nginx/site\.conf"#', implode("\n", $sftp->sent));
+    }
+
+    #[Test]
+    public function an_upload_cannot_climb_out_of_the_directory_it_was_dropped_on(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct-horse-battery')]);
+        $server = $this->server($user);
+        $sftp = $this->recorder();
+        $token = $this->unlock($user, $server);
+
+        // The name comes from the client. Resolving upwards still produces a
+        // valid path -- just not the one the browser says it went to, and a
+        // file quietly written to /etc instead of /tmp is the whole problem.
+        $this->actingAs($user)
+            ->withHeader('X-File-Grant', $token)
+            ->post("/api/v1/servers/{$server->id}/files/upload", [
+                'path' => '/tmp',
+                'relative_path' => '../etc/cron.d/backdoor',
+                'file' => UploadedFile::fake()->createWithContent('backdoor', 'x'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'invalid_path');
+
+        $this->assertSame([], $sftp->sent);
     }
 
     #[Test]
