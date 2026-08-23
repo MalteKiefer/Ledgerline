@@ -112,6 +112,17 @@ return [
 
     // Tasks (VTODO / CalDAV task lists)
     'todos' => [
+        'search' => 'Search tasks',
+        'selected_n' => ':n selected',
+        'delete_n_confirm' => 'Delete :n tasks? This cannot be undone.',
+        'group_on' => 'Group by due date',
+        'group_off' => 'Show as one list',
+        'group_overdue' => 'Overdue',
+        'group_today' => 'Today',
+        'group_week' => 'This week',
+        'group_later' => 'Later',
+        'group_undated' => 'No date',
+        'group_done' => 'Done',
         'title' => 'Tasks',
         'new_task' => 'New task',
         'edit_task' => 'Edit task',

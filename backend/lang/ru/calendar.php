@@ -112,6 +112,17 @@ return [
 
     // Задачи (VTODO / списки задач CalDAV)
     'todos' => [
+        'search' => 'Поиск задач',
+        'selected_n' => 'выбрано: :n',
+        'delete_n_confirm' => 'Удалить задач: :n? Отменить будет нельзя.',
+        'group_on' => 'Группировать по сроку',
+        'group_off' => 'Показать одним списком',
+        'group_overdue' => 'Просрочено',
+        'group_today' => 'Сегодня',
+        'group_week' => 'На этой неделе',
+        'group_later' => 'Позже',
+        'group_undated' => 'Без срока',
+        'group_done' => 'Выполнено',
         'title' => 'Задачи',
         'new_task' => 'Новая задача',
         'edit_task' => 'Изменить задачу',

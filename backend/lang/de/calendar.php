@@ -112,6 +112,17 @@ return [
 
     // Aufgaben (VTODO / CalDAV-Aufgabenlisten)
     'todos' => [
+        'search' => 'Aufgaben durchsuchen',
+        'selected_n' => ':n ausgewählt',
+        'delete_n_confirm' => ':n Aufgaben löschen? Das lässt sich nicht rückgängig machen.',
+        'group_on' => 'Nach Fälligkeit gruppieren',
+        'group_off' => 'Als eine Liste zeigen',
+        'group_overdue' => 'Überfällig',
+        'group_today' => 'Heute',
+        'group_week' => 'Diese Woche',
+        'group_later' => 'Später',
+        'group_undated' => 'Ohne Datum',
+        'group_done' => 'Erledigt',
         'title' => 'Aufgaben',
         'new_task' => 'Neue Aufgabe',
         'edit_task' => 'Aufgabe bearbeiten',

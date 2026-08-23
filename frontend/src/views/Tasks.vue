@@ -48,12 +48,30 @@
       <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-2">
         <h2 class="px-1 text-base font-semibold">{{ activeListName }}</h2>
         <div class="ml-auto flex flex-wrap items-center gap-2">
+          <div class="w-56"><TextField v-model="query" :placeholder="t('calendar.todos.search')" icon="search" /></div>
           <div class="w-40"><Select v-model="filters.status" :options="statusFilterOptions" /></div>
           <label class="flex items-center gap-1.5 text-sm text-[var(--ll-muted)]">
             <input v-model="filters.hideCompleted" type="checkbox" class="h-4 w-4 rounded border-[var(--ll-border)] accent-[var(--color-primary-500)]">
             {{ t('calendar.todos.show_completed') }}
           </label>
           <div class="w-36"><Select v-model="filters.sort" :options="sortOptions" /></div>
+          <Btn
+            variant="ghost" size="sm" :icon="grouped ? 'view_agenda' : 'view_list'"
+            :title="grouped ? t('calendar.todos.group_off') : t('calendar.todos.group_on')"
+            @click="toggleGrouping"
+          />
+        </div>
+      </div>
+
+      <!-- Selection bar. The three actions worth having in bulk; anything more
+           would be a menu for a list where most work is one task at a time. -->
+      <div v-if="selected.length" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2">
+        <span class="text-xs font-medium">{{ t('calendar.todos.selected_n', { n: String(selected.length) }) }}</span>
+        <div class="ml-auto flex flex-wrap items-center gap-1">
+          <Btn variant="ghost" size="xs" icon="check" :disabled="bulkBusy" @click="bulkComplete(true)">{{ t('calendar.todos.complete') }}</Btn>
+          <Btn variant="ghost" size="xs" icon="undo" :disabled="bulkBusy" @click="bulkComplete(false)">{{ t('calendar.todos.uncomplete') }}</Btn>
+          <Btn variant="ghost" size="xs" icon="delete" class="text-red-600" :disabled="bulkBusy" @click="bulkDelete">{{ t('common.delete') }}</Btn>
+          <Btn variant="ghost" size="xs" @click="selected = []">{{ t('common.close') }}</Btn>
         </div>
       </div>
 
@@ -64,11 +82,29 @@
 
       <!-- List -->
       <div v-else class="flex-1 divide-y divide-[var(--ll-border)] overflow-y-auto">
+        <template v-for="group in groupedRows" :key="group.key">
+          <!-- "Overdue" and "Today" are the two that change what somebody does
+               next, so they lead and carry a colour; the rest are plain. -->
+          <div
+            v-if="grouped && group.rows.length"
+            class="sticky top-0 z-10 flex items-center gap-2 bg-[var(--ll-surface)] px-3 py-1.5 text-[0.7rem] font-semibold uppercase tracking-wide"
+            :class="group.key === 'overdue' ? 'text-red-600 dark:text-red-400' : (group.key === 'today' ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--ll-muted)]')"
+          >
+            {{ group.label }}
+            <span class="font-normal text-[var(--ll-muted)]">{{ group.rows.length }}</span>
+          </div>
+
         <div
-          v-for="row in orderedRows" :key="row.task.id"
+          v-for="row in group.rows" :key="row.task.id"
           class="group flex items-start gap-3 px-3 py-2.5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+          :class="selected.includes(row.task.id) ? 'bg-primary-500/[0.06]' : ''"
           :style="{ paddingLeft: 0.75 + row.depth * 1.5 + 'rem' }"
         >
+          <input
+            type="checkbox" class="mt-1 h-4 w-4 shrink-0 rounded border-[var(--ll-border)] accent-[var(--color-primary-500)]"
+            :checked="selected.includes(row.task.id)"
+            @click.stop="toggleSelect(row.task.id)"
+          >
           <button
             class="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors"
             :class="isDone(row.task) ? 'border-primary-500 bg-primary-500 text-white' : 'border-[var(--ll-border)] hover:border-primary-500'"
@@ -105,6 +141,8 @@
             <button class="grid h-7 w-7 place-items-center rounded text-red-600 hover:bg-red-500/10 dark:text-red-400" :title="t('calendar.todos.delete_task')" @click="removeTask(row.task)"><Icon name="delete" :size="16" /></button>
           </div>
         </div>
+
+        </template>
 
         <div v-if="!orderedRows.length" class="grid place-items-center gap-3 p-12 text-center text-sm text-[var(--ll-muted)]">
           <Icon name="task_alt" :size="34" class="text-[var(--ll-muted)]" />
@@ -291,13 +329,112 @@ function dueClass(task: CalendarTodo): string {
   return 'text-[var(--ll-muted)]';
 }
 
-const visibleTasks = computed<CalendarTodo[]>(() =>
-  store.tasks.filter((task) => {
+const query = ref('');
+
+const visibleTasks = computed<CalendarTodo[]>(() => {
+  const q = query.value.trim().toLowerCase();
+
+  return store.tasks.filter((task) => {
     if (filters.hideCompleted && isDone(task)) return false;
     if (filters.status !== 'all' && task.status !== filters.status) return false;
-    return true;
-  }),
-);
+    if (!q) return true;
+
+    return [task.summary, task.description, (task.categories ?? []).join(' ')]
+      .some((field) => (field ?? '').toLowerCase().includes(q));
+  });
+});
+
+// --- selection --------------------------------------------------------------
+const selected = ref<string[]>([]);
+const bulkBusy = ref(false);
+
+function toggleSelect(id: string) {
+  const i = selected.value.indexOf(id);
+  if (i === -1) selected.value.push(id);
+  else selected.value.splice(i, 1);
+}
+
+async function bulkComplete(done: boolean) {
+  if (!selected.value.length || bulkBusy.value) return;
+  bulkBusy.value = true;
+  try {
+    for (const id of [...selected.value]) {
+      const task = store.tasks.find((t) => t.id === id);
+      // Marking an already-finished task finished again is a write for no
+      // reason, and on a recurring task it would roll it forward.
+      if (!task || isDone(task) === done) continue;
+      if (done) await store.complete(id);
+      else await store.uncomplete(id);
+    }
+    selected.value = [];
+    await reload();
+  } catch { error(t('common.error')); }
+  finally { bulkBusy.value = false; }
+}
+
+async function bulkDelete() {
+  if (!selected.value.length || bulkBusy.value) return;
+  if (!await confirmAsk(t('calendar.todos.delete_n_confirm', { n: String(selected.value.length) }))) return;
+  bulkBusy.value = true;
+  try {
+    for (const id of [...selected.value]) await store.deleteTask(id);
+    selected.value = [];
+    await reload();
+  } catch { error(t('common.error')); }
+  finally { bulkBusy.value = false; }
+}
+
+// --- grouping by when it is due ---------------------------------------------
+interface Group { key: string; label: string; rows: Row[] }
+
+const grouped = ref(localStorage.getItem('ll_tasks_grouped') !== '0');
+
+function toggleGrouping() {
+  grouped.value = !grouped.value;
+  localStorage.setItem('ll_tasks_grouped', grouped.value ? '1' : '0');
+}
+
+/**
+ * Which bucket a task falls in.
+ *
+ * A finished task is never overdue however old its date is -- colouring it red
+ * would put permanent alarm on work that is already done. Subtasks follow their
+ * parent rather than scattering across buckets, or the nesting means nothing.
+ */
+function bucketOf(task: CalendarTodo): string {
+  if (isDone(task)) return 'done';
+  if (!task.due) return 'undated';
+  const due = new Date(task.due).getTime();
+  if (due < now.value) return 'overdue';
+
+  const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+  if (due <= endOfToday.getTime()) return 'today';
+  if (due <= endOfToday.getTime() + 6 * 86_400_000) return 'week';
+
+  return 'later';
+}
+
+const GROUP_ORDER = ['overdue', 'today', 'week', 'later', 'undated', 'done'] as const;
+
+const groupedRows = computed<Group[]>(() => {
+  const rows = orderedRows.value;
+  if (!grouped.value) return [{ key: 'all', label: '', rows }];
+
+  // A root decides the bucket for everything beneath it.
+  const bucketByTask = new Map<string, string>();
+  for (const row of rows) {
+    const parentBucket = row.depth > 0 && row.task.related_to ? bucketByTask.get(row.task.related_to) : null;
+    bucketByTask.set(row.task.uid ?? row.task.id, parentBucket ?? bucketOf(row.task));
+  }
+
+  return GROUP_ORDER
+    .map((key) => ({
+      key,
+      label: t(`calendar.todos.group_${key}`),
+      rows: rows.filter((row) => bucketByTask.get(row.task.uid ?? row.task.id) === key),
+    }))
+    .filter((group) => group.rows.length > 0);
+});
 
 // --- subtask nesting (related_to → parent UID) ------------------------------
 function comparator(a: CalendarTodo, b: CalendarTodo): number {
