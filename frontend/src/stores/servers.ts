@@ -377,6 +377,29 @@ export interface VpnProvider {
 
 export interface VpnStatus { ok: boolean; providers: VpnProvider[]; error: string | null }
 
+export interface HostingPanel {
+  id: string;
+  name: string;
+  version: string | null;
+  /** The systemd unit, when there is one -- what the restart button acts on. */
+  unit: string | null;
+  unit_state: string | null;
+  /** null means there is no unit to ask, which is not the same as "stopped". */
+  running: boolean | null;
+  ports: number[];
+  path: string | null;
+  container: string | null;
+  image: string | null;
+  facts: Record<string, string>;
+  counts: Record<string, number>;
+  note: string | null;
+}
+
+/** A port a panel usually uses, with nothing claiming it -- a guess, and named as one. */
+export interface PanelCandidate { port: number; address: string; process: string | null; hint: string }
+
+export interface PanelStatus { ok: boolean; panels: HostingPanel[]; candidates: PanelCandidate[]; error: string | null }
+
 /** The figures that only matter for what a particular machine is. */
 export interface RoleDetails {
   ok: boolean;
@@ -606,6 +629,8 @@ export const useServersStore = defineStore('servers', () => {
 
   const roleDetails = (id: number) => api.get<RoleDetails>(`/api/v1/servers/${id}/role-details`);
 
+  const panels = (id: number) => api.get<PanelStatus>(`/api/v1/servers/${id}/panels`);
+
   const vpn = (id: number) => api.get<VpnStatus>(`/api/v1/servers/${id}/vpn`);
   const vpnAction = (id: number, body: { provider: string; action: 'up' | 'down' | 'restart'; unit?: string }) =>
     api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/vpn/action`, body);
@@ -669,5 +694,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, roleDetails, vpn, vpnAction, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, roleDetails, panels, vpn, vpnAction, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

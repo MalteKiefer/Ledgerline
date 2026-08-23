@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.724.0
+  version: 1.725.0
   license:
     name: Proprietary
   description: >
@@ -8578,6 +8578,88 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/panels:
+    get:
+      tags: [Servers]
+      operationId: serversPanels
+      summary: Which hosting control panel owns this machine, if any
+      description: >
+        Plesk, cPanel/WHM, DirectAdmin, ISPConfig, Webmin/Virtualmin, CyberPanel,
+        HestiaCP, VestaCP, aaPanel, CloudPanel, Froxlor, KeyHelp, Cockpit, the
+        RunCloud and ServerPilot agents, plus Portainer, Coolify, CapRover and
+        friends when they run as containers. Named panels are recognised by their
+        own binary or install path and asked for a version; container panels are
+        recognised by image rather than container name, because the name is
+        whatever somebody typed.
+
+
+        `candidates` is deliberately separate and deliberately not a detection:
+        something is listening on a port panels commonly use and nothing here
+        claimed it. Port 8080 is a panel on one host and a staging app on the
+        next, so it is reported as a lead, never as an identity.
+
+
+        `running` is three-valued: `true` and `false` describe a unit that exists,
+        `null` means there is no unit to ask -- not the same as stopped. A count
+        is omitted entirely rather than reported as 0 when its directory could not
+        be read.
+
+
+        No credential is ever printed. `bt default` and
+        `plesk bin admin --get-login-link` both hand out working access and are
+        deliberately not run. Read-only; acting on a panel goes through the
+        ordinary service endpoint with the unit named here. Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Every panel found on the host, plus what merely looks like one.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  panels:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        installed: { type: boolean }
+                        version: { type: [string, "null"] }
+                        unit: { type: [string, "null"] }
+                        unit_state: { type: [string, "null"] }
+                        running:
+                          type: [boolean, "null"]
+                          description: null means there is no unit to ask, not "stopped".
+                        ports:
+                          type: array
+                          items: { type: integer }
+                          description: Only ports genuinely listening, never documented defaults.
+                        path: { type: [string, "null"] }
+                        container: { type: [string, "null"] }
+                        image: { type: [string, "null"] }
+                        facts: { type: object, additionalProperties: { type: string } }
+                        counts: { type: object, additionalProperties: { type: integer } }
+                        note: { type: [string, "null"] }
+                  candidates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        port: { type: integer }
+                        address: { type: string }
+                        process: { type: [string, "null"] }
+                        hint: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /servers/{server}/vpn:
     get:
       tags: [Servers]

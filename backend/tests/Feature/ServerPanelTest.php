@@ -1,0 +1,214 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Models\Server;
+use App\Models\User;
+use App\Services\Servers\PanelInspector;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
+use Tests\TestCase;
+
+/**
+ * Hosting control panels on a monitored host.
+ *
+ * The properties that matter are all about not overclaiming: a missing section
+ * is not a panel, a documented default port is not an open port, a count that
+ * could not be read is not zero, and a port a panel usually uses is a lead
+ * rather than a detection.
+ */
+class ServerPanelTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function server(): Server
+    {
+        return Server::forceCreate([
+            'user_id' => User::factory()->create()->id,
+            'name' => 'Web',
+            'host' => 'web.example',
+            'port' => 22,
+            'username' => 'root',
+            'auth_type' => 'key',
+            'credentials' => ['private_key' => 'x'],
+            'host_key' => 'ssh-ed25519 AAAA test',
+            'host_fingerprint' => 'SHA256:test',
+            'enabled' => true,
+        ]);
+    }
+
+    /**
+     * @return array{ok:bool,panels:list<array<string,mixed>>,candidates:list<array<string,string|int|null>>,error:string|null}
+     */
+    private function inspect(string $out): array
+    {
+        return (new PanelInspector(new VpnRecordingProbe([['ok' => true, 'out' => $out]])))
+            ->inspect($this->server());
+    }
+
+    #[Test]
+    public function it_reads_plesk_with_its_version_counts_and_unit(): void
+    {
+        $out = "##LL:plesk\nProduct version: Plesk Obsidian 18.0.62\nOS version:      Debian 12\nBuild date:      2026/01/09 12:00\n"
+            ."##LL:plesk_counts\ndomains=14\nsubscriptions=9\ncustomers=3\n"
+            ."##LL:units\npsa.service active running\n"
+            ."##LL:listen\nLISTEN 0 128 0.0.0.0:8443 0.0.0.0:* users:((\"sw-cp-server\",pid=900,fd=6))\n";
+
+        $result = $this->inspect($out);
+
+        $this->assertCount(1, $result['panels']);
+        $plesk = $result['panels'][0];
+        $this->assertSame('plesk', $plesk['id']);
+        $this->assertSame('Plesk Obsidian 18.0.62', $plesk['version']);
+        $this->assertSame(['domains' => 14, 'subscriptions' => 9, 'customers' => 3], $plesk['counts']);
+        $this->assertSame('psa.service', $plesk['unit']);
+        $this->assertTrue($plesk['running']);
+        $this->assertSame([8443], $plesk['ports']);
+        $this->assertSame('Debian 12', $plesk['facts']['os']);
+
+        // The port is claimed, so it must not also appear as an unexplained lead.
+        $this->assertSame([], $result['candidates']);
+    }
+
+    #[Test]
+    public function an_absent_section_is_not_a_panel(): void
+    {
+        $sections = ['plesk', 'cpanel', 'directadmin', 'ispconfig', 'webmin', 'virtualmin', 'cyberpanel',
+            'hestia', 'vesta', 'aapanel', 'cloudpanel', 'froxlor', 'keyhelp', 'cockpit', 'runcloud', 'serverpilot'];
+
+        $out = '';
+        foreach ($sections as $section) {
+            $out .= "##LL:{$section}\n__absent__\n";
+        }
+        // A section that is simply empty must count the same way, or one command
+        // printing nothing would invent a panel out of silence.
+        $out .= "##LL:units\n\n##LL:containers\n\n##LL:listen\n";
+
+        $result = $this->inspect($out);
+
+        $this->assertSame([], $result['panels']);
+    }
+
+    #[Test]
+    public function a_stopped_panel_is_told_apart_from_one_with_no_unit(): void
+    {
+        $out = "##LL:hestia\nVERSION='1.9.2'\n"
+            ."##LL:hestia_users\n4\n"
+            ."##LL:ispconfig\n\$conf['app_version'] = 'x'; define('ISPC_APP_VERSION', '3.2.11p1');\n"
+            ."##LL:units\nhestia.service inactive dead\n"
+            ."##LL:listen\n";
+
+        $result = $this->inspect($out);
+
+        $hestia = collect($result['panels'])->firstWhere('id', 'hestia');
+        $this->assertNotNull($hestia);
+        $this->assertFalse($hestia['running']);
+        $this->assertSame('1.9.2', $hestia['version']);
+        $this->assertSame(['users' => 4], $hestia['counts']);
+
+        // No unit to ask is its own answer, not "stopped".
+        $ispconfig = collect($result['panels'])->firstWhere('id', 'ispconfig');
+        $this->assertNotNull($ispconfig);
+        $this->assertNull($ispconfig['running']);
+        $this->assertSame('3.2.11p1', $ispconfig['version']);
+    }
+
+    #[Test]
+    public function a_default_port_is_not_reported_unless_something_listens_on_it(): void
+    {
+        $out = "##LL:cockpit\nVersion: 320\n##LL:units\ncockpit.service active running\n##LL:listen\n";
+
+        $panel = $this->inspect($out)['panels'][0];
+
+        $this->assertSame('cockpit', $panel['id']);
+        $this->assertSame([], $panel['ports']);
+    }
+
+    #[Test]
+    public function an_unreadable_count_is_left_out_rather_than_reported_as_zero(): void
+    {
+        $out = "##LL:cpanel\n11.126.0.15\n##LL:cpanel_users\n__absent__\n##LL:units\n##LL:listen\n";
+
+        $panel = $this->inspect($out)['panels'][0];
+
+        $this->assertSame('cpanel', $panel['id']);
+        $this->assertSame([], $panel['counts']);
+    }
+
+    #[Test]
+    public function virtualmin_replaces_webmin_rather_than_being_counted_twice(): void
+    {
+        $out = "##LL:webmin\n2.202\n##LL:webmin_conf\nport=10000\nssl=1\n"
+            ."##LL:virtualmin\n7.30.0\n##LL:virtualmin_domains\n6\n"
+            ."##LL:units\nwebmin.service active running\n##LL:listen\n";
+
+        $result = $this->inspect($out);
+
+        $this->assertCount(1, $result['panels']);
+        $panel = $result['panels'][0];
+        $this->assertSame('virtualmin', $panel['id']);
+        $this->assertSame('7.30.0', $panel['version']);
+        $this->assertSame('2.202', $panel['facts']['webmin']);
+        $this->assertSame('on', $panel['facts']['tls']);
+        $this->assertSame([10000], $panel['ports']);
+        $this->assertSame(['domains' => 6], $panel['counts']);
+    }
+
+    #[Test]
+    public function a_container_panel_is_recognised_by_image_not_by_name(): void
+    {
+        $out = "##LL:containers\n"
+            ."plesk\tnginx:1.27\t0.0.0.0:80->80/tcp\n"
+            ."web-admin\tportainer/portainer-ce:2.21.4\t0.0.0.0:9443->9443/tcp\n"
+            ."##LL:units\n##LL:listen\n";
+
+        $result = $this->inspect($out);
+
+        // A container called "plesk" running nginx is a web server.
+        $this->assertCount(1, $result['panels']);
+        $panel = $result['panels'][0];
+        $this->assertSame('Portainer', $panel['name']);
+        $this->assertSame('2.21.4', $panel['version']);
+        $this->assertSame('web-admin', $panel['container']);
+        $this->assertSame([9443], $panel['ports']);
+    }
+
+    #[Test]
+    public function an_unclaimed_panel_port_is_a_lead_and_says_so(): void
+    {
+        $out = "##LL:units\n##LL:listen\n"
+            ."LISTEN 0 511 0.0.0.0:2083 0.0.0.0:* users:((\"nginx\",pid=12,fd=8))\n"
+            ."LISTEN 0 128 127.0.0.1:5432 0.0.0.0:* users:((\"postgres\",pid=44,fd=5))\n";
+
+        $result = $this->inspect($out);
+
+        $this->assertSame([], $result['panels']);
+        $this->assertCount(1, $result['candidates']);
+        $this->assertSame(2083, $result['candidates'][0]['port']);
+        $this->assertSame('nginx', $result['candidates'][0]['process']);
+        $this->assertSame('cPanel', $result['candidates'][0]['hint']);
+    }
+
+    #[Test]
+    public function it_never_asks_a_panel_for_a_working_login(): void
+    {
+        $probe = new VpnRecordingProbe([['ok' => true, 'out' => "##LL:units\n"]]);
+        (new PanelInspector($probe))->inspect($this->server());
+
+        // Both of these print credentials that grant access on the spot.
+        $this->assertStringNotContainsString('bt default', $probe->sent());
+        $this->assertStringNotContainsString('get-login-link', $probe->sent());
+    }
+
+    #[Test]
+    public function an_unreachable_host_says_so_instead_of_reporting_no_panels(): void
+    {
+        $result = (new PanelInspector(new VpnRecordingProbe([['ok' => false, 'out' => '']])))
+            ->inspect($this->server());
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('unreachable', $result['error']);
+    }
+}

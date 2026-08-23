@@ -350,6 +350,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/servers/{server}/services', [ServerControlController::class, 'services'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.services');
             Route::post('/servers/{server}/services', [ServerControlController::class, 'serviceAction'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.service-action');
             Route::get('/servers/{server}/disk-usage', [ServerMaintenanceController::class, 'diskUsage'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.disk-usage');
+            Route::get('/servers/{server}/panels', [ServerControlController::class, 'panels'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.panels');
             Route::get('/servers/{server}/vpn', [ServerControlController::class, 'vpn'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.vpn');
             Route::post('/servers/{server}/vpn/action', [ServerControlController::class, 'vpnAction'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.vpn-action');
             Route::get('/servers/{server}/role-details', [ServerMaintenanceController::class, 'roleDetails'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.role-details');
