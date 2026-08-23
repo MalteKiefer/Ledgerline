@@ -145,9 +145,9 @@ echo "##LL:end"';
             return new ProbeResult(false, error: 'fingerprint_mismatch', fingerprint: $fingerprint, durationMs: $this->elapsed($started));
         }
 
-        $pem = $this->usableKey($target);
-        if ($pem === null) {
-            return new ProbeResult(false, error: 'no_credentials', fingerprint: $fingerprint, hostKey: $hostKey, durationMs: $this->elapsed($started));
+        $key = $this->readKey($target);
+        if ($key['pem'] === null) {
+            return new ProbeResult(false, error: $key['error'] ?? 'no_credentials', fingerprint: $fingerprint, hostKey: $hostKey, durationMs: $this->elapsed($started));
         }
 
         try {
@@ -195,9 +195,10 @@ echo "##LL:end"';
      */
     public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false, ?int $timeout = null): array
     {
-        $pem = $this->usableKey($target);
+        $key = $this->readKey($target);
+        $pem = $key['pem'];
         if ($pem === null) {
-            return ['ok' => false, 'out' => '', 'err' => 'no_credentials', 'exit' => null];
+            return ['ok' => false, 'out' => '', 'err' => $key['error'] ?? 'no_credentials', 'exit' => null];
         }
 
         // Both files are RAII: the destructor unlinks them when this method
@@ -312,7 +313,7 @@ echo "##LL:end"';
      */
     public function privateKeyFor(ServerTarget $target): ?string
     {
-        return $this->usableKey($target);
+        return $this->readKey($target)['pem'];
     }
 
     private function knownHostsLine(ServerTarget $target, string $hostKey): string
@@ -327,20 +328,38 @@ echo "##LL:end"';
      * otherwise prompt for the passphrase and BatchMode would abort. phpseclib
      * is used here purely as a key-format tool, not as a transport.
      */
-    private function usableKey(ServerTarget $target): ?string
+    /**
+     * The key in the form ssh will accept, or why it cannot be used.
+     *
+     * Two things a person hits constantly and neither used to be said out loud.
+     * A key pasted from Windows carries CRLF line endings, which OpenSSH
+     * refuses outright, so the endings are normalised here. And a key that is
+     * present but unreadable -- the public half pasted by mistake, a wrong
+     * passphrase, a truncated block -- used to be reported as "no credentials
+     * stored", which sends somebody looking for an empty field that is not
+     * empty.
+     *
+     * @return array{pem:string|null,error:string|null}
+     */
+    private function readKey(ServerTarget $target): array
     {
-        if (trim($target->privateKey) === '') {
-            return null;
+        // A BOM and CR are invisible in a text box and fatal to ssh.
+        $raw = str_replace(["\r\n", "\r"], "\n", ltrim($target->privateKey, "\u{FEFF}"));
+        if (trim($raw) === '') {
+            return ['pem' => null, 'error' => 'no_credentials'];
         }
-        if ($target->passphrase === '') {
-            return rtrim($target->privateKey)."\n";
-        }
-        try {
-            $pem = PublicKeyLoader::loadPrivateKey($target->privateKey, $target->passphrase)->toString('OpenSSH');
 
-            return is_string($pem) ? rtrim($pem)."\n" : null;
+        try {
+            // Parsed here rather than handed straight to ssh: phpseclib can say
+            // what is wrong with it, and ssh can only say it failed.
+            $key = PublicKeyLoader::loadPrivateKey($raw, $target->passphrase);
+            $pem = $key->toString('OpenSSH');
+
+            return is_string($pem) && $pem !== ''
+                ? ['pem' => rtrim($pem)."\n", 'error' => null]
+                : ['pem' => null, 'error' => 'key_unreadable'];
         } catch (Throwable) {
-            return null;
+            return ['pem' => null, 'error' => 'key_unreadable'];
         }
     }
 
