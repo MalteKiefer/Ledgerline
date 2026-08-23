@@ -157,7 +157,9 @@ class ServerController extends Controller
     public function refresh(Request $request, Server $server): JsonResponse
     {
         $this->requireUser($request);
-        CollectServerFacts::dispatch($server->id);
+        // Forced: a paused server is one nobody wants woken on a timer, not one
+        // nobody is allowed to look at.
+        CollectServerFacts::dispatch($server->id, force: true);
 
         return response()->json(['queued' => true], 202);
     }

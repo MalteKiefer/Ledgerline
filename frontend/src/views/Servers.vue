@@ -38,11 +38,18 @@
                 <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="dotClass(srv)" :title="statusLabel(srv)" />
                 <span class="truncate font-semibold">{{ srv.name }}</span>
                 <Icon v-if="srv.restricted_key" name="lock" :size="14" class="shrink-0 text-[var(--ll-muted)]" :title="t('servers.restricted_key')" />
+                <Icon v-if="!srv.enabled" name="motion_photos_paused" :size="15" class="shrink-0 text-amber-600 dark:text-amber-400" :title="t('servers.monitoring_off')" />
               </div>
               <div class="mt-0.5 truncate font-mono text-xs text-[var(--ll-muted)]">{{ srv.username }}@{{ srv.host }}<span v-if="srv.port !== 22">:{{ srv.port }}</span></div>
               </div>
             </div>
             <div class="flex shrink-0 items-center gap-1" @click.stop>
+              <Btn
+                variant="ghost" size="sm" :icon="srv.enabled ? 'motion_photos_on' : 'motion_photos_paused'"
+                :disabled="busy" :title="srv.enabled ? t('servers.monitoring_pause') : t('servers.monitoring_resume')"
+                :class="srv.enabled ? '' : 'text-amber-600 dark:text-amber-400'"
+                @click="toggleMonitoring(srv)"
+              />
               <Btn variant="ghost" size="sm" icon="refresh" :disabled="busy" :title="t('servers.refresh')" @click="doRefresh(srv)" />
               <Btn variant="ghost" size="sm" icon="edit" :title="t('servers.edit')" @click="openEdit(srv)" />
             </div>
@@ -404,6 +411,24 @@ async function doRefresh(srv: Server) {
     success(t('servers.refresh_queued'));
     // The probe runs in the worker; re-read shortly so the card updates itself.
     scheduleReload();
+  } finally { busy.value = false; }
+}
+
+/**
+ * Pause or resume the timer for one server.
+ *
+ * Only the schedule stops: the refresh button, the terminal and every action
+ * keep working, because a server nobody wants woken every five minutes is not
+ * a server nobody may look at.
+ */
+async function toggleMonitoring(srv: Server) {
+  busy.value = true;
+  try {
+    await s.update(srv.id, { enabled: !srv.enabled });
+    success(t(srv.enabled ? 'servers.monitoring_paused' : 'servers.monitoring_resumed'));
+    await s.load();
+  } catch {
+    toastError(t('common.error'));
   } finally { busy.value = false; }
 }
 

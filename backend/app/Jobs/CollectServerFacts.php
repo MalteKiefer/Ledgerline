@@ -30,14 +30,19 @@ class CollectServerFacts implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public int $serverId) {}
+    /**
+     * @param  bool  $force  A snapshot somebody asked for by hand, which runs
+     *                       even while automatic checks are paused — pausing
+     *                       silences the schedule, not the button.
+     */
+    public function __construct(public int $serverId, public bool $force = false) {}
 
     public function handle(ServerMonitor $monitor): void
     {
         // No auth context in a queue worker, so the owner scope does not apply —
         // look the row up by key and let the monitor use its stored owner.
         $server = Server::query()->withoutGlobalScopes()->whereKey($this->serverId)->first();
-        if ($server === null || ! $server->enabled) {
+        if ($server === null || (! $server->enabled && ! $this->force)) {
             return;
         }
 

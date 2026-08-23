@@ -41,7 +41,7 @@
          same: conflating the two would turn every developer database into a
          finding. -->
     <Card v-if="sec && sec.listening.length" :body-class="'p-4'">
-      <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_surface') }}</h2>
+      <SectionHead icon="radar" :label="t('servers.sec_surface')" level="h2" class="mb-1" />
       <p class="mb-3 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_surface_hint') }}</p>
 
       <div v-if="sec.addresses.length" class="mb-3 flex flex-wrap gap-1.5">
@@ -76,7 +76,7 @@
 
     <Card :body-class="'p-4'">
       <div class="mb-3 flex items-center justify-between">
-        <h2 class="text-sm font-semibold">{{ t('servers.sec_firewalls') }}</h2>
+        <SectionHead icon="shield" :label="t('servers.sec_firewalls')" level="h2" />
         <Btn variant="ghost" size="sm" icon="refresh" :disabled="secBusy" @click="loadSecurity">{{ t('servers.refresh') }}</Btn>
       </div>
 
@@ -107,7 +107,7 @@
     </Card>
 
     <Card v-if="sec && sec.bans.length" :body-class="'p-4'">
-      <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_bans') }}</h2>
+      <SectionHead icon="block" :label="t('servers.sec_bans')" level="h2" class="mb-3" />
       <div v-for="b in sec.bans" :key="b.name" class="mb-2 rounded-lg border border-[var(--ll-border)] p-3">
         <div class="flex flex-wrap items-center gap-2">
           <span class="font-medium">{{ b.name }}</span>
@@ -126,7 +126,7 @@
          web tier, and an address banned by one is unknown to the other. -->
     <Card :body-class="'p-4'">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 class="text-sm font-semibold">{{ t('servers.tab_bans') }}</h2>
+        <SectionHead icon="gavel" :label="t('servers.tab_bans')" level="h2" />
         <Btn variant="ghost" size="sm" icon="refresh" :disabled="banBusy" @click="loadBans">{{ t('servers.refresh') }}</Btn>
       </div>
 
@@ -190,7 +190,7 @@
     </Card>
 
     <Card v-if="sec && Object.keys(sec.ssh).length" :body-class="'p-4'">
-      <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_ssh') }}</h2>
+      <SectionHead icon="key" :label="t('servers.sec_ssh')" level="h2" class="mb-1" />
       <!-- From sshd's own resolved configuration, not sshd_config: an Include
            or a Match block makes the file and the running server disagree. -->
       <p class="mb-3 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_ssh_hint') }}</p>
@@ -205,7 +205,7 @@
     <!-- The judgements, not the raw settings: "PermitRootLogin yes" only means
          something to a reader who already knows it is a problem. -->
     <Card v-if="sec && Object.keys(sec.ssh).length" :body-class="'p-4'">
-      <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_ssh_findings') }}</h2>
+      <SectionHead icon="policy" :label="t('servers.sec_ssh_findings')" level="h2" class="mb-3" />
 
       <!-- Nothing to report is a result, not an empty panel: hiding the card
            when a host is clean makes a working check look like a missing one. -->
@@ -225,7 +225,7 @@
 
     <div v-if="sec && (sec.ssh_host_keys.length || sec.ssh_authorized.length)" class="grid gap-4 lg:grid-cols-2">
       <Card :body-class="'p-4'">
-        <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_host_keys') }}</h2>
+        <SectionHead icon="fingerprint" :label="t('servers.sec_host_keys')" level="h2" class="mb-1" />
         <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_host_keys_hint') }}</p>
         <div v-for="k in sec.ssh_host_keys" :key="k.fingerprint" class="border-b border-[var(--ll-border)] py-1.5 last:border-0">
           <div class="flex items-center gap-2">
@@ -237,7 +237,7 @@
       </Card>
 
       <Card :body-class="'p-4'">
-        <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_authorized') }}</h2>
+        <SectionHead icon="vpn_key" :label="t('servers.sec_authorized')" level="h2" class="mb-1" />
         <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_authorized_hint') }}</p>
         <div v-for="a in sec.ssh_authorized" :key="a.path" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1.5 last:border-0">
           <span class="truncate font-mono text-xs" :title="a.path">{{ a.path }}</span>
@@ -249,7 +249,7 @@
 
     <div v-if="sec && (sec.web.length || sec.certificates.length)" class="grid gap-4 lg:grid-cols-2">
       <Card v-if="sec.web.length" :body-class="'p-4'">
-        <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_web') }}</h2>
+        <SectionHead icon="public" :label="t('servers.sec_web')" level="h2" class="mb-3" />
         <div v-for="w in sec.web" :key="w.name" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1.5 last:border-0">
           <div>
             <div class="text-sm font-medium">{{ w.name }}</div>
@@ -260,7 +260,7 @@
       </Card>
 
       <Card v-if="sec.certificates.length" :body-class="'p-4'">
-        <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_certs') }}</h2>
+        <SectionHead icon="verified_user" :label="t('servers.sec_certs')" level="h2" class="mb-1" />
         <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_certs_hint') }}</p>
         <div v-for="c in sec.certificates" :key="c.path" class="border-b border-[var(--ll-border)] py-1.5 last:border-0">
           <div class="truncate font-mono text-xs" :title="c.path">{{ c.path }}</div>
@@ -271,7 +271,7 @@
 
     <div v-if="sec && (Object.keys(sec.sysctl).length || sec.sudoers_nopasswd.length || sec.accounts.uid_zero.length || sec.accounts.empty_password.length)" class="grid gap-4 lg:grid-cols-2">
       <Card v-if="Object.keys(sec.sysctl).length" :body-class="'p-4'">
-        <h2 class="mb-1 text-sm font-semibold">{{ t('servers.sec_kernel') }}</h2>
+        <SectionHead icon="memory" :label="t('servers.sec_kernel')" level="h2" class="mb-1" />
         <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.sec_kernel_hint') }}</p>
         <div v-for="(v, k) in sec.sysctl" :key="k" class="flex justify-between gap-3 border-b border-[var(--ll-border)] py-1 last:border-0">
           <span class="truncate font-mono text-[0.7rem] text-[var(--ll-muted)]" :title="String(k)">{{ k }}</span>
@@ -280,7 +280,7 @@
       </Card>
 
       <Card :body-class="'p-4'">
-        <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_accounts') }}</h2>
+        <SectionHead icon="group" :label="t('servers.sec_accounts')" level="h2" class="mb-3" />
 
         <!-- A second uid 0 account is a full root login under another name;
              an empty password is one anybody can use. Both are listed
@@ -305,7 +305,7 @@
     </div>
 
     <Card v-if="sec" :body-class="'p-4'">
-      <h2 class="mb-3 text-sm font-semibold">{{ t('servers.sec_updates') }}</h2>
+      <SectionHead icon="security_update_warning" :label="t('servers.sec_updates')" level="h2" class="mb-3" />
       <div class="space-y-1 text-sm">
         <div class="flex justify-between gap-3">
           <span class="text-[var(--ll-muted)]">{{ t('servers.sec_unattended') }}</span>
@@ -331,6 +331,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Badge, Btn, Card, Icon, Select } from '@spa/ui';
+import SectionHead from '@spa/components/servers/SectionHead.vue';
 import { ApiError } from '@spa/api/client';
 import { useServersStore, type BanList, type SecurityAudit } from '@spa/stores/servers';
 import { useToast } from '@spa/composables/useToast';

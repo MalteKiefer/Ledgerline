@@ -85,7 +85,7 @@
 
       <div class="grid gap-4 lg:grid-cols-2">
         <Card :body-class="'p-4'">
-          <h3 class="mb-2 text-sm font-semibold">{{ t('servers.docker_images') }}</h3>
+          <SectionHead icon="layers" :label="t('servers.docker_images')" level="h3" class="mb-2" />
           <div class="max-h-72 space-y-1 overflow-y-auto">
             <div v-for="i in state?.images ?? []" :key="i.id" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1.5 text-xs last:border-0">
               <span class="truncate font-mono" :title="`${i.repo}:${i.tag}`">{{ i.repo }}<span class="text-[var(--ll-muted)]">:{{ i.tag }}</span></span>
@@ -115,7 +115,7 @@
            difference behind a single button hides it exactly where it
            matters. -->
       <Card :body-class="'p-4'">
-        <h3 class="text-sm font-semibold">{{ t('servers.docker_prune') }}</h3>
+        <SectionHead icon="cleaning_services" :label="t('servers.docker_prune')" level="h3" />
         <p class="mt-1 text-xs text-[var(--ll-muted)]">{{ t('servers.docker_prune_hint') }}</p>
         <div class="mt-3 flex flex-wrap gap-2">
           <Btn v-for="p in pruneTargets" :key="p" variant="soft" size="sm" :disabled="acting" @click="prune(p)">
@@ -131,6 +131,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Badge, Btn, Card, Icon, Select } from '@spa/ui';
+import SectionHead from '@spa/components/servers/SectionHead.vue';
 import { useServersStore, type DockerContainer, type DockerState } from '@spa/stores/servers';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import StatTile from './StatTile.vue';

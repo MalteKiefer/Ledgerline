@@ -2,7 +2,7 @@
   <div class="space-y-4">
     <Card :body-class="'p-4'">
       <div class="mb-3 flex items-center justify-between gap-2">
-        <h2 class="text-sm font-semibold">{{ t('servers.panel_title') }}</h2>
+        <SectionHead icon="admin_panel_settings" :label="t('servers.panel_title')" level="h2" />
         <Btn variant="ghost" size="sm" icon="refresh" :disabled="busy" @click="load">{{ t('servers.refresh') }}</Btn>
       </div>
 
@@ -65,7 +65,7 @@
     <!-- Kept apart from the detections on purpose. These are ports panels tend
          to use with nothing claiming them -- a lead to follow, not a finding. -->
     <Card v-if="data?.candidates.length" :body-class="'p-4'">
-      <h2 class="mb-1 text-sm font-semibold">{{ t('servers.panel_candidates') }}</h2>
+      <SectionHead icon="help" :label="t('servers.panel_candidates')" level="h2" class="mb-1" />
       <p class="mb-2 text-xs text-[var(--ll-muted)]">{{ t('servers.panel_candidates_hint') }}</p>
 
       <div v-for="c in data.candidates" :key="c.port" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
@@ -81,6 +81,7 @@
 import { ref, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, Badge } from '@spa/ui';
+import SectionHead from '@spa/components/servers/SectionHead.vue';
 import { useServersStore, type PanelStatus, type HostingPanel } from '@spa/stores/servers';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';

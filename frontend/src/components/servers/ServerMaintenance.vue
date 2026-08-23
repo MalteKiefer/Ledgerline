@@ -5,7 +5,7 @@
     <Card :body-class="'p-4'">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 class="text-sm font-semibold">{{ t('servers.updates') }}</h2>
+          <SectionHead icon="system_update_alt" :label="t('servers.updates')" level="h2" />
           <p v-if="updates" class="text-[0.7rem] text-[var(--ll-muted)]">
             {{ updates.kind === 'none' ? t('servers.updates_no_manager') : t('servers.updates_count', { n: String(updates.packages.length), s: String(securityCount) }) }}
           </p>
@@ -52,7 +52,7 @@
          cleanup jobs live — the things nobody notices are broken until the
          moment they are needed. -->
     <Card v-if="facts?.timers?.units.length || facts?.backup_tools?.length" :body-class="'p-4'">
-      <h2 class="mb-1 text-sm font-semibold">{{ t('servers.scheduled') }}</h2>
+      <SectionHead icon="schedule" :label="t('servers.scheduled')" level="h2" class="mb-1" />
 
       <p v-if="facts?.timers?.failed.length" class="mb-2 flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
         <Icon name="error" :size="16" />
@@ -87,7 +87,7 @@
     <!-- Who has been on the machine. fail2ban shows who got banned; somebody
          trying a hundred times without being banned is invisible without this. -->
     <Card v-if="facts?.logins?.length || facts?.failed_logins !== undefined" :body-class="'p-4'">
-      <h2 class="mb-1 text-sm font-semibold">{{ t('servers.logins') }}</h2>
+      <SectionHead icon="login" :label="t('servers.logins')" level="h2" class="mb-1" />
       <p class="mb-2 text-[0.7rem] text-[var(--ll-muted)]">
         <template v-if="facts?.failed_logins === null">{{ t('servers.failed_logins_unknown') }}</template>
         <template v-else-if="facts?.failed_logins !== undefined">{{ t('servers.failed_logins', { n: String(facts.failed_logins) }) }}</template>
@@ -103,7 +103,7 @@
     <Card :body-class="'p-4'">
       <div class="mb-3 flex flex-wrap items-end gap-2">
         <div class="flex-1">
-          <h2 class="text-sm font-semibold">{{ t('servers.disk_usage') }}</h2>
+          <SectionHead icon="pie_chart" :label="t('servers.disk_usage')" level="h2" />
           <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.disk_usage_hint') }}</p>
         </div>
         <label class="w-64">
@@ -163,6 +163,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Badge, Btn, Card, Icon } from '@spa/ui';
+import SectionHead from '@spa/components/servers/SectionHead.vue';
 import { useServersStore, type DiskUsage, type PendingUpdates, type ServerFacts } from '@spa/stores/servers';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';

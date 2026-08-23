@@ -93,7 +93,7 @@ final class PanelInspector
         return [
             'ok' => true,
             'panels' => $panels,
-            'candidates' => $this->candidates($listen, $panels),
+            'candidates' => $this->candidates($listen, $panels, (int) $server->port),
             'error' => null,
         ];
     }
@@ -345,9 +345,12 @@ final class PanelInspector
      *
      * @param  list<array{port:int,address:string,process:string|null}>  $listen
      * @param  list<array<string,mixed>>  $panels
+     * @param  int  $sshPort  The port this connection arrived on. DirectAdmin
+     *                        also uses 2222, and reporting the door we came
+     *                        through as a possible panel is pure noise.
      * @return list<array<string,string|int|null>>
      */
-    private function candidates(array $listen, array $panels): array
+    private function candidates(array $listen, array $panels, int $sshPort): array
     {
         $hints = [
             2082 => 'cPanel', 2083 => 'cPanel', 2086 => 'WHM', 2087 => 'WHM', 2222 => 'DirectAdmin',
@@ -366,10 +369,18 @@ final class PanelInspector
             }
         }
 
+        // Processes that are plainly something else. A panel does not run as
+        // sshd, and saying "possible DirectAdmin" over an SSH daemon teaches
+        // people to ignore this list.
+        $notPanels = ['sshd', 'ssh'];
+
         $out = [];
         $seen = [];
         foreach ($listen as $row) {
             if (! isset($hints[$row['port']]) || isset($taken[$row['port']]) || isset($seen[$row['port']])) {
+                continue;
+            }
+            if ($row['port'] === $sshPort || in_array((string) $row['process'], $notPanels, true)) {
                 continue;
             }
             $seen[$row['port']] = true;
