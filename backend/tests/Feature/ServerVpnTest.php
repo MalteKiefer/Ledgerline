@@ -151,6 +151,71 @@ class ServerVpnTest extends TestCase
     }
 
     #[Test]
+    public function a_bare_openvpn_package_is_not_a_vpn(): void
+    {
+        // Debian's plain openvpn.service starts nothing -- it collects the
+        // openvpn@name instances and sits at "active (exited)" on every host
+        // that merely has the package installed. Found on a real host, which
+        // was showing "OpenVPN connected" with no tunnel anywhere.
+        $out = '##LL:netbird
+__absent__
+##LL:netbird_unit
+LoadState=not-found
+'
+            .'##LL:wg
+__absent__
+'
+            .'##LL:ovpn_units
+openvpn.service loaded active exited OpenVPN service
+'
+            .'##LL:ovpn_conf
+
+##LL:links
+lo
+eth0
+##LL:end
+';
+
+        $result = (new VpnInspector(new VpnRecordingProbe([['ok' => true, 'out' => $out]])))
+            ->inspect($this->server(User::factory()->create()));
+
+        $this->assertSame([], $result['providers']);
+    }
+
+    #[Test]
+    public function an_openvpn_instance_that_ran_and_finished_is_not_connected(): void
+    {
+        $out = '##LL:netbird
+__absent__
+##LL:netbird_unit
+LoadState=not-found
+'
+            .'##LL:wg
+__absent__
+'
+            .'##LL:ovpn_units
+openvpn@office.service loaded active exited OpenVPN office
+'
+            .'##LL:ovpn_conf
+/etc/openvpn/office.conf
+##LL:links
+lo
+eth0
+##LL:end
+';
+
+        $result = (new VpnInspector(new VpnRecordingProbe([['ok' => true, 'out' => $out]])))
+            ->inspect($this->server(User::factory()->create()));
+
+        $ovpn = $result['providers'][0];
+        $this->assertSame('openvpn', $ovpn['id']);
+        // The instance exists, so the provider is reported -- but "exited" is a
+        // unit that finished, not a tunnel that is up.
+        $this->assertFalse($ovpn['connected']);
+        $this->assertSame('office', $ovpn['facts']['configs']);
+    }
+
+    #[Test]
     public function an_unknown_provider_never_reaches_the_host(): void
     {
         $user = User::factory()->create();

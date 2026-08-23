@@ -376,19 +376,29 @@ final class VpnInspector
             $configs[] = basename($line, '.conf');
         }
 
-        if ($units === [] && $configs === []) {
+        // Debian ships a plain `openvpn.service` that starts nothing: it is a
+        // collector for the openvpn@name instances, and it sits at
+        // "active (exited)" on every host that merely has the package. Counting
+        // it would give a VPN entry to machines that have no tunnel at all.
+        $instances = array_values(array_filter($units, fn (array $u): bool => str_contains($u['name'], '@')));
+        $tunnels = array_values(array_filter($links, fn (string $l): bool => str_starts_with($l, 'tun') || str_starts_with($l, 'tap')));
+
+        if ($instances === [] && $configs === [] && $tunnels === []) {
             return null;
         }
 
-        $tunnels = array_values(array_filter($links, fn (string $l): bool => str_starts_with($l, 'tun') || str_starts_with($l, 'tap')));
-        $running = array_values(array_filter($units, fn (array $u): bool => $u['active'] === 'active'));
+        // "exited" is a unit that ran and finished, not a tunnel that is up.
+        $running = array_values(array_filter($instances, fn (array $u): bool => $u['active'] === 'active' && $u['sub'] === 'running'));
 
         return [
             'id' => 'openvpn',
             'name' => 'OpenVPN',
             'installed' => true,
-            'unit' => $units[0] ?? null,
-            'connected' => $running !== [],
+            'unit' => $instances[0] ?? null,
+            // A tunnel interface is evidence of carried traffic; a running
+            // instance is evidence of intent. Either will do, neither is
+            // implied by the package being installed.
+            'connected' => $running !== [] || $tunnels !== [],
             'address' => null,
             'hostname' => null,
             'version' => null,
@@ -398,7 +408,7 @@ final class VpnInspector
                 'tunnels' => $tunnels === [] ? null : implode(', ', $tunnels),
                 'configs' => $configs === [] ? null : implode(', ', $configs),
             ], fn ($v): bool => $v !== null),
-            'units' => $units,
+            'units' => $instances,
             'peers' => [],
             'peers_connected' => 0,
             'peers_total' => 0,
