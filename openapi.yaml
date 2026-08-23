@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.721.0
+  version: 1.722.0
   license:
     name: Proprietary
   description: >
@@ -8577,6 +8577,132 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/vpn:
+    get:
+      tags: [Servers]
+      operationId: serversVpn
+      summary: Which overlay network this host is on, and how it is doing
+      description: >
+        NetBird, Tailscale, ZeroTier, WireGuard and OpenVPN. Four of the five are
+        read from a machine format -- three speak JSON, WireGuard has a stable
+        tab-separated dump -- rather than from the text meant for a person, so a
+        field containing a space is not a parsing problem. OpenVPN has no status
+        command at all and is reported from its units, its configuration files
+        and its tunnel interfaces instead.
+
+
+        A provider missing from the answer means it was not found. A provider
+        present with `installed: true` and `facts.access = denied` means the tool
+        is there but reading it needs privilege this account does not have --
+        which is the opposite of "no tunnels", and never shown as such.
+        Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Every provider found on the host.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: [string, "null"] }
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, enum: [netbird, tailscale, zerotier, wireguard, openvpn] }
+                        name: { type: string }
+                        installed: { type: boolean }
+                        connected: { type: boolean }
+                        address: { type: [string, "null"] }
+                        hostname: { type: [string, "null"] }
+                        version: { type: [string, "null"] }
+                        unit:
+                          type: [object, "null"]
+                          properties:
+                            load: { type: string }
+                            active: { type: string }
+                            sub: { type: string }
+                        facts: { type: object, additionalProperties: { type: string } }
+                        peers_connected: { type: integer }
+                        peers_total: { type: integer }
+                        peers:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              name: { type: [string, "null"] }
+                              address: { type: [string, "null"] }
+                              status: { type: [string, "null"] }
+                              route: { type: [string, "null"], description: "P2P or Relayed: a direct link, or a hop through someone else's server." }
+                              relay: { type: [string, "null"] }
+                              last_handshake: { type: [string, "null"] }
+                              rx: { type: [integer, "null"] }
+                              tx: { type: [integer, "null"] }
+                              latency_ns: { type: [integer, "null"] }
+                        networks: { type: array, description: "ZeroTier only.", items: { type: object } }
+                        interfaces: { type: array, description: "WireGuard only.", items: { type: object } }
+                        units: { type: array, description: "OpenVPN only.", items: { type: object } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/vpn/action:
+    post:
+      tags: [Servers]
+      operationId: serversVpnAction
+      summary: Bring an overlay network up, down or round again
+      description: >
+        The verb comes from a fixed set and the command from a fixed table in
+        source; nothing from the request becomes part of it. A per-tunnel
+        provider (WireGuard, OpenVPN) additionally names its unit, validated
+        against the same pattern as any other service.
+
+
+        Audited BEFORE the command is sent: taking down the network this app
+        reaches the host through means the answer may never arrive, and an
+        action that leaves no trace when it works is worse than none. For that
+        reason a dropped connection counts as success for `down` and `restart` --
+        the drop is the effect -- while `up` reports it as unreachable.
+        Throttled 10/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, action]
+              properties:
+                provider: { type: string, enum: [netbird, tailscale, zerotier, wireguard, openvpn] }
+                action: { type: string, enum: [up, down, restart] }
+                unit: { type: string, description: "Required for wireguard and openvpn: the systemd unit of the tunnel." }
+      responses:
+        "200":
+          description: What the host said.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string }
+                  error: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Unknown provider or verb; nothing reached the host.", content: { application/json: { schema: { type: object, properties: { error: { type: string } } } } } }
         "429": { $ref: "#/components/responses/RateLimited" }
   /servers/{server}/role-details:
     get:

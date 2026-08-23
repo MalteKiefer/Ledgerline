@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\Server;
 use App\Services\Servers\ServerControl;
+use App\Services\Servers\VpnInspector;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -24,7 +25,52 @@ use Illuminate\Validation\Rule;
  */
 class ServerControlController extends Controller
 {
-    public function __construct(private ServerControl $control) {}
+    public function __construct(
+        private ServerControl $control,
+        private VpnInspector $vpn,
+    ) {}
+
+    /** Which overlay network this host is on, and how it is doing. */
+    public function vpn(Request $request, Server $server): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json($this->vpn->inspect($server))->header('Cache-Control', 'no-store');
+    }
+
+    /**
+     * Bring an overlay network up, down or round again.
+     *
+     * Audited before the command is sent, not after: taking down the network
+     * this app reaches the host through means the answer may never come back,
+     * and an action that leaves no trace when it works is worse than none.
+     */
+    public function vpnAction(Request $request, Server $server): JsonResponse
+    {
+        $user = $this->requireUser($request);
+
+        $request->validate([
+            'provider' => ['required', 'string', 'max:32'],
+            'action' => ['required', Rule::in(ServerControl::VPN_ACTIONS)],
+            'unit' => ['nullable', 'string', 'max:128'],
+        ]);
+
+        $provider = $request->string('provider')->value();
+        $action = $request->string('action')->value();
+        $unit = $request->string('unit')->value();
+
+        AuditLog::record('server.vpn_action', $server, [
+            'server' => $server->name,
+            'provider' => $provider,
+            'action' => $action,
+            'unit' => $unit === '' ? null : $unit,
+        ], $user->id);
+
+        $result = $this->control->vpnAction($server, $provider, $action, $unit);
+
+        return response()->json($result, $result['error'] === 'invalid_selection' ? 422 : 200)
+            ->header('Cache-Control', 'no-store');
+    }
 
     public function services(Request $request, Server $server): JsonResponse
     {
