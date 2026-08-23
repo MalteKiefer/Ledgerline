@@ -35,7 +35,11 @@ final class PanelInspector
      */
     private const SCRIPT = <<<'SH'
     printf "\n##LL:plesk\n"; command -v plesk >/dev/null 2>&1 && plesk version 2>/dev/null | head -6 || echo "__absent__"
-    printf "\n##LL:plesk_counts\n"; if command -v plesk >/dev/null 2>&1; then printf "domains=%s\n" "$(plesk bin domain --list 2>/dev/null | grep -c .)"; printf "subscriptions=%s\n" "$(plesk bin subscription --list 2>/dev/null | grep -c .)"; printf "customers=%s\n" "$(plesk bin customer --list 2>/dev/null | grep -c .)"; else echo "__absent__"; fi
+    printf "\n##LL:plesk_counts\n"; if command -v plesk >/dev/null 2>&1; then plesk db -Ne "select (select count(*) from domains), (select count(*) from domains where status=0), (select count(*) from domains where webspace_id=0), (select count(*) from clients), (select count(*) from mail), (select count(*) from data_bases), (select round(sum(real_size)/1073741824,1) from domains)" 2>/dev/null; else echo "__absent__"; fi
+    printf "\n##LL:plesk_php\n"; command -v plesk >/dev/null 2>&1 && plesk db -Ne "select h.php_handler_id, count(*) from hosting h group by 1 order by 2 desc" 2>/dev/null | head -20 || echo "__absent__"
+    printf "\n##LL:plesk_domains\n"; command -v plesk >/dev/null 2>&1 && plesk db -Ne "select d.name, d.status, h.ssl, h.php_handler_id, round(d.real_size/1048576) from domains d left join hosting h on h.dom_id=d.id order by d.real_size desc limit 25" 2>/dev/null || echo "__absent__"
+    printf "\n##LL:plesk_clients\n"; command -v plesk >/dev/null 2>&1 && plesk db -Ne "select c.pname, c.status, count(d.id) from clients c left join domains d on d.cl_id=c.id group by c.id order by 3 desc limit 15" 2>/dev/null || echo "__absent__"
+    printf "\n##LL:plesk_ext\n"; command -v plesk >/dev/null 2>&1 && plesk bin extension --list 2>/dev/null | head -30 || echo "__absent__"
     printf "\n##LL:cpanel\n"; [ -x /usr/local/cpanel/cpanel ] && /usr/local/cpanel/cpanel -V 2>/dev/null || echo "__absent__"
     printf "\n##LL:cpanel_users\n"; [ -d /var/cpanel/users ] && ls -1 /var/cpanel/users 2>/dev/null | grep -c . || echo "__absent__"
     printf "\n##LL:directadmin\n"; [ -x /usr/local/directadmin/directadmin ] && /usr/local/directadmin/directadmin v 2>/dev/null | head -3 || echo "__absent__"
@@ -119,7 +123,8 @@ final class PanelInspector
                     'build' => $this->firstMatch($s['plesk'] ?? '', '/Build date:\s*(.+)$/mi'),
                     'revision' => $this->firstMatch($s['plesk'] ?? '', '/Revision:\s*(.+)$/mi'),
                 ]),
-                'counts' => $this->numbers($this->pairs($s['plesk_counts'] ?? '')),
+                'counts' => $this->pleskCounts($s['plesk_counts'] ?? ''),
+                'details' => $this->pleskDetails($s),
                 'unit' => $this->pickUnit($units, ['psa.service', 'sw-cp-server.service']),
                 'ports' => $this->portsOf($listen, [8443, 8880]),
                 'path' => '/usr/local/psa',
@@ -278,6 +283,113 @@ final class PanelInspector
     }
 
     /**
+     * The one summary row, in the order the query asks for it.
+     *
+     * @return array<string,int>
+     */
+    private function pleskCounts(string $raw): array
+    {
+        $line = $this->lines($raw)[0] ?? '';
+        $f = explode("\t", $line);
+        if (count($f) < 7) {
+            return [];
+        }
+
+        $keys = ['domains', 'domains_active', 'subscriptions', 'customers', 'mailboxes', 'databases'];
+        $out = [];
+        foreach ($keys as $i => $key) {
+            if (is_numeric($f[$i])) {
+                $out[$key] = (int) $f[$i];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * What Plesk knows about the sites it runs.
+     *
+     * The PHP breakdown is the part worth the trip: a panel host commonly
+     * carries a handler that has been out of support for years, and the count
+     * per version says immediately whether that is one forgotten site or a
+     * third of the machine.
+     *
+     * @param  array<string,string>  $s
+     * @return array<string,mixed>
+     */
+    private function pleskDetails(array $s): array
+    {
+        $php = [];
+        foreach ($this->lines($s['plesk_php'] ?? '') as $line) {
+            $f = explode("\t", $line);
+            if (count($f) < 2 || ! is_numeric($f[1])) {
+                continue;
+            }
+            $php[] = [
+                'handler' => $f[0],
+                'version' => $this->phpVersion($f[0]),
+                'count' => (int) $f[1],
+            ];
+        }
+
+        $domains = [];
+        foreach ($this->lines($s['plesk_domains'] ?? '') as $line) {
+            $f = explode("\t", $line);
+            if (count($f) < 5) {
+                continue;
+            }
+            $domains[] = [
+                'name' => $f[0],
+                // Plesk's status is a bitmask and only zero is unambiguous, so
+                // the rest is reported as "not active" rather than guessed at.
+                'active' => $f[1] === '0',
+                'ssl' => $f[2] === 'true',
+                'php' => $this->phpVersion($f[3]),
+                'size_mb' => is_numeric($f[4]) ? (int) $f[4] : null,
+            ];
+        }
+
+        $clients = [];
+        foreach ($this->lines($s['plesk_clients'] ?? '') as $line) {
+            $f = explode("\t", $line);
+            if (count($f) < 3) {
+                continue;
+            }
+            $clients[] = [
+                'name' => $f[0],
+                'active' => $f[1] === '0',
+                'domains' => is_numeric($f[2]) ? (int) $f[2] : 0,
+            ];
+        }
+
+        $extensions = [];
+        foreach ($this->lines($s['plesk_ext'] ?? '') as $line) {
+            $cut = strpos($line, ' - ');
+            $extensions[] = $cut === false ? trim($line) : trim(substr($line, $cut + 3));
+        }
+
+        $disk = null;
+        $summary = explode("\t", $this->lines($s['plesk_counts'] ?? '')[0] ?? '');
+        if (isset($summary[6]) && is_numeric($summary[6])) {
+            $disk = (float) $summary[6];
+        }
+
+        return array_filter([
+            'php' => $php,
+            'domains' => $domains,
+            'clients' => $clients,
+            'extensions' => array_slice(array_filter($extensions), 0, 30),
+            'disk_gb' => $disk,
+        ], fn ($v): bool => $v !== null && $v !== []);
+    }
+
+    /** `plesk-php82-fpm-dedicated` is 8.2; anything unrecognised stays unknown. */
+    private function phpVersion(string $handler): ?string
+    {
+        return preg_match('/php(\d)(\d)/', $handler, $m) === 1 ? $m[1].'.'.$m[2] : null;
+    }
+
+    /**
      * Panels that live in a container rather than on the host.
      *
      * Recognised by image, never by container name: a container called "plesk"
@@ -329,6 +441,7 @@ final class PanelInspector
                     'facts' => [],
                     'counts' => [],
                     'note' => null,
+                    'details' => [],
                 ];
             }
         }
@@ -426,6 +539,7 @@ final class PanelInspector
             'facts' => $this->arr($data['facts'] ?? null),
             'counts' => $this->arr($data['counts'] ?? null),
             'note' => is_string($data['note'] ?? null) ? $data['note'] : null,
+            'details' => $this->arr($data['details'] ?? null),
         ];
     }
 
@@ -527,22 +641,6 @@ final class PanelInspector
             $pos = strpos($line, '=');
             if ($pos !== false) {
                 $out[trim(substr($line, 0, $pos))] = trim(substr($line, $pos + 1), " \t'\"");
-            }
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param  array<string,string>  $pairs
-     * @return array<string,int>
-     */
-    private function numbers(array $pairs): array
-    {
-        $out = [];
-        foreach ($pairs as $key => $value) {
-            if (is_numeric($value)) {
-                $out[$key] = (int) $value;
             }
         }
 

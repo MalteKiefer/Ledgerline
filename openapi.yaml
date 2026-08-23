@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.732.0
+  version: 1.733.0
   license:
     name: Proprietary
   description: >
@@ -8659,6 +8659,48 @@ paths:
                         facts: { type: object, additionalProperties: { type: string } }
                         counts: { type: object, additionalProperties: { type: integer } }
                         note: { type: [string, "null"] }
+                        details:
+                          type: object
+                          description: >
+                            Panel-specific detail, empty for panels that have
+                            none. Plesk answers from its own database in tens of
+                            milliseconds, so this rides along in the same round
+                            trip: the PHP handler in use per site (the figure
+                            that turns into work -- a version out of support is
+                            not a detail), the largest domains with their TLS
+                            and status, the customers, and the installed
+                            extensions. A domain counts as active only on
+                            Plesk's status 0; the rest of that bitmask is
+                            reported as "not active" rather than guessed at.
+                          properties:
+                            php:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  handler: { type: string }
+                                  version: { type: [string, "null"] }
+                                  count: { type: integer }
+                            domains:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  name: { type: string }
+                                  active: { type: boolean }
+                                  ssl: { type: boolean }
+                                  php: { type: [string, "null"] }
+                                  size_mb: { type: [integer, "null"] }
+                            clients:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  name: { type: string }
+                                  active: { type: boolean }
+                                  domains: { type: integer }
+                            extensions: { type: array, items: { type: string } }
+                            disk_gb: { type: number }
                   candidates:
                     type: array
                     items:

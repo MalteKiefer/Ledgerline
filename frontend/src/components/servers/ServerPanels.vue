@@ -58,6 +58,52 @@
           </div>
 
           <p v-if="p.note" class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t(`servers.panel_note_${p.note}`) }}</p>
+
+          <!-- What the panel itself knows. The PHP breakdown leads because it
+               is the one figure that turns into work: a handler out of support
+               is not a detail, and the count says whether that is one forgotten
+               site or a third of the machine. -->
+          <div v-if="p.details?.php?.length" class="mt-3">
+            <SectionHead icon="php" :label="t('servers.panel_php')" level="h3" class="mb-1.5" />
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="h in p.details.php" :key="h.handler"
+                class="rounded-full px-2 py-0.5 text-[0.7rem]"
+                :class="phpTone(h.version)"
+                :title="h.handler"
+              >
+                PHP {{ h.version ?? '?' }} · {{ h.count }}
+                <span v-if="phpState(h.version)" class="opacity-80">· {{ t(`servers.panel_php_${phpState(h.version)}`) }}</span>
+              </span>
+            </div>
+          </div>
+
+          <div v-if="p.details?.domains?.length" class="mt-3">
+            <SectionHead icon="language" :label="t('servers.panel_domains')" level="h3" class="mb-1.5" />
+            <div class="max-h-72 overflow-y-auto">
+              <div v-for="d in p.details.domains" :key="d.name" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+                <Icon :name="d.ssl ? 'lock' : 'lock_open'" :size="14" :class="d.ssl ? 'text-[var(--ll-muted)]' : 'text-amber-600 dark:text-amber-400'" :title="d.ssl ? 'TLS' : t('servers.panel_no_tls')" />
+                <span class="truncate font-mono" :class="d.active ? '' : 'text-[var(--ll-muted)] line-through'">{{ d.name }}</span>
+                <span v-if="d.php" class="shrink-0 rounded px-1.5 text-[0.65rem]" :class="phpTone(d.php)">{{ d.php }}</span>
+                <span v-if="!d.active" class="shrink-0 text-[0.65rem] text-[var(--ll-muted)]">{{ t('servers.panel_inactive') }}</span>
+                <span v-if="d.size_mb !== null" class="ml-auto shrink-0 tabular-nums text-[var(--ll-muted)]">{{ fmtSize(d.size_mb) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="p.details?.clients?.length" class="mt-3">
+            <SectionHead icon="group" :label="t('servers.panel_customers')" level="h3" class="mb-1.5" />
+            <div class="flex flex-wrap gap-1.5">
+              <span v-for="c in p.details.clients" :key="c.name" class="rounded-full bg-black/[0.04] px-2 py-0.5 text-[0.7rem] dark:bg-white/[0.06]">
+                {{ c.name }} <span class="text-[var(--ll-muted)]">{{ c.domains }}</span>
+              </span>
+            </div>
+          </div>
+
+          <div v-if="p.details?.extensions?.length" class="mt-3">
+            <SectionHead icon="extension" :label="t('servers.panel_extensions')" level="h3" class="mb-1.5" />
+            <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ p.details.extensions.join(' · ') }}</p>
+          </div>
         </div>
       </div>
     </Card>
@@ -95,6 +141,34 @@ const data = ref<PanelStatus | null>(null);
 const busy = ref(false);
 const acting = ref(false);
 const error = ref('');
+
+/**
+ * Where a PHP version stands today.
+ *
+ * Only what is settled is claimed: anything below 8.2 has no support of any
+ * kind left, 8.2 still gets security fixes into December 2026, and newer is
+ * simply current. An unrecognised handler is left alone rather than guessed at.
+ */
+function phpState(version: string | null): string {
+  if (!version) return '';
+  const [major, minor] = version.split('.').map(Number);
+  if (major < 8 || (major === 8 && minor < 2)) return 'eol';
+  if (major === 8 && minor === 2) return 'security';
+
+  return '';
+}
+
+function phpTone(version: string | null): string {
+  const state = phpState(version);
+  if (state === 'eol') return 'bg-red-500/10 text-red-600 dark:text-red-400';
+  if (state === 'security') return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
+
+  return 'bg-black/[0.04] text-[var(--ll-muted)] dark:bg-white/[0.06]';
+}
+
+function fmtSize(mb: number): string {
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
+}
 
 async function load(): Promise<void> {
   busy.value = true;
