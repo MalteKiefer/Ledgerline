@@ -166,52 +166,6 @@ class ServerPanelTest extends TestCase
     }
 
     #[Test]
-    public function a_backup_agent_is_reported_apart_from_the_panels(): void
-    {
-        $out = "##LL:acronis_units\n"
-            ."acronis_mms.service active running\naakore.service active running\n"
-            ."##LL:acronis_acts\n"
-            ."Name                  Machine               State                 Progress    Start Time            Elapsed Time  Estimated Time  GUID                  Resource              Result\n"
-            ."--------------------  --------------------  --------------------  ----------  --------------------  ------------  --------------  --------------------  --------------------  --------------------\n"
-            ."Backing up            apps.example          completed             100%        23.08.2026 16:18:41   00:03:21      00:03:21        B7965F5E-4357-...     etc, home, opt, ...   Succeeded\n"
-            ."##LL:units\n##LL:listen\n";
-
-        $result = $this->inspect($out);
-
-        // It protects the machine rather than managing it, so it is not a panel.
-        $this->assertSame([], $result['panels']);
-        $this->assertSame('Acronis Cyber Protect', $result['backup']['agent']);
-        $this->assertSame('acronis_mms.service', $result['backup']['services'][0]['unit']);
-        $this->assertTrue($result['backup']['services'][0]['active']);
-        $this->assertSame('Backing up', $result['backup']['activities'][0]['name']);
-        $this->assertSame('completed', $result['backup']['activities'][0]['state']);
-        $this->assertSame('Succeeded', $result['backup']['activities'][0]['result']);
-        $this->assertFalse($result['backup']['unreadable']);
-    }
-
-    #[Test]
-    public function an_agent_that_could_not_be_asked_is_not_a_host_without_backups(): void
-    {
-        $out = "##LL:acronis_units\nacronis_mms.service active running\n"
-            ."##LL:acronis_acts\n__error__\n##LL:units\n##LL:listen\n";
-
-        $backup = $this->inspect($out)['backup'];
-
-        $this->assertSame([], $backup['activities']);
-        // The distinction that matters: only one of these two should let
-        // somebody relax.
-        $this->assertTrue($backup['unreadable']);
-    }
-
-    #[Test]
-    public function a_host_with_no_backup_agent_says_nothing_rather_than_nothing_found(): void
-    {
-        $out = "##LL:acronis_units\n__absent__\n##LL:acronis_acts\n__absent__\n##LL:units\n##LL:listen\n";
-
-        $this->assertNull($this->inspect($out)['backup']);
-    }
-
-    #[Test]
     public function a_site_action_outside_the_fixed_set_never_reaches_the_host(): void
     {
         $probe = new VpnRecordingProbe;

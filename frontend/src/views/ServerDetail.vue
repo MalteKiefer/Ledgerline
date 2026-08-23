@@ -148,6 +148,10 @@
     </template>
 
 
+    <template v-else-if="tab === 'backup'">
+      <ServerBackup :server-id="server.id" />
+    </template>
+
     <template v-else-if="tab === 'panels'">
       <ServerPanels :server-id="server.id" />
     </template>
@@ -245,6 +249,7 @@ import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import ServerFiles from '@spa/components/ServerFiles.vue';
+import ServerBackup from '@spa/components/servers/ServerBackup.vue';
 import ServerPanels from '@spa/components/servers/ServerPanels.vue';
 import ServerVpn from '@spa/components/servers/ServerVpn.vue';
 import ServerLogs from '@spa/components/servers/ServerLogs.vue';
@@ -420,7 +425,7 @@ async function doDelete() {
 
 // ---- tabs ----
 
-type Tab = 'overview' | 'logs' | 'security' | 'services' | 'docker' | 'panels' | 'vpn' | 'maintenance' | 'processes' | 'files' | 'terminal' | 'removal';
+type Tab = 'overview' | 'logs' | 'security' | 'services' | 'docker' | 'backup' | 'panels' | 'vpn' | 'maintenance' | 'processes' | 'files' | 'terminal' | 'removal';
 
 const tab = ref<Tab>('overview');
 
@@ -437,6 +442,7 @@ const tabs = computed<{ id: Tab; label: string; icon: string }[]>(() => [
   { id: 'logs', label: t('servers.tab_logs'), icon: 'article' },
   { id: 'security', label: t('servers.tab_security'), icon: 'shield' },
   { id: 'maintenance', label: t('servers.tab_maintenance'), icon: 'build' },
+  { id: 'backup', label: t('servers.tab_backup'), icon: 'backup' },
   { id: 'panels', label: t('servers.tab_panels'), icon: 'admin_panel_settings' },
   { id: 'vpn', label: t('servers.tab_vpn'), icon: 'vpn_lock' },
   { id: 'files', label: t('servers.tab_files'), icon: 'folder' },

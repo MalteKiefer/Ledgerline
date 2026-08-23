@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\Server;
+use App\Services\Servers\BackupInspector;
 use App\Services\Servers\PanelInspector;
 use App\Services\Servers\ServerControl;
 use App\Services\Servers\VpnInspector;
@@ -30,7 +31,22 @@ class ServerControlController extends Controller
         private ServerControl $control,
         private VpnInspector $vpn,
         private PanelInspector $panels,
+        private BackupInspector $backups,
     ) {}
+
+    /**
+     * How this host is backed up, and whether it happened.
+     *
+     * Its own tab rather than a corner of the panel one: a backup agent does
+     * not manage the machine, and most machines here are protected by a cron
+     * line rather than by anything a panel knows about.
+     */
+    public function backup(Request $request, Server $server): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json($this->backups->inspect($server))->header('Cache-Control', 'no-store');
+    }
 
     /** Which hosting control panel owns this machine, if any. */
     public function panels(Request $request, Server $server): JsonResponse

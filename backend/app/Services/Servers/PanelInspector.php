@@ -64,8 +64,6 @@ final class PanelInspector
     printf "\n##LL:cockpit\n"; command -v cockpit-bridge >/dev/null 2>&1 && cockpit-bridge --version 2>/dev/null | head -2 || echo "__absent__"
     printf "\n##LL:runcloud\n"; if [ -d /etc/runcloud ]; then echo "installed"; else echo "__absent__"; fi
     printf "\n##LL:serverpilot\n"; if [ -d /etc/serverpilot ]; then echo "installed"; else echo "__absent__"; fi
-    printf "\n##LL:acronis_units\n"; systemctl list-units --all --no-legend --plain 2>/dev/null | grep -Ei 'acronis|aakore|cyber-protect' | awk '{print $1" "$3" "$4}' | head -10 || echo "__absent__"
-    printf "\n##LL:acronis_acts\n"; if command -v acrocmd >/dev/null 2>&1; then timeout 15 acrocmd list activities 2>/dev/null | head -14 || echo "__error__"; else echo "__absent__"; fi
     printf "\n##LL:units\n"; systemctl list-units --type=service --all --no-legend --plain 2>/dev/null | awk '{print $1" "$3" "$4}' | grep -Ei 'psa|sw-cp|cpanel|cpsrvd|directadmin|ispconfig|webmin|usermin|lscpd|lshttpd|hestia|vesta|aapanel|cockpit|froxlor|keyhelp|runcloud|serverpilot' | head -30 || echo "__absent__"
     printf "\n##LL:containers\n"; command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null | grep -Ei 'portainer|coolify|caprover|cloudron|yunohost|easypanel|dokploy|proxy-manager' | head -20 || echo "__absent__"
     printf "\n##LL:listen\n"; if command -v ss >/dev/null 2>&1; then ss -H -ltnp 2>/dev/null; else echo "__absent__"; fi
@@ -76,18 +74,18 @@ final class PanelInspector
     /**
      * Every panel this host has, plus what merely looks like one.
      *
-     * @return array{ok:bool,panels:list<array<string,mixed>>,candidates:list<array<string,string|int|null>>,backup:array<string,mixed>|null,error:string|null}
+     * @return array{ok:bool,panels:list<array<string,mixed>>,candidates:list<array<string,string|int|null>>,error:string|null}
      */
     public function inspect(Server $server): array
     {
         $key = (string) $server->host_key;
         if ($key === '') {
-            return ['ok' => false, 'panels' => [], 'candidates' => [], 'backup' => null, 'error' => 'no_host_key'];
+            return ['ok' => false, 'panels' => [], 'candidates' => [], 'error' => 'no_host_key'];
         }
 
         $result = $this->probe->exec(ServerTarget::fromServer($server), $key, self::SCRIPT, timeout: self::TIMEOUT);
         if (! $result['ok'] && $result['out'] === '') {
-            return ['ok' => false, 'panels' => [], 'candidates' => [], 'backup' => null, 'error' => 'unreachable'];
+            return ['ok' => false, 'panels' => [], 'candidates' => [], 'error' => 'unreachable'];
         }
 
         $s = $this->sections(substr($result['out'], 0, 512 * 1024));
@@ -103,7 +101,6 @@ final class PanelInspector
             'ok' => true,
             'panels' => $panels,
             'candidates' => $this->candidates($listen, $panels, (int) $server->port),
-            'backup' => $this->backupAgent($s),
             'error' => null,
         ];
     }
@@ -286,64 +283,6 @@ final class PanelInspector
         }
 
         return $out;
-    }
-
-    /**
-     * The backup agent on the host, and what it has been doing.
-     *
-     * Its own block rather than a panel entry: Acronis does not manage the
-     * machine, it protects it, and a run that failed last night matters here
-     * even though it has nothing to do with hosting control.
-     *
-     * @param  array<string,string>  $s
-     * @return array<string,mixed>|null
-     */
-    private function backupAgent(array $s): ?array
-    {
-        $units = [];
-        foreach ($this->lines($s['acronis_units'] ?? '') as $line) {
-            $parts = preg_split('/\s+/', trim($line)) ?: [];
-            if (count($parts) >= 3) {
-                $units[] = ['unit' => $parts[0], 'active' => $parts[1] === 'active', 'state' => $parts[2]];
-            }
-        }
-
-        $raw = $s['acronis_acts'] ?? '';
-        $activities = [];
-        if (! $this->missing($raw) && ! str_contains($raw, '__error__')) {
-            foreach ($this->lines($raw) as $line) {
-                // The table has a header and a rule of dashes; both are noise.
-                if (str_starts_with($line, 'Name') || str_starts_with(ltrim($line), '---')) {
-                    continue;
-                }
-                $f = preg_split('/\s{2,}/', trim($line)) ?: [];
-                if (count($f) < 6) {
-                    continue;
-                }
-                $activities[] = [
-                    'name' => $f[0],
-                    'state' => $f[2],
-                    'started' => $f[4],
-                    'elapsed' => $f[5],
-                    // acrocmd puts the outcome last, and an activity still
-                    // running has none -- which is not the same as a failure.
-                    'result' => count($f) >= 9 ? end($f) : null,
-                ];
-            }
-        }
-
-        if ($units === [] && $activities === []) {
-            return null;
-        }
-
-        return [
-            'agent' => 'Acronis Cyber Protect',
-            'services' => $units,
-            'activities' => array_slice($activities, 0, 8),
-            // Said plainly: the agent is here but its own command could not be
-            // asked, which is not the same as "no backups".
-            'unreadable' => $activities === [] && $units !== [],
-        ];
     }
 
     /**
