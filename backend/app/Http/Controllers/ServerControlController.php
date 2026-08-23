@@ -40,6 +40,39 @@ class ServerControlController extends Controller
         return response()->json($this->panels->inspect($server))->header('Cache-Control', 'no-store');
     }
 
+    /**
+     * Turn a website on, suspend it or disable it.
+     *
+     * The verb is one of three and the domain is checked before anything is
+     * sent. Suspending and disabling are separate on purpose: Plesk shows a
+     * suspension notice for the first and simply stops answering for the
+     * second, and one button covering both would hide that.
+     */
+    public function siteAction(Request $request, Server $server): JsonResponse
+    {
+        $user = $this->requireUser($request);
+
+        $request->validate([
+            'domain' => ['required', 'string', 'max:255'],
+            'action' => ['required', Rule::in(PanelInspector::SITE_ACTIONS)],
+        ]);
+
+        $domain = $request->string('domain')->value();
+        $action = $request->string('action')->value();
+
+        $result = $this->panels->siteAction($server, $domain, $action);
+
+        AuditLog::record('server.panel_site_action', $server, [
+            'user_id' => $user->id,
+            'server' => $server->name,
+            'domain' => $domain,
+            'action' => $action,
+            'ok' => $result['ok'],
+        ]);
+
+        return response()->json($result)->header('Cache-Control', 'no-store');
+    }
+
     /** Which overlay network this host is on, and how it is doing. */
     public function vpn(Request $request, Server $server): JsonResponse
     {

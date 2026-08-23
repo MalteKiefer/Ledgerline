@@ -81,13 +81,52 @@
           <div v-if="p.details?.domains?.length" class="mt-3">
             <SectionHead icon="language" :label="t('servers.panel_domains')" level="h3" class="mb-1.5" />
             <div class="max-h-72 overflow-y-auto">
-              <div v-for="d in p.details.domains" :key="d.name" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+              <div v-for="d in p.details.domains" :key="d.name" class="group flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
                 <Icon :name="d.ssl ? 'lock' : 'lock_open'" :size="14" :class="d.ssl ? 'text-[var(--ll-muted)]' : 'text-amber-600 dark:text-amber-400'" :title="d.ssl ? 'TLS' : t('servers.panel_no_tls')" />
                 <span class="truncate font-mono" :class="d.active ? '' : 'text-[var(--ll-muted)] line-through'">{{ d.name }}</span>
                 <span v-if="d.php" class="shrink-0 rounded px-1.5 text-[0.65rem]" :class="phpTone(d.php)">{{ d.php }}</span>
                 <span v-if="!d.active" class="shrink-0 text-[0.65rem] text-[var(--ll-muted)]">{{ t('servers.panel_inactive') }}</span>
                 <span v-if="d.size_mb !== null" class="ml-auto shrink-0 tabular-nums text-[var(--ll-muted)]">{{ fmtSize(d.size_mb) }}</span>
+                <span class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Btn v-if="!d.active" variant="ghost" size="xs" icon="play_arrow" :disabled="acting" :title="t('servers.panel_site_on')" @click="site(d.name, 'on')" />
+                  <template v-else>
+                    <Btn variant="ghost" size="xs" icon="pause" :disabled="acting" :title="t('servers.panel_site_suspend')" @click="site(d.name, 'suspend')" />
+                    <Btn variant="ghost" size="xs" icon="power_settings_new" class="text-red-600" :disabled="acting" :title="t('servers.panel_site_off')" @click="site(d.name, 'off')" />
+                  </template>
+                </span>
               </div>
+            </div>
+          </div>
+
+          <div v-if="p.details?.ips?.length" class="mt-3">
+            <SectionHead icon="lan" :label="t('servers.panel_ips')" level="h3" class="mb-1.5" />
+            <div v-for="ip in p.details.ips" :key="ip.address" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+              <span class="ll-mono">{{ ip.address }}</span>
+              <span class="text-[var(--ll-muted)]">{{ ip.interface }}</span>
+              <!-- A machine behind NAT answers on an address it cannot see on
+                   any interface of its own; both are worth showing. -->
+              <span v-if="ip.public" class="ll-mono text-[var(--ll-muted)]">→ {{ ip.public }}</span>
+              <Badge v-if="ip.main" class="ml-auto" tone="info">{{ t('servers.panel_ip_main') }}</Badge>
+            </div>
+          </div>
+
+          <div v-if="p.details?.databases?.length" class="mt-3">
+            <SectionHead icon="database" :label="t('servers.panel_databases')" level="h3" class="mb-1.5" />
+            <div class="max-h-56 overflow-y-auto">
+              <div v-for="db in p.details.databases" :key="db.name" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+                <span class="truncate font-mono">{{ db.name }}</span>
+                <Badge tone="gray">{{ db.type }}</Badge>
+                <span v-if="db.domain" class="ml-auto truncate text-[var(--ll-muted)]">{{ db.domain }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="p.details?.settings && Object.keys(p.details.settings).length" class="mt-3">
+            <SectionHead icon="tune" :label="t('servers.panel_settings')" level="h3" class="mb-1.5" />
+            <div class="flex flex-wrap gap-1.5">
+              <span v-for="(v, k) in p.details.settings" :key="k" class="rounded-full bg-black/[0.04] px-2 py-0.5 text-[0.7rem] dark:bg-white/[0.06]">
+                <span class="text-[var(--ll-muted)]">{{ k }}</span> {{ v }}
+              </span>
             </div>
           </div>
 
@@ -105,6 +144,32 @@
             <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ p.details.extensions.join(' · ') }}</p>
           </div>
         </div>
+      </div>
+    </Card>
+
+    <Card v-if="data?.backup" :body-class="'p-4'">
+      <SectionHead icon="backup" :label="data.backup.agent" class="mb-2" />
+
+      <div v-if="data.backup.services.length" class="mb-2 flex flex-wrap gap-1.5">
+        <span
+          v-for="svc in data.backup.services" :key="svc.unit"
+          class="rounded-full px-2 py-0.5 text-[0.7rem]"
+          :class="svc.active ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'"
+        >{{ svc.unit }}</span>
+      </div>
+
+      <!-- "We could not ask" is not "nothing was backed up", and only one of
+           those two should ever make somebody relax. -->
+      <p v-if="data.backup.unreadable" class="text-xs text-amber-600 dark:text-amber-400">{{ t('servers.panel_backup_unreadable') }}</p>
+
+      <div v-for="(a, i) in data.backup.activities" :key="i" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
+        <Icon
+          :name="a.result === 'Succeeded' ? 'check_circle' : (a.result ? 'error' : 'schedule')" :size="14"
+          :class="a.result === 'Succeeded' ? 'text-emerald-600 dark:text-emerald-400' : (a.result ? 'text-red-600 dark:text-red-400' : 'text-[var(--ll-muted)]')"
+        />
+        <span class="truncate">{{ a.name }}</span>
+        <span class="text-[var(--ll-muted)]">{{ a.state }}</span>
+        <span class="ml-auto shrink-0 text-[var(--ll-muted)]">{{ a.started }} · {{ a.elapsed }}</span>
       </div>
     </Card>
 
@@ -192,6 +257,29 @@ async function load(): Promise<void> {
  * unit like any other, and inventing a second command path for it would mean a
  * second set of verbs to keep honest.
  */
+/**
+ * Turn a website on, suspend it or disable it.
+ *
+ * Both ways of taking a site down are asked about: one of them is how a
+ * customer finds out their site is gone.
+ */
+async function site(domain: string, action: 'on' | 'suspend' | 'off'): Promise<void> {
+  if (acting.value) return;
+  if (action !== 'on' && !await confirmAsk(t(`servers.panel_site_confirm_${action}`, { domain }), { danger: true })) return;
+
+  acting.value = true;
+  try {
+    const res = await store.panelSiteAction(props.serverId, domain, action);
+    if (res.ok) success(t('servers.files_done'));
+    else toastError(res.output || t('common.error'));
+    await load();
+  } catch {
+    toastError(t('common.error'));
+  } finally {
+    acting.value = false;
+  }
+}
+
 async function act(panel: HostingPanel, action: 'start' | 'stop' | 'restart'): Promise<void> {
   if (!panel.unit || acting.value) return;
   // Stopping the panel takes its web interface with it, which is how most

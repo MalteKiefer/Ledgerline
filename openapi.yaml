@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.733.0
+  version: 1.734.0
   license:
     name: Proprietary
   description: >
@@ -8701,6 +8701,32 @@ paths:
                                   domains: { type: integer }
                             extensions: { type: array, items: { type: string } }
                             disk_gb: { type: number }
+                            ips:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  address: { type: string }
+                                  mask: { type: string }
+                                  interface: { type: string }
+                                  public: { type: [string, "null"] }
+                                  main: { type: boolean }
+                            databases:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  name: { type: string }
+                                  type: { type: string }
+                                  domain: { type: [string, "null"] }
+                            settings:
+                              type: object
+                              additionalProperties: { type: string }
+                              description: >
+                                A named allow-list of panel settings. `misc` also
+                                holds the admin password hash, so the query asks
+                                for the keys it wants rather than for whatever is
+                                there.
                   candidates:
                     type: array
                     items:
@@ -8710,9 +8736,89 @@ paths:
                         address: { type: string }
                         process: { type: [string, "null"] }
                         hint: { type: string }
+                  backup:
+                    type: [object, "null"]
+                    description: >
+                      The backup agent on the host, when one is found -- Acronis
+                      so far. Its own block rather than a panel entry: it does
+                      not manage the machine, it protects it. `unreadable` means
+                      the agent is installed but its own command could not be
+                      asked, which is not the same as "no backups" and is never
+                      shown as such.
+                    properties:
+                      agent: { type: string }
+                      services:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            unit: { type: string }
+                            active: { type: boolean }
+                            state: { type: string }
+                      activities:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            state: { type: string }
+                            started: { type: string }
+                            elapsed: { type: string }
+                            result: { type: [string, "null"] }
+                      unreadable: { type: boolean }
                   error: { type: [string, "null"] }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "404": { $ref: '#/components/responses/NotFound' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /servers/{server}/panels/site:
+    post:
+      tags: [Servers]
+      operationId: serversPanelSiteAction
+      summary: Activate, suspend or disable a website on a hosting panel
+      description: >
+        Plesk only, through `plesk bin site`. The verb is one of `on`,
+        `suspend`, `off` and the domain is validated before anything is sent, so
+        nothing from a request is concatenated into the command untested. A
+        well-formed but unknown domain is passed on and refused by Plesk itself;
+        this is not an allow-list of the sites that exist.
+
+
+        `suspend` and `off` stay separate because they are: Plesk shows a
+        suspension notice for the first and simply stops answering for the
+        second. Every call is audited with the server, the domain, the verb and
+        the outcome. A host without the panel answers `not_installed` rather
+        than failing obscurely. Throttled 20/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain, action]
+              properties:
+                domain: { type: string, maxLength: 255 }
+                action: { type: string, enum: [on, suspend, off] }
+      responses:
+        "200":
+          description: What the panel said, and whether it worked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  output: { type: string }
+                  error:
+                    type: [string, "null"]
+                    enum: [invalid_selection, not_installed, unreachable, no_host_key, null]
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { $ref: '#/components/responses/ValidationError' }
         "429": { $ref: '#/components/responses/RateLimited' }
   /servers/{server}/vpn:
     get:
