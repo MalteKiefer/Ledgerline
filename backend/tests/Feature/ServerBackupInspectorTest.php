@@ -118,9 +118,19 @@ class ServerBackupInspectorTest extends TestCase
     {
         $out = "##LL:tools\n##LL:timers\n"
             ."Mon 2026-08-24 00:00:00 CEST 6h left  Sun 2026-08-23 00:00:01 CEST 17h ago  dpkg-db-backup.timer  dpkg-db-backup.service\n"
+            // The same line as another build of systemd prints it, without the
+            // word "left" -- seen on three of four real hosts.
+            .'Sun 2026-08-23 19:41:59 CEST 8min Sun 2026-08-23 18:44:31 CEST 48min ago borg-backup.timer borg-backup.service
+'
             ."##LL:end\n";
 
-        $job = $this->inspect([['ok' => true, 'out' => $out]])['schedules'][0];
+        $jobs = $this->inspect([['ok' => true, 'out' => $out]])['schedules'];
+        $job = $jobs[0];
+
+        // The second line is the same row as another build of systemd prints
+        // it, without the word "left" -- seen on three of four real hosts.
+        $this->assertSame('Sun 2026-08-23 19:41:59 CEST', $jobs[1]['schedule']);
+        $this->assertSame(strtotime('Sun 2026-08-23 18:44:31 CEST'), $jobs[1]['last_run']);
 
         // Both timestamps carry spaces, so the two unit names at the end are
         // the only reliable anchor in that line.
