@@ -51,7 +51,7 @@
          timer is invisible, and that is where backups, certificate renewal and
          cleanup jobs live — the things nobody notices are broken until the
          moment they are needed. -->
-    <Card v-if="facts?.timers?.units.length || facts?.backup_tools?.length" :body-class="'p-4'">
+    <Card v-if="facts?.timers?.units.length" :body-class="'p-4'">
       <SectionHead icon="schedule" :label="t('servers.scheduled')" level="h2" class="mb-1" />
 
       <p v-if="facts?.timers?.failed.length" class="mb-2 flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
@@ -59,14 +59,6 @@
         {{ t('servers.timers_failed', { list: facts.timers.failed.join(', ') }) }}
       </p>
 
-      <!-- Which backup tool is installed, not whether it ran: the probe can see
-           the binary, and claiming more than that would be a guess about
-           somebody's data. The timer list below is where the actual runs show. -->
-      <p v-if="facts?.backup_tools?.length" class="mb-2 text-xs">
-        <span class="text-[var(--ll-muted)]">{{ t('servers.backup_tools') }}:</span>
-        <span class="ml-1 font-mono">{{ facts.backup_tools.join(', ') }}</span>
-      </p>
-      <p v-else-if="facts?.timers?.units.length" class="mb-2 text-xs text-[var(--ll-muted)]">{{ t('servers.backup_none') }}</p>
 
       <div v-if="facts?.timers?.units.length" class="max-h-72 overflow-y-auto">
         <div v-for="tm in facts.timers.units" :key="tm.unit" class="border-b border-[var(--ll-border)] py-1.5 last:border-0">

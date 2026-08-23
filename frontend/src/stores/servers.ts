@@ -409,20 +409,35 @@ export interface HostingPanel {
 /** A port a panel usually uses, with nothing claiming it -- a guess, and named as one. */
 export interface PanelCandidate { port: number; address: string; process: string | null; hint: string }
 
-/** The backup agent found on the host, if any. Not a panel -- it protects the machine rather than managing it. */
-export interface BackupAgent {
-  agent: string;
-  services: { unit: string; active: boolean; state: string }[];
-  activities: { name: string; state: string; started: string; elapsed: string; result: string | null }[];
-  /** The agent is there but its own command could not be asked -- not the same as "no backups". */
-  unreadable: boolean;
-}
-
 export interface PanelStatus {
   ok: boolean;
   panels: HostingPanel[];
   candidates: PanelCandidate[];
-  backup: BackupAgent | null;
+  error: string | null;
+}
+
+/**
+ * How a host is backed up.
+ *
+ * Schedules carry the weight: a tool that is installed and never run protects
+ * nothing, and `last_run` comes from the log a job writes to rather than from
+ * the schedule, which is only intent.
+ */
+export interface BackupStatus {
+  ok: boolean;
+  tools: { name: string; version: string | null }[];
+  agents: { unit: string; active: boolean; state: string }[];
+  schedules: {
+    kind: 'timer' | 'cron';
+    name: string;
+    runs: string;
+    schedule: string;
+    log: string | null;
+    last_run: number | null;
+    log_size: number | null;
+  }[];
+  activities: { name: string; state: string; started: string; elapsed: string; result: string | null }[];
+  repositories: string[];
   error: string | null;
 }
 
@@ -663,6 +678,7 @@ export const useServersStore = defineStore('servers', () => {
   const roleDetails = (id: number) => api.get<RoleDetails>(`/api/v1/servers/${id}/role-details`);
 
   const panels = (id: number) => api.get<PanelStatus>(`/api/v1/servers/${id}/panels`);
+  const backup = (id: number) => api.get<BackupStatus>(`/api/v1/servers/${id}/backup`);
   const panelSiteAction = (id: number, domain: string, action: 'on' | 'suspend' | 'off') =>
     api.post<{ ok: boolean; output: string; error: string | null }>(`/api/v1/servers/${id}/panels/site`, { domain, action });
 
@@ -729,5 +745,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, roleDetails, panels, panelSiteAction, vpn, vpnAction, dockerStorage, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, roleDetails, panels, panelSiteAction, backup, vpn, vpnAction, dockerStorage, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

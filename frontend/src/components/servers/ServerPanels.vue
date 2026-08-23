@@ -147,32 +147,6 @@
       </div>
     </Card>
 
-    <Card v-if="data?.backup" :body-class="'p-4'">
-      <SectionHead icon="backup" :label="data.backup.agent" class="mb-2" />
-
-      <div v-if="data.backup.services.length" class="mb-2 flex flex-wrap gap-1.5">
-        <span
-          v-for="svc in data.backup.services" :key="svc.unit"
-          class="rounded-full px-2 py-0.5 text-[0.7rem]"
-          :class="svc.active ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'"
-        >{{ svc.unit }}</span>
-      </div>
-
-      <!-- "We could not ask" is not "nothing was backed up", and only one of
-           those two should ever make somebody relax. -->
-      <p v-if="data.backup.unreadable" class="text-xs text-amber-600 dark:text-amber-400">{{ t('servers.panel_backup_unreadable') }}</p>
-
-      <div v-for="(a, i) in data.backup.activities" :key="i" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
-        <Icon
-          :name="a.result === 'Succeeded' ? 'check_circle' : (a.result ? 'error' : 'schedule')" :size="14"
-          :class="a.result === 'Succeeded' ? 'text-emerald-600 dark:text-emerald-400' : (a.result ? 'text-red-600 dark:text-red-400' : 'text-[var(--ll-muted)]')"
-        />
-        <span class="truncate">{{ a.name }}</span>
-        <span class="text-[var(--ll-muted)]">{{ a.state }}</span>
-        <span class="ml-auto shrink-0 text-[var(--ll-muted)]">{{ a.started }} · {{ a.elapsed }}</span>
-      </div>
-    </Card>
-
     <!-- Kept apart from the detections on purpose. These are ports panels tend
          to use with nothing claiming them -- a lead to follow, not a finding. -->
     <Card v-if="data?.candidates.length" :body-class="'p-4'">

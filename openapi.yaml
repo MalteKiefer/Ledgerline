@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.734.1
+  version: 1.735.0
   license:
     name: Proprietary
   description: >
@@ -8590,6 +8590,89 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/backup:
+    get:
+      tags: [Servers]
+      operationId: serversBackup
+      summary: How this host is backed up, and whether it happened
+      description: >
+        Written after looking at real machines, none of which is backed up the
+        way a tool-detector would expect: one runs an Acronis agent, two are
+        protected by a cron line calling a shell script, and a panel host adds
+        hand-written database dumps on top. So `schedules` is the centre of this
+        -- systemd timers and cron jobs that look like backups, including
+        hand-written scripts no tool list would ever find.
+
+
+        `last_run` is evidence rather than intent: where a job redirects into a
+        log, that file's age answers "did it run last night" in a way a schedule
+        cannot. `tools` is inventory only and labelled as such -- a tool that is
+        installed and never run protects nothing.
+
+
+        Commands and repository paths are redacted before they leave the host: a
+        cron line commonly carries `-pPASSWORD`, and a repository URL can carry
+        credentials in front of the hostname. Read-only. Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Schedules, agents, recent runs, destinations and installed tools.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  tools:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        version: { type: [string, "null"] }
+                  agents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        unit: { type: string }
+                        active: { type: boolean }
+                        state: { type: string }
+                  schedules:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string, enum: [timer, cron] }
+                        name: { type: string }
+                        runs: { type: string, description: The command, with secrets redacted. }
+                        schedule: { type: string }
+                        log: { type: [string, "null"] }
+                        last_run:
+                          type: [integer, "null"]
+                          description: Unix time the job's log was last written, when there is one.
+                        log_size: { type: [integer, "null"] }
+                  activities:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        state: { type: string }
+                        started: { type: string }
+                        elapsed: { type: string }
+                        result:
+                          type: [string, "null"]
+                          description: Absent while a run is still going, which is not a failure.
+                  repositories: { type: array, items: { type: string } }
+                  error: { type: [string, "null"] }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /servers/{server}/panels:
     get:
       tags: [Servers]
@@ -8736,36 +8819,6 @@ paths:
                         address: { type: string }
                         process: { type: [string, "null"] }
                         hint: { type: string }
-                  backup:
-                    type: [object, "null"]
-                    description: >
-                      The backup agent on the host, when one is found -- Acronis
-                      so far. Its own block rather than a panel entry: it does
-                      not manage the machine, it protects it. `unreadable` means
-                      the agent is installed but its own command could not be
-                      asked, which is not the same as "no backups" and is never
-                      shown as such.
-                    properties:
-                      agent: { type: string }
-                      services:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            unit: { type: string }
-                            active: { type: boolean }
-                            state: { type: string }
-                      activities:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            name: { type: string }
-                            state: { type: string }
-                            started: { type: string }
-                            elapsed: { type: string }
-                            result: { type: [string, "null"] }
-                      unreadable: { type: boolean }
                   error: { type: [string, "null"] }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "404": { $ref: '#/components/responses/NotFound' }
