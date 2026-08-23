@@ -503,7 +503,7 @@ final class PanelInspector
                 // A machine behind NAT answers on an address it cannot see on
                 // any interface of its own, which is worth showing next to the
                 // local one rather than instead of it.
-                'public' => ($f[3] ?? '') !== '' ? $f[3] : null,
+                'public' => $this->cell($f[3] ?? ''),
                 'main' => ($f[4] ?? '') === 'true',
             ];
         }
@@ -517,7 +517,7 @@ final class PanelInspector
             $databases[] = [
                 'name' => $f[0],
                 'type' => $f[1],
-                'domain' => ($f[2] ?? '') !== '' ? $f[2] : null,
+                'domain' => $this->cell($f[2] ?? ''),
             ];
         }
 
@@ -545,6 +545,20 @@ final class PanelInspector
             'extensions' => array_slice(array_filter($extensions), 0, 30),
             'disk_gb' => $disk,
         ], fn ($v): bool => $v !== null && $v !== []);
+    }
+
+    /**
+     * One cell of `plesk db -Ne` output.
+     *
+     * An empty column is printed as the word NULL, so a plain emptiness check
+     * lets that string through and a host behind no NAT ends up "reachable at
+     * NULL". Both spellings of nothing mean nothing.
+     */
+    private function cell(string $value): ?string
+    {
+        $value = trim($value);
+
+        return $value === '' || $value === 'NULL' ? null : $value;
     }
 
     /** `plesk-php82-fpm-dedicated` is 8.2; anything unrecognised stays unknown. */

@@ -129,6 +129,10 @@ class ServerPanelTest extends TestCase
             ."##LL:plesk_ips\n"
             ."85.215.107.154\t255.255.255.255\teth0\t\ttrue\n"
             ."10.5.226.22\t255.255.240.0\teth0\t85.215.107.154\tfalse\n"
+            // plesk db prints an empty column as the word NULL, and letting that
+            // through would claim the host is reachable at "NULL".
+            .'172.17.0.1	255.255.0.0	docker0	NULL	false
+'
             ."##LL:plesk_dbs\nk10166_pat21\tpostgresql\tpat21.de\nlonely\tmysql\t\n"
             ."##LL:plesk_settings\nadmin_email\tkontakt@example.de\nadmin_locale\tde-DE\n"
             ."##LL:units\n##LL:listen\n";
@@ -141,6 +145,7 @@ class ServerPanelTest extends TestCase
         // Behind NAT the address the world uses is not on any local interface,
         // so it is shown next to the local one rather than instead of it.
         $this->assertSame('85.215.107.154', $details['ips'][1]['public']);
+        $this->assertNull($details['ips'][2]['public']);
 
         $this->assertSame(['name' => 'k10166_pat21', 'type' => 'postgresql', 'domain' => 'pat21.de'], $details['databases'][0]);
         $this->assertNull($details['databases'][1]['domain']);
