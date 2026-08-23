@@ -15,6 +15,7 @@ use App\Services\Servers\ServerTarget;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use phpseclib3\Crypt\EC;
 use Tests\TestCase;
 
 /**
@@ -402,5 +403,49 @@ class ServersTest extends TestCase
         (new CollectServerFacts($server->id))->handle(app(ServerMonitor::class));
 
         $this->assertSame(0, ServerFact::query()->where('server_id', $server->id)->count());
+    }
+
+    public function test_a_key_pasted_from_windows_still_works(): void
+    {
+        // CRLF is invisible in a text box and OpenSSH refuses a key that has
+        // it, so a perfectly good key looked like a broken one.
+        $key = EC::createKey('Ed25519')->toString('OpenSSH');
+        $target = new ServerTarget(
+            host: 'h', port: 22, username: 'root',
+            privateKey: str_replace("\n", "\r\n", $key), passphrase: '', fingerprint: '',
+        );
+
+        $pem = (new ServerProbe)->privateKeyFor($target);
+
+        $this->assertNotNull($pem);
+        $this->assertStringNotContainsString("\r", $pem);
+    }
+
+    public function test_a_key_that_cannot_be_read_is_not_reported_as_a_missing_one(): void
+    {
+        $probe = new ServerProbe;
+
+        // The public half pasted by mistake -- there is a key in the field, so
+        // "no credentials stored" would send somebody looking at an empty box
+        // that is not empty.
+        $public = EC::createKey('Ed25519')->getPublicKey()->toString('OpenSSH');
+        $this->assertNull($probe->privateKeyFor(new ServerTarget(
+            host: 'h', port: 22, username: 'root', privateKey: $public, passphrase: '', fingerprint: '',
+        )));
+
+        $result = $probe->exec(
+            new ServerTarget(host: 'h', port: 22, username: 'root', privateKey: $public, passphrase: '', fingerprint: ''),
+            self::HOST_KEY,
+            'true',
+        );
+        $this->assertSame('key_unreadable', $result['err']);
+
+        // An empty field is still its own answer.
+        $empty = $probe->exec(
+            new ServerTarget(host: 'h', port: 22, username: 'root', privateKey: '', passphrase: '', fingerprint: ''),
+            self::HOST_KEY,
+            'true',
+        );
+        $this->assertSame('no_credentials', $empty['err']);
     }
 }

@@ -323,6 +323,7 @@ return [
         'no_host_key' => 'The server presented no usable host key.',
         'fingerprint_mismatch' => 'The host key does not match the pinned one — connection refused.',
         'no_credentials' => 'No credentials stored for this authentication method.',
+        'key_unreadable' => 'A key is stored, but it could not be read. Check that it is the private half, that the whole block was pasted, and that the passphrase matches.',
         'auth_failed' => 'Authentication was rejected.',
         'unexpected_output' => 'The server answered, but not with a snapshot. Is the forced command set up correctly?',
         'host_key_unconfirmed' => 'The host key could not be re-read and matched — nothing was saved.',

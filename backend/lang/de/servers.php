@@ -323,6 +323,7 @@ return [
         'no_host_key' => 'Der Server hat keinen verwertbaren Hostschlüssel geliefert.',
         'fingerprint_mismatch' => 'Der Hostschlüssel weicht vom festgeschriebenen ab — Verbindung verweigert.',
         'no_credentials' => 'Für diese Anmeldeart sind keine Zugangsdaten gespeichert.',
+        'key_unreadable' => 'Ein Schlüssel ist hinterlegt, ließ sich aber nicht lesen. Prüfe, ob es der private Teil ist, ob der ganze Block eingefügt wurde und ob die Passphrase passt.',
         'auth_failed' => 'Die Anmeldung wurde abgelehnt.',
         'unexpected_output' => 'Der Server hat geantwortet, aber keine Momentaufnahme geliefert. Ist der Forced Command korrekt eingerichtet?',
         'host_key_unconfirmed' => 'Der Hostschlüssel konnte nicht erneut gelesen und abgeglichen werden — es wurde nichts gespeichert.',
