@@ -12,6 +12,9 @@
           <h1 class="truncate text-xl font-bold">{{ server.name }}</h1>
           <Badge :tone="server.status?.ok ? 'success' : server.status ? 'error' : 'gray'">{{ statusLabel(server) }}</Badge>
           <Badge v-if="server.restricted_key" tone="gray">{{ t('servers.restricted_key_short') }}</Badge>
+          <!-- Said out loud: a paused server stops reporting, and silence from
+               one must never be mistaken for good news. -->
+          <Badge v-if="!server.enabled" tone="warning">{{ t('servers.monitoring_off') }}</Badge>
         </div>
         <p class="mt-0.5 font-mono text-xs text-[var(--ll-muted)]">{{ server.username }}@{{ server.host }}:{{ server.port }}</p>
       </div>
@@ -21,6 +24,10 @@
         <span v-if="nextRefresh" class="hidden font-mono text-xs tabular-nums text-[var(--ll-muted)] sm:inline">{{ nextRefresh }}</span>
         <Btn variant="ghost" icon="network_check" :disabled="testing" @click="retest">{{ testing ? t('servers.testing') : t('servers.test') }}</Btn>
         <Btn variant="ghost" icon="refresh" @click="doRefresh">{{ t('servers.refresh') }}</Btn>
+        <Btn
+          variant="ghost" :icon="server.enabled ? 'motion_photos_pause' : 'motion_photos_on'"
+          :disabled="monitorBusy" @click="toggleMonitoring"
+        >{{ server.enabled ? t('servers.monitoring_pause') : t('servers.monitoring_resume') }}</Btn>
         <Btn variant="ghost" icon="edit" @click="$router.push({ path: '/servers', query: { edit: String(server.id) } })">{{ t('servers.edit') }}</Btn>
 
         <!-- Power. Kept behind a menu and behind a confirmation because these
@@ -599,6 +606,29 @@ async function load() {
     server.value = null;
   } finally {
     loading.value = false;
+  }
+}
+
+const monitorBusy = ref(false);
+
+/**
+ * Pause or resume the automatic snapshot and reachability checks.
+ *
+ * The schedule is all that stops. Everything on this page still works while
+ * paused -- pausing means "do not wake this on a timer", not "do not touch it".
+ */
+async function toggleMonitoring(): Promise<void> {
+  if (!server.value || monitorBusy.value) return;
+  monitorBusy.value = true;
+  try {
+    const wasOn = server.value.enabled;
+    await s.update(server.value.id, { enabled: !wasOn });
+    success(t(wasOn ? 'servers.monitoring_paused' : 'servers.monitoring_resumed'));
+    await load();
+  } catch {
+    error(t('common.error'));
+  } finally {
+    monitorBusy.value = false;
   }
 }
 

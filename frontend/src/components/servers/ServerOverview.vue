@@ -102,7 +102,7 @@
            reads. -->
       <Card v-if="facts.role?.roles.length || facts.role?.services.length" :body-class="'p-4'">
         <div class="flex flex-wrap items-center gap-2">
-          <h2 class="text-sm font-semibold">{{ t('servers.role') }}</h2>
+          <SectionHead icon="dns" :label="t('servers.role')" level="h2" />
           <Badge v-if="facts.role?.platform" tone="primary">{{ facts.role.platform }}</Badge>
           <Badge v-for="r in facts.role?.roles ?? []" :key="r" tone="gray">{{ t(`servers.role_${r}`) }}</Badge>
         </div>
@@ -127,7 +127,7 @@
       <Card v-if="facts.storage?.length || facts.arrays?.length || facts.sensors?.length" :title="t('servers.section_hardware')" :body-class="'p-4'">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <div v-if="facts.storage?.length">
-            <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.drives') }}</h3>
+            <SectionHead icon="hard_drive" :label="t('servers.drives')" level="h3" class="mb-1.5" />
             <div v-for="d in facts.storage" :key="d.name" class="border-b border-[var(--ll-border)] py-2 last:border-0">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="font-mono text-xs font-semibold">{{ d.name }}</span>
@@ -162,7 +162,7 @@
 
           <div>
             <template v-if="facts.arrays?.length">
-              <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.arrays') }}</h3>
+              <SectionHead icon="storage" :label="t('servers.arrays')" level="h3" class="mb-1.5" />
               <div v-for="a in facts.arrays" :key="a.name" class="mb-3 border-b border-[var(--ll-border)] pb-2 last:border-0">
                 <div class="flex items-center gap-2">
                   <span class="font-mono text-xs font-semibold">{{ a.name }}</span>
@@ -174,7 +174,7 @@
             </template>
 
             <template v-if="facts.sensors?.length">
-              <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.temperatures') }}</h3>
+              <SectionHead icon="thermostat" :label="t('servers.temperatures')" level="h3" class="mb-1.5" />
               <div v-for="(s, i) in facts.sensors" :key="`${s.chip}-${s.label}-${i}`" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
                 <span class="truncate">
                   <span class="font-mono">{{ s.chip }}</span>
@@ -194,7 +194,7 @@
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <div>
             <template v-if="facts.network?.gateway || facts.network?.dns?.length">
-              <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.routing') }}</h3>
+              <SectionHead icon="route" :label="t('servers.routing')" level="h3" class="mb-1.5" />
               <dl class="mb-4 space-y-1 text-xs">
                 <Row v-if="facts.network.gateway" :label="t('servers.gateway')" :value="facts.network.gateway" mono />
                 <Row v-if="facts.network.dns.length" :label="t('servers.dns')" :value="facts.network.dns.join(', ')" mono />
@@ -203,7 +203,7 @@
             </template>
 
             <template v-if="facts.ports.length">
-              <h3 class="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.ports') }}</h3>
+              <SectionHead icon="lan" :label="t('servers.ports')" level="h3" class="mb-1.5" />
               <div class="flex flex-wrap gap-1.5">
                 <Badge v-for="p in facts.ports" :key="p" tone="gray">{{ p }}</Badge>
               </div>
@@ -212,7 +212,7 @@
 
           <div v-if="facts.network?.interfaces?.length">
             <div class="mb-1.5 flex items-center justify-between">
-              <h3 class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('servers.interfaces') }}</h3>
+              <SectionHead icon="settings_ethernet" :label="t('servers.interfaces')" level="h3" />
               <!-- A container host has a dozen bridges and one uplink. Showing
                    all of them by default buries the one that matters. -->
               <button
@@ -300,6 +300,7 @@
 import { computed, ref, h, type PropType, type VNode } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Badge, Btn, Card } from '@spa/ui';
+import SectionHead from '@spa/components/servers/SectionHead.vue';
 import { fmtDateTime } from '@spa/lib/datetime';
 import {
   cpuText, diskNote, formatBytes, formatGib, formatUptime, fullestDisk, memoryNote, swapNote, swapPct,

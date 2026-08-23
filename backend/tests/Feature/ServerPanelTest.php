@@ -192,6 +192,28 @@ class ServerPanelTest extends TestCase
     }
 
     #[Test]
+    public function the_ssh_port_it_arrived_on_is_not_offered_as_a_lead(): void
+    {
+        // 2222 is DirectAdmin's port and also, here, the door this very
+        // connection came through. Reporting it teaches people to ignore the list.
+        $out = '##LL:units
+##LL:listen
+'
+            .'LISTEN 0 128 0.0.0.0:2222 0.0.0.0:* users:(("sshd",pid=7,fd=3))
+'
+            .'LISTEN 0 128 0.0.0.0:10000 0.0.0.0:* users:(("miniserv.pl",pid=8,fd=4))
+';
+
+        $server = $this->server();
+        $server->forceFill(['port' => 2222])->save();
+
+        $result = (new PanelInspector(new VpnRecordingProbe([['ok' => true, 'out' => $out]])))->inspect($server);
+
+        $this->assertCount(1, $result['candidates']);
+        $this->assertSame(10000, $result['candidates'][0]['port']);
+    }
+
+    #[Test]
     public function it_never_asks_a_panel_for_a_working_login(): void
     {
         $probe = new VpnRecordingProbe([['ok' => true, 'out' => "##LL:units\n"]]);

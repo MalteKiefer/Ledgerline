@@ -2,7 +2,7 @@
   <div class="space-y-4">
     <Card :body-class="'p-4'">
       <div class="mb-3 flex items-center justify-between gap-2">
-        <h2 class="text-sm font-semibold">{{ t('servers.vpn_title') }}</h2>
+        <SectionHead icon="vpn_lock" :label="t('servers.vpn_title')" level="h2" />
         <Btn variant="ghost" size="sm" icon="refresh" :disabled="busy" @click="load">{{ t('servers.refresh') }}</Btn>
       </div>
 
@@ -43,7 +43,7 @@
                failed one carries its own reason, which is the answer to "why
                does that name not resolve". -->
           <div v-if="p.dns?.length" class="mt-3">
-            <h3 :class="sectionCls">{{ t('servers.vpn_dns') }}</h3>
+            <SectionHead icon="dns" :label="t('servers.vpn_dns')" level="h3" />
             <div v-for="(d, i) in p.dns" :key="i" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
               <span class="ll-mono">{{ d.servers || '—' }}</span>
               <span v-if="d.domains" class="text-[var(--ll-muted)]">{{ d.domains }}</span>
@@ -57,7 +57,7 @@
           <!-- ZeroTier joins networks; NetBird routes them; the rest have no
                such concept. -->
           <div v-if="p.networks?.length" class="mt-3">
-            <h3 :class="sectionCls">{{ t('servers.vpn_networks') }}</h3>
+            <SectionHead icon="hub" :label="t('servers.vpn_networks')" level="h3" />
             <div v-for="n in p.networks" :key="n.id ?? ''" class="border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="ll-mono text-[var(--ll-muted)]">{{ n.id }}</span>
@@ -76,7 +76,7 @@
           </div>
 
           <div v-if="p.interfaces?.length" class="mt-3">
-            <h3 :class="sectionCls">{{ t('servers.vpn_interfaces') }}</h3>
+            <SectionHead icon="settings_ethernet" :label="t('servers.vpn_interfaces')" level="h3" />
             <div v-for="i in p.interfaces" :key="i.name" class="flex items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
               <span class="font-mono font-medium">{{ i.name }}</span>
               <span class="text-[var(--ll-muted)]">:{{ i.port }}</span>
@@ -85,7 +85,7 @@
           </div>
 
           <div v-if="p.units?.length" class="mt-3">
-            <h3 :class="sectionCls">{{ t('servers.vpn_tunnels') }}</h3>
+            <SectionHead icon="swap_horiz" :label="t('servers.vpn_tunnels')" level="h3" />
             <div v-for="u in p.units" :key="u.name" class="flex items-center gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
               <span class="font-mono">{{ u.name }}</span>
               <Badge class="ml-auto" :tone="u.active === 'active' ? 'success' : 'gray'">{{ u.sub }}</Badge>
@@ -96,7 +96,7 @@
           <!-- What happened, rather than only what is true now: "lost the
                management channel four minutes ago" is the useful form. -->
           <div v-if="p.events?.length" class="mt-3">
-            <h3 :class="sectionCls">{{ t('servers.vpn_events') }}</h3>
+            <SectionHead icon="history" :label="t('servers.vpn_events')" level="h3" />
             <div v-for="(e, i) in p.events" :key="i" class="flex items-start gap-2 border-b border-[var(--ll-border)] py-1 text-xs last:border-0">
               <Icon
                 :name="e.severity === 'ERROR' ? 'error' : (e.severity === 'WARNING' ? 'warning' : 'info')" :size="15"
@@ -108,10 +108,9 @@
           </div>
 
           <div v-if="p.peers.length" class="mt-3">
-            <h3 :class="sectionCls">
-              {{ t('servers.vpn_peers') }}
+            <SectionHead icon="device_hub" :label="t('servers.vpn_peers')" level="h3" class="mb-1.5">
               <span class="font-normal text-[var(--ll-muted)]">{{ p.peers_connected }} / {{ p.peers_total }}</span>
-            </h3>
+            </SectionHead>
             <div class="overflow-x-auto">
               <table class="w-full text-xs">
                 <tbody>
@@ -147,6 +146,7 @@
 import { ref, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon, Badge } from '@spa/ui';
+import SectionHead from '@spa/components/servers/SectionHead.vue';
 import { useServersStore, type VpnStatus, type VpnProvider } from '@spa/stores/servers';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
@@ -155,7 +155,6 @@ const props = defineProps<{ serverId: number }>();
 const s = useServersStore();
 const { success, error: fail } = useToast();
 
-const sectionCls = 'mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]';
 
 const data = ref<VpnStatus | null>(null);
 const busy = ref(false);
