@@ -112,6 +112,8 @@ return [
     ],
 
     'actions' => [
+        'selected_n' => ':n selected',
+        'clear_selection' => 'Clear selection',
         'mark_read' => 'Mark read',
         'mark_unread' => 'Mark unread',
         'trash' => 'Move to trash',

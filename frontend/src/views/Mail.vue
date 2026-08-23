@@ -136,20 +136,43 @@
       </div>
 
       <!-- Selection bar -->
-      <div v-if="s.selected.length" class="flex flex-wrap items-center gap-1 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2">
-        <span class="text-xs font-medium">{{ s.selected.length }}</span>
+      <div v-if="s.selected.length" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2">
+        <label class="inline-flex items-center gap-2 text-xs font-medium">
+          <input type="checkbox" class="accent-primary-500" :checked="allSelected" @change="toggleSelectAll">
+          {{ t('mail.actions.selected_n', { n: String(s.selected.length) }) }}
+        </label>
+
         <div class="ml-auto flex flex-wrap items-center gap-1">
-          <Btn variant="ghost" size="xs" icon="mark_email_read" @click="bulkSeen(true)">{{ t('mail.actions.mark_read') }}</Btn>
-          <Btn variant="ghost" size="xs" icon="mark_email_unread" @click="bulkSeen(false)">{{ t('mail.actions.mark_unread') }}</Btn>
-          <DropdownMenuRoot v-if="s.labels.length">
-            <DropdownMenuTrigger class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs hover:bg-black/[0.05] dark:hover:bg-white/10"><Icon name="label" :size="15" />{{ t('mail.extras.labels') }}</DropdownMenuTrigger>
-            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-44 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
-              <DropdownMenuItem v-for="l in s.labels" :key="l.id" :class="menuItem" @select="bulkLabel(l.id)"><span class="h-3 w-3 rounded-full" :style="{ background: l.color }" />{{ l.name }}</DropdownMenuItem>
+          <Btn variant="ghost" size="xs" icon="mark_email_read" :loading="bulkBusy" @click="bulkSeen(true)">{{ t('mail.actions.mark_read') }}</Btn>
+          <Btn variant="ghost" size="xs" icon="mark_email_unread" :loading="bulkBusy" @click="bulkSeen(false)">{{ t('mail.actions.mark_unread') }}</Btn>
+          <Btn v-if="!filters.trashed" variant="ghost" size="xs" icon="delete" :loading="bulkBusy" @click="bulkTrash">{{ t('mail.actions.trash') }}</Btn>
+          <Btn v-else variant="ghost" size="xs" icon="restore" :loading="bulkBusy" @click="bulkRestore">{{ t('mail.actions.restore') }}</Btn>
+
+          <!-- Everything else in one grouped menu, rather than a second
+               dropdown standing next to the buttons. -->
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger class="grid h-7 w-7 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('common.actions')">
+              <Icon name="more_vert" :size="16" />
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] max-h-[70vh] min-w-56 overflow-y-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <template v-if="s.labels.length">
+                <div :class="menuSection">{{ t('mail.extras.labels') }}</div>
+                <DropdownMenuItem v-for="l in s.labels" :key="l.id" :class="menuItem" @select="bulkLabel(l.id)">
+                  <span class="h-3 w-3 shrink-0 rounded-full" :style="{ background: l.color }" />
+                  <span class="flex-1 truncate">{{ l.name }}</span>
+                  <Icon v-if="selectionHasLabel(l.id)" name="check" :size="15" class="text-[var(--ll-muted)]" />
+                </DropdownMenuItem>
+                <div class="my-1 h-px bg-[var(--ll-border)]" />
+              </template>
+
+              <div :class="menuSection">{{ t('mail.extras.export') }}</div>
+              <DropdownMenuItem :class="menuItem" @select="doExport('mbox')"><Icon name="download" :size="18" />{{ t('mail.extras.export_mbox') }}</DropdownMenuItem>
+              <DropdownMenuItem :class="menuItem" @select="doExport('zip')"><Icon name="folder_zip" :size="18" />{{ t('mail.extras.export_zip') }}</DropdownMenuItem>
+
+              <div class="my-1 h-px bg-[var(--ll-border)]" />
+              <DropdownMenuItem :class="menuItem" @select="s.selected = []"><Icon name="close" :size="18" />{{ t('mail.actions.clear_selection') }}</DropdownMenuItem>
             </DropdownMenuContent></DropdownMenuPortal>
           </DropdownMenuRoot>
-          <Btn v-if="!filters.trashed" variant="ghost" size="xs" icon="delete" @click="bulkTrash">{{ t('mail.actions.trash') }}</Btn>
-          <Btn v-else variant="ghost" size="xs" icon="restore" @click="bulkRestore">{{ t('mail.actions.restore') }}</Btn>
-          <Btn variant="ghost" size="xs" @click="s.selected = []">{{ t('common.close') }}</Btn>
         </div>
       </div>
 
@@ -616,6 +639,9 @@ const { success, error } = useToast();
 const filters = s.filters;
 
 const menuItem = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10';
+// Section heading inside a menu: the label list and the export actions are
+// different kinds of thing, and an unbroken list of both reads as neither.
+const menuSection = 'px-3 pb-0.5 pt-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]';
 const menuItemDanger = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm text-red-600 outline-none hover:bg-red-500/10';
 
 const loading = ref(false);
@@ -922,8 +948,21 @@ async function saveAttToFolder(folderId: number | null) {
 }
 
 // --- Bulk --------------------------------------------------------------------
-async function bulkSeen(seen: boolean) { if (!s.selected.length) return; try { await s.setSeen([...s.selected], seen); await reload(); refreshCounts(); } catch { error(t('common.error')); } }
-async function bulkTrash() { if (!s.selected.length || !await confirmAsk(t('mail.actions.confirm_trash'))) return; try { await s.trash([...s.selected]); await reload(); refreshCounts(); } catch { error(t('common.error')); } }
+const bulkBusy = ref(false);
+async function bulkSeen(seen: boolean) {
+  if (!s.selected.length || bulkBusy.value) return;
+  bulkBusy.value = true;
+  try { await s.setSeen([...s.selected], seen); await reload(); refreshCounts(); }
+  catch { error(t('common.error')); }
+  finally { bulkBusy.value = false; }
+}
+async function bulkTrash() {
+  if (!s.selected.length || bulkBusy.value || !await confirmAsk(t('mail.actions.confirm_trash'))) return;
+  bulkBusy.value = true;
+  try { await s.trash([...s.selected]); await reload(); refreshCounts(); }
+  catch { error(t('common.error')); }
+  finally { bulkBusy.value = false; }
+}
 async function bulkRestore() { if (!s.selected.length) return; try { await s.restore([...s.selected]); await reload(); } catch { error(t('common.error')); } }
 // Toggle a label across the selection: remove it if every selected message
 // already carries it, otherwise add it (uses the setLabels remove[] arm).
