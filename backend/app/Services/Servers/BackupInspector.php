@@ -237,12 +237,16 @@ final class BackupInspector
             $activates = $parts[$count - 1];
             $times = implode(' ', array_slice($parts, 0, $count - 2));
 
-            // NEXT ends at its "left"/"n/a", LAST at its "ago"/"n/a".
+            // Anchored on the timestamps themselves rather than on the words
+            // around them: some builds of systemd print "4h 42min left" and
+            // others just "8min", so "left" is not something to rely on. The
+            // date shape is the same everywhere.
+            $stampPattern = '(?:\w{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+|n\/a)';
             $next = null;
             $last = null;
-            if (preg_match('/^(.*?)\s+(?:\d\S*\s+)?(?:left|n\/a)\s+(.*?)\s+(?:\d\S*\s+)?(?:ago|n\/a)\s*$/', $times, $m) === 1) {
-                $next = trim($m[1]) !== '' ? trim($m[1]) : null;
-                $last = trim($m[2]) !== '' ? trim($m[2]) : null;
+            if (preg_match('/('.$stampPattern.').*?('.$stampPattern.')/', $times, $m) === 1) {
+                $next = $m[1] !== 'n/a' ? $m[1] : null;
+                $last = $m[2] !== 'n/a' ? $m[2] : null;
             }
 
             $stamp = $last !== null ? strtotime($last) : false;
