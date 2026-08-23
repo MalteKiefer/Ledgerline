@@ -448,4 +448,25 @@ class ServersTest extends TestCase
         );
         $this->assertSame('no_credentials', $empty['err']);
     }
+
+    public function test_a_failed_test_returns_the_public_key_that_was_offered(): void
+    {
+        $user = User::factory()->create();
+        $private = \phpseclib3\Crypt\EC::createKey('Ed25519')->toString('OpenSSH');
+
+        // No host answers here, so the probe fails -- which is the case that
+        // matters: "authentication was rejected" is nearly always this key
+        // missing from authorized_keys, and it was impossible to see which one.
+        $response = $this->actingAs($user)->postJson('/api/v1/servers/test', [
+            'host' => '203.0.113.9',
+            'username' => 'root',
+            'private_key' => $private,
+        ]);
+
+        $public = $response->json('public_key');
+        $this->assertIsString($public);
+        $this->assertStringStartsWith('ssh-ed25519 ', $public);
+        // The private half never comes back.
+        $this->assertStringNotContainsString('PRIVATE KEY', $response->getContent() ?: '');
+    }
 }

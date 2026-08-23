@@ -153,6 +153,34 @@ class ServerController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * The OpenSSH public line for the key a test just used.
+     *
+     * Derived rather than stored: it is a function of the private half, and
+     * keeping a second copy only invites the two to drift apart.
+     */
+    private function publicKeyFor(Request $request): ?string
+    {
+        $private = $request->string('private_key')->value() ?: $this->keypairPrivateKey($request);
+        if (trim($private) === '') {
+            return null;
+        }
+
+        try {
+            $key = PublicKeyLoader::loadPrivateKey(
+                str_replace(["\r\n", "\r"], "\n", $private),
+                $request->string('passphrase')->value(),
+            );
+            // Same narrowing the other two call sites use: the loader is
+            // documented as returning a key, not typed as one.
+            $public = $key->getPublicKey();
+
+            return $public instanceof AsymmetricKey ? $this->openSsh($public) : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     /** Queue a fresh probe. 202: the answer arrives in a later index/show. */
     public function refresh(Request $request, Server $server): JsonResponse
     {
@@ -213,6 +241,11 @@ class ServerController extends Controller
             'ok' => $result->ok,
             'error' => $result->error,
             'fingerprint' => $result->fingerprint,
+            // The public half of whatever key was used. Somebody pasting their
+            // own key had no way to see which line has to be in authorized_keys,
+            // which is exactly what "authentication was rejected" is about. The
+            // private half is not returned, and this is the public one.
+            'public_key' => $this->publicKeyFor($request),
             'facts' => $result->ok ? $result->facts : null,
             'duration_ms' => $result->durationMs,
         ], $result->ok ? 200 : 422);

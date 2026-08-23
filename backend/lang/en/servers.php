@@ -512,6 +512,8 @@ return [
     'docker_storage_hint' => 'Images and reclaimable space are counted on demand — the engine needs a moment for it.',
     'docker_storage_loading' => 'Adding up images and reclaimable space…',
     'docker_storage_slow' => 'The engine took too long to add this up. Try again, or look on the host.',
+    'auth_failed_hint' => 'The host refused this key. It must be listed in the authorized_keys of that account — this is the line:',
+    'key_test_first' => '<run the connection test first to see the public key>',
     'tab_panels' => 'Panel',
     'panel_title' => 'Hosting control panel',
     'panel_none' => 'No hosting control panel found. Services on this host were configured by hand.',

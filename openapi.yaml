@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.730.0
+  version: 1.731.0
   license:
     name: Proprietary
   description: >
@@ -1588,6 +1588,15 @@ components:
         ok: { type: boolean }
         error: { type: [string, "null"] }
         fingerprint: { type: [string, "null"] }
+        public_key:
+          type: [string, "null"]
+          description: >
+            The OpenSSH public line of the key that was tried, derived from the
+            private half rather than stored so the two cannot drift; the private
+            half is never returned. This is what makes `auth_failed` actionable:
+            it means the host does not carry this line in that account's
+            authorized_keys, and there was previously no way to see which line
+            the app would offer when the key was pasted rather than generated.
         facts: { $ref: "#/components/schemas/ServerFacts" }
         duration_ms: { type: integer }
     StorageMount:

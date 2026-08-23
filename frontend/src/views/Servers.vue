@@ -183,6 +183,10 @@
           <p v-if="!probe" class="mt-2 text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.test_first') }}</p>
           <template v-else>
             <p v-if="!probe.ok" class="mt-2 rounded bg-red-500/10 px-2 py-1.5 text-[0.7rem] text-red-600 dark:text-red-400">{{ errorText(probe.error) }}</p>
+            <div v-if="!probe.ok && probe.error === 'auth_failed' && probe.public_key" class="mt-2 rounded-lg border border-[var(--ll-border)] p-2">
+              <p class="text-[0.7rem] text-[var(--ll-muted)]">{{ t('servers.auth_failed_hint') }}</p>
+              <pre class="mt-1 overflow-x-auto rounded bg-black/[0.05] p-2 font-mono text-[0.65rem] break-all whitespace-pre-wrap dark:bg-white/5">{{ probe.public_key }}</pre>
+            </div>
             <template v-else>
               <p class="mt-2 text-[0.7rem] text-emerald-700 dark:text-emerald-400">{{ t('servers.test_ok') }}</p>
               <p class="mt-2 text-xs font-medium">{{ t('servers.fingerprint') }}</p>
@@ -648,7 +652,11 @@ async function doGenerateKey() {
  */
 const setupCommands = computed(() => {
   const user = form.value.username || 'ledgerline';
-  const pub = generatedKey.value?.public_key ?? (form.value.private_key ? '' : t('servers.key_own_placeholder'));
+  // A pasted key has no public half until a test derives it, so the commands
+  // say so rather than carrying an empty line that would install nothing.
+  const pub = generatedKey.value?.public_key
+    ?? probe.value?.public_key
+    ?? (form.value.private_key ? t('servers.key_test_first') : t('servers.key_own_placeholder'));
   const keyLine = form.value.restricted_key
     ? `command="/usr/local/bin/ll-facts",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ${pub}`
     : pub;
