@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\FileEntry;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -93,5 +94,40 @@ class FilesInfoTest extends TestCase
 
         $this->actingAs(User::factory()->create());
         $this->getJson(route('files.rel.entries.info', $file->id))->assertNotFound();
+    }
+
+    public function test_folder_info_reports_contents_sharing_and_path(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $parent = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Projects'])->json('folder.id');
+        $folder = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Client', 'parent_id' => $parent])->json('folder.id');
+        $sub = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Invoices', 'parent_id' => $folder])->json('folder.id');
+
+        $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('note.txt', 'hello'), 'file_folder_id' => $folder])->assertCreated();
+        $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('deep.txt', 'world'), 'file_folder_id' => $sub])->assertCreated();
+
+        $body = $this->getJson(route('files.rel.folders.info', $folder))->assertOk()->json();
+
+        // The path is where the folder sits, not the folder itself.
+        $this->assertSame('/Projects', $body['path']);
+        // Everything below, at any depth...
+        $this->assertSame(2, $body['contents']['files']);
+        $this->assertSame(1, $body['contents']['folders']);
+        // ...against only what sits immediately inside.
+        $this->assertSame(1, $body['contents']['direct_files']);
+        $this->assertSame(1, $body['contents']['direct_folders']);
+        $this->assertGreaterThan(0, $body['contents']['bytes']);
+        $this->assertSame(2, $body['contents']['types']['TEXT'] ?? null);
+        $this->assertNull($body['share']);
+    }
+
+    public function test_folder_info_is_owner_scoped(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $theirs = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Theirs'])->json('folder.id');
+
+        $this->actingAs(User::factory()->create());
+        $this->getJson(route('files.rel.folders.info', $theirs))->assertNotFound();
     }
 }

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.720.0
+  version: 1.721.0
   license:
     name: Proprietary
   description: >
@@ -7334,6 +7334,60 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /files/folders/{folder}/info:
+    get:
+      tags: [Files]
+      operationId: filesFolderInfo
+      summary: What a folder is - where it sits, what it holds, who it is shared with
+      description: >
+        A folder had no properties view at all: its size was only visible from
+        the storage dialog and its sharing state only from the share screen. The
+        same shape as the file view, so one dialog renders both. Owner-scoped.
+        Throttled 600/min.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: folder, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200":
+          description: Folder properties.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: { type: string, description: "The parent chain, not including the folder itself." }
+                  created_at: { type: [string, "null"], format: date-time }
+                  updated_at: { type: [string, "null"], format: date-time }
+                  contents:
+                    type: object
+                    properties:
+                      files: { type: integer, description: "Everything below, at any depth." }
+                      folders: { type: integer }
+                      bytes: { type: integer }
+                      direct_files: { type: integer, description: "Only what sits immediately inside." }
+                      direct_folders: { type: integer }
+                      types:
+                        type: object
+                        additionalProperties: { type: integer }
+                        description: "File count per category, named from the same enum the type filter uses."
+                  share:
+                    type: [object, "null"]
+                    properties:
+                      expires_at: { type: [string, "null"], format: date-time }
+                      allow_download: { type: boolean }
+                      protected: { type: boolean }
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        email: { type: string }
+                        role: { type: string, enum: [viewer, editor] }
+                  activity: { type: array, items: { $ref: "#/components/schemas/FileActivity" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /files/entries/{file}/info:
     get:

@@ -56,6 +56,20 @@ export interface FileInfo {
   duplicates: { id: number; name: string; path: string }[];
   activity: FileActivity[];
 }
+/** What a folder is, in the same shape the file view uses. */
+export interface FolderInfo {
+  path: string;
+  created_at: string | null;
+  updated_at: string | null;
+  contents: {
+    files: number; folders: number; bytes: number;
+    direct_files: number; direct_folders: number;
+    types: Record<string, number>;
+  };
+  share: { expires_at: string | null; allow_download: boolean; protected: boolean } | null;
+  members: { name: string; email: string; role: string }[];
+  activity: FileActivity[];
+}
 export interface VirusTotalResult { known: boolean; sha256: string; stats?: { malicious: number; suspicious: number; harmless: number; undetected: number } }
 export interface SharedFileNode {
   id: number; name: string; mime: string | null; size: number; file_folder_id: number | null; updated_at: string | null;
@@ -228,6 +242,7 @@ export const useFilesStore = defineStore('files', () => {
   const activity = () => api.get<{ activity: FileActivity[] }>('/api/v1/files/activity').then((r) => r.activity);
   const fileActivity = (fileId: number) => api.get<{ activity: FileActivity[] }>(`/api/v1/files/entries/${fileId}/activity`).then((r) => r.activity);
   const fileInfo = (fileId: number) => api.get<FileInfo>(`/api/v1/files/entries/${fileId}/info`);
+  const folderInfo = (folderId: number) => api.get<FolderInfo>(`/api/v1/files/folders/${folderId}/info`);
   const virusTotal = (fileId: number) => api.post<VirusTotalResult>(`/api/v1/files/entries/${fileId}/virustotal`);
   const getEntry = (fileId: number) => api.get<{ file: FileEntry }>(`/api/v1/files/entries/${fileId}/show`).then((r) => r.file);
 
@@ -301,7 +316,7 @@ export const useFilesStore = defineStore('files', () => {
     loadShares, createShare, createFolderShareLink, updateShare, deleteShare, shareUrl,
     loadFolderShares, shareToUser, updateShareMember, removeShareMember, deleteFolderShare,
     loadSharedWithMe, browseShared, sharedRawUrl, uploadToShared, renameShared, deleteShared,
-    stats, zip, activity, fileActivity, fileInfo, virusTotal, getEntry,
+    stats, zip, activity, fileActivity, fileInfo, folderInfo, virusTotal, getEntry,
     createArchive, extractArchive, isArchive,
     isEncrypted, encryptEntry, decryptEntry, encryptFolder,
     rawUrl, downloadUrl, thumbUrl,

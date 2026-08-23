@@ -340,6 +340,7 @@
                   <template v-else-if="row._folder && view!=='trash'">
                     <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItemCls" @select="openInfo(row)"><Icon name="info" :size="18" />{{ t('files.info') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openShare(row)"><Icon name="share" :size="18" />{{ t('files.share') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemDangerCls" @select="doTrash(row)"><Icon name="delete" :size="18" />{{ t('files.trash') }}</DropdownMenuItem>
                   </template>
@@ -425,6 +426,7 @@
                       <template v-else-if="row._folder && view!=='trash'">
                         <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
+                        <DropdownMenuItem :class="menuItemCls" @select="openInfo(row)"><Icon name="info" :size="18" />{{ t('files.info') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemDangerCls" @select="doTrash(row)"><Icon name="delete" :size="18" />{{ t('files.trash') }}</DropdownMenuItem>
                       </template>
                       <template v-else>
@@ -443,58 +445,139 @@
   </div>
 
   <!-- Info dialog -->
-  <Modal v-model="info.show" :title="t('files.info_title')" width="560px">
-    <div class="flex flex-col gap-3">
-      <TextField v-model="info.name" :label="t('files.info_name')" />
-      <div class="flex gap-6">
-        <div><div class="text-xs text-[var(--ll-muted)]">{{ t('files.info_mime') }}</div><div class="text-sm">{{ info.file?.mime || '—' }}</div></div>
-        <div><div class="text-xs text-[var(--ll-muted)]">{{ t('files.info_size') }}</div><div class="text-sm ll-mono">{{ info.file ? fmt(info.file.size) : '—' }}</div></div>
-      </div>
-      <TextField v-model="info.tags" :label="t('files.info_tags')" :placeholder="t('files.tags_placeholder')" />
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('files.note') }}</span>
-        <textarea
-          v-model="info.note" :placeholder="t('files.note_placeholder')" rows="3"
-          class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] placeholder:text-[var(--ll-muted)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
-        ></textarea>
-      </label>
-      <div v-if="s.labels.length">
-        <div class="mb-1.5 text-xs text-[var(--ll-muted)]">{{ t('files.info_labels') }}</div>
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="l in (s.labels as FileLabel[])" :key="l.id" type="button"
-            class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors"
-            :style="info.labelIds.includes(l.id)
-              ? { background: l.color, color: '#fff' }
-              : { background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }"
-            @click="info.labelIds.includes(l.id) ? info.labelIds.splice(info.labelIds.indexOf(l.id), 1) : info.labelIds.push(l.id)"
-          >{{ l.name }}</button>
+  <!-- Properties. Tabs rather than one long scroll: the editable fields, the
+       technical facts, the security answer and the history are four different
+       questions, and stacking them means scrolling past three to reach one. -->
+  <Modal v-model="info.show" :title="info.folder ? t('files.info_title_folder') : t('files.info_title')" width="720px">
+    <div class="flex flex-col gap-4">
+      <!-- Header: what this is, at a glance. -->
+      <div class="flex items-start gap-3">
+        <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10">
+          <Icon :name="info.folder ? 'folder' : categoryMsym(info.name, info.file?.mime ?? '')" :size="26" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-base font-semibold" :title="info.name">{{ info.name }}</div>
+          <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--ll-muted)]">
+            <span>{{ info.folder ? t('files.info_kind_folder') : (info.file?.mime || t('files.info_kind_file')) }}</span>
+            <template v-if="!info.folder && info.file">
+              <span aria-hidden="true">·</span>
+              <span class="ll-mono">{{ fmt(info.file.size) }}</span>
+            </template>
+            <template v-else-if="folderDetail">
+              <span aria-hidden="true">·</span>
+              <span class="ll-mono">{{ fmt(folderDetail.contents.bytes) }}</span>
+            </template>
+          </div>
         </div>
       </div>
 
-      <!-- Read-only rich detail (Stufe 0/1/2). -->
-      <div class="mt-1 border-t border-[var(--ll-border)] pt-3">
-        <div v-if="infoLoading" class="text-sm text-[var(--ll-muted)]">…</div>
-        <div v-else-if="infoDetail" class="flex flex-col gap-3 text-sm">
-          <!-- General -->
-          <dl class="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1">
+      <!-- Tabs -->
+      <div class="flex flex-wrap gap-1 border-b border-[var(--ll-border)]">
+        <button
+          v-for="tab in infoTabs" :key="tab.id" type="button"
+          class="-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors"
+          :class="infoTab === tab.id
+            ? 'border-primary-500 font-medium text-primary-600 dark:text-primary-300'
+            : 'border-transparent text-[var(--ll-muted)] hover:text-[var(--ll-fg)]'"
+          @click="infoTab = tab.id"
+        >
+          <Icon :name="tab.icon" :size="17" />
+          {{ tab.label }}
+        </button>
+      </div>
+
+      <div v-if="infoLoading" class="py-8 text-center text-[var(--ll-muted)]">
+        <Icon name="progress_activity" :size="26" class="animate-spin" />
+      </div>
+
+      <template v-else>
+        <!-- General -->
+        <div v-show="infoTab === 'general'" class="flex flex-col gap-3">
+          <TextField v-model="info.name" :label="t('files.info_name')" />
+          <dl class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1.5 text-sm">
             <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_path') }}</dt>
-            <dd class="ll-mono truncate" :title="infoDetail.path">{{ infoDetail.path }}</dd>
+            <dd class="ll-mono truncate" :title="infoPath">{{ infoPath }}</dd>
+
+            <template v-if="info.folder && folderDetail">
+              <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_contains') }}</dt>
+              <dd>{{ t('files.info_contains_n', { f: String(folderDetail.contents.files), d: String(folderDetail.contents.folders) }) }}</dd>
+              <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_direct') }}</dt>
+              <dd>{{ t('files.info_contains_n', { f: String(folderDetail.contents.direct_files), d: String(folderDetail.contents.direct_folders) }) }}</dd>
+            </template>
+
             <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_uploaded') }}</dt>
-            <dd>{{ infoDetail.created_at ? fmtDateTime(infoDetail.created_at) : '—' }}</dd>
+            <dd>{{ infoCreated ? fmtDateTime(infoCreated) : '—' }}</dd>
             <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_modified') }}</dt>
-            <dd>{{ infoDetail.updated_at ? fmtDateTime(infoDetail.updated_at) : '—' }}</dd>
-            <template v-if="infoDetail.versions > 1">
+            <dd>{{ infoModified ? fmtDateTime(infoModified) : '—' }}</dd>
+
+            <template v-if="!info.folder && infoDetail && infoDetail.versions > 1">
               <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_version') }}</dt>
               <dd>{{ t('files.info_version_n', { v: String(infoDetail.version), n: String(infoDetail.versions) }) }}</dd>
             </template>
-            <template v-if="infoDetail.sha256">
-              <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_checksum') }}</dt>
-              <dd class="ll-mono truncate" :title="infoDetail.sha256">{{ infoDetail.sha256.slice(0, 16) }}…</dd>
-            </template>
           </dl>
 
-          <div v-if="infoDetail.sha256" class="rounded-lg border border-[var(--ll-border)] p-3">
+          <!-- What a folder is made of, when it holds anything. -->
+          <div v-if="info.folder && folderTypeRows.length">
+            <div :class="infoSection">{{ t('files.info_by_type') }}</div>
+            <div v-for="row in folderTypeRows" :key="row.kind" class="flex items-center gap-2 py-0.5 text-sm">
+              <Icon :name="row.icon" :size="16" class="text-[var(--ll-muted)]" />
+              <span class="flex-1">{{ row.label }}</span>
+              <span class="tabular-nums text-[var(--ll-muted)]">{{ row.count }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Organise -->
+        <div v-show="infoTab === 'organise'" class="flex flex-col gap-3">
+          <TextField v-model="info.tags" :label="t('files.info_tags')" :placeholder="t('files.tags_placeholder')" />
+          <label class="block">
+            <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('files.note') }}</span>
+            <textarea
+              v-model="info.note" :placeholder="t('files.note_placeholder')" rows="4"
+              class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] placeholder:text-[var(--ll-muted)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+            ></textarea>
+          </label>
+          <div v-if="s.labels.length">
+            <div class="mb-1.5 text-xs text-[var(--ll-muted)]">{{ t('files.info_labels') }}</div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="l in (s.labels as FileLabel[])" :key="l.id" type="button"
+                class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors"
+                :style="info.labelIds.includes(l.id)
+                  ? { background: l.color, color: '#fff' }
+                  : { background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }"
+                @click="info.labelIds.includes(l.id) ? info.labelIds.splice(info.labelIds.indexOf(l.id), 1) : info.labelIds.push(l.id)"
+              >{{ l.name }}</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Details: what the file itself says about itself. -->
+        <div v-show="infoTab === 'details'" class="flex flex-col gap-3 text-sm">
+          <div v-if="infoDetail?.metadata && Object.keys(infoDetail.metadata.fields).length">
+            <div :class="infoSection">{{ metaKindLabel(infoDetail.metadata.kind) }}</div>
+            <dl class="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-0.5">
+              <template v-for="(v, k) in infoDetail.metadata.fields" :key="k">
+                <dt class="text-xs text-[var(--ll-muted)]">{{ k }}</dt>
+                <dd class="truncate" :title="v">{{ v }}</dd>
+              </template>
+            </dl>
+          </div>
+          <div v-if="infoDetail?.snippet">
+            <div :class="infoSection">{{ t('files.info_content') }}</div>
+            <p class="line-clamp-6 text-[var(--ll-muted)]">{{ infoDetail.snippet }}</p>
+          </div>
+          <p v-if="!hasDetails" class="py-6 text-center text-[var(--ll-muted)]">{{ t('files.info_no_details') }}</p>
+        </div>
+
+        <!-- Security -->
+        <div v-show="infoTab === 'security'" class="flex flex-col gap-3 text-sm">
+          <dl v-if="infoDetail?.sha256" class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1.5">
+            <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_checksum') }}</dt>
+            <dd class="ll-mono break-all">{{ infoDetail.sha256 }}</dd>
+          </dl>
+
+          <div v-if="infoDetail?.sha256" class="rounded-lg border border-[var(--ll-border)] p-3">
             <div class="flex items-center gap-2">
               <Icon name="security" :size="18" class="text-[var(--ll-muted)]" />
               <span class="flex-1 text-sm font-medium">{{ t('files.virustotal_title') }}</span>
@@ -510,49 +593,65 @@
             </div>
           </div>
 
-          <!-- Type-specific metadata (Stufe 1). -->
-          <div v-if="infoDetail.metadata && Object.keys(infoDetail.metadata.fields).length">
-            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ metaKindLabel(infoDetail.metadata.kind) }}</div>
-            <dl class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-0.5">
-              <template v-for="(v, k) in infoDetail.metadata.fields" :key="k">
-                <dt class="text-xs text-[var(--ll-muted)]">{{ k }}</dt>
-                <dd class="truncate" :title="v">{{ v }}</dd>
-              </template>
+          <div v-if="!info.folder && info.file" class="flex items-center gap-2 text-[var(--ll-muted)]">
+            <Icon :name="s.isEncrypted(info.file.name) ? 'lock' : 'lock_open'" :size="16" />
+            <span>{{ s.isEncrypted(info.file.name) ? t('files.info_encrypted') : t('files.info_not_encrypted') }}</span>
+          </div>
+
+          <p v-if="info.folder" class="py-6 text-center text-[var(--ll-muted)]">{{ t('files.info_no_checksum') }}</p>
+        </div>
+
+        <!-- Sharing -->
+        <div v-show="infoTab === 'sharing'" class="flex flex-col gap-3 text-sm">
+          <div v-if="infoShare" class="rounded-lg border border-[var(--ll-border)] p-3">
+            <div class="flex items-center gap-2">
+              <Icon name="link" :size="18" class="text-[var(--ll-muted)]" />
+              <span class="flex-1 font-medium">{{ t('files.info_shared') }}</span>
+            </div>
+            <dl class="mt-2 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1">
+              <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.share_password') }}</dt>
+              <dd>{{ infoShare.protected ? t('common.yes') : t('common.no') }}</dd>
+              <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.share_expires') }}</dt>
+              <dd>{{ infoShare.expires_at ? fmtDateTime(infoShare.expires_at) : '—' }}</dd>
+              <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.share_allow_download') }}</dt>
+              <dd>{{ infoShare.allow_download ? t('common.yes') : t('common.no') }}</dd>
             </dl>
           </div>
 
-          <!-- Content snippet (Stufe 2). -->
-          <div v-if="infoDetail.snippet">
-            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.info_content') }}</div>
-            <p class="line-clamp-3 text-[var(--ll-muted)]">{{ infoDetail.snippet }}</p>
+          <div v-if="folderDetail?.members.length">
+            <div :class="infoSection">{{ t('files.info_members') }}</div>
+            <div v-for="m in folderDetail.members" :key="m.email" class="flex items-center gap-2 py-1">
+              <Icon name="person" :size="16" class="text-[var(--ll-muted)]" />
+              <span class="min-w-0 flex-1 truncate">{{ m.name || m.email }}</span>
+              <Badge tone="gray">{{ m.role === 'editor' ? t('files.role_editor') : t('files.role_viewer') }}</Badge>
+            </div>
           </div>
 
-          <!-- Sharing status (Stufe 0). -->
-          <div v-if="infoDetail.share" class="flex items-center gap-2 text-[var(--ll-muted)]">
-            <Icon name="share" :size="16" />
-            <span>{{ t('files.info_shared') }}<template v-if="infoDetail.share.protected"> · {{ t('files.info_protected') }}</template><template v-if="infoDetail.share.expires_at"> · {{ t('files.info_expires', { d: fmtDateTime(infoDetail.share.expires_at) }) }}</template></span>
+          <p v-if="!infoShare && !folderDetail?.members.length" class="py-6 text-center text-[var(--ll-muted)]">{{ t('files.info_not_shared') }}</p>
+        </div>
+
+        <!-- History -->
+        <div v-show="infoTab === 'history'" class="flex flex-col gap-3 text-sm">
+          <div v-if="infoActivity.length">
+            <div :class="infoSection">{{ t('files.info_activity') }}</div>
+            <div v-for="a in infoActivity" :key="a.id" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1.5 last:border-0">
+              <span class="truncate">{{ actLabel(a.action) }}<template v-if="a.actor"> · {{ a.actor }}</template></span>
+              <span class="shrink-0 text-xs text-[var(--ll-muted)]">{{ fmtDateTime(a.created_at) }}</span>
+            </div>
           </div>
 
-          <!-- Duplicates (Stufe 2 = only). -->
-          <div v-if="infoDetail.duplicates.length">
-            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.info_duplicates', { n: String(infoDetail.duplicates.length) }) }}</div>
+          <div v-if="infoDetail?.duplicates.length">
+            <div :class="infoSection">{{ t('files.info_duplicates', { n: String(infoDetail.duplicates.length) }) }}</div>
             <div v-for="d in infoDetail.duplicates" :key="d.id" class="flex items-center gap-2 py-0.5">
-              <Icon name="content_copy" :size="14" class="text-[var(--ll-muted)]" />
+              <Icon name="content_copy" :size="15" class="text-[var(--ll-muted)]" />
               <span class="truncate">{{ d.name }}</span>
               <span class="truncate text-xs text-[var(--ll-muted)]">{{ d.path }}</span>
             </div>
           </div>
 
-          <!-- Recent activity (Stufe 0). -->
-          <div v-if="infoDetail.activity.length">
-            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.info_activity') }}</div>
-            <div v-for="a in infoDetail.activity" :key="a.id" class="flex items-center justify-between py-0.5 text-xs">
-              <span>{{ actLabel(a.action) }}<template v-if="a.actor"> · {{ a.actor }}</template></span>
-              <span class="text-[var(--ll-muted)]">{{ fmtDateTime(a.created_at) }}</span>
-            </div>
-          </div>
+          <p v-if="!infoActivity.length && !infoDetail?.duplicates.length" class="py-6 text-center text-[var(--ll-muted)]">{{ t('files.info_no_history') }}</p>
         </div>
-      </div>
+      </template>
     </div>
     <template #footer>
       <Btn variant="ghost" @click="info.show=false">{{ t('common.cancel') }}</Btn>
@@ -1195,7 +1294,7 @@
             <Icon name="drive_file_move" :size="18" />{{ t('files.move') }}
           </button>
           <div class="my-1 h-px bg-[var(--ll-border)]" />
-          <button v-if="!ctxMenu.row._folder" :class="ctxItemCls" @click="ctxRun(() => openInfo(ctxMenu.row as Row))">
+          <button :class="ctxItemCls" @click="ctxRun(() => openInfo(ctxMenu.row as Row))">
             <Icon name="info" :size="18" />{{ t('files.info_title') }}
           </button>
           <button v-if="view==='files'" :class="ctxItemCls + ' text-red-600'" @click="ctxRun(() => doTrash(ctxMenu.row as Row))">
@@ -1230,7 +1329,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
 import StlViewer from '@spa/components/StlViewer.vue';
-import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo, type VirusTotalResult } from '@spa/stores/files';
+import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo, type FolderInfo, type VirusTotalResult } from '@spa/stores/files';
 import { useCryptoStore } from '@spa/stores/crypto';
 import { ApiError, api } from '@spa/api/client';
 import { highlightCode } from '@spa/lib/highlight';
@@ -1250,7 +1349,7 @@ const MOUNT_TYPES: { value: MountType; label: string }[] = [
   { value: 'webdav', label: 'WebDAV' },
   { value: 'nextcloud', label: 'Nextcloud' },
 ];
-import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
+import { categoryMsym, categoryTint, formatBytes, isImage, CATEGORY_MSYM, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
@@ -1492,9 +1591,54 @@ const ctxItemCls = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-lef
 const menuItemCls = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10';
 const menuItemDangerCls = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm text-red-600 outline-none hover:bg-red-500/10';
 
-const info = ref<{ show: boolean; busy: boolean; file: FileEntry | null; name: string; tags: string; note: string; labelIds: number[] }>({ show: false, busy: false, file: null, name: '', tags: '', note: '', labelIds: [] });
+const info = ref<{ show: boolean; busy: boolean; folder: FileFolder | null; file: FileEntry | null; name: string; tags: string; note: string; labelIds: number[] }>({ show: false, busy: false, folder: null, file: null, name: '', tags: '', note: '', labelIds: [] });
 const infoDetail = ref<FileInfo | null>(null);
+const folderDetail = ref<FolderInfo | null>(null);
 const infoLoading = ref(false);
+const infoTab = ref<'general' | 'organise' | 'details' | 'security' | 'sharing' | 'history'>('general');
+const infoSection = 'mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]';
+
+/**
+ * Which tabs this thing has.
+ *
+ * A folder has no checksum and no metadata of its own, and nothing in the file
+ * model holds tags for one -- offering those tabs and filling them with "not
+ * applicable" would be worse than not offering them.
+ */
+const infoTabs = computed(() => {
+  const all = [
+    { id: 'general' as const, icon: 'info', label: t('files.info_tab_general') },
+    { id: 'organise' as const, icon: 'sell', label: t('files.info_tab_organise') },
+    { id: 'details' as const, icon: 'description', label: t('files.info_tab_details') },
+    { id: 'security' as const, icon: 'shield', label: t('files.info_tab_security') },
+    { id: 'sharing' as const, icon: 'group', label: t('files.info_tab_sharing') },
+    { id: 'history' as const, icon: 'history', label: t('files.info_tab_history') },
+  ];
+
+  return info.value.folder ? all.filter((tab) => tab.id === 'general' || tab.id === 'sharing' || tab.id === 'history') : all;
+});
+
+// One source for the header and General tab, whichever kind is open.
+const infoPath = computed(() => (info.value.folder ? folderDetail.value?.path : infoDetail.value?.path) ?? '/');
+const infoCreated = computed(() => (info.value.folder ? folderDetail.value?.created_at : infoDetail.value?.created_at) ?? null);
+const infoModified = computed(() => (info.value.folder ? folderDetail.value?.updated_at : infoDetail.value?.updated_at) ?? null);
+const infoShare = computed(() => (info.value.folder ? folderDetail.value?.share : infoDetail.value?.share) ?? null);
+const infoActivity = computed(() => (info.value.folder ? folderDetail.value?.activity : infoDetail.value?.activity) ?? []);
+const hasDetails = computed(() => !!(infoDetail.value?.snippet || Object.keys(infoDetail.value?.metadata?.fields ?? {}).length));
+
+/**
+ * What a folder is made of, most common kind first.
+ *
+ * The server names the categories from the same enum the type filter uses, so
+ * the icons and labels already exist rather than needing a second set.
+ */
+const folderTypeRows = computed(() => Object.entries(folderDetail.value?.contents.types ?? {})
+  .map(([kind, count]) => ({
+    kind,
+    count,
+    icon: CATEGORY_MSYM[kind as keyof typeof CATEGORY_MSYM] ?? 'draft',
+    label: t(`enums.file_type.${kind}`) === `enums.file_type.${kind}` ? kind : t(`enums.file_type.${kind}`),
+  })));
 const virusTotalLoading = ref(false);
 const virusTotalResult = ref<VirusTotalResult | null>(null);
 const fileVirusLoading = ref<number | null>(null);
@@ -2516,11 +2660,22 @@ async function delRecipient(id: number) {
 
 // ---- Info / tags / note ----
 async function openInfo(row: Row) {
-  const f = row.raw as FileEntry;
-  info.value = { show: true, busy: false, file: f, name: f.name, tags: (f.tags ?? []).join(', '), note: f.note ?? '', labelIds: (f.labels ?? []).map((l) => l.id) };
   infoDetail.value = null;
+  folderDetail.value = null;
   virusTotalResult.value = null;
+  infoTab.value = 'general';
   infoLoading.value = true;
+
+  if (row._folder) {
+    const fo = row.raw as FileFolder;
+    info.value = { show: true, busy: false, folder: fo, file: null, name: fo.name, tags: '', note: '', labelIds: [] };
+    try { folderDetail.value = await s.folderInfo(fo.id); } catch { /* best-effort */ } finally { infoLoading.value = false; }
+
+    return;
+  }
+
+  const f = row.raw as FileEntry;
+  info.value = { show: true, busy: false, folder: null, file: f, name: f.name, tags: (f.tags ?? []).join(', '), note: f.note ?? '', labelIds: (f.labels ?? []).map((l) => l.id) };
   try { infoDetail.value = await s.fileInfo(f.id); } catch { /* best-effort */ } finally { infoLoading.value = false; }
 }
 async function scanVirusTotal() {
@@ -2557,6 +2712,22 @@ async function scanFileVirusTotal(file: FileEntry, notify = true): Promise<Virus
 function metaKindLabel(kind: string): string { const k = 'files.meta_kind_' + kind; const s = t(k); return s === k ? kind : s; }
 function actLabel(action: string): string { const k = 'files.act_' + action; const s = t(k); return s === k ? action : s; }
 async function saveInfo() {
+  // A folder carries only its name here; tags, notes and labels do not exist
+  // on the folder model, which is why it has no Organise tab either.
+  const fo = info.value.folder;
+  if (fo) {
+    info.value.busy = true;
+    try {
+      if (info.value.name !== fo.name) await s.renameFolder(fo, info.value.name);
+      await s.load();
+      info.value.show = false;
+      success(t('common.saved'));
+    } catch { error(t('common.error')); }
+    finally { info.value.busy = false; }
+
+    return;
+  }
+
   const f = info.value.file;
   if (!f) return;
   info.value.busy = true;
