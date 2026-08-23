@@ -75,7 +75,7 @@ class ServerVpnTest extends TestCase
             'daemonVersion' => '0.76.1',
             'management' => ['connected' => true],
             'signal' => ['connected' => true],
-            'relays' => [['available' => true], ['available' => false]],
+            'relays' => ['total' => 5, 'available' => 5, 'details' => [['uri' => 'stun:stun.netbird.io:443', 'available' => true]]],
             'peers' => ['total' => 2, 'connected' => 1, 'details' => [
                 ['fqdn' => 'proxy.netbird.cloud', 'netbirdIp' => '100.78.22.124', 'status' => 'Connected', 'connectionType' => 'Relayed', 'transferReceived' => 486252, 'transferSent' => 3599492],
                 ['fqdn' => 'fedora.netbird.cloud', 'netbirdIp' => '100.78.103.138', 'status' => 'Idle', 'connectionType' => '-'],
@@ -91,7 +91,7 @@ class ServerVpnTest extends TestCase
         $this->assertSame('netbird', $netbird['id']);
         $this->assertTrue($netbird['connected']);
         $this->assertSame('100.78.193.129/16', $netbird['address']);
-        $this->assertSame('1/2', $netbird['facts']['relays']);
+        $this->assertSame('5/5', $netbird['facts']['relays']);
         $this->assertSame(1, $netbird['peers_connected']);
         $this->assertSame('Relayed', $netbird['peers'][0]['route']);
         $this->assertSame(486252, $netbird['peers'][0]['rx']);

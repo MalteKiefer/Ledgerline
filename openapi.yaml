@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.722.2
+  version: 1.722.3
   license:
     name: Proprietary
   description: >
