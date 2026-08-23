@@ -151,6 +151,33 @@ class ServerVpnTest extends TestCase
     }
 
     #[Test]
+    public function a_reply_without_a_trailing_newline_does_not_swallow_the_next_section(): void
+    {
+        // `netbird status --json` ends without a newline, so on a real host the
+        // next marker shared its line: the section vanished and the JSON was
+        // corrupted by the marker glued to its end. Found live, not in a test.
+        $json = json_encode(['netbirdIp' => '100.78.1.2', 'management' => ['connected' => true]], JSON_THROW_ON_ERROR);
+        $out = '
+##LL:netbird
+'.$json.'
+##LL:netbird_unit
+LoadState=loaded
+ActiveState=active
+SubState=running
+
+##LL:end
+';
+
+        $result = (new VpnInspector(new VpnRecordingProbe([['ok' => true, 'out' => $out]])))
+            ->inspect($this->server(User::factory()->create()));
+
+        $netbird = $result['providers'][0];
+        $this->assertTrue($netbird['connected']);
+        $this->assertSame('100.78.1.2', $netbird['address']);
+        $this->assertSame('running', $netbird['unit']['sub']);
+    }
+
+    #[Test]
     public function a_bare_openvpn_package_is_not_a_vpn(): void
     {
         // Debian's plain openvpn.service starts nothing -- it collects the
