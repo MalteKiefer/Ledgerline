@@ -512,6 +512,8 @@ return [
     'docker_storage_hint' => 'Images und freigebbarer Platz werden auf Anforderung gezählt — die Engine braucht dafür einen Moment.',
     'docker_storage_loading' => 'Images und freigebbarer Platz werden zusammengezählt…',
     'docker_storage_slow' => 'Die Engine hat dafür zu lange gebraucht. Nochmal versuchen oder auf dem Host nachsehen.',
+    'auth_failed_hint' => 'Der Host hat diesen Schlüssel abgelehnt. Er muss in der authorized_keys des Kontos stehen — das ist die Zeile:',
+    'key_test_first' => '<zuerst den Verbindungstest starten, dann erscheint der öffentliche Schlüssel>',
     'tab_panels' => 'Panel',
     'panel_title' => 'Hosting-Verwaltung',
     'panel_none' => 'Keine Hosting-Verwaltung gefunden. Die Dienste dieses Hosts wurden von Hand eingerichtet.',

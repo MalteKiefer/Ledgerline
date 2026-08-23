@@ -440,6 +440,8 @@ export interface ProbeResult {
   fingerprint: string | null;
   facts?: ServerFacts | null;
   duration_ms: number;
+  /** The public line of the key that was tried, so it can be compared with authorized_keys. */
+  public_key: string | null;
 }
 
 /**
@@ -450,7 +452,7 @@ export interface ProbeResult {
 function probeFrom(e: unknown): ProbeResult {
   const body = e instanceof ApiError ? e.body : null;
   if (body && typeof body === 'object' && 'ok' in body) return body as ProbeResult;
-  return { ok: false, error: null, fingerprint: null, duration_ms: 0 };
+  return { ok: false, error: null, fingerprint: null, public_key: null, duration_ms: 0 };
 }
 
 export const useServersStore = defineStore('servers', () => {
