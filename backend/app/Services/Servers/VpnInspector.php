@@ -131,21 +131,42 @@ final class VpnInspector
         ];
     }
 
-    /** @param array<mixed> $data */
+    /**
+     * How many relays are reachable, as "up/total".
+     *
+     * NetBird reports this as an object with its own totals plus a details
+     * list -- not as a list of relays, which is what this counted at first and
+     * why a host with five working relays showed 0/3. The counts are taken from
+     * the object; the details list is only a fallback for a shape that reports
+     * one without the other.
+     *
+     * @param  array<mixed>  $data
+     */
     private function relayCount(array $data): ?string
     {
-        $relays = $this->arr($data['relays'] ?? null);
+        $relays = $this->sub($data, 'relays');
         if ($relays === []) {
             return null;
         }
+
+        $details = $this->arr($relays['details'] ?? null);
+        $total = isset($relays['total']) && is_numeric($relays['total']) ? (int) $relays['total'] : count($details);
+        if ($total === 0) {
+            return null;
+        }
+
+        if (isset($relays['available']) && is_numeric($relays['available'])) {
+            return $relays['available'].'/'.$total;
+        }
+
         $up = 0;
-        foreach ($relays as $relay) {
+        foreach ($details as $relay) {
             if (is_array($relay) && $this->flag($relay['available'] ?? null)) {
                 $up++;
             }
         }
 
-        return $up.'/'.count($relays);
+        return $up.'/'.$total;
     }
 
     /**
