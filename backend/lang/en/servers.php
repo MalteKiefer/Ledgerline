@@ -517,4 +517,11 @@ return [
     'vpn_tunnels' => 'Tunnels',
     'vpn_confirm_down' => 'Take :p down? This app reaches this host through an overlay network, so the connection may drop with it.',
     'vpn_confirm_restart' => 'Restart :p? The connection to this host may drop while it comes back.',
+    'vpn_dns' => 'DNS',
+    'vpn_dns_active' => 'Active',
+    'vpn_dns_off' => 'Off',
+    'vpn_dns_failed' => 'Failed',
+    'vpn_events' => 'Recent events',
+    'vpn_routes' => 'Routes',
+    'vpn_just_now' => 'just now',
 ];

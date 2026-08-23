@@ -178,6 +178,53 @@ SubState=running
     }
 
     #[Test]
+    public function it_carries_dns_events_and_the_ssh_server_across(): void
+    {
+        $json = json_encode([
+            'netbirdIp' => '100.78.1.2',
+            'daemonStatus' => 'Connected',
+            'profileName' => 'default',
+            'management' => ['connected' => true],
+            'quantumResistance' => false,
+            'forwardingRules' => 3,
+            'sshServer' => ['enabled' => true, 'sessions' => []],
+            'dnsServers' => [
+                ['servers' => ['100.78.0.1'], 'domains' => ['netbird.cloud'], 'enabled' => true],
+                ['servers' => ['10.0.0.1'], 'domains' => ['corp.internal'], 'enabled' => true, 'error' => 'timeout'],
+            ],
+            'events' => [
+                ['timestamp' => '2026-08-21T13:57:22Z', 'severity' => 'INFO', 'category' => 'SYSTEM', 'message' => 'Network map updated'],
+                ['timestamp' => '2026-08-22T09:00:00Z', 'severity' => 'ERROR', 'category' => 'SYSTEM', 'message' => 'internal', 'userMessage' => 'Lost the management channel'],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $out = '
+##LL:netbird
+'.$json.'
+##LL:end
+';
+        $result = (new VpnInspector(new VpnRecordingProbe([['ok' => true, 'out' => $out]])))
+            ->inspect($this->server(User::factory()->create()));
+
+        $netbird = $result['providers'][0];
+        $this->assertSame('Connected', $netbird['facts']['daemon']);
+        $this->assertSame('off', $netbird['facts']['post_quantum']);
+        $this->assertSame('enabled', $netbird['facts']['ssh']);
+        $this->assertSame(3, $netbird['facts']['forwarding']);
+
+        $this->assertCount(2, $netbird['dns']);
+        $this->assertSame('netbird.cloud', $netbird['dns'][0]['domains']);
+        // A resolver that failed carries its reason: that is the answer to
+        // "why does that name not resolve".
+        $this->assertSame('timeout', $netbird['dns'][1]['error']);
+
+        // Newest first, and the message written for a person wins over the
+        // internal one.
+        $this->assertSame('Lost the management channel', $netbird['events'][0]['message']);
+        $this->assertSame('ERROR', $netbird['events'][0]['severity']);
+    }
+
+    #[Test]
     public function a_bare_openvpn_package_is_not_a_vpn(): void
     {
         // Debian's plain openvpn.service starts nothing -- it collects the

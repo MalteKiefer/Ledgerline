@@ -362,8 +362,15 @@ export interface VpnProvider {
   peers: VpnPeer[];
   peers_connected: number;
   peers_total: number;
+  /** What the daemon itself says happened -- and for Tailscale, its own health warnings. */
+  events?: { at: string | null; severity: string | null; category: string | null; message: string | null }[];
+  /** Which resolver serves which domains over the overlay, and why one failed. */
+  dns?: { servers: string | null; domains: string; enabled: boolean; error: string | null }[];
   /** ZeroTier joins networks; WireGuard has interfaces; OpenVPN has units. */
-  networks?: { id: string | null; name: string | null; status: string | null; device: string | null; address: string | null }[];
+  networks?: {
+    id: string | null; name: string | null; status: string | null; device: string | null; address: string | null;
+    type?: string | null; mtu?: number | null; bridge?: string | null; routes?: string; dns?: string;
+  }[];
   interfaces?: { name: string; public_key: string; port: number }[];
   units?: { name: string; active: string; sub: string }[];
 }
