@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.731.1
+  version: 1.732.0
   license:
     name: Proprietary
   description: >
@@ -1588,6 +1588,9 @@ components:
         ok: { type: boolean }
         error: { type: [string, "null"] }
         fingerprint: { type: [string, "null"] }
+        key_fingerprint:
+          type: [string, "null"]
+          description: SHA256 of the offered key, in the form `ssh-keygen -lf` prints.
         public_key:
           type: [string, "null"]
           description: >

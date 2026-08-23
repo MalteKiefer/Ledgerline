@@ -514,6 +514,8 @@ return [
     'docker_storage_slow' => 'Die Engine hat dafür zu lange gebraucht. Nochmal versuchen oder auf dem Host nachsehen.',
     'auth_failed_hint' => 'Der Host hat diesen Schlüssel abgelehnt. Er muss in der authorized_keys des Kontos stehen — das ist die Zeile:',
     'key_test_first' => '<zuerst den Verbindungstest starten, dann erscheint der öffentliche Schlüssel>',
+    'auth_failed_verify' => 'Dein Terminal bietet zusätzlich alles an, was dein ssh-Agent hält — eine Anmeldung dort kann also mit einem anderen Schlüssel geklappt haben. Dieser Befehl bietet nur den obigen an:',
+    'key_file' => 'Schlüsseldatei',
     'tab_panels' => 'Panel',
     'panel_title' => 'Hosting-Verwaltung',
     'panel_none' => 'Keine Hosting-Verwaltung gefunden. Die Dienste dieses Hosts wurden von Hand eingerichtet.',
