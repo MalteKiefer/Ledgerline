@@ -36,4 +36,5 @@ return [
     'email' => 'Email',
     'password' => 'Password',
     'not_found' => 'Page not found',
+    'no' => 'No',
 ];

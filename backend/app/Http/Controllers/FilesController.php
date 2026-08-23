@@ -16,6 +16,7 @@ use App\Models\FileLabel;
 use App\Models\FileShare;
 use App\Models\FileUploadLink;
 use App\Models\FileVersion;
+use App\Models\FolderShare;
 use App\Models\MailPgpKey;
 use App\Models\User;
 use App\Models\UserSetting;
@@ -237,6 +238,68 @@ class FilesController extends Controller
             ] : null,
             'duplicates' => $duplicates,
             'activity' => $activity,
+        ]);
+    }
+
+    /**
+     * What a folder is: where it sits, what it holds, who it is shared with.
+     *
+     * A folder had no properties view at all -- the only way to learn its size
+     * was the storage dialog, and its sharing state was only visible from the
+     * share screen. Same shape as the file view so one dialog can render both.
+     */
+    public function folderInfo(Request $request, FileFolder $folder): JsonResponse
+    {
+        $this->requireUser($request);
+
+        $ids = $this->descendantFolderIds($folder->id);
+        $files = FileEntry::query()->whereIn('file_folder_id', $ids)->get(['id', 'size', 'mime']);
+
+        $bytes = 0;
+        $types = [];
+        foreach ($files as $file) {
+            $bytes += (int) $file->size;
+            $kind = FileType::fromMime((string) $file->mime)->value;
+            $types[$kind] = ($types[$kind] ?? 0) + 1;
+        }
+        arsort($types);
+
+        $share = FolderShare::query()->where('file_folder_id', $folder->id)->whereNull('file_id')->first();
+        $link = FileShare::query()->where('file_folder_id', $folder->id)->first();
+
+        $members = [];
+        if ($share instanceof FolderShare) {
+            foreach ($share->members()->with('user')->get() as $member) {
+                $members[] = [
+                    'name' => (string) ($member->user?->name ?? ''),
+                    'email' => (string) ($member->user?->email ?? ''),
+                    'role' => (string) $member->role,
+                ];
+            }
+        }
+
+        return response()->json([
+            'path' => $this->folderPath($folder->parent_id),
+            'created_at' => $folder->created_at?->toIso8601String(),
+            'updated_at' => $folder->updated_at?->toIso8601String(),
+            'contents' => [
+                'files' => $files->count(),
+                // The folder itself is in the id list, so it is not a child.
+                'folders' => count($ids) - 1,
+                'bytes' => $bytes,
+                'direct_files' => FileEntry::query()->where('file_folder_id', $folder->id)->count(),
+                'direct_folders' => FileFolder::query()->where('parent_id', $folder->id)->count(),
+                'types' => $types,
+            ],
+            'share' => $link ? [
+                'expires_at' => $link->expires_at?->toIso8601String(),
+                'allow_download' => (bool) $link->allow_download,
+                'protected' => $link->password_hash !== null,
+            ] : null,
+            'members' => $members,
+            'activity' => $this->activityView(
+                FileActivity::query()->where('file_folder_id', $folder->id)->orderByDesc('id')->limit(10)->get()
+            ),
         ]);
     }
 

@@ -534,6 +534,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/files/trash', [FilesController::class, 'trashed'])->name('api.files.trash');
             Route::get('/files/activity', [FilesController::class, 'activity'])->middleware('throttle:600,1')->name('api.files.activity');
             Route::get('/files/entries/{file}/activity', [FilesController::class, 'fileActivity'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.activity');
+            Route::get('/files/folders/{folder}/info', [FilesController::class, 'folderInfo'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.folders.info');
             Route::get('/files/entries/{file}/info', [FilesController::class, 'info'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.info');
             Route::post('/files/entries/{file}/virustotal', [ApiVirusTotalController::class, 'lookup'])->whereNumber('file')->middleware('throttle:30,1')->name('api.files.entries.virustotal');
             Route::get('/files/entries/{file}/show', [FilesController::class, 'showEntry'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.show');

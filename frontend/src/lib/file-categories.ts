@@ -50,7 +50,7 @@ export function fileCategory(name: string, mime: string): Category {
   return 'OTHER';
 }
 
-const CATEGORY_MSYM: Record<Category, string> = {
+export const CATEGORY_MSYM: Record<Category, string> = {
   IMAGE: 'image', VECTOR: 'shapes', VIDEO: 'movie', AUDIO: 'music_note', PDF: 'picture_as_pdf',
   DOCUMENT: 'description', SPREADSHEET: 'table', PRESENTATION: 'slideshow', ARCHIVE: 'folder_zip',
   DISK: 'album', CODE: 'code', TEXT: 'article', FONT: 'font_download', EBOOK: 'menu_book', OTHER: 'draft',
