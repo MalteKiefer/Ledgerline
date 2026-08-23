@@ -123,6 +123,134 @@ class ServerPanelTest extends TestCase
     }
 
     #[Test]
+    public function plesk_reports_its_addresses_databases_and_named_settings(): void
+    {
+        $out = "##LL:plesk\nProduct version: Plesk Obsidian 18.0.80.3\n"
+            ."##LL:plesk_ips\n"
+            ."85.215.107.154\t255.255.255.255\teth0\t\ttrue\n"
+            ."10.5.226.22\t255.255.240.0\teth0\t85.215.107.154\tfalse\n"
+            ."##LL:plesk_dbs\nk10166_pat21\tpostgresql\tpat21.de\nlonely\tmysql\t\n"
+            ."##LL:plesk_settings\nadmin_email\tkontakt@example.de\nadmin_locale\tde-DE\n"
+            ."##LL:units\n##LL:listen\n";
+
+        $details = $this->inspect($out)['panels'][0]['details'];
+
+        $this->assertSame('85.215.107.154', $details['ips'][0]['address']);
+        $this->assertTrue($details['ips'][0]['main']);
+        $this->assertNull($details['ips'][0]['public']);
+        // Behind NAT the address the world uses is not on any local interface,
+        // so it is shown next to the local one rather than instead of it.
+        $this->assertSame('85.215.107.154', $details['ips'][1]['public']);
+
+        $this->assertSame(['name' => 'k10166_pat21', 'type' => 'postgresql', 'domain' => 'pat21.de'], $details['databases'][0]);
+        $this->assertNull($details['databases'][1]['domain']);
+
+        $this->assertSame(['admin_email' => 'kontakt@example.de', 'admin_locale' => 'de-DE'], $details['settings']);
+    }
+
+    #[Test]
+    public function the_settings_query_never_asks_for_the_admin_password(): void
+    {
+        $probe = new VpnRecordingProbe([['ok' => true, 'out' => "##LL:units\n"]]);
+        (new PanelInspector($probe))->inspect($this->server());
+
+        // `misc` holds admin_password_encrypted, so the query names the keys it
+        // wants; a select for whatever is there would eventually take that too.
+        $this->assertStringContainsString("m.param in ('admin_email'", $probe->sent());
+        $this->assertStringNotContainsString('password', $probe->sent());
+    }
+
+    #[Test]
+    public function a_backup_agent_is_reported_apart_from_the_panels(): void
+    {
+        $out = "##LL:acronis_units\n"
+            ."acronis_mms.service active running\naakore.service active running\n"
+            ."##LL:acronis_acts\n"
+            ."Name                  Machine               State                 Progress    Start Time            Elapsed Time  Estimated Time  GUID                  Resource              Result\n"
+            ."--------------------  --------------------  --------------------  ----------  --------------------  ------------  --------------  --------------------  --------------------  --------------------\n"
+            ."Backing up            apps.example          completed             100%        23.08.2026 16:18:41   00:03:21      00:03:21        B7965F5E-4357-...     etc, home, opt, ...   Succeeded\n"
+            ."##LL:units\n##LL:listen\n";
+
+        $result = $this->inspect($out);
+
+        // It protects the machine rather than managing it, so it is not a panel.
+        $this->assertSame([], $result['panels']);
+        $this->assertSame('Acronis Cyber Protect', $result['backup']['agent']);
+        $this->assertSame('acronis_mms.service', $result['backup']['services'][0]['unit']);
+        $this->assertTrue($result['backup']['services'][0]['active']);
+        $this->assertSame('Backing up', $result['backup']['activities'][0]['name']);
+        $this->assertSame('completed', $result['backup']['activities'][0]['state']);
+        $this->assertSame('Succeeded', $result['backup']['activities'][0]['result']);
+        $this->assertFalse($result['backup']['unreadable']);
+    }
+
+    #[Test]
+    public function an_agent_that_could_not_be_asked_is_not_a_host_without_backups(): void
+    {
+        $out = "##LL:acronis_units\nacronis_mms.service active running\n"
+            ."##LL:acronis_acts\n__error__\n##LL:units\n##LL:listen\n";
+
+        $backup = $this->inspect($out)['backup'];
+
+        $this->assertSame([], $backup['activities']);
+        // The distinction that matters: only one of these two should let
+        // somebody relax.
+        $this->assertTrue($backup['unreadable']);
+    }
+
+    #[Test]
+    public function a_host_with_no_backup_agent_says_nothing_rather_than_nothing_found(): void
+    {
+        $out = "##LL:acronis_units\n__absent__\n##LL:acronis_acts\n__absent__\n##LL:units\n##LL:listen\n";
+
+        $this->assertNull($this->inspect($out)['backup']);
+    }
+
+    #[Test]
+    public function a_site_action_outside_the_fixed_set_never_reaches_the_host(): void
+    {
+        $probe = new VpnRecordingProbe;
+        $inspector = new PanelInspector($probe);
+        $server = $this->server();
+
+        foreach (['remove', 'create', 'exec', ''] as $verb) {
+            $this->assertSame('invalid_selection', $inspector->siteAction($server, 'example.com', $verb)['error'], $verb);
+        }
+
+        // Nor does a name that is not a domain name.
+        foreach (['a;rm -rf /', 'foo bar', '-flag', "x\nnewline"] as $name) {
+            $this->assertSame('invalid_selection', $inspector->siteAction($server, $name, 'off')['error'], $name);
+        }
+
+        $this->assertSame('', $probe->sent());
+    }
+
+    #[Test]
+    public function a_site_action_sends_the_fixed_command_and_reads_its_exit_code(): void
+    {
+        $probe = new VpnRecordingProbe([['ok' => true, 'out' => "SUCCESS: Disabling of domain 'shop.example' complete\n##LL:rc=0\n"]]);
+
+        $result = (new PanelInspector($probe))->siteAction($this->server(), 'shop.example', 'off');
+
+        $this->assertTrue($result['ok']);
+        $this->assertStringContainsString('Disabling of domain', $result['output']);
+        // The marker is plumbing and has no business in what a person reads.
+        $this->assertStringNotContainsString('##LL:rc', $result['output']);
+        $this->assertStringContainsString("plesk bin site --off 'shop.example'", $probe->sent());
+    }
+
+    #[Test]
+    public function a_site_action_on_a_host_without_the_panel_says_so(): void
+    {
+        $probe = new VpnRecordingProbe([['ok' => false, 'out' => "__no_plesk__\n"]]);
+
+        $result = (new PanelInspector($probe))->siteAction($this->server(), 'shop.example', 'on');
+
+        // Not "unreachable": the host answered, it simply has no Plesk.
+        $this->assertSame('not_installed', $result['error']);
+    }
+
+    #[Test]
     public function an_absent_section_is_not_a_panel(): void
     {
         $sections = ['plesk', 'cpanel', 'directadmin', 'ispconfig', 'webmin', 'virtualmin', 'cyberpanel',

@@ -39,6 +39,9 @@ final class PanelInspector
     printf "\n##LL:plesk_php\n"; command -v plesk >/dev/null 2>&1 && plesk db -Ne "select h.php_handler_id, count(*) from hosting h group by 1 order by 2 desc" 2>/dev/null | head -20 || echo "__absent__"
     printf "\n##LL:plesk_domains\n"; command -v plesk >/dev/null 2>&1 && plesk db -Ne "select d.name, d.status, h.ssl, h.php_handler_id, round(d.real_size/1048576) from domains d left join hosting h on h.dom_id=d.id order by d.real_size desc limit 25" 2>/dev/null || echo "__absent__"
     printf "\n##LL:plesk_clients\n"; command -v plesk >/dev/null 2>&1 && plesk db -Ne "select c.pname, c.status, count(d.id) from clients c left join domains d on d.cl_id=c.id group by c.id order by 3 desc limit 15" 2>/dev/null || echo "__absent__"
+    printf "\n##LL:plesk_ips\n"; command -v plesk >/dev/null 2>&1 && plesk db -Ne "select a.ip_address, a.mask, a.iface, a.public_ip_address, a.main from IP_Addresses a order by a.main desc, a.id limit 20" 2>/dev/null || echo "__absent__"
+    printf "\n##LL:plesk_dbs\n"; command -v plesk >/dev/null 2>&1 && plesk db -Ne "select b.name, b.type, d.name from data_bases b left join domains d on d.id=b.dom_id order by b.name limit 30" 2>/dev/null || echo "__absent__"
+    printf "\n##LL:plesk_settings\n"; command -v plesk >/dev/null 2>&1 && plesk db -Ne "select m.param, m.val from misc m where m.param in ('admin_email','admin_locale','automaticSystemPackageUpdates','autoupgrade_third_party','autoupdater_last_run_date','daily_maintenance_last_run_date')" 2>/dev/null || echo "__absent__"
     printf "\n##LL:plesk_ext\n"; command -v plesk >/dev/null 2>&1 && plesk bin extension --list 2>/dev/null | head -30 || echo "__absent__"
     printf "\n##LL:cpanel\n"; [ -x /usr/local/cpanel/cpanel ] && /usr/local/cpanel/cpanel -V 2>/dev/null || echo "__absent__"
     printf "\n##LL:cpanel_users\n"; [ -d /var/cpanel/users ] && ls -1 /var/cpanel/users 2>/dev/null | grep -c . || echo "__absent__"
@@ -61,6 +64,8 @@ final class PanelInspector
     printf "\n##LL:cockpit\n"; command -v cockpit-bridge >/dev/null 2>&1 && cockpit-bridge --version 2>/dev/null | head -2 || echo "__absent__"
     printf "\n##LL:runcloud\n"; if [ -d /etc/runcloud ]; then echo "installed"; else echo "__absent__"; fi
     printf "\n##LL:serverpilot\n"; if [ -d /etc/serverpilot ]; then echo "installed"; else echo "__absent__"; fi
+    printf "\n##LL:acronis_units\n"; systemctl list-units --all --no-legend --plain 2>/dev/null | grep -Ei 'acronis|aakore|cyber-protect' | awk '{print $1" "$3" "$4}' | head -10 || echo "__absent__"
+    printf "\n##LL:acronis_acts\n"; if command -v acrocmd >/dev/null 2>&1; then timeout 15 acrocmd list activities 2>/dev/null | head -14 || echo "__error__"; else echo "__absent__"; fi
     printf "\n##LL:units\n"; systemctl list-units --type=service --all --no-legend --plain 2>/dev/null | awk '{print $1" "$3" "$4}' | grep -Ei 'psa|sw-cp|cpanel|cpsrvd|directadmin|ispconfig|webmin|usermin|lscpd|lshttpd|hestia|vesta|aapanel|cockpit|froxlor|keyhelp|runcloud|serverpilot' | head -30 || echo "__absent__"
     printf "\n##LL:containers\n"; command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null | grep -Ei 'portainer|coolify|caprover|cloudron|yunohost|easypanel|dokploy|proxy-manager' | head -20 || echo "__absent__"
     printf "\n##LL:listen\n"; if command -v ss >/dev/null 2>&1; then ss -H -ltnp 2>/dev/null; else echo "__absent__"; fi
@@ -71,18 +76,18 @@ final class PanelInspector
     /**
      * Every panel this host has, plus what merely looks like one.
      *
-     * @return array{ok:bool,panels:list<array<string,mixed>>,candidates:list<array<string,string|int|null>>,error:string|null}
+     * @return array{ok:bool,panels:list<array<string,mixed>>,candidates:list<array<string,string|int|null>>,backup:array<string,mixed>|null,error:string|null}
      */
     public function inspect(Server $server): array
     {
         $key = (string) $server->host_key;
         if ($key === '') {
-            return ['ok' => false, 'panels' => [], 'candidates' => [], 'error' => 'no_host_key'];
+            return ['ok' => false, 'panels' => [], 'candidates' => [], 'backup' => null, 'error' => 'no_host_key'];
         }
 
         $result = $this->probe->exec(ServerTarget::fromServer($server), $key, self::SCRIPT, timeout: self::TIMEOUT);
         if (! $result['ok'] && $result['out'] === '') {
-            return ['ok' => false, 'panels' => [], 'candidates' => [], 'error' => 'unreachable'];
+            return ['ok' => false, 'panels' => [], 'candidates' => [], 'backup' => null, 'error' => 'unreachable'];
         }
 
         $s = $this->sections(substr($result['out'], 0, 512 * 1024));
@@ -98,6 +103,7 @@ final class PanelInspector
             'ok' => true,
             'panels' => $panels,
             'candidates' => $this->candidates($listen, $panels, (int) $server->port),
+            'backup' => $this->backupAgent($s),
             'error' => null,
         ];
     }
@@ -283,6 +289,122 @@ final class PanelInspector
     }
 
     /**
+     * The backup agent on the host, and what it has been doing.
+     *
+     * Its own block rather than a panel entry: Acronis does not manage the
+     * machine, it protects it, and a run that failed last night matters here
+     * even though it has nothing to do with hosting control.
+     *
+     * @param  array<string,string>  $s
+     * @return array<string,mixed>|null
+     */
+    private function backupAgent(array $s): ?array
+    {
+        $units = [];
+        foreach ($this->lines($s['acronis_units'] ?? '') as $line) {
+            $parts = preg_split('/\s+/', trim($line)) ?: [];
+            if (count($parts) >= 3) {
+                $units[] = ['unit' => $parts[0], 'active' => $parts[1] === 'active', 'state' => $parts[2]];
+            }
+        }
+
+        $raw = $s['acronis_acts'] ?? '';
+        $activities = [];
+        if (! $this->missing($raw) && ! str_contains($raw, '__error__')) {
+            foreach ($this->lines($raw) as $line) {
+                // The table has a header and a rule of dashes; both are noise.
+                if (str_starts_with($line, 'Name') || str_starts_with(ltrim($line), '---')) {
+                    continue;
+                }
+                $f = preg_split('/\s{2,}/', trim($line)) ?: [];
+                if (count($f) < 6) {
+                    continue;
+                }
+                $activities[] = [
+                    'name' => $f[0],
+                    'state' => $f[2],
+                    'started' => $f[4],
+                    'elapsed' => $f[5],
+                    // acrocmd puts the outcome last, and an activity still
+                    // running has none -- which is not the same as a failure.
+                    'result' => count($f) >= 9 ? end($f) : null,
+                ];
+            }
+        }
+
+        if ($units === [] && $activities === []) {
+            return null;
+        }
+
+        return [
+            'agent' => 'Acronis Cyber Protect',
+            'services' => $units,
+            'activities' => array_slice($activities, 0, 8),
+            // Said plainly: the agent is here but its own command could not be
+            // asked, which is not the same as "no backups".
+            'unreadable' => $activities === [] && $units !== [],
+        ];
+    }
+
+    /**
+     * What may be asked of a website.
+     *
+     * Suspending and disabling look alike and are not: Plesk shows a suspension
+     * notice for the first and simply stops serving for the second, so they stay
+     * separate verbs with separate wording rather than one "off" button.
+     */
+    public const SITE_ACTIONS = ['on', 'suspend', 'off'];
+
+    /** Domain names as they may appear, including punycode. */
+    private const DOMAIN_PATTERN = '/^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,253}[a-zA-Z0-9])?$/';
+
+    /**
+     * Turn a website on, suspend it or disable it.
+     *
+     * The verb comes from a fixed set and the name is checked here, so nothing
+     * from a request is ever concatenated into the command untested. A name that
+     * is well formed but unknown is passed on and refused by Plesk itself --
+     * this is not an allow-list of the sites that exist.
+     *
+     * @return array{ok:bool,output:string,error:string|null}
+     */
+    public function siteAction(Server $server, string $domain, string $action): array
+    {
+        if (! in_array($action, self::SITE_ACTIONS, true) || preg_match(self::DOMAIN_PATTERN, $domain) !== 1) {
+            return ['ok' => false, 'output' => '', 'error' => 'invalid_selection'];
+        }
+
+        $key = (string) $server->host_key;
+        if ($key === '') {
+            return ['ok' => false, 'output' => '', 'error' => 'no_host_key'];
+        }
+
+        $script = 'command -v plesk >/dev/null 2>&1 || { echo "__no_plesk__"; exit 1; }; '
+            .'plesk bin site --'.$action.' '.self::shellQuote($domain).' 2>&1; echo "##LL:rc=$?"';
+
+        $result = $this->probe->exec(ServerTarget::fromServer($server), $key, $script, interactive: true, timeout: 30);
+        if (! $result['ok'] && $result['out'] === '') {
+            return ['ok' => false, 'output' => '', 'error' => 'unreachable'];
+        }
+
+        $out = $result['out'];
+        if (str_contains($out, '__no_plesk__')) {
+            return ['ok' => false, 'output' => '', 'error' => 'not_installed'];
+        }
+
+        preg_match('/##LL:rc=(\d+)/', $out, $m);
+        $text = trim(preg_replace('/##LL:rc=\d+/', '', $out) ?? '');
+
+        return ['ok' => ($m[1] ?? '1') === '0', 'output' => mb_substr($text, 0, 2000), 'error' => null];
+    }
+
+    /** POSIX single-quoting, for the shell on the far side rather than this one. */
+    private static function shellQuote(string $value): string
+    {
+        return "'".str_replace("'", "'\\''", $value)."'";
+    }
+
+    /**
      * The one summary row, in the order the query asks for it.
      *
      * @return array<string,int>
@@ -368,6 +490,45 @@ final class PanelInspector
             $extensions[] = $cut === false ? trim($line) : trim(substr($line, $cut + 3));
         }
 
+        $ips = [];
+        foreach ($this->lines($s['plesk_ips'] ?? '') as $line) {
+            $f = explode("\t", $line);
+            if (count($f) < 3) {
+                continue;
+            }
+            $ips[] = [
+                'address' => $f[0],
+                'mask' => $f[1],
+                'interface' => $f[2],
+                // A machine behind NAT answers on an address it cannot see on
+                // any interface of its own, which is worth showing next to the
+                // local one rather than instead of it.
+                'public' => ($f[3] ?? '') !== '' ? $f[3] : null,
+                'main' => ($f[4] ?? '') === 'true',
+            ];
+        }
+
+        $databases = [];
+        foreach ($this->lines($s['plesk_dbs'] ?? '') as $line) {
+            $f = explode("\t", $line);
+            if (count($f) < 2) {
+                continue;
+            }
+            $databases[] = [
+                'name' => $f[0],
+                'type' => $f[1],
+                'domain' => ($f[2] ?? '') !== '' ? $f[2] : null,
+            ];
+        }
+
+        $settings = [];
+        foreach ($this->lines($s['plesk_settings'] ?? '') as $line) {
+            $cut = strpos($line, "\t");
+            if ($cut !== false) {
+                $settings[substr($line, 0, $cut)] = substr($line, $cut + 1);
+            }
+        }
+
         $disk = null;
         $summary = explode("\t", $this->lines($s['plesk_counts'] ?? '')[0] ?? '');
         if (isset($summary[6]) && is_numeric($summary[6])) {
@@ -378,6 +539,9 @@ final class PanelInspector
             'php' => $php,
             'domains' => $domains,
             'clients' => $clients,
+            'ips' => $ips,
+            'databases' => $databases,
+            'settings' => $settings,
             'extensions' => array_slice(array_filter($extensions), 0, 30),
             'disk_gb' => $disk,
         ], fn ($v): bool => $v !== null && $v !== []);
