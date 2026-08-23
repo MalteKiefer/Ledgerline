@@ -115,14 +115,10 @@ class ServerDockerTest extends TestCase
             "def456abc7890\tdb\tpostgres:18\texited\tExited (0) 2 days ago\t\t2 days ago",
             '##LL:stats',
             "web\t1.42%\t120MiB / 2GiB\t5.86%\t1.2kB / 900B\t0B / 0B",
-            '##LL:images',
-            "nginx:1.27\tsha256abcdef01\t142MB\t3 weeks ago",
             '##LL:volumes',
             "pgdata\tlocal",
             '##LL:networks',
             "bridge\tbridge\tlocal",
-            '##LL:df',
-            'Images          31        12        14.2GB    8.1GB (57%)',
             '##LL:compose',
             '[{"Name":"ledgerline","Status":"running(3)"}]',
             '##LL:health',
@@ -150,7 +146,53 @@ class ServerDockerTest extends TestCase
         // read as "idle" rather than "not running".
         $this->assertNull($result['containers'][1]['cpu']);
         $this->assertSame(['ledgerline'], $result['compose']);
+
+        // Images and disk usage are not in this sweep: both take tens of
+        // seconds on a real engine and used to leave the whole tab empty.
+        $this->assertSame([], $result['images']);
+        $this->assertSame([], $result['disk']);
+    }
+
+    #[Test]
+    public function images_and_disk_usage_come_from_their_own_call(): void
+    {
+        $inspector = $this->inspector(implode("\n", [
+            '##LL:images',
+            "nginx:1.27\tsha256abcdef01\t142MB\t3 weeks ago",
+            '##LL:df',
+            'Images          31        12        14.2GB    8.1GB (57%)',
+            '##LL:end',
+            '',
+        ]));
+
+        $result = $inspector->storage($this->server(User::factory()->create()));
+
+        $this->assertTrue($result['ok']);
+        // The client renders repository and tag apart; emitting one joined
+        // "name" left it printing undefined next to every image.
+        $this->assertSame('nginx', $result['images'][0]['repo']);
+        $this->assertSame('1.27', $result['images'][0]['tag']);
         $this->assertSame(['type' => 'Images', 'total' => 31, 'active' => 12, 'size' => '14.2GB', 'reclaimable' => '8.1GB (57%)'], $result['disk'][0]);
+    }
+
+    #[Test]
+    public function a_call_that_ran_out_of_time_is_not_an_unreachable_host(): void
+    {
+        $probe = new class extends ServerProbe
+        {
+            public function exec(ServerTarget $target, string $hostKey, string $script, bool $interactive = false, ?int $timeout = null): array
+            {
+                // What Symfony says when our own budget runs out, as opposed to
+                // ssh reporting it never got an answer.
+                return ['ok' => false, 'out' => '', 'err' => 'The process "ssh" exceeded the timeout of 45 seconds.', 'exit' => null];
+            }
+        };
+
+        $result = (new DockerInspector($probe))->storage($this->server(User::factory()->create()));
+
+        // The engine keeps counting after we stop waiting, so this is worth
+        // telling apart from a host that cannot be reached at all.
+        $this->assertSame('timeout', $result['error']);
     }
 
     #[Test]

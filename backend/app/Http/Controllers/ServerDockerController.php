@@ -32,6 +32,19 @@ class ServerDockerController extends Controller
             ->header('Cache-Control', 'no-store');
     }
 
+    /**
+     * Images and reclaimable space.
+     *
+     * Its own request because both are slow enough on a real image collection
+     * to have kept the whole tab empty when they sat in the sweep.
+     */
+    public function storage(Request $request, Server $server): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json($this->docker->storage($server))->header('Cache-Control', 'no-store');
+    }
+
     public function act(Request $request, Server $server): JsonResponse
     {
         $user = $this->requireUser($request);

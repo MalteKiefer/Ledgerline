@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.728.0
+  version: 1.729.0
   license:
     name: Proprietary
   description: >
@@ -8991,6 +8991,63 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /servers/{server}/docker/storage:
+    get:
+      tags: [Servers]
+      operationId: serversDockerStorage
+      summary: Images and reclaimable space on the host's Docker engine
+      description: >
+        Asked for separately from the container sweep. On a host with a real
+        image collection `docker images` and `docker system df` take tens of
+        seconds each -- measured at 14 s and 23 s on a 23-container host -- and
+        holding the tab for them left it empty. Everything somebody opens the
+        Docker tab for is in `GET /servers/{server}/docker`; this call fills in
+        the images list and the reclaimable figures when that section is opened.
+
+
+        `error` distinguishes `timeout` from `unreachable`: a call that outlived
+        its budget is not a host that cannot be reached, and the engine usually
+        finishes the work anyway. Read-only. Throttled 30/min.
+      parameters:
+        - name: server
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Images and disk usage, or the reason neither could be read.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  images:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        repo: { type: string }
+                        tag: { type: string }
+                        size: { type: string }
+                        created: { type: string }
+                  disk:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string }
+                        total: { type: string }
+                        active: { type: string }
+                        size: { type: string }
+                        reclaimable: { type: string }
+                  error:
+                    type: [string, "null"]
+                    enum: [timeout, unreachable, no_host_key, null]
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /servers/{server}/docker/action:
     post:
       tags: [Servers]

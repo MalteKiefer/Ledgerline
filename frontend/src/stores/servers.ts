@@ -624,6 +624,9 @@ export const useServersStore = defineStore('servers', () => {
     );
 
   const docker = (id: number) => api.get<DockerState>(`/api/v1/servers/${id}/docker`);
+  /** Images and disk usage: slow enough on a real host to be asked for separately. */
+  const dockerStorage = (id: number) =>
+    api.get<{ ok: boolean; images: DockerImage[]; disk: DockerDisk[]; error: string | null }>(`/api/v1/servers/${id}/docker/storage`);
 
   const updates = (id: number) => api.get<PendingUpdates>(`/api/v1/servers/${id}/updates`);
 
@@ -694,5 +697,5 @@ export const useServersStore = defineStore('servers', () => {
    */
   const keypair = () => api.post<{ token: string; public_key: string; expires_in_minutes: number }>('/api/v1/servers/keypair', {});
 
-  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, roleDetails, panels, vpn, vpnAction, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
+  return { servers, load, show, checks, logSources, readLog, security, services, serviceAction, processes, processSignal, power, killSession, bans, banAction, filesUnlock, filesLock, filesList, filesRead, filesWrite, filesMutate, filesUpload, filesDownload, filesDownloadDir, filesPermissions, filesSetPermissions, archiveTools, filesArchive, filesExtract, docker, dockerAction, dockerPrune, updates, applyUpdates, diskUsage, roleDetails, panels, vpn, vpnAction, dockerStorage, terminalOpen, terminalPoll, terminalInput, terminalClose, create, update, remove, refresh, refreshAll, test, testStored, probeScript, keypair };
 });

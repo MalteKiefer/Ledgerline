@@ -14,7 +14,7 @@
     <template v-else>
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile :label="t('servers.docker_running')" :value="String(running.length)" :note="t('servers.docker_of_total', { n: String(containers.length) })" icon="play_circle" />
-        <StatTile :label="t('servers.docker_images')" :value="String(state?.images.length ?? 0)" :note="diskFor('Images')" icon="layers" />
+        <StatTile :label="t('servers.docker_images')" :value="storageLoaded ? String(images.length) : '—'" :note="diskFor('Images')" icon="layers" />
         <StatTile :label="t('servers.docker_volumes')" :value="String(state?.volumes.length ?? 0)" :note="diskFor('Local Volumes')" icon="database" />
         <StatTile :label="t('servers.docker_reclaimable')" :value="reclaimable" :note="state?.version ?? ''" icon="cleaning_services" />
       </div>
@@ -85,18 +85,29 @@
 
       <div class="grid gap-4 lg:grid-cols-2">
         <Card :body-class="'p-4'">
-          <SectionHead icon="layers" :label="t('servers.docker_images')" level="h3" class="mb-2" />
-          <div class="max-h-72 space-y-1 overflow-y-auto">
-            <div v-for="i in state?.images ?? []" :key="i.id" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1.5 text-xs last:border-0">
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <SectionHead icon="layers" :label="t('servers.docker_images')" level="h3" />
+            <Btn variant="ghost" size="xs" icon="refresh" :disabled="storageBusy" @click="loadStorage">
+              {{ storageLoaded ? t('servers.refresh') : t('servers.docker_storage_load') }}
+            </Btn>
+          </div>
+          <!-- Asked for separately: on a host with a real image collection the
+               engine takes the better part of a minute to add these up, and
+               waiting for it kept the running containers off the screen. -->
+          <p v-if="!storageLoaded && !storageBusy" class="py-3 text-center text-xs text-[var(--ll-muted)]">{{ t('servers.docker_storage_hint') }}</p>
+          <p v-else-if="storageBusy" class="py-3 text-center text-xs text-[var(--ll-muted)]">{{ t('servers.docker_storage_loading') }}</p>
+          <p v-else-if="storageError" class="py-3 text-center text-xs text-amber-600 dark:text-amber-400">{{ storageError }}</p>
+          <div v-else class="max-h-72 space-y-1 overflow-y-auto">
+            <div v-for="i in images" :key="i.id" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1.5 text-xs last:border-0">
               <span class="truncate font-mono" :title="`${i.repo}:${i.tag}`">{{ i.repo }}<span class="text-[var(--ll-muted)]">:{{ i.tag }}</span></span>
               <span class="shrink-0 tabular-nums text-[var(--ll-muted)]">{{ i.size }}</span>
             </div>
-            <p v-if="!state?.images.length" class="py-3 text-center text-xs text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+            <p v-if="!images.length" class="py-3 text-center text-xs text-[var(--ll-muted)]">{{ t('common.none') }}</p>
           </div>
         </Card>
 
         <Card :body-class="'p-4'">
-          <h3 class="mb-2 text-sm font-semibold">{{ t('servers.docker_volumes') }} &amp; {{ t('servers.docker_networks') }}</h3>
+          <SectionHead icon="database" :label="`${t('servers.docker_volumes')} & ${t('servers.docker_networks')}`" level="h3" class="mb-2" />
           <div class="max-h-72 space-y-1 overflow-y-auto">
             <div v-for="v in state?.volumes ?? []" :key="v.name" class="flex items-center justify-between gap-2 border-b border-[var(--ll-border)] py-1.5 text-xs last:border-0">
               <span class="truncate font-mono" :title="v.mount">{{ v.name }}</span>
@@ -132,7 +143,7 @@ import { computed, onMounted, ref } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Badge, Btn, Card, Icon, Select } from '@spa/ui';
 import SectionHead from '@spa/components/servers/SectionHead.vue';
-import { useServersStore, type DockerContainer, type DockerState } from '@spa/stores/servers';
+import { useServersStore, type DockerContainer, type DockerState, type DockerImage, type DockerDisk } from '@spa/stores/servers';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import StatTile from './StatTile.vue';
 
@@ -149,6 +160,35 @@ const query = ref('');
 const stateFilter = ref('');
 
 const pruneTargets = ['images', 'containers', 'volumes', 'networks', 'builder'];
+
+// Images and reclaimable space live behind their own request.
+const images = ref<DockerImage[]>([]);
+const disk = ref<DockerDisk[]>([]);
+const storageBusy = ref(false);
+const storageLoaded = ref(false);
+const storageError = ref('');
+
+async function loadStorage(): Promise<void> {
+  storageBusy.value = true;
+  storageError.value = '';
+  try {
+    const res = await store.dockerStorage(props.serverId);
+    if (!res.ok) {
+      // A call that ran out of time is not an unreachable host, and the
+      // difference decides whether somebody goes looking for a network fault.
+      storageError.value = t(res.error === 'timeout' ? 'servers.docker_storage_slow' : 'servers.status_fail');
+
+      return;
+    }
+    images.value = res.images;
+    disk.value = res.disk;
+    storageLoaded.value = true;
+  } catch {
+    storageError.value = t('servers.status_fail');
+  } finally {
+    storageBusy.value = false;
+  }
+}
 
 const containers = computed(() => state.value?.containers ?? []);
 const running = computed(() => containers.value.filter((c) => c.state === 'running'));
@@ -172,13 +212,13 @@ const filtered = computed(() => {
 
 /** `docker system df` reports one row per kind; pick the one asked for. */
 const diskFor = (type: string) => {
-  const row = (state.value?.disk ?? []).find((d) => d.type.toLowerCase().startsWith(type.toLowerCase()));
+  const row = disk.value.find((d) => d.type.toLowerCase().startsWith(type.toLowerCase()));
 
   return row ? `${row.size} · ${row.reclaimable}` : '';
 };
 
 const reclaimable = computed(() => {
-  const rows = state.value?.disk ?? [];
+  const rows = disk.value;
   if (!rows.length) return '—';
 
   // The engine already sums this per kind; showing the images figure alone
