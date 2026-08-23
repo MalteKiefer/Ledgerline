@@ -106,14 +106,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useI18n } from 'vue-i18n';
+import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon, Badge } from '@spa/ui';
 import { useServersStore, type VpnStatus, type VpnProvider } from '@spa/stores/servers';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 
 const props = defineProps<{ serverId: number }>();
-const { t } = useI18n();
 const s = useServersStore();
 const { success, error: fail } = useToast();
 
