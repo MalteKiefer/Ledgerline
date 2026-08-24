@@ -37,4 +37,7 @@ return [
     'password' => 'Passwort',
     'not_found' => 'Seite nicht gefunden',
     'no' => 'Nein',
+    'previous' => 'Zurück',
+    'next' => 'Weiter',
+    'per_page' => 'pro Seite',
 ];

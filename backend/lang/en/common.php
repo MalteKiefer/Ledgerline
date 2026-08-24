@@ -37,4 +37,7 @@ return [
     'password' => 'Password',
     'not_found' => 'Page not found',
     'no' => 'No',
+    'previous' => 'Previous',
+    'next' => 'Next',
+    'per_page' => 'per page',
 ];

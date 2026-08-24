@@ -21,6 +21,16 @@ describe('projectTree', () => {
     expect(rows[0].p.name).toBe('orphan');
   });
 
+  it('keeps the nesting when the input is pre-sorted by an arbitrary key', () => {
+    // The UI sorts the flat list, then nests — so a sort by amount must reorder
+    // SIBLINGS, never tear a subproject out of its parent into the root level.
+    const flat = [P(2, 1, 'cellar'), P(4, null, 'garden'), P(1, null, 'house'), P(3, 1, 'attic')];
+    const rows = projectTree(flat);
+    expect(rows.map((r) => [r.p.name, r.depth])).toEqual([
+      ['garden', 0], ['house', 0], ['cellar', 1], ['attic', 1],
+    ]);
+  });
+
   it('does not loop forever on a parent cycle', () => {
     // 1 -> 2 -> 1: neither is a root, so nothing is emitted, but it terminates.
     expect(projectTree([P(1, 2), P(2, 1)])).toEqual([]);

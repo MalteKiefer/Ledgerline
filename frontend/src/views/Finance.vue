@@ -407,16 +407,16 @@
           <table class="w-full text-sm">
             <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
               <tr class="border-b border-[var(--ll-border)]">
-                <th class="px-4 py-2.5 font-medium">{{ t('invoices.project_name') }}</th>
-                <th class="hidden px-4 py-2.5 text-right font-medium sm:table-cell">{{ t('invoices.project_out') }}</th>
-                <th class="hidden px-4 py-2.5 text-right font-medium sm:table-cell">{{ t('invoices.project_in') }}</th>
-                <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.project_net') }}</th>
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="prjSortBy('name')"><SortLabel :label="t('invoices.project_name')" active-key="name" :sort="prjSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 text-right font-medium sm:table-cell" @click="prjSortBy('out')"><SortLabel :label="t('invoices.project_out')" active-key="out" :sort="prjSort" justify="end" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 text-right font-medium sm:table-cell" @click="prjSortBy('in')"><SortLabel :label="t('invoices.project_in')" active-key="in" :sort="prjSort" justify="end" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="prjSortBy('net')"><SortLabel :label="t('invoices.project_net')" active-key="net" :sort="prjSort" justify="end" /></th>
                 <th class="px-4 py-2.5"></th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="row in projectRows" :key="row.p.id"
+                v-for="row in pagedProjectRows" :key="row.p.id"
                 class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
                 @click="openProject(row.p)"
               >
@@ -451,6 +451,7 @@
             </tfoot>
           </table>
         </div>
+        <Pager v-model:page="prjPage" v-model:per-page="prjPerPage" :total="projectRows.length" />
       </Card>
 
       <!-- DETAIL (ledger + assigned bookings/receipts + subprojects) -->
@@ -504,16 +505,16 @@
             <table class="w-full text-sm">
               <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
                 <tr class="border-b border-[var(--ll-border)]">
-                  <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
-                  <th class="px-4 py-2.5 font-medium">{{ t('invoices.project_title') }}</th>
-                  <th class="hidden px-4 py-2.5 font-medium md:table-cell">{{ t('invoices.receipt_category') }}</th>
-                  <th class="hidden px-4 py-2.5 font-medium lg:table-cell">{{ t('invoices.project_account') }}</th>
-                  <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.gross') }}</th>
+                  <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="expSortBy('date')"><SortLabel :label="t('common.date')" active-key="date" :sort="expSort" /></th>
+                  <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="expSortBy('title')"><SortLabel :label="t('invoices.project_title')" active-key="title" :sort="expSort" /></th>
+                  <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium md:table-cell" @click="expSortBy('category')"><SortLabel :label="t('invoices.receipt_category')" active-key="category" :sort="expSort" /></th>
+                  <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium lg:table-cell" @click="expSortBy('account')"><SortLabel :label="t('invoices.project_account')" active-key="account" :sort="expSort" /></th>
+                  <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="expSortBy('amount')"><SortLabel :label="t('invoices.gross')" active-key="amount" :sort="expSort" justify="end" /></th>
                   <th class="px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in projectLedger" :key="row.id" class="border-b border-[var(--ll-border)] last:border-0">
+                <tr v-for="row in pagedLedger" :key="row.id" class="border-b border-[var(--ll-border)] last:border-0">
                   <td class="px-4 py-2.5 align-top tabular-nums">{{ fmtDate(row.date) }}</td>
                   <td class="px-4 py-2.5">
                     <span class="block font-medium">{{ row.title || '—' }}</span>
@@ -547,6 +548,7 @@
               </tfoot>
             </table>
           </div>
+          <Pager v-model:page="expPage" v-model:per-page="expPerPage" :total="projectLedger.length" />
         </Card>
 
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1777,12 +1779,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, nextTick } from 'vue';
+import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue';
 import { fmtDate as libDate, todayYmd } from '@spa/lib/datetime';
 import { safeHref } from '@spa/lib/url';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
-import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, SectionNav, type SectionNavItem } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pager, SectionNav, type SectionNavItem } from '@spa/ui';
 import type { AlignedData, Options } from 'uplot';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
@@ -2199,7 +2201,32 @@ const totals = computed(() => {
 });
 
 // Indented project tree (roots + children by parent_id; unknown parents surface as roots).
-const projectRows = computed(() => projectTree(f.projects));
+// Sorting happens WITHIN each parent's children, never across the whole flat
+// list — a subproject torn out of its parent by amount would read as a root.
+const prjSort = reactive<{ key: string; dir: SortDir }>({ key: 'name', dir: 'asc' });
+function prjSortBy(key: string) { toggleSort(prjSort, key); prjPage.value = 1; }
+function prjSortValue(p: Project, key: string): unknown {
+  const t = rolledFor(p.id);
+  switch (key) {
+    case 'name': return p.name;
+    case 'out': return t.out;
+    case 'in': return t.in;
+    case 'net': return t.net;
+    default: return null;
+  }
+}
+const projectRows = computed(() => {
+  const dirMul = prjSort.dir === 'asc' ? 1 : -1;
+  const sorted = [...f.projects].sort((a, b) => sortCmp(prjSortValue(a, prjSort.key), prjSortValue(b, prjSort.key)) * dirMul);
+  return projectTree(sorted);
+});
+const prjPage = ref(1);
+const prjPerPage = ref(25);
+const pagedProjectRows = computed(() => projectRows.value.slice((prjPage.value - 1) * prjPerPage.value, prjPage.value * prjPerPage.value));
+// Deleting the last row of the last page must not leave the table blank.
+watch([() => projectRows.value.length, prjPerPage], () => {
+  prjPage.value = Math.min(prjPage.value, Math.max(1, Math.ceil(projectRows.value.length / prjPerPage.value)));
+});
 // A project can't be moved under itself or under one of its own descendants —
 // the server rejects it (422 cycle), so don't offer it.
 const parentOptions = computed(() => {
@@ -3222,10 +3249,35 @@ const projectsView = ref<'list' | 'detail'>('list');
 const openProjectId = ref<number | null>(null);
 const openProjectRec = computed<Project | null>(() => f.projects.find((p) => p.id === openProjectId.value) ?? null);
 
-function openProject(p: Project) { openProjectId.value = p.id; projectsView.value = 'detail'; }
+function openProject(p: Project) { openProjectId.value = p.id; projectsView.value = 'detail'; expPage.value = 1; }
 function backToProjects() { projectsView.value = 'list'; openProjectId.value = null; }
 
-const projectLedger = computed(() => normaliseLedger(openProjectRec.value?.expenses));
+// Newest entry first by default: the date the owner typed on the row, not the
+// order the rows happen to sit in the JSON column.
+const expSort = reactive<{ key: string; dir: SortDir }>({ key: 'date', dir: 'desc' });
+function expSortBy(key: string) { toggleSort(expSort, key); expPage.value = 1; }
+function expSortValue(row: ProjectExpense, key: string): unknown {
+  switch (key) {
+    case 'date': return row.date;
+    case 'title': return row.title;
+    case 'category': return row.category;
+    case 'account': return paymentName(row.payment_method_id);
+    // Sort by the signed effect, so credits and debits do not interleave by size.
+    case 'amount': return row.direction === 'in' ? row.amount : -row.amount;
+    default: return null;
+  }
+}
+const projectLedger = computed(() => {
+  const rows = normaliseLedger(openProjectRec.value?.expenses);
+  const dirMul = expSort.dir === 'asc' ? 1 : -1;
+  return rows.sort((a, b) => sortCmp(expSortValue(a, expSort.key), expSortValue(b, expSort.key)) * dirMul);
+});
+const expPage = ref(1);
+const expPerPage = ref(25);
+const pagedLedger = computed(() => projectLedger.value.slice((expPage.value - 1) * expPerPage.value, expPage.value * expPerPage.value));
+watch([() => projectLedger.value.length, expPerPage], () => {
+  expPage.value = Math.min(expPage.value, Math.max(1, Math.ceil(projectLedger.value.length / expPerPage.value)));
+});
 const projectLedgerTotals = computed<Totals>(() => ledgerTotals(projectLedger.value));
 const openProjectOwn = computed<Totals>(() => (openProjectRec.value
   ? ownTotals(openProjectRec.value, f.transactions, f.standaloneReceipts)
