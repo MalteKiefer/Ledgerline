@@ -393,22 +393,218 @@
       </div>
     </Card>
 
-    <!-- Projects -->
-    <Card v-show="tab === 'projects'" :title="t('invoices.tab_projects')">
-      <template #actions><Btn variant="solid" size="sm" icon="add" @click="newProject">{{ t('invoices.project_add') }}</Btn></template>
-      <div class="divide-y divide-[var(--ll-border)]">
-        <div v-for="row in projectRows" :key="row.p.id" class="flex items-center gap-3 py-2.5" :style="{ paddingLeft: (row.depth * 28) + 'px' }">
-          <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="account_tree" :size="18" /></span>
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-sm font-medium">{{ row.p.name }}</div>
-            <div v-if="row.p.note" class="truncate text-xs text-[var(--ll-muted)]">{{ row.p.note }}</div>
-          </div>
-          <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editProject(row.p)" />
-          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delProject(row.p)" />
+    <!-- Projects (cost projects): tree list ↔ detail with the project ledger.
+         A project earns money from hand-typed rows (Ab-/Zubuchungen), from bank
+         transactions and from receipts assigned to it — see shared/finance-projects. -->
+    <div v-show="tab === 'projects'">
+      <!-- LIST (indented tree; every figure is the ROLLED-UP subtree total) -->
+      <Card v-if="projectsView === 'list'" :title="t('invoices.tab_projects')" :body-class="'p-0'">
+        <template #actions>
+          <Btn variant="ghost" size="sm" icon="delete_sweep" :title="t('invoices.project_trash')" @click="openProjectTrash" />
+          <Btn variant="solid" size="sm" icon="add" @click="newProject">{{ t('invoices.project_add') }}</Btn>
+        </template>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+              <tr class="border-b border-[var(--ll-border)]">
+                <th class="px-4 py-2.5 font-medium">{{ t('invoices.project_name') }}</th>
+                <th class="hidden px-4 py-2.5 text-right font-medium sm:table-cell">{{ t('invoices.project_out') }}</th>
+                <th class="hidden px-4 py-2.5 text-right font-medium sm:table-cell">{{ t('invoices.project_in') }}</th>
+                <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.project_net') }}</th>
+                <th class="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in projectRows" :key="row.p.id"
+                class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
+                @click="openProject(row.p)"
+              >
+                <td class="px-4 py-2.5">
+                  <div class="flex items-center gap-3" :style="{ paddingLeft: (row.depth * 24) + 'px' }">
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="account_tree" :size="18" /></span>
+                    <span class="min-w-0">
+                      <span class="flex items-center gap-2">
+                        <span class="truncate font-medium">{{ row.p.name }}</span>
+                        <Badge v-if="row.p.kind === 'private'" tone="gray">{{ t('invoices.project_kind_private') }}</Badge>
+                      </span>
+                      <span v-if="row.p.note" class="block truncate text-xs text-[var(--ll-muted)]">{{ row.p.note }}</span>
+                    </span>
+                  </div>
+                </td>
+                <td class="hidden px-4 py-2.5 text-right font-mono tabular-nums text-[var(--ll-muted)] sm:table-cell">{{ money(rolledFor(row.p.id).out) }}</td>
+                <td class="hidden px-4 py-2.5 text-right font-mono tabular-nums text-[var(--ll-muted)] sm:table-cell">{{ money(rolledFor(row.p.id).in) }}</td>
+                <td class="px-4 py-2.5 text-right font-mono font-medium tabular-nums">{{ money(rolledFor(row.p.id).net) }}</td>
+                <td class="px-4 py-2.5 text-right"><Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" /></td>
+              </tr>
+              <tr v-if="!f.projects.length"><td colspan="5" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.project_empty') }}</td></tr>
+            </tbody>
+            <!-- Roots only: adding every row would count each subproject twice. -->
+            <tfoot v-if="f.projects.length">
+              <tr class="border-t border-[var(--ll-border)] text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+                <td class="px-4 py-2.5 font-medium">{{ t('invoices.project_total') }}</td>
+                <td class="hidden px-4 py-2.5 text-right font-mono tabular-nums sm:table-cell">{{ money(projectGrandTotal.out) }}</td>
+                <td class="hidden px-4 py-2.5 text-right font-mono tabular-nums sm:table-cell">{{ money(projectGrandTotal.in) }}</td>
+                <td class="px-4 py-2.5 text-right font-mono font-semibold tabular-nums text-[var(--ll-fg)]">{{ money(projectGrandTotal.net) }}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
-        <div v-if="!f.projects.length" class="py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.project_empty') }}</div>
+      </Card>
+
+      <!-- DETAIL (ledger + assigned bookings/receipts + subprojects) -->
+      <div v-else-if="projectsView === 'detail' && openProjectRec" class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex min-w-0 items-center gap-3">
+            <Btn variant="ghost" size="sm" icon="arrow_back" :title="t('common.back')" @click="backToProjects" />
+            <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="account_tree" :size="22" /></span>
+            <span class="min-w-0">
+              <span class="flex items-center gap-2">
+                <h2 class="min-w-0 truncate text-lg font-semibold">{{ openProjectRec.name }}</h2>
+                <Badge :tone="openProjectRec.kind === 'private' ? 'gray' : 'info'">{{ t('invoices.project_kind_' + (openProjectRec.kind || 'business')) }}</Badge>
+              </span>
+              <span v-if="projectParentName(openProjectRec)" class="block truncate text-xs text-[var(--ll-muted)]">{{ t('invoices.project_parent') }}: {{ projectParentName(openProjectRec) }}</span>
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <Btn variant="soft" size="sm" icon="edit" @click="editProject(openProjectRec)">{{ t('common.edit') }}</Btn>
+            <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delProject(openProjectRec)" />
+          </div>
+        </div>
+
+        <!-- Figures: this project alone, then the whole branch below it -->
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Card :body-class="'p-4'">
+            <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.project_out') }}</div>
+            <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ money(openProjectOwn.out) }}</div>
+          </Card>
+          <Card :body-class="'p-4'">
+            <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.project_in') }}</div>
+            <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ money(openProjectOwn.in) }}</div>
+          </Card>
+          <Card :body-class="'p-4'">
+            <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.project_own') }}</div>
+            <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ money(openProjectOwn.net) }}</div>
+          </Card>
+          <Card :body-class="'p-4'">
+            <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.project_rolled') }}</div>
+            <div class="mt-1 font-mono text-xl font-bold tabular-nums text-primary-600 dark:text-primary-300">{{ money(openProjectRolled.net) }}</div>
+          </Card>
+        </div>
+
+        <!-- Hand-typed ledger -->
+        <Card :body-class="'p-0'">
+          <template #header><h2 class="text-sm font-semibold">{{ t('invoices.project_ledger') }} <span class="text-[var(--ll-muted)]">({{ projectLedger.length }})</span></h2></template>
+          <template #actions>
+            <Btn variant="soft" size="sm" icon="south_west" @click="newExpense('in')">{{ t('invoices.project_add_in') }}</Btn>
+            <Btn variant="solid" size="sm" icon="north_east" @click="newExpense('out')">{{ t('invoices.project_add_out') }}</Btn>
+          </template>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+                <tr class="border-b border-[var(--ll-border)]">
+                  <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
+                  <th class="px-4 py-2.5 font-medium">{{ t('invoices.project_title') }}</th>
+                  <th class="hidden px-4 py-2.5 font-medium md:table-cell">{{ t('invoices.receipt_category') }}</th>
+                  <th class="hidden px-4 py-2.5 font-medium lg:table-cell">{{ t('invoices.project_account') }}</th>
+                  <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.gross') }}</th>
+                  <th class="px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in projectLedger" :key="row.id" class="border-b border-[var(--ll-border)] last:border-0">
+                  <td class="px-4 py-2.5 align-top tabular-nums">{{ fmtDate(row.date) }}</td>
+                  <td class="px-4 py-2.5">
+                    <span class="block font-medium">{{ row.title || '—' }}</span>
+                    <span v-if="row.note" class="block whitespace-pre-line text-xs text-[var(--ll-muted)]">{{ row.note }}</span>
+                  </td>
+                  <td class="hidden px-4 py-2.5 md:table-cell">
+                    <Badge v-if="row.category" tone="gray">{{ row.category }}</Badge>
+                    <span v-else class="text-[var(--ll-muted)]">—</span>
+                    <span v-if="catAccountNo(row.category)" class="ml-1 font-mono text-xs text-[var(--ll-muted)]">{{ catAccountNo(row.category) }}</span>
+                  </td>
+                  <td class="hidden px-4 py-2.5 text-[var(--ll-muted)] lg:table-cell">{{ paymentName(row.payment_method_id) || '—' }}</td>
+                  <td class="px-4 py-2.5 text-right font-mono tabular-nums" :class="row.direction === 'in' ? 'text-emerald-600 dark:text-emerald-400' : ''">
+                    {{ (row.direction === 'in' ? '+' : '−') + ' ' + money(row.amount) }}
+                  </td>
+                  <td class="px-4 py-2.5">
+                    <div class="flex items-center justify-end gap-0.5">
+                      <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editExpense(row)" />
+                      <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delExpense(row)" />
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!projectLedger.length"><td colspan="6" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.project_ledger_empty') }}</td></tr>
+              </tbody>
+              <!-- Hand-typed rows only — the assigned bookings/receipts are counted in the tiles above. -->
+              <tfoot v-if="projectLedger.length">
+                <tr class="border-t border-[var(--ll-border)]">
+                  <td colspan="4" class="px-4 py-2.5 text-xs uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.project_total') }}</td>
+                  <td class="px-4 py-2.5 text-right font-mono font-semibold tabular-nums">{{ money(projectLedgerTotals.net) }}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Card>
+
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <!-- Bank transactions assigned to this project -->
+          <Card :body-class="'p-0'">
+            <template #header><h2 class="text-sm font-semibold">{{ t('invoices.project_bookings') }} <span class="text-[var(--ll-muted)]">({{ projectTxs.length }})</span></h2></template>
+            <template #actions><Btn variant="soft" size="sm" icon="add_link" @click="openAssignProjectTx">{{ t('invoices.project_assign_tx') }}</Btn></template>
+            <div class="divide-y divide-[var(--ll-border)]">
+              <div v-for="tx in projectTxs" :key="tx.id" class="flex items-center gap-3 px-4 py-2.5">
+                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="account_balance" :size="18" /></span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-medium">{{ tx.counterparty || t('invoices.tx_counterparty') }}</span>
+                  <span class="block truncate text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(tx.date) }} · {{ tx.purpose || '—' }}</span>
+                </span>
+                <span class="shrink-0 font-mono text-sm tabular-nums" :class="tx.amount > 0 ? 'text-emerald-600 dark:text-emerald-400' : ''">{{ money(tx.amount) }}</span>
+                <Btn variant="ghost" size="sm" icon="link_off" :title="t('invoices.project_unassign')" @click="unassignTxFromProject(tx)" />
+              </div>
+              <p v-if="!projectTxs.length" class="px-4 py-3 text-sm text-[var(--ll-muted)]">—</p>
+            </div>
+          </Card>
+
+          <!-- Receipts bundled into this project -->
+          <Card :body-class="'p-0'">
+            <template #header><h2 class="text-sm font-semibold">{{ t('invoices.project_receipts') }} <span class="text-[var(--ll-muted)]">({{ projectReceipts.length }})</span></h2></template>
+            <template #actions><Btn variant="soft" size="sm" icon="add_link" @click="openAssignProjectReceipt">{{ t('invoices.project_assign_receipt') }}</Btn></template>
+            <div class="divide-y divide-[var(--ll-border)]">
+              <div v-for="r in projectReceipts" :key="r.id" class="flex items-center gap-3 px-4 py-2.5">
+                <button type="button" class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300" :title="t('common.open')" @click="openReceiptWorkspace(r)"><Icon name="receipt" :size="18" /></button>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-medium">{{ r.name }}</span>
+                  <span class="block truncate text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(r.date ?? r.created_at) }}<template v-if="r.category"> · {{ r.category }}</template></span>
+                </span>
+                <span class="shrink-0 font-mono text-sm tabular-nums">{{ r.amount != null ? money(Number(r.amount)) : '—' }}</span>
+                <Btn variant="ghost" size="sm" icon="link_off" :title="t('invoices.project_unassign')" @click="unassignReceiptFromProject(r)" />
+              </div>
+              <p v-if="!projectReceipts.length" class="px-4 py-3 text-sm text-[var(--ll-muted)]">—</p>
+            </div>
+          </Card>
+        </div>
+
+        <!-- Subprojects (direct children; each figure includes ITS own branch) -->
+        <Card v-if="projectChildren.length" :body-class="'p-0'">
+          <template #header><h2 class="text-sm font-semibold">{{ t('invoices.project_subprojects') }} <span class="text-[var(--ll-muted)]">({{ projectChildren.length }})</span></h2></template>
+          <template #actions><Btn variant="soft" size="sm" icon="add" @click="newSubProject">{{ t('invoices.project_add') }}</Btn></template>
+          <div class="divide-y divide-[var(--ll-border)]">
+            <button v-for="c in projectChildren" :key="c.id" type="button" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openProject(c)">
+              <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="account_tree" :size="18" /></span>
+              <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{{ c.name }}</span></span>
+              <span class="shrink-0 font-mono text-sm tabular-nums">{{ money(rolledFor(c.id).net) }}</span>
+              <Icon name="chevron_right" :size="18" class="shrink-0 text-[var(--ll-muted)]" />
+            </button>
+          </div>
+        </Card>
+        <div v-else class="flex justify-end">
+          <Btn variant="soft" size="sm" icon="add" @click="newSubProject">{{ t('invoices.project_subprojects') }}</Btn>
+        </div>
       </div>
-    </Card>
+    </div>
 
     <!-- Partners (business partners / Geschäftspartner): list ↔ detail -->
     <div v-show="tab === 'partners'">
@@ -677,6 +873,12 @@
         <TextField v-model="txForm.purpose" :label="t('invoices.tx_purpose')" />
         <TextField v-model="txForm.booking_text" :label="t('invoices.tx_booking_text')" />
         <Select v-model="txForm.vat_cat" :label="t('invoices.tx_vat')" :options="vatCatItems" />
+        <Select
+          :label="t('invoices.tab_projects')"
+          :model-value="txForm.finance_project_id ?? ''"
+          :options="projectSelectOptions"
+          @update:model-value="txForm.finance_project_id = $event ? Number($event) : null"
+        />
       </div>
       <template #footer>
         <Btn variant="ghost" @click="txDialog = false">{{ t('common.cancel') }}</Btn>
@@ -885,6 +1087,12 @@
           :options="[{ title: '—', value: '' }, ...partnerOptions.map((o) => ({ title: o.name, value: o.id }))]"
           @update:model-value="rForm.partner_id = $event ? Number($event) : null"
         />
+        <Select
+          :label="t('invoices.tab_projects')"
+          :model-value="rForm.finance_project_id ?? ''"
+          :options="projectSelectOptions"
+          @update:model-value="rForm.finance_project_id = $event ? Number($event) : null"
+        />
         <TextField v-model="rForm.vat" :label="t('invoices.vat')" />
         <div>
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.tx_receipts') }}</span>
@@ -976,6 +1184,12 @@
             />
             <div v-if="partnerVatId(rForm.partner_id)" class="mt-1 text-xs text-[var(--ll-muted)]">{{ t('invoices.vat_id') }}: <span class="font-mono">{{ partnerVatId(rForm.partner_id) }}</span></div>
           </div>
+          <Select
+            :label="t('invoices.tab_projects')"
+            :model-value="rForm.finance_project_id ?? ''"
+            :options="projectSelectOptions"
+            @update:model-value="rForm.finance_project_id = $event ? Number($event) : null"
+          />
           <TextField v-model="rForm.vat" :label="t('invoices.vat')" />
           <div>
             <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.tx_receipts') }}</span>
@@ -1152,6 +1366,11 @@
           :options="[{ title: t('invoices.project_parent_none'), value: '' }, ...parentOptions.map((o) => ({ title: o.name, value: o.id }))]"
           @update:model-value="prjForm.parent_id = $event ? Number($event) : null"
         />
+        <Select
+          v-model="prjForm.kind"
+          :label="t('invoices.project_kind')"
+          :options="[{ title: t('invoices.project_kind_business'), value: 'business' }, { title: t('invoices.project_kind_private'), value: 'private' }]"
+        />
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.project_note') }}</span>
           <textarea
@@ -1164,6 +1383,100 @@
         <Btn variant="ghost" @click="prjDialog = false">{{ t('common.cancel') }}</Btn>
         <Btn variant="solid" :loading="saving" @click="saveProject">{{ t('common.save') }}</Btn>
       </template>
+    </Modal>
+
+    <!-- Ledger row (hand-typed Ab-/Zubuchung) -->
+    <Modal v-model="expDialog" :title="expForm.direction === 'in' ? t('invoices.project_add_in') : t('invoices.project_add_out')" width="480px">
+      <div class="space-y-3">
+        <Select
+          v-model="expForm.direction"
+          :label="t('invoices.project_direction')"
+          :options="[{ title: t('invoices.project_add_out'), value: 'out' }, { title: t('invoices.project_add_in'), value: 'in' }]"
+        />
+        <TextField v-model="expForm.title" :label="t('invoices.project_title')" :placeholder="t('invoices.project_title_ph')" />
+        <div class="grid grid-cols-2 gap-3">
+          <TextField v-model="expForm.amount" :label="t('invoices.gross')" type="number" inputmode="decimal" placeholder="0.00" />
+          <TextField v-model="expForm.date" :label="t('common.date')" type="date" />
+        </div>
+        <TextField v-model="expForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
+        <div v-if="catAccountNo(expForm.category)" class="-mt-2 text-xs text-[var(--ll-muted)]">{{ t('invoices.cat_account_no') }}: <span class="font-mono">{{ catAccountNo(expForm.category) }}</span></div>
+        <Select
+          :label="t('invoices.project_account')"
+          :model-value="expForm.payment_method_id ?? ''"
+          :options="[{ title: '—', value: '' }, ...f.paymentMethods.map((p) => ({ title: p.name, value: p.id }))]"
+          @update:model-value="expForm.payment_method_id = $event ? Number($event) : null"
+        />
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.project_description') }}</span>
+          <textarea
+            v-model="expForm.note" rows="3"
+            class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+          />
+        </label>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="expDialog = false">{{ t('common.cancel') }}</Btn>
+        <Btn variant="solid" :loading="saving" @click="saveExpense">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Assign an existing bank transaction to the open project -->
+    <Modal v-model="assignPrjTxDialog" :title="t('invoices.project_assign_tx')" width="640px">
+      <TextField v-model="assignPrjTxQuery" :placeholder="t('invoices.tx_search_ph')" icon="search" class="mb-3" />
+      <div class="max-h-96 divide-y divide-[var(--ll-border)] overflow-y-auto rounded-lg border border-[var(--ll-border)]">
+        <button
+          v-for="tx in assignPrjTxCandidates" :key="tx.id" type="button"
+          class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-black/[0.02] dark:hover:bg-white/5"
+          @click="assignTxToProject(tx)"
+        >
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium">{{ tx.counterparty || '—' }}</span>
+            <span class="block truncate text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(tx.date) }} · {{ tx.purpose || '—' }}</span>
+          </span>
+          <!-- Already on ANOTHER project: assigning moves it here, so say so. -->
+          <Badge v-if="tx.finance_project_id != null" tone="warning">{{ projectName(tx.finance_project_id) }}</Badge>
+          <span class="shrink-0 font-mono text-sm tabular-nums">{{ money(tx.amount) }}</span>
+        </button>
+        <p v-if="!assignPrjTxCandidates.length" class="px-3 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+      </div>
+      <template #footer><Btn variant="ghost" @click="assignPrjTxDialog = false">{{ t('common.close') }}</Btn></template>
+    </Modal>
+
+    <!-- Bundle an existing receipt into the open project -->
+    <Modal v-model="assignPrjRcDialog" :title="t('invoices.project_assign_receipt')" width="640px">
+      <TextField v-model="assignPrjRcQuery" :placeholder="t('common.search')" icon="search" class="mb-3" />
+      <div class="max-h-96 divide-y divide-[var(--ll-border)] overflow-y-auto rounded-lg border border-[var(--ll-border)]">
+        <button
+          v-for="r in assignPrjRcCandidates" :key="r.id" type="button"
+          class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-black/[0.02] dark:hover:bg-white/5"
+          @click="assignReceiptToProject(r)"
+        >
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium">{{ r.name }}</span>
+            <span class="block truncate text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(r.date ?? r.created_at) }}<template v-if="r.category"> · {{ r.category }}</template></span>
+          </span>
+          <Badge v-if="r.finance_project_id != null" tone="warning">{{ projectName(r.finance_project_id) }}</Badge>
+          <span class="shrink-0 font-mono text-sm tabular-nums">{{ r.amount != null ? money(Number(r.amount)) : '—' }}</span>
+        </button>
+        <p v-if="!assignPrjRcCandidates.length" class="px-3 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+      </div>
+      <template #footer><Btn variant="ghost" @click="assignPrjRcDialog = false">{{ t('common.close') }}</Btn></template>
+    </Modal>
+
+    <!-- Project trash (soft-deleted projects; children keep their parent_id) -->
+    <Modal v-model="prjTrashDialog" :title="t('invoices.project_trash')" width="560px">
+      <div class="divide-y divide-[var(--ll-border)] rounded-lg border border-[var(--ll-border)]">
+        <div v-for="p in trashedProjects" :key="p.id" class="flex items-center gap-3 px-3 py-2">
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium">{{ p.name }}</span>
+            <span class="block text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(p.deleted_at) }}</span>
+          </span>
+          <Btn variant="ghost" size="sm" icon="restore_from_trash" :title="t('common.restore')" @click="restoreProject(p)" />
+          <Btn variant="ghost" size="sm" icon="delete_forever" class="text-red-600 dark:text-red-400" :title="t('invoices.project_delete_forever')" @click="forceProject(p)" />
+        </div>
+        <p v-if="!trashedProjects.length" class="px-3 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('invoices.project_trash_empty') }}</p>
+      </div>
+      <template #footer><Btn variant="ghost" @click="prjTrashDialog = false">{{ t('common.close') }}</Btn></template>
     </Modal>
       </div>
     </div>
@@ -1474,7 +1787,11 @@ import type { AlignedData, Options } from 'uplot';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
-import { api, VersionConflict } from '@spa/api/client';
+import { api, ApiError, VersionConflict } from '@spa/api/client';
+import {
+  projectTree, descendantIds, normaliseLedger, ledgerTotals, ownTotals, rolledTotals,
+  blankExpense, type ProjectExpense, type Totals,
+} from '@spa/shared/finance-projects';
 import { analyzeReceiptText, buildReceiptName } from '@spa/shared/receipt-ocr';
 import { autoPick, suggestBookings, type BookingSuggestion } from '@spa/shared/receipt-match';
 import { fileSig } from '@spa/shared/file-sig';
@@ -1641,11 +1958,12 @@ function openReceiptWorkspace(r: Receipt) { editReceipt(r); rWorkspace.value = t
 interface RForm {
   id?: number; version?: number; name: string; category: string; tags: string[]; vat: string; note: string; partner_id: number | null;
   amount: string; currency: string; date: string; order_ref: string; doc_number: string; bank_transaction_id: number | null;
-  linked_transaction_ids: number[] | null;
+  linked_transaction_ids: number[] | null; finance_project_id: number | null;
 }
 const rForm = reactive<RForm>({
   name: '', category: '', tags: [], vat: '', note: '', partner_id: null,
   amount: '', currency: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null, linked_transaction_ids: null,
+  finance_project_id: null,
 });
 const CURRENCY_OPTIONS = [
   { title: '—', value: '' }, { title: 'EUR', value: 'EUR' }, { title: 'USD', value: 'USD' },
@@ -1662,8 +1980,8 @@ function unassignSplitTx() { rForm.linked_transaction_ids = null; }
 
 // Project form
 const prjDialog = ref(false);
-interface PrjForm { id?: number; version?: number; name: string; parent_id: number | null; note: string }
-const prjForm = reactive<PrjForm>({ name: '', parent_id: null, note: '' });
+interface PrjForm { id?: number; version?: number; name: string; parent_id: number | null; kind: 'business' | 'private'; note: string }
+const prjForm = reactive<PrjForm>({ name: '', parent_id: null, kind: 'business', note: '' });
 
 onMounted(async () => { await f.load(); await loadReports(); void loadPrintCompany(); });
 
@@ -1881,24 +2199,45 @@ const totals = computed(() => {
 });
 
 // Indented project tree (roots + children by parent_id; unknown parents surface as roots).
-const projectRows = computed<{ p: Project; depth: number }[]>(() => {
-  const all = f.projects;
-  const byParent = new Map<number, Project[]>();
-  const ids = new Set(all.map((p) => p.id));
-  for (const p of all) {
-    const key = p.parent_id != null && ids.has(p.parent_id) ? p.parent_id : 0;
-    if (!byParent.has(key)) byParent.set(key, []);
-    byParent.get(key)!.push(p);
-  }
-  const out: { p: Project; depth: number }[] = [];
-  const walk = (parent: number, depth: number) => {
-    for (const p of byParent.get(parent) ?? []) { out.push({ p, depth }); walk(p.id, depth + 1); }
-  };
-  walk(0, 0);
-  return out;
+const projectRows = computed(() => projectTree(f.projects));
+// A project can't be moved under itself or under one of its own descendants —
+// the server rejects it (422 cycle), so don't offer it.
+const parentOptions = computed(() => {
+  const blocked = prjForm.id ? descendantIds(f.projects, prjForm.id) : new Set<number>();
+  return f.projects.filter((p) => p.id !== prjForm.id && !blocked.has(p.id)).map((p) => ({ id: p.id, name: p.name }));
 });
-const parentOptions = computed(() => f.projects.filter((p) => p.id !== prjForm.id).map((p) => ({ id: p.id, name: p.name })));
+function projectName(id: number | null | undefined): string {
+  return id == null ? '' : (f.projects.find((p) => p.id === id)?.name ?? `#${id}`);
+}
+function projectParentName(p: Project): string { return projectName(p.parent_id); }
+function paymentName(id: number | null | undefined): string {
+  return id == null ? '' : (f.paymentMethods.find((m) => m.id === id)?.name ?? '');
+}
+/** Rolled-up totals per project id — computed once per data change, not per row. */
+const rolledTotalsById = computed(() => {
+  const map = new Map<number, Totals>();
+  for (const p of f.projects) map.set(p.id, rolledTotals(f.projects, p.id, f.transactions, f.standaloneReceipts));
+  return map;
+});
+const EMPTY_TOTALS: Totals = { out: 0, in: 0, net: 0 };
+function rolledFor(id: number): Totals { return rolledTotalsById.value.get(id) ?? EMPTY_TOTALS; }
+// Roots only: summing every row would count each subproject twice.
+const projectGrandTotal = computed<Totals>(() => {
+  const ids = new Set(f.projects.map((p) => p.id));
+  let out = 0; let inn = 0;
+  for (const p of f.projects) {
+    if (p.parent_id != null && ids.has(p.parent_id)) continue;
+    const t = rolledFor(p.id);
+    out += t.out; inn += t.in;
+  }
+  return { out: Math.round(out * 100) / 100, in: Math.round(inn * 100) / 100, net: Math.round((out - inn) * 100) / 100 };
+});
 const partnerOptions = computed(() => f.partners.map((p) => ({ id: p.id, name: p.name })));
+/** Project picker options (indented so the hierarchy is visible in a flat select). */
+const projectSelectOptions = computed(() => [
+  { title: '—', value: '' },
+  ...projectRows.value.map((r) => ({ title: `${'\u00a0\u00a0'.repeat(r.depth)}${r.p.name}`, value: r.p.id })),
+]);
 
 function conflict() { void f.load(); error(t('common.error')); }
 
@@ -2111,13 +2450,13 @@ const vatCatItems = computed(() => [
 interface TxForm {
   id?: number; version?: number; payment_method_id: number | null;
   date: string; amount: string; counterparty: string; counterparty_iban: string;
-  bic: string; purpose: string; booking_text: string; vat_cat: string;
+  bic: string; purpose: string; booking_text: string; vat_cat: string; finance_project_id: number | null;
 }
 function blankTx(): TxForm {
   return {
     payment_method_id: bankAccount.value || (f.paymentMethods[0]?.id ?? null),
     date: todayYmd(), amount: '', counterparty: '', counterparty_iban: '',
-    bic: '', purpose: '', booking_text: '', vat_cat: '',
+    bic: '', purpose: '', booking_text: '', vat_cat: '', finance_project_id: null,
   };
 }
 const txForm = reactive<TxForm>(blankTx());
@@ -2129,7 +2468,7 @@ function editTx(tx: BankTransaction) {
     // Same full-ISO-datetime-vs-<input type="date"> mismatch as invoices/receipts.
     date: tx.date ? String(tx.date).slice(0, 10) : '', amount: String(tx.amount ?? ''), counterparty: tx.counterparty ?? '',
     counterparty_iban: tx.counterparty_iban ?? '', bic: tx.bic ?? '', purpose: tx.purpose ?? '',
-    booking_text: tx.booking_text ?? '', vat_cat: tx.vat_cat ?? '',
+    booking_text: tx.booking_text ?? '', vat_cat: tx.vat_cat ?? '', finance_project_id: tx.finance_project_id,
   });
   txDialog.value = true;
 }
@@ -2140,7 +2479,7 @@ async function saveTx() {
       payment_method_id: txForm.payment_method_id, date: txForm.date, amount: Number(txForm.amount),
       counterparty: txForm.counterparty, counterparty_iban: txForm.counterparty_iban, bic: txForm.bic,
       purpose: txForm.purpose, booking_text: txForm.booking_text, vat_cat: txForm.vat_cat || null,
-      version: txForm.version,
+      finance_project_id: txForm.finance_project_id, version: txForm.version,
     };
     if (txForm.id) await f.updateTransaction(txForm.id, body);
     else await f.createTransaction(body);
@@ -2427,6 +2766,7 @@ function newReceipt() {
   Object.assign(rForm, {
     id: undefined, version: undefined, name: '', category: '', tags: [], vat: '', note: '', partner_id: null,
     amount: '', currency: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null, linked_transaction_ids: null,
+    finance_project_id: null,
   });
   rFile.value = null; lastOcrText.value = ''; rDialog.value = true;
 }
@@ -2692,7 +3032,7 @@ function editReceipt(r: Receipt) {
     // Same full-ISO-datetime-vs-<input type="date"> mismatch as invoices/transactions.
     date: r.date ? String(r.date).slice(0, 10) : '',
     order_ref: r.order_ref ?? '', doc_number: r.doc_number ?? '', bank_transaction_id: r.bank_transaction_id,
-    linked_transaction_ids: r.linked_transaction_ids ?? null,
+    linked_transaction_ids: r.linked_transaction_ids ?? null, finance_project_id: r.finance_project_id,
   });
   rFile.value = null;
 }
@@ -2705,7 +3045,8 @@ async function saveReceipt() {
         vat: rForm.vat || null, note: rForm.note || null, partner_id: rForm.partner_id,
         amount: rForm.amount.trim() === '' ? null : Number(rForm.amount), currency: rForm.currency || null,
         date: rForm.date || null, order_ref: rForm.order_ref || null, doc_number: rForm.doc_number || null,
-        bank_transaction_id: rForm.bank_transaction_id, linked_transaction_ids: rForm.linked_transaction_ids, version: rForm.version,
+        bank_transaction_id: rForm.bank_transaction_id, linked_transaction_ids: rForm.linked_transaction_ids,
+        finance_project_id: rForm.finance_project_id, version: rForm.version,
       };
       await f.updateReceipt(rForm.id, body);
     } else {
@@ -2725,6 +3066,7 @@ async function saveReceipt() {
       if (rForm.doc_number) fd.append('doc_number', rForm.doc_number);
       if (rForm.partner_id != null) fd.append('partner_id', String(rForm.partner_id));
       if (rForm.bank_transaction_id != null) fd.append('bank_transaction_id', String(rForm.bank_transaction_id));
+      if (rForm.finance_project_id != null) fd.append('finance_project_id', String(rForm.finance_project_id));
       if (lastOcrText.value) fd.append('ocr', lastOcrText.value.slice(0, 200000));
       for (const tag of rForm.tags) fd.append('tags[]', tag);
       const created = await f.createReceipt(fd);
@@ -2873,18 +3215,191 @@ async function applyInvoiceMatches() {
 }
 
 // ---- Projects ----
-function newProject() { Object.assign(prjForm, { id: undefined, version: undefined, name: '', parent_id: null, note: '' }); prjDialog.value = true; }
-function editProject(p: Project) { Object.assign(prjForm, { id: p.id, version: p.version, name: p.name, parent_id: p.parent_id, note: p.note ?? '' }); prjDialog.value = true; }
+// List ↔ detail, like partners. The detail view is where a project gets its
+// numbers: hand-typed rows in `expenses`, plus bank transactions / receipts
+// pointed at it via finance_project_id.
+const projectsView = ref<'list' | 'detail'>('list');
+const openProjectId = ref<number | null>(null);
+const openProjectRec = computed<Project | null>(() => f.projects.find((p) => p.id === openProjectId.value) ?? null);
+
+function openProject(p: Project) { openProjectId.value = p.id; projectsView.value = 'detail'; }
+function backToProjects() { projectsView.value = 'list'; openProjectId.value = null; }
+
+const projectLedger = computed(() => normaliseLedger(openProjectRec.value?.expenses));
+const projectLedgerTotals = computed<Totals>(() => ledgerTotals(projectLedger.value));
+const openProjectOwn = computed<Totals>(() => (openProjectRec.value
+  ? ownTotals(openProjectRec.value, f.transactions, f.standaloneReceipts)
+  : EMPTY_TOTALS));
+const openProjectRolled = computed<Totals>(() => (openProjectRec.value ? rolledFor(openProjectRec.value.id) : EMPTY_TOTALS));
+const projectChildren = computed(() => (openProjectId.value == null ? [] : f.projects.filter((p) => p.parent_id === openProjectId.value)));
+const projectTxs = computed(() => f.transactions
+  .filter((tx) => tx.finance_project_id === openProjectId.value)
+  .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')));
+const projectReceipts = computed(() => f.standaloneReceipts
+  .filter((r) => r.finance_project_id === openProjectId.value)
+  .sort((a, b) => String(b.date ?? b.created_at ?? '').localeCompare(String(a.date ?? a.created_at ?? ''))));
+
+function newProject() { Object.assign(prjForm, { id: undefined, version: undefined, name: '', parent_id: null, kind: 'business', note: '' }); prjDialog.value = true; }
+function newSubProject() {
+  Object.assign(prjForm, {
+    id: undefined, version: undefined, name: '', parent_id: openProjectId.value,
+    // A subproject inherits its parent's business/private nature by default.
+    kind: openProjectRec.value?.kind ?? 'business', note: '',
+  });
+  prjDialog.value = true;
+}
+function editProject(p: Project) {
+  Object.assign(prjForm, { id: p.id, version: p.version, name: p.name, parent_id: p.parent_id, kind: p.kind ?? 'business', note: p.note ?? '' });
+  prjDialog.value = true;
+}
 async function saveProject() {
   saving.value = true;
   try {
-    const body: Partial<Project> & { version?: number } = { name: prjForm.name, parent_id: prjForm.parent_id, note: prjForm.note || null };
-    if (prjForm.id) { body.id = prjForm.id; body.version = prjForm.version; }
-    await f.saveProject(body);
+    const stored = prjForm.id ? f.projects.find((p) => p.id === prjForm.id) : null;
+    const parentChanged = !!stored && (stored.parent_id ?? null) !== (prjForm.parent_id ?? null);
+    const body: Record<string, unknown> = { name: prjForm.name, kind: prjForm.kind, note: prjForm.note || null };
+    if (prjForm.id) {
+      // Reparent through the cycle-guarded move endpoint; a plain update would
+      // happily write a parent that loops back into this project's own subtree.
+      if (parentChanged) await f.moveProject(prjForm.id, prjForm.parent_id);
+      await f.saveProject({ ...body, id: prjForm.id, version: prjForm.version } as Partial<Project>);
+    } else {
+      await f.saveProject({ ...body, parent_id: prjForm.parent_id } as Partial<Project>);
+    }
     prjDialog.value = false; await f.load(); success(t('common.saved'));
+  } catch (e) {
+    if (e instanceof VersionConflict) conflict();
+    else if (e instanceof ApiError && e.status === 422) error(t('invoices.project_cycle'));
+    else error(t('common.error'));
+  } finally { saving.value = false; }
+}
+async function delProject(p: Project) {
+  if (!await confirmAsk(t('invoices.project_delete_confirm'), { danger: true })) return;
+  try {
+    await f.deleteProject(p.id);
+    if (openProjectId.value === p.id) backToProjects();
+    await f.load(); success(t('common.deleted'));
+  } catch { error(t('common.error')); }
+}
+
+// ---- Project trash ----
+const prjTrashDialog = ref(false);
+const trashedProjects = ref<Project[]>([]);
+async function openProjectTrash() {
+  prjTrashDialog.value = true;
+  try { trashedProjects.value = (await f.loadTrash()).projects ?? []; } catch { trashedProjects.value = []; }
+}
+async function restoreProject(p: Project) {
+  try { await f.restoreProject(p.id); trashedProjects.value = trashedProjects.value.filter((x) => x.id !== p.id); await f.load(); success(t('common.saved')); }
+  catch { error(t('common.error')); }
+}
+async function forceProject(p: Project) {
+  if (!await confirmAsk(t('invoices.project_delete_forever_confirm'), { danger: true })) return;
+  try { await f.forceProject(p.id); trashedProjects.value = trashedProjects.value.filter((x) => x.id !== p.id); await f.load(); success(t('common.deleted')); }
+  catch { error(t('common.error')); }
+}
+
+// ---- Project ledger (hand-typed Ab-/Zubuchungen inside `expenses`) ----
+const expDialog = ref(false);
+interface ExpForm {
+  id: string; direction: 'out' | 'in'; amount: string; date: string;
+  title: string; note: string; category: string; payment_method_id: number | null;
+}
+const expForm = reactive<ExpForm>({ id: '', direction: 'out', amount: '', date: '', title: '', note: '', category: '', payment_method_id: null });
+
+function newExpense(direction: 'out' | 'in') {
+  const row = blankExpense(direction, todayYmd());
+  Object.assign(expForm, { id: row.id, direction, amount: '', date: row.date ?? todayYmd(), title: '', note: '', category: '', payment_method_id: null });
+  expDialog.value = true;
+}
+function editExpense(row: ProjectExpense) {
+  Object.assign(expForm, {
+    id: row.id, direction: row.direction, amount: String(row.amount), date: row.date ?? '',
+    title: row.title ?? '', note: row.note ?? '', category: row.category ?? '', payment_method_id: row.payment_method_id,
+  });
+  expDialog.value = true;
+}
+/** Persist the whole array — `expenses` is one JSON column, there is no per-row endpoint. */
+async function persistLedger(rows: ProjectExpense[]) {
+  const p = openProjectRec.value;
+  if (!p) return;
+  await f.saveProject({ id: p.id, version: p.version, expenses: rows } as Partial<Project>);
+  await f.load();
+}
+async function saveExpense() {
+  const amount = Number(expForm.amount);
+  if (!Number.isFinite(amount) || amount === 0) { error(t('invoices.project_amount_required')); return; }
+  saving.value = true;
+  try {
+    const row: ProjectExpense = {
+      id: expForm.id || blankExpense(expForm.direction, todayYmd()).id,
+      direction: expForm.direction,
+      amount: Math.abs(amount),
+      date: expForm.date || null,
+      title: expForm.title || null,
+      note: expForm.note || null,
+      category: expForm.category || null,
+      payment_method_id: expForm.payment_method_id,
+    };
+    const rows = projectLedger.value.slice();
+    const i = rows.findIndex((r) => r.id === row.id);
+    if (i >= 0) rows[i] = row; else rows.push(row);
+    await persistLedger(rows);
+    expDialog.value = false; success(t('common.saved'));
   } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
 }
-async function delProject(p: Project) { if (!await confirmAsk(t('invoices.project_delete_confirm'), { danger: true })) return; await f.deleteProject(p.id); await f.load(); }
+async function delExpense(row: ProjectExpense) {
+  if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return;
+  try { await persistLedger(projectLedger.value.filter((r) => r.id !== row.id)); success(t('common.deleted')); }
+  catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
+}
+
+// ---- Assigning real bookings/receipts to the open project ----
+const assignPrjTxDialog = ref(false);
+const assignPrjTxQuery = ref('');
+function openAssignProjectTx() { assignPrjTxQuery.value = ''; assignPrjTxDialog.value = true; }
+const assignPrjTxCandidates = computed(() => {
+  const s = assignPrjTxQuery.value.trim().toLowerCase();
+  return f.transactions
+    .filter((tx) => tx.finance_project_id !== openProjectId.value)
+    .filter((tx) => !s || [tx.counterparty, tx.purpose, tx.booking_text, tx.date, String(tx.amount)]
+      .some((v) => String(v ?? '').toLowerCase().includes(s)))
+    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+    .slice(0, 100);
+});
+async function assignTxToProject(tx: BankTransaction) {
+  try {
+    await f.updateTransaction(tx.id, { finance_project_id: openProjectId.value, version: tx.version });
+    assignPrjTxDialog.value = false; await f.load(); success(t('common.saved'));
+  } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
+}
+async function unassignTxFromProject(tx: BankTransaction) {
+  try { await f.updateTransaction(tx.id, { finance_project_id: null, version: tx.version }); await f.load(); success(t('common.saved')); }
+  catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
+}
+
+const assignPrjRcDialog = ref(false);
+const assignPrjRcQuery = ref('');
+function openAssignProjectReceipt() { assignPrjRcQuery.value = ''; assignPrjRcDialog.value = true; }
+const assignPrjRcCandidates = computed(() => {
+  const s = assignPrjRcQuery.value.trim().toLowerCase();
+  return f.standaloneReceipts
+    .filter((r) => r.finance_project_id !== openProjectId.value)
+    .filter((r) => !s || [r.name, r.category, r.date, r.doc_number, String(r.amount ?? '')]
+      .some((v) => String(v ?? '').toLowerCase().includes(s)))
+    .sort((a, b) => String(b.date ?? b.created_at ?? '').localeCompare(String(a.date ?? a.created_at ?? '')))
+    .slice(0, 100);
+});
+async function assignReceiptToProject(r: Receipt) {
+  try {
+    await f.updateReceipt(r.id, { finance_project_id: openProjectId.value, version: r.version });
+    assignPrjRcDialog.value = false; await f.load(); success(t('common.saved'));
+  } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
+}
+async function unassignReceiptFromProject(r: Receipt) {
+  try { await f.updateReceipt(r.id, { finance_project_id: null, version: r.version }); await f.load(); success(t('common.saved')); }
+  catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
+}
 
 // ---- Invoice PDF generation (client-side, ported from the Blade print pipeline) ----
 interface CompanyProfile {

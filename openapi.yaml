@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.735.2
+  version: 1.736.0
   license:
     name: Proprietary
   description: >
@@ -1038,11 +1038,35 @@ components:
         name: { type: string }
         kind: { type: string, enum: [business, private] }
         note: { type: [string, "null"] }
-        expenses: { type: [array, "null"], items: { type: object, additionalProperties: true }, description: "Manual hand-entered spend rows (nullable)." }
+        expenses: { type: [array, "null"], items: { $ref: "#/components/schemas/ProjectExpense" }, description: "Hand-typed ledger rows (nullable). Stored verbatim as JSON — the server validates only that it is an array of at most 5000 items." }
         version: { type: integer }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         deleted_at: { type: [string, "null"], format: date-time }
+
+    ProjectExpense:
+      type: object
+      description: |
+        One hand-typed row of a project's ledger, stored inside
+        `finance_projects.expenses`. The column is free-form JSON: the server
+        persists it as sent and only reads `date`, `amount`, `direction` and
+        `category` for the EÜR, so a client MUST round-trip unknown keys rather
+        than dropping them.
+
+        `direction: 'in'` is a Zubuchung (a refund/credit booked on the project)
+        and REDUCES the expense total in `GET /finance/reports/euer`;
+        `direction: 'out'` (and a legacy row that carries no `direction` at all)
+        is a Abbuchung and adds to it. `amount` is unsigned — the sign lives in
+        `direction`.
+      properties:
+        id: { type: string, description: "Client-generated row id (stable across edits; used to update/delete a single row)." }
+        direction: { type: string, enum: [out, in], default: out, description: "out = spend (Abbuchung), in = credit (Zubuchung)." }
+        amount: { type: number, description: "Unsigned amount, gross." }
+        date: { type: [string, "null"], format: date, description: "Booking date (YYYY-MM-DD); the EÜR buckets by its year." }
+        title: { type: [string, "null"], description: "Short label shown in the ledger (Bezeichnung), e.g. \"Excavator rental\"." }
+        note: { type: [string, "null"], description: "Longer free-text description (Beschreibung)." }
+        category: { type: [string, "null"], description: "Free-text expense category — matched by name against the managed finance categories (for the Sachkonto) and used as the EÜR grouping label." }
+        payment_method_id: { type: [integer, "null"], description: "Which account the money moved through (informational; not validated server-side)." }
 
     FinanceCategory:
       type: object
@@ -1909,7 +1933,7 @@ components:
         parent_id: { type: [integer, "null"], description: "Must be an existing, owned, non-deleted project." }
         kind: { type: string, enum: [business, private] }
         note: { type: [string, "null"], maxLength: 100000 }
-        expenses: { type: [array, "null"], maxItems: 5000, items: { type: object, additionalProperties: true } }
+        expenses: { type: [array, "null"], maxItems: 5000, items: { $ref: "#/components/schemas/ProjectExpense" }, description: "Replaces the whole ledger — there is no per-row endpoint. Send the full array." }
         version: { type: integer, minimum: 0, description: "Update only: optimistic concurrency (409 on mismatch)." }
 
     CategoryInput:

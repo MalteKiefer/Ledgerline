@@ -603,6 +603,11 @@ class FinanceReports
                 if ($amount === 0.0) {
                     continue;
                 }
+                // A `direction: 'in'` row is a Zubuchung (a refund/credit booked on the
+                // project) and REDUCES the expense — counting it as spend would
+                // overstate costs on the EÜR. A row without `direction` predates the
+                // field and keeps its old meaning: an outflow, exactly as abs() gave.
+                $amount = ($exp['direction'] ?? 'out') === 'in' ? -$amount : $amount;
                 $label = is_string($exp['category'] ?? null) && $exp['category'] !== '' ? $exp['category'] : $project->name;
                 $expenseMap[$label] = ($expenseMap[$label] ?? 0.0) + $amount;
                 $expenseTotal += $amount;

@@ -28,11 +28,18 @@ export interface PaymentMethod {
   iban?: string | null; bic?: string | null; bank?: string | null; account_no?: string | null;
   card_number?: string | null; card_network?: string | null; card_expiry?: string | null; paypal_email?: string | null;
 }
-export interface Project { id: number; name: string; parent_id: number | null; note: string | null; version: number }
+export interface Project {
+  id: number; name: string; parent_id: number | null; note: string | null; version: number;
+  kind: 'business' | 'private';
+  // Hand-typed ledger rows (`ProjectExpense` in openapi) — free-form JSON on the
+  // wire, normalised through shared/finance-projects before use.
+  expenses: unknown;
+  created_at?: string | null; deleted_at?: string | null;
+}
 export interface Receipt {
   id: number; name: string; category: string | null; tags: string[] | null; vat: string | null;
   note: string | null; partner_id: number | null; version: number; mime?: string | null;
-  bank_transaction_id: number | null;
+  bank_transaction_id: number | null; finance_project_id: number | null;
   sig?: string | null;
   // A split-payment link (one receipt settled by several separate bank charges) —
   // mutually exclusive with bank_transaction_id, see FinanceReceipt on the backend.
@@ -98,7 +105,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const attachTxReceipt = (txId: number, form: FormData) => api.upload<{ transaction: BankTransaction }>(`/api/v1/finance/transactions/${txId}/receipts`, form);
   const deleteTxReceipt = (txId: number, receiptId: string) => api.delete(`/api/v1/finance/transactions/${txId}/receipts/${receiptId}`);
   const txReceiptUrl = (txId: number, receiptId: string) => api.streamUrl(`/api/v1/finance/transactions/${txId}/receipts/${receiptId}/raw`);
-  const loadTrash = () => api.get<{ transactions: BankTransaction[] }>('/api/v1/finance/trash');
+  const loadTrash = () => api.get<{ transactions: BankTransaction[]; projects: Project[] }>('/api/v1/finance/trash');
 
   // ---- Finance categories ----
   const createCategory = (body: Record<string, unknown>) => api.post<{ category: FinanceCategory }>('/api/v1/finance/categories', body);
@@ -154,6 +161,11 @@ export const useFinanceStore = defineStore('finance', () => {
   // ---- Projects ----
   const saveProject = (p: Partial<Project>) => (p.id ? api.put<{ project: Project }>(`/api/v1/finance/projects/${p.id}`, p) : api.post<{ project: Project }>('/api/v1/finance/projects', p));
   const deleteProject = (id: number) => api.delete(`/api/v1/finance/projects/${id}`);
+  // Reparenting goes through the dedicated endpoint, not a plain update: only
+  // this one is cycle-guarded server-side (422 { error: 'cycle' }).
+  const moveProject = (id: number, parentId: number | null) => api.post<{ project: Project }>(`/api/v1/finance/projects/${id}/move`, { parent_id: parentId });
+  const restoreProject = (id: number) => api.post<{ project: Project }>(`/api/v1/finance/projects/${id}/restore`);
+  const forceProject = (id: number) => api.delete(`/api/v1/finance/projects/${id}/force`);
 
   return {
     invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories, fxRates,
@@ -164,6 +176,6 @@ export const useFinanceStore = defineStore('finance', () => {
     createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl,
     savePartner, deletePartner, savePayment, deletePayment,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,
-    saveProject, deleteProject,
+    saveProject, deleteProject, moveProject, restoreProject, forceProject,
   };
 });
