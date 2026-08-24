@@ -50,7 +50,12 @@ export interface Receipt {
 }
 
 export interface BankTransaction {
-  id: number; payment_method_id: number | null; date: string | null; amount: number;
+  id: number; payment_method_id: number | null; date: string | null;
+  // Always a real number here — `load()` normalises it. The API sends the
+  // decimal:2 cast as a STRING, and this type claiming otherwise is what let a
+  // stricter formatter render every row as 0,00 and `amountMatches` call
+  // `.toFixed` on a string.
+  amount: number;
   vat_cat: string | null; counterparty: string | null; counterparty_iban: string | null;
   bic: string | null; purpose: string | null; booking_text: string | null; eref: string | null;
   invoice_id: number | null; invoice_number: string | null; finance_project_id: number | null;
@@ -99,7 +104,12 @@ export const useFinanceStore = defineStore('finance', () => {
     }>('/api/v1/finance/data');
     invoices.value = r.invoices; partners.value = r.partners; paymentMethods.value = r.paymentMethods;
     projects.value = r.projects; standaloneReceipts.value = r.standaloneReceipts ?? [];
-    transactions.value = r.transactions ?? []; financeCategories.value = r.financeCategories ?? [];
+    // Normalise money at the boundary: Laravel serialises `decimal:2` as a
+    // string, and JS only *usually* coerces it (arithmetic and comparisons do,
+    // `.toFixed()` throws, `Number.isFinite` says false). One cast here keeps
+    // every consumer — sorting, the matchers, the formatter — on real numbers.
+    transactions.value = (r.transactions ?? []).map((t) => ({ ...t, amount: Number(t.amount) || 0 }));
+    financeCategories.value = r.financeCategories ?? [];
     if (r.fxRates && Object.keys(r.fxRates).length) fxRates.value = r.fxRates;
   }
 
