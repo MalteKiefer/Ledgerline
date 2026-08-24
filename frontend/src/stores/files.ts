@@ -8,6 +8,8 @@ export interface FileEntry {
   id: number; name: string; mime: string; size: number; file_folder_id: number | null;
   favorite: boolean; tags: string[]; note: string | null; version: number;
   updated_at: string; labels?: FileLabel[];
+  // Cost project this document is filed against (Finance module).
+  finance_project_id?: number | null;
 }
 export interface FileVersion {
   id: number; file_id: number; size: number; mime: string | null; sha256: string | null; created_at: string | null;

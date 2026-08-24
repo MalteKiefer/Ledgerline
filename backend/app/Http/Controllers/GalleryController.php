@@ -35,6 +35,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Intervention\Image\Direction;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\Encoders\PngEncoder;
@@ -1380,6 +1381,9 @@ class GalleryController extends Controller
             'lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
             'rotation' => ['sometimes', 'integer', 'in:0,90,180,270'],
             'flip_h' => ['sometimes', 'boolean'],
+            // Link the photo to a cost project (site photos belong with the build
+            // they document) — same pointer receipts and transactions carry.
+            'finance_project_id' => ['sometimes', 'nullable', 'integer', Rule::exists('finance_projects', 'id')->where('user_id', (int) $this->requireUser($request)->id)->whereNull('deleted_at')],
             'version' => ['sometimes', 'integer', 'min:0'],
         ]);
 
@@ -1396,6 +1400,9 @@ class GalleryController extends Controller
             }
             if ($request->has('place')) {
                 $patch['place'] = $request->filled('place') ? $request->string('place')->value() : null;
+            }
+            if ($request->has('finance_project_id')) {
+                $patch['finance_project_id'] = $request->filled('finance_project_id') ? $request->integer('finance_project_id') : null;
             }
             if ($request->has('lat')) {
                 $lat = $request->input('lat');

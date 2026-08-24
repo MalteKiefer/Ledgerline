@@ -10,10 +10,12 @@ use App\Mail\InvoiceReminderMail;
 use App\Models\AppSettings;
 use App\Models\AuditLog;
 use App\Models\BankTransaction;
+use App\Models\FileEntry;
 use App\Models\FinanceCategory;
 use App\Models\FinancePartner;
 use App\Models\FinanceProject;
 use App\Models\FinanceReceipt;
+use App\Models\GalleryPhoto;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\UserSetting;
@@ -404,6 +406,33 @@ class FinanceController extends Controller
         $project->update(['parent_id' => $parentId]);
 
         return response()->json(['project' => $project]);
+    }
+
+    /**
+     * Everything else filed against a project: files/documents from the Files
+     * module and photos from the Gallery. Read-only and owner-scoped (both models
+     * carry the global owner scope); linking/unlinking happens through those
+     * modules' own update endpoints, which is where their validation lives.
+     *
+     * Deliberately its own endpoint rather than part of /finance/data: a library
+     * can hold tens of thousands of files, and only the open project's handful
+     * are ever wanted.
+     */
+    public function projectAttachments(FinanceProject $project): JsonResponse
+    {
+        $files = FileEntry::query()
+            ->where('finance_project_id', $project->id)
+            ->orderByDesc('updated_at')
+            ->limit(500)
+            ->get(['id', 'name', 'mime', 'size', 'file_folder_id', 'version', 'created_at', 'updated_at']);
+
+        $photos = GalleryPhoto::query()
+            ->where('finance_project_id', $project->id)
+            ->orderByDesc(DB::raw('COALESCE(taken_at, created_at)'))
+            ->limit(500)
+            ->get(['id', 'name', 'mime', 'size', 'width', 'height', 'taken_at', 'media_type', 'version', 'created_at']);
+
+        return response()->json(['files' => $files, 'photos' => $photos]);
     }
 
     private function wouldCycle(int $projectId, int $newParentId): bool

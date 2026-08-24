@@ -40,7 +40,7 @@ class FileEntry extends Model
     protected $table = 'files';
 
     /** Server-set fields (size/storage_path/sha256/mime) are never mass-assigned. */
-    protected $fillable = ['name', 'file_folder_id', 'tags', 'note', 'favorite'];
+    protected $fillable = ['name', 'file_folder_id', 'tags', 'note', 'favorite', 'finance_project_id'];
 
     /** Full-text index (never serialized, ~1 MiB) + extracted metadata (returned only
      *  by the info endpoint, not the list). */

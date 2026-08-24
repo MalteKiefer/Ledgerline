@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.739.0
+  version: 1.740.0
   license:
     name: Proprietary
   description: >
@@ -1668,6 +1668,7 @@ components:
       description: "A file (files table). Bytes live plaintext on the files disk at storage_path; this row holds metadata. search_text is never serialized."
       properties:
         id: { type: integer }
+        finance_project_id: { type: [integer, "null"], description: "Cost project this file/document is filed against (nullable). Settable via PUT /files/entries/{file}." }
         user_id: { type: integer }
         file_folder_id: { type: integer, nullable: true }
         name: { type: string }
@@ -1688,6 +1689,7 @@ components:
       description: "A gallery photo (gallery_photos). Bytes live plaintext on the files disk under gallery/{uuid}; this row holds metadata. Serialized without bytes/storage_path."
       properties:
         id: { type: integer }
+        finance_project_id: { type: [integer, "null"], description: "Cost project this photo is filed against (nullable). Settable via PUT /gallery/{photo}." }
         name: { type: string }
         mime: { type: string, nullable: true }
         width: { type: integer, nullable: true }
@@ -5928,6 +5930,39 @@ paths:
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
       responses:
         "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/projects/{project}/attachments:
+    get:
+      tags: [Finance]
+      operationId: financeProjectAttachments
+      summary: Files and photos filed against a project
+      description: |
+        Everything besides money that is attached to a cost project: entries from
+        the Files module and photos from the Gallery, both owner-scoped and
+        capped at 500 each (newest first).
+
+        Read-only. Linking and unlinking happen through the owning module's own
+        update endpoint (`PUT /files/entries/{file}` / `PUT /gallery/{photo}`,
+        field `finance_project_id`), which is where their validation lives — this
+        endpoint only reads the pointer back. Deliberately not part of
+        `/finance/data`: a library can hold tens of thousands of files and only
+        the open project's few are ever wanted. Throttle 600/min.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: project, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200":
+          description: Attached files and photos.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [files, photos]
+                properties:
+                  files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }
+                  photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }

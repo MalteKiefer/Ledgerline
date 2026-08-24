@@ -60,6 +60,16 @@ export interface TxReceipt {
   id: string; name: string; mime: string | null; kind: string | null;
   category?: string | null; tags?: string[] | null; partnerId?: number | null;
 }
+/** A Files-module entry as the project attachment list returns it (metadata only). */
+export interface ProjectFile {
+  id: number; name: string; mime: string | null; size: number; file_folder_id: number | null;
+  version: number; created_at?: string | null; updated_at?: string | null;
+}
+/** A Gallery photo as the project attachment list returns it. */
+export interface ProjectPhoto {
+  id: number; name: string; mime: string | null; size: number; width: number | null; height: number | null;
+  taken_at: string | null; media_type: string | null; version: number; created_at?: string | null;
+}
 export interface FinanceCategory { id: number; name: string; color: string | null; icon: string | null; account_no: string | null; version?: number }
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
 export interface NumberGapGroup { group: string; missing: string[]; min: string; max: string; count: number }
@@ -169,6 +179,14 @@ export const useFinanceStore = defineStore('finance', () => {
   const moveProject = (id: number, parentId: number | null) => api.post<{ project: Project }>(`/api/v1/finance/projects/${id}/move`, { parent_id: parentId });
   const restoreProject = (id: number) => api.post<{ project: Project }>(`/api/v1/finance/projects/${id}/restore`);
   const forceProject = (id: number) => api.delete(`/api/v1/finance/projects/${id}/force`);
+  // Files/photos filed against a project. Read here; the pointer is written
+  // through the owning module's update endpoint, where its validation lives.
+  const projectAttachments = (id: number) =>
+    api.get<{ files: ProjectFile[]; photos: ProjectPhoto[] }>(`/api/v1/finance/projects/${id}/attachments`);
+  const linkFileToProject = (fileId: number, projectId: number | null, version?: number) =>
+    api.put(`/api/v1/files/entries/${fileId}`, version != null ? { finance_project_id: projectId, version } : { finance_project_id: projectId });
+  const linkPhotoToProject = (photoId: number, projectId: number | null, version?: number) =>
+    api.put(`/api/v1/gallery/${photoId}`, version != null ? { finance_project_id: projectId, version } : { finance_project_id: projectId });
 
   return {
     invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories, fxRates,
@@ -180,5 +198,6 @@ export const useFinanceStore = defineStore('finance', () => {
     savePartner, deletePartner, savePayment, deletePayment,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,
     saveProject, deleteProject, moveProject, restoreProject, forceProject,
+    projectAttachments, linkFileToProject, linkPhotoToProject,
   };
 });

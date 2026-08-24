@@ -53,7 +53,7 @@ class GalleryPhoto extends Model
     use OwnsUserData;
     use SoftDeletes;
 
-    protected $fillable = ['name', 'favorite'];
+    protected $fillable = ['name', 'favorite', 'finance_project_id'];
 
     /** OCR text is queried server-side, never serialized (can be large). */
     protected $hidden = ['ocr_text'];
