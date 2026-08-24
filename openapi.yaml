@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.740.1
+  version: 1.741.0
   license:
     name: Proprietary
   description: >
@@ -416,6 +416,7 @@ components:
         tags: { type: array, items: { type: string } }
         contactId: { type: [string, "null"] }
         partnerId: { type: [integer, "null"] }
+        sig: { type: [string, "null"], description: "Content signature ({size}:{sha256 of head+tail}), the same one finance_receipts.sig carries. Lets the receipt inbox recognise a document that is already filed at a booking instead of uploading a second copy." }
         vat: { type: [string, "null"] }
         locked: { type: boolean, description: "A locked receipt (e.g. an auto-linked invoice) cannot be deleted." }
         trashed: { type: boolean }
@@ -6154,6 +6155,7 @@ paths:
                 contact_id: { type: string, maxLength: 64 }
                 partner_id: { type: integer }
                 vat: { type: string, maxLength: 16 }
+                sig: { type: string, maxLength: 80, description: "Content signature for upload dedup (see TransactionReceipt.sig)." }
       responses:
         "201": { description: Receipt attached; returns the updated transaction., content: { application/json: { schema: { type: object, required: [transaction], properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }

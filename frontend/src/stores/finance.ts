@@ -64,6 +64,8 @@ export interface BankTransaction {
 export interface TxReceipt {
   id: string; name: string; mime: string | null; kind: string | null;
   category?: string | null; tags?: string[] | null; partnerId?: number | null;
+  /** Content signature (same one standalone receipts carry) for upload dedup. */
+  sig?: string | null;
 }
 /** A Files-module entry as the project attachment list returns it (metadata only). */
 export interface ProjectFile {

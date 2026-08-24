@@ -1735,6 +1735,9 @@ class FinanceController extends Controller
             'contact_id' => ['nullable', 'string', 'max:64'],
             'partner_id' => ['nullable', 'integer', Rule::exists('finance_partners', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'vat' => ['nullable', 'string', 'max:16'],
+            // Content signature, so a document already filed at a booking is
+            // recognised by the receipt inbox instead of being uploaded twice.
+            'sig' => ['nullable', 'string', 'max:80'],
         ]);
 
         $upload = $request->file('file');
@@ -1761,6 +1764,7 @@ class FinanceController extends Controller
             'contactId' => $request->filled('contact_id') ? $request->string('contact_id')->value() : null,
             'partnerId' => $request->filled('partner_id') ? $request->integer('partner_id') : null,
             'vat' => $request->filled('vat') ? $request->string('vat')->value() : null,
+            'sig' => $request->filled('sig') ? $request->string('sig')->value() : null,
             'locked' => false,
             'trashed' => false,
         ];
