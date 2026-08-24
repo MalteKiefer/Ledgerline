@@ -117,6 +117,31 @@ class TaxReportsTest extends TestCase
         $this->assertNotEmpty($e['expenses']['byCategory']);
     }
 
+    /**
+     * A project ledger row can be a Zubuchung (`direction: 'in'` — a refund
+     * booked on the project). It must REDUCE the expense side, not add to it;
+     * a legacy row without `direction` stays an outflow.
+     */
+    public function test_euer_treats_a_project_credit_row_as_a_reduction(): void
+    {
+        $user = User::factory()->create();
+        $this->seedData($user);
+        FinanceProject::create([
+            'name' => 'Build', 'kind' => 'business',
+            'expenses' => [
+                ['id' => 'e1', 'amount' => 250, 'direction' => 'out', 'date' => '2026-03-01', 'category' => 'Material'],
+                ['id' => 'e2', 'amount' => 70, 'direction' => 'in', 'date' => '2026-03-05', 'category' => 'Material'],
+                ['id' => 'e3', 'amount' => 30, 'date' => '2026-03-09', 'category' => 'Material'], // legacy: no direction
+            ],
+        ]);
+
+        $e = app(FinanceReports::class)->euer(2026);
+
+        // 100 (tx net) + 250 − 70 + 30 = 310
+        $this->assertEqualsWithDelta(310.0, $e['expenses']['total'], 0.001);
+        $this->assertEqualsWithDelta(-110.0, $e['profit'], 0.001); // 200 − 310
+    }
+
     public function test_reports_are_owner_scoped(): void
     {
         $a = User::factory()->create();
