@@ -696,7 +696,7 @@
               :label="t('invoices.discount')"
               :options="[{ title: t('invoices.discount_none'), value: '' }, { title: '%', value: 'percent' }, { title: draft.currency || 'EUR', value: 'amount' }]"
             />
-            <TextField v-if="discountType_" type="number" :label="t('invoices.discount_value')" :model-value="draft.discount_value ?? ''" @update:model-value="draft.discount_value = $event === '' ? null : Number($event)" />
+            <TextField v-if="discountType_" inputmode="decimal" :label="t('invoices.discount_value')" :model-value="moneyInput(draft.discount_value)" @update:model-value="draft.discount_value = parseMoney($event)" />
             <TextField type="number" :label="t('invoices.skonto_percent')" :model-value="draft.skonto_percent ?? ''" @update:model-value="draft.skonto_percent = $event === '' ? null : Number($event)" />
             <TextField type="number" :label="t('invoices.skonto_days')" :model-value="draft.skonto_days ?? ''" @update:model-value="draft.skonto_days = $event === '' ? null : Number($event)" />
           </div>
@@ -705,7 +705,7 @@
           <div v-for="(l, i) in lines" :key="i" class="mb-1.5 flex items-center gap-2">
             <TextField v-model="l.desc" :placeholder="t('invoices.line_desc')" class="flex-1" />
             <TextField type="number" class="w-20" :model-value="l.qty" @update:model-value="l.qty = Number($event)" />
-            <TextField type="number" class="w-28" :model-value="l.unitPrice" @update:model-value="l.unitPrice = Number($event)" />
+            <TextField inputmode="decimal" class="w-28" :model-value="moneyInput(l.unitPrice)" @update:model-value="l.unitPrice = parseMoney($event) ?? 0" />
             <TextField type="number" class="w-20" :model-value="l.vatRate" @update:model-value="l.vatRate = Number($event)" />
             <span class="text-sm text-[var(--ll-muted)]">%</span>
             <Btn variant="ghost" size="sm" icon="close" @click="lines.splice(i, 1)" />
@@ -789,7 +789,7 @@
         <Select v-model.number="txForm.payment_method_id" :label="t('invoices.tab_payments')" :options="f.paymentMethods.map((p) => ({ title: p.name, value: p.id }))" />
         <div class="grid grid-cols-2 gap-3">
           <TextField v-model="txForm.date" :label="t('common.date')" type="date" />
-          <TextField v-model="txForm.amount" :label="t('invoices.gross')" type="number" />
+          <TextField v-model="txForm.amount" :label="t('invoices.gross')" inputmode="decimal" />
         </div>
         <TextField v-model="txForm.counterparty" :label="t('invoices.tx_counterparty')" />
         <div class="grid grid-cols-2 gap-3">
@@ -916,7 +916,7 @@
         <TextField v-model="partnerForm.invoice_email" :label="t('invoices.partner_invoice_email')" type="email" :hint="t('invoices.partner_invoice_email_hint')" />
 
         <div class="grid grid-cols-2 gap-3">
-          <TextField v-model="partnerForm.hourly_rate" :label="t('invoices.partner_hourly_rate')" type="number" inputmode="decimal" placeholder="0.00" />
+          <TextField v-model="partnerForm.hourly_rate" :label="t('invoices.partner_hourly_rate')" inputmode="decimal" :placeholder="moneyPlaceholder" />
           <Select v-model="partnerForm.currency" :label="t('invoices.partner_currency')" :options="currencyOptions" />
         </div>
 
@@ -990,7 +990,7 @@
         </div>
         <TextField v-model="rForm.name" :label="t('invoices.receipt_rename')" />
         <div class="grid grid-cols-2 gap-3">
-          <TextField v-model="rForm.amount" :label="t('invoices.gross')" type="number" />
+          <TextField v-model="rForm.amount" :label="t('invoices.gross')" inputmode="decimal" />
           <TextField v-model="rForm.date" :label="t('common.date')" type="date" />
         </div>
         <TextField v-model="rForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
@@ -1076,7 +1076,7 @@
           </div>
           <TextField v-model="rForm.name" :label="t('invoices.receipt_rename')" />
           <div class="grid grid-cols-2 gap-3">
-            <TextField v-model="rForm.amount" :label="t('invoices.gross')" type="number" />
+            <TextField v-model="rForm.amount" :label="t('invoices.gross')" inputmode="decimal" />
             <Select v-model="rForm.currency" :label="t('invoices.currency')" :options="CURRENCY_OPTIONS" />
           </div>
           <div class="grid grid-cols-2 gap-3">
@@ -1321,7 +1321,7 @@
         />
         <TextField v-model="expForm.title" :label="t('invoices.project_title')" :placeholder="t('invoices.project_title_ph')" />
         <div class="grid grid-cols-2 gap-3">
-          <TextField v-model="expForm.amount" :label="t('invoices.gross')" type="number" inputmode="decimal" placeholder="0.00" />
+          <TextField v-model="expForm.amount" :label="t('invoices.gross')" inputmode="decimal" :placeholder="moneyPlaceholder" />
           <TextField v-model="expForm.date" :label="t('common.date')" type="date" />
         </div>
         <TextField v-model="expForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
@@ -1705,6 +1705,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue';
 import { fmtDate as libDate, todayYmd } from '@spa/lib/datetime';
+import { fmtMoney, moneyInput, moneyLocale, parseMoney } from '@spa/lib/money';
 import { safeHref } from '@spa/lib/url';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
@@ -1917,8 +1918,10 @@ function txLabel(id: number) { const x = f.transactions.find((tx) => tx.id === i
 function openInvoiceById(id: number) { const i = f.invoices.find((x) => x.id === id); if (i) { go('invoices'); editInvoice(i); } }
 function onStatsYear(v: unknown) { void loadReports(Number(v)); }
 
-const fmt = computed(() => new Intl.NumberFormat(document.documentElement.lang || 'de', { style: 'currency', currency: 'EUR' }));
-function money(n: number) { return fmt.value.format(n || 0); }
+function money(n: number) { return fmtMoney(n); }
+// "0,00" under a German UI, "0.00" under an English one — a placeholder that
+// shows the wrong separator is how the field teaches the wrong input.
+const moneyPlaceholder = computed(() => (moneyLocale().startsWith('en') ? '0.00' : '0,00'));
 function fmtDate(s?: string | null) { return s ? libDate(String(s).slice(0, 10)) : '—'; }
 function statusTone(s: string): 'success' | 'info' | 'warning' | 'gray' { return s === 'paid' ? 'success' : s === 'sent' ? 'info' : s === 'final' ? 'warning' : 'gray'; }
 // A numbered invoice can never revert to draft (GoBD; the server also blocks it).
@@ -2332,7 +2335,7 @@ function receiptLinkSummary(r: Receipt): string | null {
 const assignTxCandidates = computed<BookingSuggestion[]>(() => {
   const q = assignTxQuery.value.trim().toLowerCase();
   const matchesQuery = (t: BankTransaction) => !q || (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q);
-  const amount = rForm.amount.trim() === '' ? null : Number(rForm.amount);
+  const amount = parseMoney(rForm.amount);
   if (amount != null && Number.isFinite(amount)) {
     return suggestBookings({ total: amount, date: rForm.date || null, currency: rForm.currency || null }, unlinkedTransactions.value.filter(matchesQuery), { limit: 30, rates: f.fxRates });
   }
@@ -2368,7 +2371,7 @@ function editTx(tx: BankTransaction) {
   Object.assign(txForm, {
     id: tx.id, version: tx.version, payment_method_id: tx.payment_method_id,
     // Same full-ISO-datetime-vs-<input type="date"> mismatch as invoices/receipts.
-    date: tx.date ? String(tx.date).slice(0, 10) : '', amount: String(tx.amount ?? ''), counterparty: tx.counterparty ?? '',
+    date: tx.date ? String(tx.date).slice(0, 10) : '', amount: moneyInput(tx.amount), counterparty: tx.counterparty ?? '',
     counterparty_iban: tx.counterparty_iban ?? '', bic: tx.bic ?? '', purpose: tx.purpose ?? '',
     booking_text: tx.booking_text ?? '', vat_cat: tx.vat_cat ?? '', finance_project_id: tx.finance_project_id,
   });
@@ -2378,7 +2381,7 @@ async function saveTx() {
   saving.value = true;
   try {
     const body = {
-      payment_method_id: txForm.payment_method_id, date: txForm.date, amount: Number(txForm.amount),
+      payment_method_id: txForm.payment_method_id, date: txForm.date, amount: parseMoney(txForm.amount) ?? 0,
       counterparty: txForm.counterparty, counterparty_iban: txForm.counterparty_iban, bic: txForm.bic,
       purpose: txForm.purpose, booking_text: txForm.booking_text, vat_cat: txForm.vat_cat || null,
       finance_project_id: txForm.finance_project_id, version: txForm.version,
@@ -2568,8 +2571,7 @@ function partnerLinkCount(id: number): number { return invoicesForPartner(id).le
 function fmtRate(p: Partner): string {
   const n = Number(p.hourly_rate ?? 0);
   const cur = p.currency || 'EUR';
-  try { return new Intl.NumberFormat(document.documentElement.lang || 'de', { style: 'currency', currency: cur }).format(n); }
-  catch { return `${n.toFixed(2)} ${cur}`; }
+  return fmtMoney(n, cur);
 }
 
 function openPartner(p: Partner) { openPartnerId.value = p.id; partnersView.value = 'detail'; }
@@ -2580,7 +2582,7 @@ function editPartner(p: Partner) {
   Object.assign(partnerForm, blankPartnerForm(), {
     id: p.id, version: p.version, name: p.name ?? '', url: p.url ?? '', logo: p.logo ?? '',
     email: p.email ?? '', invoice_email: p.invoice_email ?? '', phone: p.phone ?? '',
-    hourly_rate: p.hourly_rate != null ? String(p.hourly_rate) : '', currency: p.currency ?? '',
+    hourly_rate: moneyInput(p.hourly_rate), currency: p.currency ?? '',
     vat_id: p.vat_id ?? '', address: p.address ?? '', category: p.category ?? '', note: p.note ?? '',
     contacts: Array.isArray(p.contacts)
       ? p.contacts.map((c) => ({ id: c.id ?? uid(), name: c.name ?? '', email: c.email ?? '', phone: c.phone ?? '', role: c.role ?? '' }))
@@ -2646,7 +2648,7 @@ async function savePartnerForm() {
     phone: partnerForm.phone || null, vat_id: partnerForm.vat_id || null,
     currency: partnerForm.currency || null, address: partnerForm.address || null,
     category: partnerForm.category || null, note: partnerForm.note || null,
-    hourly_rate: partnerForm.hourly_rate.trim() === '' ? null : Number(partnerForm.hourly_rate),
+    hourly_rate: parseMoney(partnerForm.hourly_rate),
     contacts: partnerForm.contacts
       .filter((c) => `${c.name}${c.email}${c.phone}${c.role}`.trim() !== '')
       .map((c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, role: c.role })),
@@ -3025,7 +3027,7 @@ function editReceipt(r: Receipt) {
   Object.assign(rForm, {
     id: r.id, version: r.version, name: r.name, category: r.category ?? '',
     tags: Array.isArray(r.tags) ? [...r.tags] : [], vat: r.vat ?? '', note: r.note ?? '', partner_id: r.partner_id,
-    amount: r.amount != null ? String(r.amount) : '', currency: r.currency ?? '',
+    amount: moneyInput(r.amount), currency: r.currency ?? '',
     // Same full-ISO-datetime-vs-<input type="date"> mismatch as invoices/transactions.
     date: r.date ? String(r.date).slice(0, 10) : '',
     order_ref: r.order_ref ?? '', doc_number: r.doc_number ?? '', bank_transaction_id: r.bank_transaction_id,
@@ -3040,7 +3042,7 @@ async function saveReceipt() {
       const body: Record<string, unknown> = {
         name: rForm.name, category: rForm.category || null, tags: rForm.tags,
         vat: rForm.vat || null, note: rForm.note || null, partner_id: rForm.partner_id,
-        amount: rForm.amount.trim() === '' ? null : Number(rForm.amount), currency: rForm.currency || null,
+        amount: parseMoney(rForm.amount), currency: rForm.currency || null,
         date: rForm.date || null, order_ref: rForm.order_ref || null, doc_number: rForm.doc_number || null,
         bank_transaction_id: rForm.bank_transaction_id, linked_transaction_ids: rForm.linked_transaction_ids,
         finance_project_id: rForm.finance_project_id, version: rForm.version,
@@ -3056,7 +3058,7 @@ async function saveReceipt() {
       if (rForm.category) fd.append('category', rForm.category);
       if (rForm.vat) fd.append('vat', rForm.vat);
       if (rForm.note) fd.append('note', rForm.note);
-      if (rForm.amount.trim() !== '') fd.append('amount', rForm.amount);
+      { const parsed = parseMoney(rForm.amount); if (parsed != null) fd.append('amount', String(parsed)); }
       if (rForm.currency) fd.append('currency', rForm.currency);
       if (rForm.date) fd.append('date', rForm.date);
       if (rForm.order_ref) fd.append('order_ref', rForm.order_ref);
@@ -3336,7 +3338,7 @@ function newExpense(direction: 'out' | 'in') {
 }
 function editExpense(row: ProjectExpense) {
   Object.assign(expForm, {
-    id: row.id, direction: row.direction, amount: String(row.amount), date: row.date ?? '',
+    id: row.id, direction: row.direction, amount: moneyInput(row.amount), date: row.date ?? '',
     title: row.title ?? '', note: row.note ?? '', category: row.category ?? '', payment_method_id: row.payment_method_id,
   });
   expDialog.value = true;
@@ -3349,8 +3351,8 @@ async function persistLedger(rows: ProjectExpense[]) {
   await f.load();
 }
 async function saveExpense() {
-  const amount = Number(expForm.amount);
-  if (!Number.isFinite(amount) || amount === 0) { error(t('invoices.project_amount_required')); return; }
+  const amount = parseMoney(expForm.amount);
+  if (amount == null || amount === 0) { error(t('invoices.project_amount_required')); return; }
   saving.value = true;
   try {
     const row: ProjectExpense = {
