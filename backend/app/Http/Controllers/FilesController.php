@@ -588,6 +588,9 @@ class FilesController extends Controller
             'tags.*' => ['string', 'max:100'],
             'note' => ['nullable', 'string', 'max:100000'],
             'favorite' => ['sometimes', 'boolean'],
+            // Link the file to a cost project (Files module side of the same
+            // pointer bank transactions and receipts already carry).
+            'finance_project_id' => ['sometimes', 'nullable', 'integer', Rule::exists('finance_projects', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
         ];
     }
 
@@ -614,6 +617,9 @@ class FilesController extends Controller
         }
         if ($request->has('favorite')) {
             $patch['favorite'] = $request->boolean('favorite');
+        }
+        if ($request->has('finance_project_id')) {
+            $patch['finance_project_id'] = $request->filled('finance_project_id') ? $request->integer('finance_project_id') : null;
         }
 
         $result = DB::transaction(function () use ($file, $patch, $expected): FileEntry|bool|null {

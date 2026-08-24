@@ -6,10 +6,12 @@ namespace Tests\Feature;
 
 use App\Console\Commands\FetchExchangeRates;
 use App\Models\BankTransaction;
+use App\Models\FileEntry;
 use App\Models\FinanceCategory;
 use App\Models\FinancePartner;
 use App\Models\FinanceProject;
 use App\Models\FinanceReceipt;
+use App\Models\GalleryPhoto;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\User;
@@ -19,6 +21,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -108,6 +111,48 @@ class FinanceRelationalTest extends TestCase
             ->assertOk()->assertJsonPath('category.color', '#123456');
         $this->deleteJson(route('finance.categories.destroy', $catId))->assertOk();
         $this->assertSame(0, FinanceCategory::query()->count());
+    }
+
+    /**
+     * A project also collects evidence that is not money: documents from Files
+     * and photos from the Gallery. The pointer is set through the owning
+     * module's update endpoint; this reads it back, owner-scoped.
+     */
+    public function test_project_collects_files_and_photos_owner_scoped(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $project = FinanceProject::create(['name' => 'Cellar', 'kind' => 'private']);
+
+        $file = FileEntry::forceCreate([
+            'user_id' => $owner->id, 'name' => 'permit.pdf', 'storage_path' => 'files/'.Str::uuid(),
+            'mime' => 'application/pdf', 'size' => 12, 'sha256' => str_repeat('a', 64), 'version' => 0,
+        ]);
+        $photo = GalleryPhoto::forceCreate([
+            'user_id' => $owner->id, 'name' => 'site.jpg', 'storage_path' => 'gallery/'.Str::uuid(),
+            'mime' => 'image/jpeg', 'size' => 34, 'sha256' => str_repeat('b', 64), 'version' => 0,
+        ]);
+
+        // Empty until something is filed against it.
+        $this->getJson(route('finance.projects.attachments', $project->id))
+            ->assertOk()->assertJsonCount(0, 'files')->assertJsonCount(0, 'photos');
+
+        $this->putJson(route('files.rel.update', $file->id), ['finance_project_id' => $project->id, 'version' => 0])->assertOk();
+        $this->putJson(route('gallery.update', $photo->id), ['finance_project_id' => $project->id, 'version' => 0])->assertOk();
+
+        $this->getJson(route('finance.projects.attachments', $project->id))
+            ->assertOk()
+            ->assertJsonCount(1, 'files')->assertJsonPath('files.0.name', 'permit.pdf')
+            ->assertJsonCount(1, 'photos')->assertJsonPath('photos.0.name', 'site.jpg');
+
+        // Unlinking clears the pointer without touching the file or photo itself.
+        $this->putJson(route('files.rel.update', $file->id), ['finance_project_id' => null])->assertOk();
+        $this->assertNull(FileEntry::findOrFail($file->id)->finance_project_id);
+        $this->assertNotNull(FileEntry::findOrFail($file->id)->storage_path);
+
+        // A stranger cannot see the project, let alone what hangs off it.
+        $this->actingAs(User::factory()->create());
+        $this->getJson(route('finance.projects.attachments', $project->id))->assertNotFound();
     }
 
     public function test_sensitive_columns_stored_plaintext_at_rest(): void

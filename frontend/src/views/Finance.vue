@@ -513,6 +513,40 @@
           </Card>
         </div>
 
+        <!-- Evidence that is not money: documents from Files, photos from the Gallery -->
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card :body-class="'p-0'">
+            <template #header><h2 class="text-sm font-semibold">{{ t('invoices.project_files') }} <span class="text-[var(--ll-muted)]">({{ projectFiles.length }})</span></h2></template>
+            <template #actions><Btn variant="soft" size="sm" icon="attach_file" @click="openAssignProjectFile">{{ t('invoices.project_assign_file') }}</Btn></template>
+            <div class="divide-y divide-[var(--ll-border)]">
+              <div v-for="file in projectFiles" :key="file.id" class="flex items-center gap-3 px-4 py-2.5">
+                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="description" :size="18" /></span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-medium">{{ file.name }}</span>
+                  <span class="block text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtBytes(file.size) }}<template v-if="file.updated_at"> · {{ fmtDate(file.updated_at) }}</template></span>
+                </span>
+                <Btn variant="ghost" size="sm" icon="link_off" :title="t('invoices.project_unassign')" @click="unlinkFile(file)" />
+              </div>
+              <p v-if="!projectFiles.length" class="px-4 py-3 text-sm text-[var(--ll-muted)]">—</p>
+            </div>
+          </Card>
+
+          <Card :body-class="'p-0'">
+            <template #header><h2 class="text-sm font-semibold">{{ t('invoices.project_photos') }} <span class="text-[var(--ll-muted)]">({{ projectPhotos.length }})</span></h2></template>
+            <template #actions><Btn variant="soft" size="sm" icon="image" @click="openAssignProjectPhoto">{{ t('invoices.project_assign_photo') }}</Btn></template>
+            <div v-if="projectPhotos.length" class="grid grid-cols-3 gap-2 p-4 sm:grid-cols-4">
+              <div v-for="photo in projectPhotos" :key="photo.id" class="group relative aspect-square overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/10">
+                <img :src="gal.thumbUrl(photo.id)" :alt="photo.name" loading="lazy" class="h-full w-full object-cover">
+                <button
+                  type="button" class="absolute right-1 top-1 hidden rounded-md bg-black/60 p-1 text-white group-hover:block"
+                  :title="t('invoices.project_unassign')" @click="unlinkPhoto(photo)"
+                ><Icon name="link_off" :size="14" /></button>
+              </div>
+            </div>
+            <p v-else class="px-4 py-3 text-sm text-[var(--ll-muted)]">—</p>
+          </Card>
+        </div>
+
         <!-- Subprojects (direct children; each figure includes ITS own branch) -->
         <Card v-if="projectChildren.length" :body-class="'p-0'">
           <template #header><h2 class="text-sm font-semibold">{{ t('invoices.project_subprojects') }} <span class="text-[var(--ll-muted)]">({{ projectChildren.length }})</span></h2></template>
@@ -1389,6 +1423,42 @@
       <template #footer><Btn variant="ghost" @click="assignPrjRcDialog = false">{{ t('common.close') }}</Btn></template>
     </Modal>
 
+    <!-- Attach a file/document to the open project (searches the Files module) -->
+    <Modal v-model="assignPrjFileDialog" :title="t('invoices.project_assign_file')" width="640px">
+      <TextField v-model="assignPrjFileQuery" :placeholder="t('common.search')" icon="search" class="mb-3" @update:model-value="searchProjectFiles" />
+      <div class="max-h-96 divide-y divide-[var(--ll-border)] overflow-y-auto rounded-lg border border-[var(--ll-border)]">
+        <button
+          v-for="file in assignPrjFileCandidates" :key="file.id" type="button"
+          class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-black/[0.02] dark:hover:bg-white/5"
+          @click="linkFile(file)"
+        >
+          <Icon name="description" :size="18" class="shrink-0 text-[var(--ll-muted)]" />
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium">{{ file.name }}</span>
+            <span class="block text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtBytes(file.size) }}</span>
+          </span>
+          <Badge v-if="file.finance_project_id != null" tone="warning">{{ projectName(file.finance_project_id) }}</Badge>
+        </button>
+        <p v-if="!assignPrjFileCandidates.length" class="px-3 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+      </div>
+      <template #footer><Btn variant="ghost" @click="assignPrjFileDialog = false">{{ t('common.close') }}</Btn></template>
+    </Modal>
+
+    <!-- Attach a photo to the open project (most recent from the Gallery) -->
+    <Modal v-model="assignPrjPhotoDialog" :title="t('invoices.project_assign_photo')" width="720px">
+      <div v-if="assignPrjPhotoCandidates.length" class="grid max-h-96 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6">
+        <button
+          v-for="photo in assignPrjPhotoCandidates" :key="photo.id" type="button"
+          class="relative aspect-square overflow-hidden rounded-lg bg-black/[0.04] ring-primary-500 hover:ring-2 dark:bg-white/10"
+          :title="photo.name" @click="linkPhoto(photo)"
+        >
+          <img :src="gal.thumbUrl(photo.id)" :alt="photo.name" loading="lazy" class="h-full w-full object-cover">
+        </button>
+      </div>
+      <p v-else class="px-3 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</p>
+      <template #footer><Btn variant="ghost" @click="assignPrjPhotoDialog = false">{{ t('common.close') }}</Btn></template>
+    </Modal>
+
     <!-- Project trash (soft-deleted projects; children keep their parent_id) -->
     <Modal v-model="prjTrashDialog" :title="t('invoices.project_trash')" width="560px">
       <div class="divide-y divide-[var(--ll-border)] rounded-lg border border-[var(--ll-border)]">
@@ -1711,7 +1781,9 @@ import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pager, SectionNav, type SectionNavItem } from '@spa/ui';
 import type { AlignedData, Options } from 'uplot';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate } from '@spa/stores/finance';
+import { useFilesStore, type FileEntry } from '@spa/stores/files';
+import { useGalleryStore, type Photo } from '@spa/stores/gallery';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, ApiError, VersionConflict } from '@spa/api/client';
@@ -1732,6 +1804,10 @@ import {
 } from '@spa/shared/invoice-print';
 
 const f = useFinanceStore();
+// Sibling modules: a project also collects documents and site photos, and the
+// finance_project_id pointer lives on THEIR rows, so their stores do the write.
+const files = useFilesStore();
+const gal = useGalleryStore();
 const { success, error } = useToast();
 const route = useRoute();
 const router = useRouter();
@@ -3375,6 +3451,95 @@ async function saveExpense() {
 async function delExpense(row: ProjectExpense) {
   if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return;
   try { await persistLedger(projectLedger.value.filter((r) => r.id !== row.id)); success(t('common.deleted')); }
+  catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
+}
+
+// ---- Files + photos filed against a project ----
+// The pointer lives on the file/photo row (finance_project_id, same as a
+// transaction or a receipt), so linking goes through those modules' update
+// endpoints; this side only reads the list back and offers the pickers.
+const projectFiles = ref<ProjectFile[]>([]);
+const projectPhotos = ref<ProjectPhoto[]>([]);
+
+async function loadProjectAttachments() {
+  const id = openProjectId.value;
+  if (id == null) { projectFiles.value = []; projectPhotos.value = []; return; }
+  try {
+    const r = await f.projectAttachments(id);
+    projectFiles.value = r.files ?? [];
+    projectPhotos.value = r.photos ?? [];
+  } catch { projectFiles.value = []; projectPhotos.value = []; }
+}
+watch(openProjectId, () => { void loadProjectAttachments(); });
+
+function fmtBytes(n: number): string {
+  if (!n) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`;
+}
+
+// -- file picker: the Files module's own server-side search (name + content) --
+const assignPrjFileDialog = ref(false);
+const assignPrjFileQuery = ref('');
+const assignPrjFileCandidates = ref<FileEntry[]>([]);
+async function openAssignProjectFile() {
+  assignPrjFileQuery.value = '';
+  assignPrjFileDialog.value = true;
+  await searchProjectFiles();
+}
+async function searchProjectFiles() {
+  const q = assignPrjFileQuery.value.trim();
+  try {
+    // With no query, offer the most recent files rather than an empty dialog.
+    const linked = new Set(projectFiles.value.map((x) => x.id));
+    const rows = q.length >= 2 ? (await files.search(q)).files : await recentFiles();
+    assignPrjFileCandidates.value = rows.filter((x) => !linked.has(x.id)).slice(0, 100);
+  } catch { assignPrjFileCandidates.value = []; }
+}
+async function recentFiles(): Promise<FileEntry[]> {
+  if (!files.files.length) await files.load();
+  return [...files.files].sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
+}
+async function linkFile(file: FileEntry) {
+  const id = openProjectId.value;
+  if (id == null) return;
+  try {
+    await f.linkFileToProject(file.id, id, file.version);
+    assignPrjFileDialog.value = false;
+    await loadProjectAttachments();
+    await searchProjectFiles();
+    success(t('common.saved'));
+  } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
+}
+async function unlinkFile(file: ProjectFile) {
+  try { await f.linkFileToProject(file.id, null, file.version); await loadProjectAttachments(); success(t('common.saved')); }
+  catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
+}
+
+// -- photo picker: the gallery's own first page (newest by capture date) --
+const assignPrjPhotoDialog = ref(false);
+const assignPrjPhotoCandidates = ref<Photo[]>([]);
+async function openAssignProjectPhoto() {
+  assignPrjPhotoDialog.value = true;
+  try {
+    if (!gal.photos.length) await gal.load();
+    const linked = new Set(projectPhotos.value.map((x) => x.id));
+    assignPrjPhotoCandidates.value = gal.photos.filter((p) => !linked.has(p.id)).slice(0, 120);
+  } catch { assignPrjPhotoCandidates.value = []; }
+}
+async function linkPhoto(photo: Photo) {
+  const id = openProjectId.value;
+  if (id == null) return;
+  try {
+    await gal.update(photo.id, { finance_project_id: id, version: photo.version });
+    assignPrjPhotoDialog.value = false;
+    await loadProjectAttachments();
+    success(t('common.saved'));
+  } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
+}
+async function unlinkPhoto(photo: ProjectPhoto) {
+  try { await gal.update(photo.id, { finance_project_id: null, version: photo.version }); await loadProjectAttachments(); success(t('common.saved')); }
   catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
 }
 

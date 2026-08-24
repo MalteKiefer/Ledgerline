@@ -48,6 +48,8 @@ export interface PhotoEdit {
   taken_at?: string | null; place?: string | null;
   lat?: number | null; lng?: number | null;
   rotation?: number; flip_h?: boolean; version?: number;
+  // Cost project this photo is filed against (Finance module).
+  finance_project_id?: number | null;
 }
 
 export interface Album {
