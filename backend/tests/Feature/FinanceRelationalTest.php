@@ -155,6 +155,38 @@ class FinanceRelationalTest extends TestCase
         $this->getJson(route('finance.projects.attachments', $project->id))->assertNotFound();
     }
 
+    /**
+     * A document attached at a booking keeps the content signature the receipt
+     * inbox dedups on, so uploading the same file again is recognised instead of
+     * silently becoming a second copy. (The entry lives inside
+     * bank_transactions.receipts[], not as a finance_receipts row — which is
+     * also why the documents queue has to read it from there.)
+     */
+    public function test_transaction_receipt_keeps_its_content_signature(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $pm = $this->postJson(route('finance.payment-methods.store'), ['name' => 'Bank', 'type' => 'bank'])
+            ->assertCreated()->json('payment_method.id');
+        $tx = $this->postJson(route('finance.transactions.store'), [
+            'payment_method_id' => $pm, 'date' => '2026-03-01', 'amount' => -19.99,
+        ])->assertCreated()->json('transaction.id');
+
+        $res = $this->post(route('finance.transactions.receipts.store', $tx), [
+            'file' => UploadedFile::fake()->create('invoice.pdf', 4, 'application/pdf'),
+            'sig' => '1234:abc',
+        ])->assertCreated();
+
+        $this->assertSame('1234:abc', $res->json('transaction.receipts.0.sig'));
+
+        // A metadata edit through the transaction PUT must not drop it (the
+        // sanitiser rebuilds the array from client input).
+        $entry = $res->json('transaction.receipts.0');
+        $entry['category'] = 'Material';
+        $this->putJson(route('finance.transactions.update', $tx), [
+            'receipts' => [$entry], 'version' => $res->json('transaction.version'),
+        ])->assertOk()->assertJsonPath('transaction.receipts.0.sig', '1234:abc');
+    }
+
     public function test_sensitive_columns_stored_plaintext_at_rest(): void
     {
         $this->actingAs(User::factory()->create());

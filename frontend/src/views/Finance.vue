@@ -169,43 +169,7 @@
          inbox, an outgoing invoice PDF becomes a draft invoice with the document
          attached. A dropped file cannot say which it is, so the overlay splits
          in two and the drop target decides. -->
-    <Card
-      v-show="tab === 'documents'" :body-class="'p-0'" class="relative"
-      @dragover.prevent="onDocDragOver" @dragenter.prevent="onDocDragOver" @dragleave.prevent="onDocDragLeave"
-    >
-      <!-- Busy first: while a batch runs, the split target would be a lie. -->
-      <div v-if="inboxBusy || invUploadBusy" class="absolute inset-0 z-20 grid place-items-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/5 backdrop-blur-sm">
-        <div class="text-center">
-          <Icon name="progress_activity" :size="28" class="mx-auto mb-2 animate-spin text-primary-600 dark:text-primary-300" />
-          <div class="text-sm font-medium">
-            {{ inboxBusy
-              ? t('invoices.inbox_processing', { done: String(inboxDone), total: String(inboxTotal) })
-              : t('invoices.inbox_processing', { done: String(invUploadDone), total: String(invUploadTotal) }) }}
-          </div>
-        </div>
-      </div>
-      <div v-else-if="docDrag" class="absolute inset-0 z-20 grid grid-cols-2 gap-2 rounded-xl bg-[var(--ll-bg)]/80 p-2 backdrop-blur-sm">
-        <div
-          class="grid place-items-center rounded-lg border-2 border-dashed border-primary-500 bg-primary-500/5 text-center text-primary-600 dark:text-primary-300"
-          @dragover.prevent @drop.prevent="onDropReceipts"
-        >
-          <div>
-            <Icon name="inbox" :size="28" class="mx-auto mb-2" />
-            <div class="text-sm font-medium">{{ t('invoices.upload_drop_receipt') }}</div>
-            <div class="mt-0.5 text-xs opacity-80">{{ t('invoices.upload_drop_receipt_hint') }}</div>
-          </div>
-        </div>
-        <div
-          class="grid place-items-center rounded-lg border-2 border-dashed border-primary-500 bg-primary-500/5 text-center text-primary-600 dark:text-primary-300"
-          @dragover.prevent @drop.prevent="onDropInvoices"
-        >
-          <div>
-            <Icon name="receipt_long" :size="28" class="mx-auto mb-2" />
-            <div class="text-sm font-medium">{{ t('invoices.upload_drop_invoice') }}</div>
-            <div class="mt-0.5 text-xs opacity-80">{{ t('invoices.upload_drop_invoice_hint') }}</div>
-          </div>
-        </div>
-      </div>
+    <Card v-show="tab === 'documents'" :body-class="'p-0'">
       <template #header>
         <div class="flex flex-wrap items-center gap-2">
           <TextField v-model="documentQuery" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
@@ -1423,6 +1387,47 @@
       <template #footer><Btn variant="ghost" @click="assignPrjRcDialog = false">{{ t('common.close') }}</Btn></template>
     </Modal>
 
+    <!-- Upload overlay: FIXED to the viewport and teleported to <body>. Anchored
+         inside the documents card it grew with the list, so the drop targets and
+         the progress text ended up scrolled far below the fold. -->
+    <Teleport to="body">
+      <div v-if="tab === 'documents' && (docDrag || inboxBusy || invUploadBusy)" class="fixed inset-0 z-[1900] bg-black/40 p-6 backdrop-blur-sm sm:p-12">
+        <!-- Busy first: while a batch runs, a split target would be a lie. -->
+        <div v-if="inboxBusy || invUploadBusy" class="grid h-full place-items-center">
+          <div class="rounded-2xl bg-[var(--ll-elevated)] px-8 py-6 text-center shadow-xl">
+            <Icon name="progress_activity" :size="32" class="mx-auto mb-3 animate-spin text-primary-600 dark:text-primary-300" />
+            <div class="text-sm font-medium">
+              {{ inboxBusy
+                ? t('invoices.inbox_processing', { done: String(inboxDone), total: String(inboxTotal) })
+                : t('invoices.inbox_processing', { done: String(invUploadDone), total: String(invUploadTotal) }) }}
+            </div>
+          </div>
+        </div>
+        <div v-else class="grid h-full grid-cols-1 gap-4 sm:grid-cols-2">
+          <div
+            class="grid place-items-center rounded-2xl border-2 border-dashed border-primary-400 bg-[var(--ll-elevated)]/95 text-center text-primary-600 dark:text-primary-300"
+            @dragover.prevent @drop.prevent="onDropReceipts"
+          >
+            <div class="pointer-events-none">
+              <Icon name="inbox" :size="36" class="mx-auto mb-2" />
+              <div class="text-base font-semibold">{{ t('invoices.upload_drop_receipt') }}</div>
+              <div class="mt-1 text-xs opacity-80">{{ t('invoices.upload_drop_receipt_hint') }}</div>
+            </div>
+          </div>
+          <div
+            class="grid place-items-center rounded-2xl border-2 border-dashed border-primary-400 bg-[var(--ll-elevated)]/95 text-center text-primary-600 dark:text-primary-300"
+            @dragover.prevent @drop.prevent="onDropInvoices"
+          >
+            <div class="pointer-events-none">
+              <Icon name="receipt_long" :size="36" class="mx-auto mb-2" />
+              <div class="text-base font-semibold">{{ t('invoices.upload_drop_invoice') }}</div>
+              <div class="mt-1 text-xs opacity-80">{{ t('invoices.upload_drop_invoice_hint') }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Attach a file/document to the open project (searches the Files module) -->
     <Modal v-model="assignPrjFileDialog" :title="t('invoices.project_assign_file')" width="640px">
       <TextField v-model="assignPrjFileQuery" :placeholder="t('common.search')" icon="search" class="mb-3" @update:model-value="searchProjectFiles" />
@@ -1773,7 +1778,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { fmtDate as libDate, todayYmd } from '@spa/lib/datetime';
 import { fmtMoney, moneyInput, moneyLocale, parseMoney } from '@spa/lib/money';
 import { safeHref } from '@spa/lib/url';
@@ -1783,7 +1788,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pag
 import type { AlignedData, Options } from 'uplot';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, ApiError, VersionConflict } from '@spa/api/client';
@@ -2069,7 +2074,15 @@ const categoryChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => (
   scales: { x: { time: false } },
 }));
 
-type FinanceDocument = { key: string; kind: 'invoice' | 'receipt'; direction: 'income' | 'expense'; date: string | null; partner: string; reference: string; amount: number; matched: boolean; item: Invoice | Receipt };
+// A document filed at a bank transaction lives INSIDE that row
+// (bank_transactions.receipts[], a JSON array) rather than as a finance_receipts
+// row — so it needs its own kind here, otherwise it is invisible in the queue
+// that is supposed to list every document.
+type FinanceDocument = {
+  key: string; kind: 'invoice' | 'receipt' | 'tx_receipt'; direction: 'income' | 'expense';
+  date: string | null; partner: string; reference: string; amount: number; matched: boolean;
+  item: Invoice | Receipt | TxReceipt; tx?: BankTransaction;
+};
 const documentQuery = ref('');
 const documentDirectionFilter = ref<'all' | FinanceDocument['direction']>('all');
 const documentMatchFilter = ref<'all' | 'matched' | 'unmatched'>('all');
@@ -2123,12 +2136,24 @@ const documentRows = computed<FinanceDocument[]>(() => {
       reference: item.doc_number || item.name, amount: Math.abs(Number(item.amount ?? 0)),
       matched: item.bank_transaction_id != null || (item.linked_transaction_ids?.length ?? 0) > 0, item,
     })),
+    // Documents attached directly to a booking. Always `matched` — being on a
+    // booking is what matching means — and shown with that booking's amount,
+    // which is what the document evidences.
+    ...f.transactions.flatMap((tx): FinanceDocument[] => (tx.receipts ?? [])
+      .filter((r) => r.kind !== 'invoice')
+      .map((item): FinanceDocument => ({
+        key: `tx-${tx.id}-${item.id}`, kind: 'tx_receipt',
+        direction: tx.amount > 0 ? 'income' : 'expense', date: tx.date,
+        partner: partnerOptions.value.find((p) => p.id === item.partnerId)?.name ?? tx.counterparty ?? item.name,
+        reference: item.name, amount: Math.abs(Number(tx.amount) || 0), matched: true, item, tx,
+      }))),
   ];
   const needle = documentQuery.value.trim().toLowerCase();
   const dirMul = documentSort.dir === 'asc' ? 1 : -1;
   return rows.filter((row) => {
     const receipt = row.kind === 'receipt' ? row.item as Receipt : null;
-    const haystack = `${row.partner} ${row.reference} ${receipt?.category ?? ''} ${receipt?.order_ref ?? ''}`.toLowerCase();
+    const txReceipt = row.kind === 'tx_receipt' ? row.item as TxReceipt : null;
+    const haystack = `${row.partner} ${row.reference} ${receipt?.category ?? txReceipt?.category ?? ''} ${receipt?.order_ref ?? ''}`.toLowerCase();
     const date = row.date?.slice(0, 10) ?? '';
     return (!documentDirection.value || row.direction === documentDirection.value)
       && (documentMatchFilter.value === 'all' || (documentMatchFilter.value === 'matched') === row.matched)
@@ -2139,6 +2164,7 @@ const documentRows = computed<FinanceDocument[]>(() => {
 });
 function openDocument(doc: FinanceDocument) {
   if (doc.kind === 'invoice') openInvoiceDocument(doc.item as Invoice);
+  else if (doc.kind === 'tx_receipt' && doc.tx) openTxReceipts(doc.tx);
   else openReceiptWorkspace(doc.item as Receipt);
 }
 async function runAllDocumentMatching() {
@@ -2540,6 +2566,10 @@ async function onTxReceiptFile(e: Event) {
   try {
     const fd = new FormData();
     fd.append('file', file);
+    // Same content signature the inbox uses, so uploading a document that is
+    // already filed at a booking is recognised as the duplicate it is instead
+    // of quietly becoming a second copy.
+    fd.append('sig', await fileSig(file));
     const r = await f.attachTxReceipt(txRecTx.value.id, fd);
     txRecTx.value = r.transaction;
     await f.load();
@@ -2935,19 +2965,72 @@ const invUploadBusy = ref(false);
 const invUploadDone = ref(0);
 const invUploadTotal = ref(0);
 
-function onDocDragOver() { docDrag.value = true; }
-function onDocDragLeave() { docDrag.value = false; }
+/**
+ * Window-level drag tracking, for three reasons the card-local version got
+ * wrong:
+ *
+ * - `dragleave` fires when the cursor crosses into a CHILD element, so a plain
+ *   boolean flickered the overlay on and off while moving over the table. A
+ *   depth counter (enter++/leave--) only reaches zero when the pointer really
+ *   leaves the window.
+ * - the drop targets only existed once dragging had been noticed, so the very
+ *   first drop landed on an element with no handler and the browser did its
+ *   default thing: navigate to the file, i.e. "it opened all my documents".
+ *   Listening on the window means the overlay is up before the drop, and
+ *   preventing default on window dragover/drop means the browser never
+ *   navigates even if a drop misses both halves.
+ * - the page must not scroll or reflow mid-drag, which an in-card overlay did.
+ */
+let dragDepth = 0;
+function isFileDrag(e: DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types ?? []).includes('Files');
+}
+function onWindowDragEnter(e: DragEvent) {
+  if (tab.value !== 'documents' || !isFileDrag(e)) return;
+  dragDepth++;
+  docDrag.value = true;
+}
+function onWindowDragOver(e: DragEvent) {
+  if (tab.value !== 'documents' || !isFileDrag(e)) return;
+  e.preventDefault(); // without this the browser opens the file on drop
+}
+function onWindowDragLeave(e: DragEvent) {
+  if (tab.value !== 'documents' || !isFileDrag(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) docDrag.value = false;
+}
+function onWindowDrop(e: DragEvent) {
+  if (tab.value !== 'documents') return;
+  // A drop that missed both halves: swallow it (never navigate) and close.
+  e.preventDefault();
+  dragDepth = 0;
+  docDrag.value = false;
+}
+onMounted(() => {
+  window.addEventListener('dragenter', onWindowDragEnter);
+  window.addEventListener('dragover', onWindowDragOver);
+  window.addEventListener('dragleave', onWindowDragLeave);
+  window.addEventListener('drop', onWindowDrop);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('dragenter', onWindowDragEnter);
+  window.removeEventListener('dragover', onWindowDragOver);
+  window.removeEventListener('dragleave', onWindowDragLeave);
+  window.removeEventListener('drop', onWindowDrop);
+});
 function droppedFiles(e: DragEvent, pdfOnly: boolean): File[] {
   return Array.from(e.dataTransfer?.files ?? [])
     .filter((file) => (pdfOnly ? file.type === 'application/pdf' : /^application\/pdf$|^image\//.test(file.type)));
 }
 function onDropReceipts(e: DragEvent) {
+  dragDepth = 0;
   docDrag.value = false;
   const files = droppedFiles(e, false);
   if (files.length) void processInboxFiles(files);
   else error(t('invoices.upload_no_supported_file'));
 }
 function onDropInvoices(e: DragEvent) {
+  dragDepth = 0;
   docDrag.value = false;
   const files = droppedFiles(e, true);
   if (files.length) void uploadInvoicePdfs(files);
@@ -3051,7 +3134,11 @@ async function processInboxFiles(files: File[]) {
   // limit and failed, so the whole 27 got re-dropped to retry, silently
   // re-uploading the ones that had already succeeded. Seeded from the already
   // loaded receipts; growed as this batch's own uploads land.
-  const knownSigs = new Set(f.standaloneReceipts.map((r) => r.sig).filter((s): s is string => !!s));
+  const knownSigs = new Set([
+    ...f.standaloneReceipts.map((r) => r.sig),
+    // Documents attached directly to a booking count as already on file.
+    ...f.transactions.flatMap((tx) => (tx.receipts ?? []).map((r) => r.sig)),
+  ].filter((sig): sig is string => !!sig));
   // Track transactions this batch already claimed so two files in the same drop
   // can't both auto-pick the same booking (the batch Auto-Zuordnen pass afterwards
   // still catches anything ambiguous, incl. several receipts summing to one charge).
