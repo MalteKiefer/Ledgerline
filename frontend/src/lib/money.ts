@@ -25,9 +25,18 @@ export function moneyLocale(): string {
   return LOCALES[lang] ?? LOCALES.de;
 }
 
-/** Format for reading: "11.708,24 €" in German, "€11,708.24" in English. */
-export function fmtMoney(n: number, currency = 'EUR'): string {
-  const value = Number.isFinite(n) ? n : 0;
+/**
+ * Format for reading: "11.708,24 €" in German, "€11,708.24" in English.
+ *
+ * Takes a string too, and must: Laravel serialises a `decimal:2` cast as a
+ * STRING ("-33.49"), so every bank amount arrives as text. `Intl.format`
+ * happens to accept that, which is why a stricter `Number.isFinite` guard here
+ * silently turned every transaction into 0,00 (v1.739.0). Machine values are
+ * always dot-decimal — this is `Number()`, not the locale-aware parseMoney.
+ */
+export function fmtMoney(n: number | string | null | undefined, currency = 'EUR'): string {
+  const raw = typeof n === 'string' ? Number(n) : n;
+  const value = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
   try {
     return new Intl.NumberFormat(moneyLocale(), { style: 'currency', currency: currency || 'EUR' }).format(value);
   } catch {

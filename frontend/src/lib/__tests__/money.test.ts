@@ -37,9 +37,20 @@ describe('fmtMoney', () => {
     expect(fmtMoney(11708.24)).toContain('11,708.24');
   });
 
+  it('formats a decimal-cast string, which is how the API sends money', () => {
+    // Laravel's decimal:2 cast serialises as a string; treating that as
+    // "not a finite number" showed every transaction as 0,00 once.
+    setLang('de');
+    expect(fmtMoney('-33.49')).toContain('33,49');
+    expect(fmtMoney('11708.24')).toContain('11.708,24');
+    expect(fmtMoney('0.00')).toContain('0,00');
+  });
+
   it('survives a nonsense amount or currency instead of throwing', () => {
     setLang('de');
     expect(fmtMoney(Number.NaN)).toContain('0');
+    expect(fmtMoney(null)).toContain('0');
+    expect(fmtMoney('abc')).toContain('0');
     expect(fmtMoney(5, 'NOTACURRENCY')).toBe('5.00 NOTACURRENCY');
   });
 });
