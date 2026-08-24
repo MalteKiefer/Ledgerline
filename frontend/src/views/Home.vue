@@ -95,6 +95,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Card, Btn, Badge } from '@spa/ui';
+import { fmtMoney } from '@spa/lib/money';
 import { api } from '@spa/api/client';
 import { useAuthStore } from '@spa/stores/auth';
 import { useServersStore, type Server } from '@spa/stores/servers';
@@ -108,8 +109,8 @@ const openGross = ref(0);
 const vatPayable = ref(0);
 const recent = ref<Inv[]>([]);
 
-const fmt = computed(() => new Intl.NumberFormat(document.documentElement.lang || 'de', { style: 'currency', currency: 'EUR' }));
-function money(n: number) { return fmt.value.format(n || 0); }
+
+function money(n: number) { return fmtMoney(n); }
 const firstName = computed(() => (auth.user?.name ?? '').split(' ')[0] || '');
 function custName(i: Inv) { return i.customer?.name ?? '—'; }
 function statusTone(s: string): 'success' | 'info' | 'warning' | 'gray' { return s === 'paid' ? 'success' : s === 'sent' ? 'info' : s === 'final' ? 'warning' : 'gray'; }
