@@ -143,6 +143,9 @@ export const useFinanceStore = defineStore('finance', () => {
   const emailInvoice = (id: number) => api.post<{ ok: boolean }>(`/api/v1/finance/invoices/${id}/email`);
   const dunInvoice = (id: number) => api.post<{ ok: boolean }>(`/api/v1/finance/invoices/${id}/dun`);
   const invoicePdfUrl = (id: number) => api.streamUrl(`/api/v1/finance/invoices/${id}/pdf`);
+  // Attach the outgoing invoice document itself (PDF). Optional version_seq pins
+  // it to one entry of the GoBD correction trail instead of the shared slot.
+  const uploadInvoicePdf = (id: number, form: FormData) => api.upload<{ invoice: Invoice }>(`/api/v1/finance/invoices/${id}/pdf`, form);
 
   // ---- Partners / payment methods ----
   const savePartner = (p: Partial<Partner>) => (p.id ? api.put(`/api/v1/finance/partners/${p.id}`, p) : api.post('/api/v1/finance/partners', p));
@@ -173,7 +176,7 @@ export const useFinanceStore = defineStore('finance', () => {
     createTransaction, updateTransaction, deleteTransaction, restoreTransaction, forceTransaction, bulkTransactions, loadTrash,
     attachTxReceipt, deleteTxReceipt, txReceiptUrl,
     createCategory, updateCategory, deleteCategory,
-    createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl,
+    createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl, uploadInvoicePdf,
     savePartner, deletePartner, savePayment, deletePayment,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,
     saveProject, deleteProject, moveProject, restoreProject, forceProject,

@@ -164,8 +164,48 @@
       </div>
     </div>
 
-    <!-- Documents: one review queue for outgoing invoices and incoming receipts. -->
-    <Card v-show="tab === 'documents'" :body-class="'p-0'">
+    <!-- Documents: one review queue for outgoing invoices and incoming receipts.
+         Both kinds can be filed here: an incoming receipt goes through the OCR
+         inbox, an outgoing invoice PDF becomes a draft invoice with the document
+         attached. A dropped file cannot say which it is, so the overlay splits
+         in two and the drop target decides. -->
+    <Card
+      v-show="tab === 'documents'" :body-class="'p-0'" class="relative"
+      @dragover.prevent="onDocDragOver" @dragenter.prevent="onDocDragOver" @dragleave.prevent="onDocDragLeave"
+    >
+      <!-- Busy first: while a batch runs, the split target would be a lie. -->
+      <div v-if="inboxBusy || invUploadBusy" class="absolute inset-0 z-20 grid place-items-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/5 backdrop-blur-sm">
+        <div class="text-center">
+          <Icon name="progress_activity" :size="28" class="mx-auto mb-2 animate-spin text-primary-600 dark:text-primary-300" />
+          <div class="text-sm font-medium">
+            {{ inboxBusy
+              ? t('invoices.inbox_processing', { done: String(inboxDone), total: String(inboxTotal) })
+              : t('invoices.inbox_processing', { done: String(invUploadDone), total: String(invUploadTotal) }) }}
+          </div>
+        </div>
+      </div>
+      <div v-else-if="docDrag" class="absolute inset-0 z-20 grid grid-cols-2 gap-2 rounded-xl bg-[var(--ll-bg)]/80 p-2 backdrop-blur-sm">
+        <div
+          class="grid place-items-center rounded-lg border-2 border-dashed border-primary-500 bg-primary-500/5 text-center text-primary-600 dark:text-primary-300"
+          @dragover.prevent @drop.prevent="onDropReceipts"
+        >
+          <div>
+            <Icon name="inbox" :size="28" class="mx-auto mb-2" />
+            <div class="text-sm font-medium">{{ t('invoices.upload_drop_receipt') }}</div>
+            <div class="mt-0.5 text-xs opacity-80">{{ t('invoices.upload_drop_receipt_hint') }}</div>
+          </div>
+        </div>
+        <div
+          class="grid place-items-center rounded-lg border-2 border-dashed border-primary-500 bg-primary-500/5 text-center text-primary-600 dark:text-primary-300"
+          @dragover.prevent @drop.prevent="onDropInvoices"
+        >
+          <div>
+            <Icon name="receipt_long" :size="28" class="mx-auto mb-2" />
+            <div class="text-sm font-medium">{{ t('invoices.upload_drop_invoice') }}</div>
+            <div class="mt-0.5 text-xs opacity-80">{{ t('invoices.upload_drop_invoice_hint') }}</div>
+          </div>
+        </div>
+      </div>
       <template #header>
         <div class="flex flex-wrap items-center gap-2">
           <TextField v-model="documentQuery" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
@@ -177,8 +217,14 @@
         </div>
       </template>
       <template #actions>
-        <Btn variant="soft" size="sm" icon="upload_file" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.inbox_upload') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="sell" @click="catDialog = true">{{ t('invoices.categories') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="document_scanner" :loading="bulkRescanBusy" @click="runBulkRescan">{{ t('invoices.ocr_rescan_all') }}</Btn>
         <Btn variant="ghost" size="sm" icon="join_inner" :loading="invMatchBusy || matchBusy" @click="runAllDocumentMatching">{{ t('invoices.auto_match') }}</Btn>
+        <input ref="inboxInput" type="file" multiple accept="application/pdf,image/*" class="hidden" @change="onInboxPick">
+        <input ref="invUploadInput" type="file" multiple accept="application/pdf" class="hidden" @change="onInvoicePick">
+        <Btn variant="soft" size="sm" icon="inbox" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.upload_receipt') }}</Btn>
+        <Btn variant="soft" size="sm" icon="upload_file" :loading="invUploadBusy" @click="invUploadInput?.click()">{{ t('invoices.upload_invoice') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="receipt" @click="newReceipt">{{ t('invoices.receipt_standalone') }}</Btn>
         <Btn variant="solid" size="sm" icon="add" @click="newInvoice">{{ t('invoices.new') }}</Btn>
       </template>
       <div class="overflow-x-auto">
@@ -201,55 +247,6 @@
               <td class="px-4 py-2.5"><Badge :tone="doc.matched ? 'success' : 'gray'">{{ t(doc.matched ? 'invoices.document_matched' : 'invoices.document_unmatched') }}</Badge></td>
             </tr>
             <tr v-if="!documentRows.length"><td colspan="5" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </Card>
-
-    <!-- Invoices -->
-    <Card v-show="tab === 'invoices'" :body-class="'p-0'">
-      <template #header>
-        <TextField v-model="q" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
-      </template>
-      <template #actions>
-        <Btn variant="ghost" size="sm" icon="join_inner" :loading="invMatchBusy" @click="runInvoiceAutoMatch">{{ t('invoices.auto_match') }}</Btn>
-        <Btn variant="solid" size="sm" icon="add" @click="newInvoice">{{ t('invoices.new') }}</Btn>
-      </template>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
-            <tr class="border-b border-[var(--ll-border)]">
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('issue_date')"><SortLabel :label="t('invoices.issue_date')" active-key="issue_date" :sort="invSort" /></th>
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('number')"><SortLabel :label="t('invoices.col_number')" active-key="number" :sort="invSort" /></th>
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('customer')"><SortLabel :label="t('invoices.customer')" active-key="customer" :sort="invSort" /></th>
-              <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="invSortBy('gross')"><SortLabel :label="t('invoices.gross')" active-key="gross" :sort="invSort" justify="end" /></th>
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('status')"><SortLabel :label="t('common.status')" active-key="status" :sort="invSort" /></th>
-              <th class="px-4 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in filteredInvoices" :key="item.id" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openInvoiceDocument(item)">
-              <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.issue_date) }}</td>
-              <td class="px-4 py-2.5 font-mono">{{ item.number || '—' }}</td>
-              <td class="px-4 py-2.5">{{ custName(item) }}</td>
-              <td class="px-4 py-2.5 text-right font-mono tabular-nums">{{ money(Number(item.gross ?? 0)) }}</td>
-              <td class="px-4 py-2.5">
-                <Badge :tone="statusTone(item.status)">{{ t('invoices.status_' + item.status) }}</Badge>
-                <Icon v-if="isInvoiceLinked(item.id)" name="link" size="14" class="ml-1 inline align-middle text-[var(--ll-muted)]" :title="t('invoices.linked_badge')" />
-              </td>
-              <td class="px-4 py-2.5">
-                <div class="flex items-center justify-end gap-0.5">
-                  <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click.stop="editInvoice(item)" />
-                  <Btn variant="ghost" size="sm" icon="print" :title="t('invoices.print')" :loading="pdfBusy && printingId === item.id" @click.stop="doPrint(item)" />
-                  <Btn v-if="item.pdf_path" variant="ghost" size="sm" icon="picture_as_pdf" :title="t('common.open')" @click.stop="openPreview(f.invoicePdfUrl(item.id), (item.number || 'invoice') + '.pdf', 'application/pdf')" />
-                  <Btn v-if="item.number" variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click.stop="doEmail(item)" />
-                  <Btn v-if="item.number" variant="ghost" size="sm" icon="gavel" :title="t('invoices.dun_send')" @click.stop="doDun(item)" />
-                  <Btn v-if="item.number && item.type !== 'credit_note'" variant="ghost" size="sm" icon="cancel" :title="t('invoices.storno')" @click.stop="doStorno(item)" />
-                  <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click.stop="delInvoice(item)" />
-                </div>
-              </td>
-            </tr>
-            <tr v-if="!filteredInvoices.length"><td colspan="6" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -315,79 +312,6 @@
               </td>
             </tr>
             <tr v-if="!bankTransactions.length"><td colspan="5" class="py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </Card>
-
-    <!-- Receipts — the whole card is a drop zone: drop one or many files to auto-capture
-         them (OCR + recognise + auto-match/create a partner), Candis-inbox-style. -->
-    <Card
-      v-show="tab === 'receipts'" :body-class="'p-0'"
-      class="relative" @dragover.prevent="inboxDrag = true" @dragenter.prevent="inboxDrag = true"
-      @dragleave.prevent="inboxDrag = false" @drop.prevent="onInboxDrop"
-    >
-      <div v-if="inboxDrag || inboxBusy" class="absolute inset-0 z-10 grid place-items-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/5 backdrop-blur-sm">
-        <div v-if="inboxBusy" class="text-center">
-          <Icon name="progress_activity" :size="28" class="mx-auto mb-2 animate-spin text-primary-600 dark:text-primary-300" />
-          <div class="text-sm font-medium">{{ t('invoices.inbox_processing', { done: String(inboxDone), total: String(inboxTotal) }) }}</div>
-        </div>
-        <div v-else class="text-center text-primary-600 dark:text-primary-300">
-          <Icon name="inbox" :size="28" class="mx-auto mb-2" />
-          <div class="text-sm font-medium">{{ t('invoices.inbox_drop_hint') }}</div>
-        </div>
-      </div>
-      <template #header>
-        <TextField v-model="rq" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
-      </template>
-      <template #actions>
-        <div class="flex items-center gap-2">
-          <Btn variant="ghost" size="sm" icon="sell" @click="catDialog = true">{{ t('invoices.categories') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="join_inner" :loading="matchBusy" @click="runAutoMatch">{{ t('invoices.auto_match') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="document_scanner" :loading="bulkRescanBusy" @click="runBulkRescan">{{ t('invoices.ocr_rescan_all') }}</Btn>
-          <input ref="inboxInput" type="file" multiple accept="application/pdf,image/*" class="hidden" @change="onInboxPick">
-          <Btn variant="soft" size="sm" icon="inbox" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.inbox_upload') }}</Btn>
-          <Btn variant="solid" size="sm" icon="add" @click="newReceipt">{{ t('common.add') }}</Btn>
-        </div>
-      </template>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
-            <tr class="border-b border-[var(--ll-border)]">
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('date')"><SortLabel :label="t('common.date')" active-key="date" :sort="rSort" /></th>
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('name')"><SortLabel :label="t('common.name')" active-key="name" :sort="rSort" /></th>
-              <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="rSortBy('amount')"><SortLabel :label="t('invoices.gross')" active-key="amount" :sort="rSort" justify="end" /></th>
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('category')"><SortLabel :label="t('invoices.receipt_category')" active-key="category" :sort="rSort" /></th>
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('linked')"><SortLabel :label="t('invoices.tx_receipts')" active-key="linked" :sort="rSort" /></th>
-              <th class="px-4 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="item in filteredReceipts" :key="item.id"
-              class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
-              @click="openReceiptWorkspace(item)"
-            >
-              <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.date ?? item.created_at) }}</td>
-              <td class="px-4 py-2.5 font-medium">{{ item.name }}</td>
-              <td class="px-4 py-2.5 text-right font-mono tabular-nums">{{ item.amount != null ? money(Number(item.amount)) : '—' }}</td>
-              <td class="px-4 py-2.5">
-                <Badge v-if="item.category" tone="gray">{{ item.category }}</Badge>
-                <span v-if="catAccountNo(item.category)" class="ml-1 font-mono text-xs text-[var(--ll-muted)]">{{ catAccountNo(item.category) }}</span>
-                <span v-else class="text-[var(--ll-muted)]">—</span>
-              </td>
-              <td class="px-4 py-2.5">
-                <Icon v-if="receiptLinkSummary(item)" name="link" size="14" class="inline align-middle text-[var(--ll-muted)]" :title="receiptLinkSummary(item) ?? ''" />
-                <span v-else class="text-[var(--ll-muted)]">—</span>
-              </td>
-              <td class="px-4 py-2.5" @click.stop>
-                <div class="flex items-center justify-end gap-0.5">
-                  <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="openReceiptWorkspace(item)" />
-                  <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delReceipt(item)" />
-                </div>
-              </td>
-            </tr>
-            <tr v-if="!filteredReceipts.length"><td colspan="6" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.receipts_none') }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -1835,7 +1759,6 @@ const financeNavGroups = computed(() => [{
   items: sections.map((id) => ({ id, icon: secIcon[id], label: t('invoices.tab_' + id) })),
 }]);
 function isFinanceSectionActive(item: SectionNavItem): boolean { return tab.value === item.id; }
-const q = ref('');
 
 const kpis = ref<{ year: number; net: number; count: number; growthPct: number | null } | null>(null);
 const openGross = ref(0);
@@ -1923,35 +1846,6 @@ function toggleSort(state: { key: string; dir: SortDir }, key: string) {
 }
 
 // The receipts table + its edit dialog used to be two disconnected surfaces — a
-// document could only be opened (read-only preview) OR edited, via two separate
-// buttons/modals. `rq`/`filteredReceipts` gives it the same search box as the
-// invoices table; `rWorkspace` is a single wide modal (preview left, edit
-// fields as a sidebar right) opened by clicking a row — no bouncing between
-// two dialogs to see the document while correcting its fields.
-const rq = ref('');
-const rSort = reactive<{ key: string; dir: SortDir }>({ key: 'date', dir: 'desc' });
-function rSortBy(key: string) { toggleSort(rSort, key); }
-function rSortValue(r: Receipt, key: string): unknown {
-  switch (key) {
-    case 'date': return r.date ?? r.created_at;
-    case 'name': return r.name;
-    case 'amount': return r.amount != null ? Number(r.amount) : null;
-    case 'category': return r.category;
-    case 'linked': return (r.bank_transaction_id != null || (r.linked_transaction_ids?.length ?? 0) > 0) ? 1 : 0;
-    default: return null;
-  }
-}
-const filteredReceipts = computed(() => {
-  const s = rq.value.trim().toLowerCase();
-  const base = !s ? f.standaloneReceipts : f.standaloneReceipts.filter((r) => (
-    r.name.toLowerCase().includes(s)
-    || (r.category ?? '').toLowerCase().includes(s)
-    || (r.tags ?? []).some((t) => t.toLowerCase().includes(s))
-    || (partnerOptions.value.find((p) => p.id === r.partner_id)?.name ?? '').toLowerCase().includes(s)
-  ));
-  const dirMul = rSort.dir === 'asc' ? 1 : -1;
-  return [...base].sort((a, b) => sortCmp(rSortValue(a, rSort.key), rSortValue(b, rSort.key)) * dirMul);
-});
 const rWorkspace = ref(false);
 const rWorkspaceMime = computed(() => f.standaloneReceipts.find((x) => x.id === rForm.id)?.mime ?? null);
 const rWorkspaceIsImage = computed(() => !!rWorkspaceMime.value && rWorkspaceMime.value.startsWith('image/'));
@@ -2095,25 +1989,6 @@ const categoryChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => (
   ],
   scales: { x: { time: false } },
 }));
-
-const invSort = reactive<{ key: string; dir: SortDir }>({ key: 'issue_date', dir: 'desc' });
-function invSortBy(key: string) { toggleSort(invSort, key); }
-function invSortValue(i: Invoice, key: string): unknown {
-  switch (key) {
-    case 'number': return i.number;
-    case 'customer': return custName(i);
-    case 'issue_date': return i.issue_date;
-    case 'gross': return i.gross != null ? Number(i.gross) : null;
-    case 'status': return i.status;
-    default: return null;
-  }
-}
-const filteredInvoices = computed(() => {
-  const s = q.value.trim().toLowerCase();
-  const base = !s ? f.invoices : f.invoices.filter((i) => (i.number ?? '').toLowerCase().includes(s) || custName(i).toLowerCase().includes(s));
-  const dirMul = invSort.dir === 'asc' ? 1 : -1;
-  return [...base].sort((a, b) => sortCmp(invSortValue(a, invSort.key), invSortValue(b, invSort.key)) * dirMul);
-});
 
 type FinanceDocument = { key: string; kind: 'invoice' | 'receipt'; direction: 'income' | 'expense'; date: string | null; partner: string; reference: string; amount: number; matched: boolean; item: Invoice | Receipt };
 const documentQuery = ref('');
@@ -2972,6 +2847,101 @@ async function applyBulkRescan() {
 
 // ---- Receipt inbox: drop/pick one or many files, each is captured automatically
 // (OCR'd, recognised, auto-matched/created a partner) without opening a dialog per
+// ---- Uploading a document: incoming receipt OR outgoing invoice ----
+// The two are different records (finance_receipts vs invoices), so which one a
+// dropped PDF becomes cannot be guessed from the file: the drop overlay asks by
+// splitting into two halves, and the toolbar has one button each.
+const docDrag = ref(false);
+const invUploadInput = ref<HTMLInputElement | null>(null);
+const invUploadBusy = ref(false);
+const invUploadDone = ref(0);
+const invUploadTotal = ref(0);
+
+function onDocDragOver() { docDrag.value = true; }
+function onDocDragLeave() { docDrag.value = false; }
+function droppedFiles(e: DragEvent, pdfOnly: boolean): File[] {
+  return Array.from(e.dataTransfer?.files ?? [])
+    .filter((file) => (pdfOnly ? file.type === 'application/pdf' : /^application\/pdf$|^image\//.test(file.type)));
+}
+function onDropReceipts(e: DragEvent) {
+  docDrag.value = false;
+  const files = droppedFiles(e, false);
+  if (files.length) void processInboxFiles(files);
+  else error(t('invoices.upload_no_supported_file'));
+}
+function onDropInvoices(e: DragEvent) {
+  docDrag.value = false;
+  const files = droppedFiles(e, true);
+  if (files.length) void uploadInvoicePdfs(files);
+  else error(t('invoices.upload_pdf_only'));
+}
+function onInvoicePick(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  input.value = '';
+  if (files.length) void uploadInvoicePdfs(files);
+}
+
+/**
+ * An outgoing invoice that already exists as a PDF (written elsewhere, or an
+ * older one being filed): create the record, attach the document, and prefill
+ * from the same OCR recogniser the receipt inbox uses.
+ *
+ * The record is created as a plain DRAFT, not `imported`, on purpose: an
+ * imported invoice is read-only in the editor, so the numbers the recogniser
+ * missed could never be filled in. The PDF stays the authoritative document —
+ * the editor links to it while the owner completes the fields.
+ */
+async function uploadInvoicePdfs(files: File[]) {
+  invUploadBusy.value = true;
+  invUploadTotal.value = files.length;
+  invUploadDone.value = 0;
+  let failed = 0;
+  let lastId: number | null = null;
+  for (const file of files) {
+    try {
+      // Best-effort recognition: a failure here must not cost the upload, the
+      // document is worth filing even with every field left blank.
+      let a: ReturnType<typeof analyzeReceiptText> | null = null;
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await api.upload<{ text: string }>('/api/v1/invoices/ocr', fd);
+        a = analyzeReceiptText(res.text, ownNames.value);
+      } catch { /* keep going without a prefill */ }
+
+      const vatRate = a?.vat != null && a.vat !== '' ? Number(a.vat) : 19;
+      const gross = a?.total ?? null;
+      // One synthetic net line so the editor's own totals agree with the gross
+      // read off the document (net = gross / (1 + rate/100)); the owner replaces
+      // it with the real positions if they want them itemised.
+      const net = gross != null ? Math.round((gross / (1 + vatRate / 100)) * 100) / 100 : 0;
+      const created = await f.createInvoice({
+        status: 'draft',
+        issue_date: a?.date || todayYmd(),
+        currency: a?.currency || 'EUR',
+        vat_rate: vatRate,
+        customer: {},
+        lines: gross != null ? [{ desc: file.name.replace(/\.pdf$/i, ''), qty: 1, unitPrice: net, vatRate }] : [],
+        note: null,
+      });
+      const id = created.invoice.id;
+      const pdf = new FormData();
+      pdf.append('file', file);
+      await f.uploadInvoicePdf(id, pdf);
+      lastId = id;
+    } catch { failed++; }
+    invUploadDone.value++;
+  }
+  await f.load();
+  invUploadBusy.value = false;
+  if (failed) error(t('invoices.inbox_some_failed', { failed: String(failed), total: String(files.length) }));
+  else success(t('common.saved'));
+  // Land in the editor of the last upload so the missing fields are right there.
+  const fresh = lastId != null ? f.invoices.find((i) => i.id === lastId) : null;
+  if (fresh) editInvoice(fresh);
+}
+
 // file — the Candis-style "drop a batch, review afterwards" flow.
 const inboxDrag = ref(false);
 const inboxBusy = ref(false);
