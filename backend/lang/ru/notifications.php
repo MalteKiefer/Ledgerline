@@ -14,4 +14,6 @@ return [
     'event_at' => 'Начало в :time',
     'birthday' => 'День рождения сегодня: :name',
     'backup_failed' => 'Резервная копия «:name» завершилась ошибкой',
+    'deadline_due' => 'Срок: :what',
+    'deadline_on' => 'Истекает :date (через :days дн.)',
 ];

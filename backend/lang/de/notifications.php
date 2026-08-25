@@ -14,4 +14,6 @@ return [
     'event_at' => 'Beginnt um :time',
     'birthday' => 'Geburtstag heute: :name',
     'backup_failed' => 'Backup „:name" fehlgeschlagen',
+    'deadline_due' => 'Frist: :what',
+    'deadline_on' => 'Fällig am :date (in :days Tagen)',
 ];

@@ -31,6 +31,12 @@ Schedule::command('finance:remind-bank-csv')->dailyAt('08:10')->withoutOverlappi
 // Notify about tasks due today / overdue (throttled per task per due-date).
 Schedule::command('tasks:remind')->dailyAt('07:00')->withoutOverlapping();
 
+// Deadlines hiding in document text: read them at night (OCR and indexing are
+// worker jobs, so a scan on upload would read an empty column half the time),
+// remind in the morning next to the task reminder.
+Schedule::command('deadlines:scan')->dailyAt('03:40')->withoutOverlapping();
+Schedule::command('deadlines:remind')->dailyAt('07:05')->withoutOverlapping();
+
 // Fire event reminders (VALARM) as their trigger time arrives (short cadence).
 Schedule::command('calendar:remind')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('tasks:remind-alarms')->everyFiveMinutes()->withoutOverlapping();
@@ -86,6 +92,12 @@ Schedule::command('request-log:prune')->dailyAt('00:27')->withoutOverlapping();
 
 // Verify the latest successful backup restores, and alert on staleness/failure.
 Schedule::command('backups:verify')->dailyAt('04:30')->withoutOverlapping();
+
+// Actually replay the latest backup into a throwaway target and re-hash a random
+// sample of mirrored blobs against the live copies. Weekly rather than daily:
+// unlike the integrity verification above it downloads and rehashes real data,
+// so it costs far more — but it is the only check that proves a restore works
+// instead of proving the archive is readable.
 
 // Mail archive: dispatch a pull-only IMAP sync for every enabled account that is
 // due (each account's own interval decides due-ness); reclaim orphaned mail

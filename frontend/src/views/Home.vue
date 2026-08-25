@@ -22,6 +22,34 @@
       </Card>
     </div>
 
+    <!-- Deadlines found in documents. Unconfirmed ones are suggestions: they say
+         where they were read from and ask, rather than asserting a date. -->
+    <Card v-if="upcomingDeadlines.length" :title="t('deadlines.title')" :body-class="'p-0'">
+      <div class="divide-y divide-[var(--ll-border)]">
+        <div v-for="d in upcomingDeadlines" :key="d.id" class="flex items-start gap-3 px-4 py-2.5">
+          <span
+            class="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+            :class="daysUntil(d.due_on) <= 7 ? 'bg-red-500/12 text-red-600 dark:text-red-400' : 'bg-amber-500/12 text-amber-600 dark:text-amber-400'"
+          ><Icon name="event_busy" :size="18" /></span>
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="truncate text-sm font-medium">{{ d.label || t('deadlines.kind_' + d.kind) }}</span>
+              <Badge tone="gray">{{ t('deadlines.kind_' + d.kind) }}</Badge>
+              <Badge v-if="!d.confirmed_at" tone="warning">{{ t('deadlines.unconfirmed') }}</Badge>
+            </div>
+            <div class="text-xs text-[var(--ll-muted)]">
+              {{ String(d.due_on).slice(0, 10) }} · {{ t('deadlines.in_days', { days: String(daysUntil(d.due_on)) }) }}
+            </div>
+            <div v-if="d.evidence && !d.confirmed_at" class="mt-0.5 truncate text-xs italic text-[var(--ll-muted)]">„{{ d.evidence }}"</div>
+          </div>
+          <div v-if="!d.confirmed_at" class="flex shrink-0 gap-1">
+            <Btn variant="ghost" size="sm" icon="check" :title="t('deadlines.confirm')" @click="confirmDeadline(d, true)" />
+            <Btn variant="ghost" size="sm" icon="close" :title="t('deadlines.dismiss')" @click="confirmDeadline(d, false)" />
+          </div>
+        </div>
+      </div>
+    </Card>
+
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <!-- Recent invoices -->
       <Card v-if="auth.can('finance')" class="lg:col-span-2" :title="t('invoices.tab_invoices')" :body-class="'p-0'">
@@ -160,7 +188,32 @@ const modules = computed(() => {
   return m;
 });
 
+interface Deadline { id: number; due_on: string; kind: string; label: string | null; evidence: string | null; confirmed_at: string | null }
+const deadlines = ref<Deadline[]>([]);
+/** Only what is actually approaching — a list of everything is not a warning. */
+const upcomingDeadlines = computed(() => {
+  const horizon = new Date(); horizon.setDate(horizon.getDate() + 60);
+  return deadlines.value
+    .filter((d) => new Date(String(d.due_on).slice(0, 10)) <= horizon)
+    .slice(0, 6);
+});
+function daysUntil(due: string): number {
+  const then = new Date(String(due).slice(0, 10)).getTime();
+  return Math.ceil((then - new Date().setHours(0, 0, 0, 0)) / 86400000);
+}
+async function confirmDeadline(d: Deadline, confirmed: boolean) {
+  try {
+    await api.put(`/api/v1/deadlines/${d.id}`, confirmed ? { confirmed: true } : { dismissed: true });
+    deadlines.value = confirmed
+      ? deadlines.value.map((x) => (x.id === d.id ? { ...x, confirmed_at: new Date().toISOString() } : x))
+      : deadlines.value.filter((x) => x.id !== d.id);
+  } catch { /* the list reloads on the next visit */ }
+}
+
 onMounted(async () => {
+  // Deadlines are read out of files, mail, gallery and finance alike, so they
+  // are not gated on any single module.
+  try { deadlines.value = (await api.get<{ deadlines: Deadline[] }>('/api/v1/deadlines')).deadlines ?? []; } catch { /* none yet */ }
   // Independent of finance: a servers-only user still gets their tile.
   if (auth.can('servers')) {
     try { await serversStore.load(); } catch { /* module disabled mid-session */ }
