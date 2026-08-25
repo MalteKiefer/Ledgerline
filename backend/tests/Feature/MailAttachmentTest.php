@@ -400,4 +400,71 @@ class MailAttachmentTest extends TestCase
         }
         @rmdir($dir);
     }
+
+    public function test_the_attachment_index_lists_real_attachments_newest_first(): void
+    {
+        // "The mail with the PDF" without remembering which mail it was.
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+
+        $message = $this->archive($user, $account, 'Invoice mail');
+        $this->attach($user, $message, 'invoice.pdf', 'application/pdf', false);
+        $this->attach($user, $message, 'photo.jpg', 'image/jpeg', false);
+        // An inline image is part of how the message looks, not a document the
+        // sender attached — listing signatures would bury the real files.
+        $this->attach($user, $message, 'logo.gif', 'image/gif', true);
+
+        $rows = $this->getJson(route('mail.attachments.index'))->assertOk()->json('data');
+        $names = collect($rows)->pluck('filename')->all();
+
+        $this->assertNotContains('logo.gif', $names);
+        $this->assertCount(2, $names);
+        $this->assertSame('Invoice mail', $rows[0]['subject'], 'the row carries the message it belongs to');
+
+        // Filters
+        $this->assertSame(['invoice.pdf'], collect($this->getJson(route('mail.attachments.index', ['type' => 'pdf']))->json('data'))->pluck('filename')->all());
+        $this->assertSame(['photo.jpg'], collect($this->getJson(route('mail.attachments.index', ['type' => 'image']))->json('data'))->pluck('filename')->all());
+        $this->assertSame(['invoice.pdf'], collect($this->getJson(route('mail.attachments.index', ['q' => 'INVOI']))->json('data'))->pluck('filename')->all());
+    }
+
+    public function test_the_attachment_index_never_shows_another_account_or_trashed_mail(): void
+    {
+        $owner = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $owner->id]);
+        $this->actingAs($owner);
+        $live = $this->archive($owner, $account, 'Live');
+        $this->attach($owner, $live, 'keep.pdf', 'application/pdf', false);
+        $binned = $this->archive($owner, $account, 'Binned', trashed: true);
+        $this->attach($owner, $binned, 'gone.pdf', 'application/pdf', false);
+
+        $this->assertSame(['keep.pdf'], collect($this->getJson(route('mail.attachments.index'))->json('data'))->pluck('filename')->all());
+
+        app('auth')->forgetGuards();
+        $this->actingAs(User::factory()->create());
+        $this->assertCount(0, $this->getJson(route('mail.attachments.index'))->assertOk()->json('data'));
+    }
+
+    private function archive(User $user, MailAccount $account, string $subject, bool $trashed = false): MailMessage
+    {
+        $m = new MailMessage;
+        $m->forceFill([
+            'id' => (string) Str::uuid(), 'user_id' => $user->id, 'account_id' => $account->id,
+            'folder' => 'INBOX', 'subject' => $subject, 'from_email' => 'a@b.c', 'from_name' => 'A',
+            'to_json' => [], 'seen' => false, 'size' => 10, 'content_hash' => (string) Str::uuid(),
+            'has_attachment' => true, 'date' => now(), 'created_at' => now(),
+            'trashed_at' => $trashed ? now() : null,
+        ])->save();
+
+        return $m;
+    }
+
+    private function attach(User $user, MailMessage $message, string $name, string $type, bool $inline): void
+    {
+        (new MailAttachment)->forceFill([
+            'id' => (string) Str::uuid(), 'message_id' => $message->id, 'user_id' => $user->id,
+            'blob' => (string) Str::uuid(), 'filename' => $name, 'content_type' => $type,
+            'inline' => $inline, 'size' => 100, 'created_at' => now(),
+        ])->save();
+    }
 }

@@ -110,6 +110,17 @@ export interface MailRuleAction {
   file_receipt?: boolean | null;
 }
 export interface MailRule { id?: number; name: string; enabled: boolean; priority: number; match: MailRuleMatch; action: MailRuleAction }
+export interface MailAttachmentRow {
+  id: string;
+  message_id: string;
+  filename: string | null;
+  content_type: string | null;
+  size: number;
+  subject: string | null;
+  from: string | null;
+  folder: string | null;
+  date: string | null;
+}
 export interface MailSavedSearch { id: number; name: string; filters: Record<string, unknown> }
 /**
  * A user id parsed off a key/certificate at import/generate time — every part
@@ -291,6 +302,15 @@ export const useMailStore = defineStore('mail', () => {
     meta.value = r.meta;
   }
 
+  /**
+   * The envelope rows of one conversation, oldest first — a conversation reads
+   * downward. Bounded at 200: beyond that it is a mailing list, not a thread.
+   */
+  async function thread(threadId: string): Promise<MailMessage[]> {
+    const r = await api.get<{ data: MailMessage[] }>(`/api/v1/mail/messages?thread_id=${encodeURIComponent(threadId)}&sort=date&dir=asc&per_page=200`);
+    return r.data ?? [];
+  }
+
   async function show(id: string): Promise<MailMessage> {
     const r = await api.get<{ message: MailMessage }>(`/api/v1/mail/messages/${id}`);
     openMessage.value = r.message;
@@ -299,6 +319,18 @@ export const useMailStore = defineStore('mail', () => {
 
   const bodyUrl = (id: string, remote = false) => api.streamUrl(`/api/v1/mail/messages/${id}/body${remote ? '?remote=1' : ''}`);
   const rawUrl = (id: string, download = false) => api.streamUrl(`/api/v1/mail/raw/${id}${download ? '?download=1' : ''}`);
+  /** One row of the attachment overview: the file plus the message it came from. */
+  const attachments = (params: { q?: string; type?: string; accountId?: number | null; folder?: string | null; page?: number }) => {
+    const qs = new URLSearchParams();
+    if (params.q?.trim()) qs.set('q', params.q.trim());
+    if (params.type) qs.set('type', params.type);
+    if (params.accountId != null) qs.set('account_id', String(params.accountId));
+    if (params.folder) qs.set('folder', params.folder);
+    qs.set('page', String(params.page ?? 1));
+    qs.set('per_page', '100');
+    return api.get<{ data: MailAttachmentRow[]; meta: PageMeta }>(`/api/v1/mail/attachments?${qs}`);
+  };
+
   const attachmentRawUrl = (attId: string, download = false) => api.streamUrl(`/api/v1/mail/attachments/${attId}/raw${download ? '?download=1' : ''}`);
   const virusTotalAttachment = (attId: string) => api.post<VirusTotalResult>(`/api/v1/mail/attachments/${attId}/virustotal`);
 
@@ -308,6 +340,29 @@ export const useMailStore = defineStore('mail', () => {
   // --- Message state (bulk, metadata-only) ----------------------------------
   const setSeen = (ids: string[], seen: boolean) => api.post<{ updated: number }>('/api/v1/mail/messages/seen', { ids, seen });
   const setFlagged = (ids: string[], flagged: boolean) => api.post<{ updated: number }>('/api/v1/mail/messages/flag', { ids, flagged });
+
+  /**
+   * Every unread id under the current filter — for "mark all as read", which
+   * must mean the folder and not the page the client happens to have loaded.
+   */
+  async function unreadIds(): Promise<string[]> {
+    const f = filters.value;
+    const qs = new URLSearchParams();
+    if (f.accountId != null) qs.set('account_id', String(f.accountId));
+    if (f.folder) qs.set('folder', f.folder);
+    if (f.label != null) qs.set('label', String(f.label));
+    if (f.q.trim()) qs.set('q', f.q.trim());
+    qs.set('seen', '0');
+    qs.set('per_page', '1000');
+    const out: string[] = [];
+    for (let page = 1; page <= 20; page++) {   // 20k unread is a bound, not a limit anyone reaches
+      qs.set('page', String(page));
+      const r = await api.get<{ data: MailMessage[]; meta: PageMeta }>(`/api/v1/mail/messages?${qs}`);
+      out.push(...(r.data ?? []).map((m) => m.id));
+      if (page >= r.meta.last_page) break;
+    }
+    return out;
+  }
   const trash = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/trash', { ids });
   const restore = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/restore', { ids });
   const pushBack = (id: string, folder?: string | null) => api.post<{ ok: boolean }>(`/api/v1/mail/messages/${id}/pushback`, { folder: folder ?? null });
@@ -417,6 +472,14 @@ export const useMailStore = defineStore('mail', () => {
     rules.value = r.rules;
   }
   const createRule = (rule: MailRule) => api.post<{ rule: MailRule }>('/api/v1/mail/rules', rule);
+  /**
+   * Run rules over mail that is already archived (queued server-side). Omit the
+   * id to run every enabled rule. Skip rules are left out server-side — they
+   * mean "do not archive", which says nothing about what already is.
+   */
+  const applyRules = (ruleId?: number) => api.post<{ dispatched: boolean }>(
+    ruleId ? `/api/v1/mail/rules/${ruleId}/apply` : '/api/v1/mail/rules/apply', {},
+  );
   const updateRule = (id: number, rule: MailRule) => api.put<{ rule: MailRule }>(`/api/v1/mail/rules/${id}`, rule);
   const deleteRule = (id: number) => api.delete(`/api/v1/mail/rules/${id}`);
 
@@ -478,10 +541,10 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
-    setSeen, setFlagged, trash, restore, pushBack, deleteOrigin, setLabels,
+    setSeen, setFlagged, unreadIds, thread, attachments, trash, restore, pushBack, deleteOrigin, setLabels,
     compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
-    loadRules, createRule, updateRule, deleteRule,
+    loadRules, createRule, applyRules, updateRule, deleteRule,
     loadSavedSearches, saveSearch, deleteSavedSearch,
     loadLogs, loadKeys, importKey, generateKey, deleteKey, exportKey, loadStats, exportMessages, resetFilters,
   };

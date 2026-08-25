@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ApplyMailRules;
 use App\Models\MailRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +16,29 @@ use Illuminate\Validation\Rule;
  */
 class MailRuleController extends Controller
 {
+    /**
+     * Run a rule (or all of them) over mail that is already archived.
+     *
+     * Rules only ran at ingest, so a rule written today did nothing about what
+     * is already there — which is usually why it was written. Queued because it
+     * walks the whole archive; a request must not.
+     */
+    public function apply(Request $request, ?MailRule $rule = null): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        if ($rule !== null) {
+            $this->authorizeOwner($request, $rule);
+        }
+
+        ApplyMailRules::dispatch(
+            $user->id,
+            $rule?->id,
+            $request->filled('account_id') ? $request->integer('account_id') : null,
+        );
+
+        return response()->json(['dispatched' => true]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $rules = MailRule::query()

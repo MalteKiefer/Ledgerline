@@ -13133,6 +13133,55 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/attachments:
+    get:
+      tags: [Mail]
+      operationId: mailAttachmentsIndex
+      summary: Every attachment the account holds
+      description: >
+        Throttle 600/min. Owner-scoped, paginated, newest first — "the mail with
+        the PDF" without remembering which mail it was. Read straight from the
+        attachment table rather than by walking messages, and each row carries
+        the subject/sender of the message it belongs to so a hit can be opened.
+
+
+        Inline parts are excluded: an inline image is part of how a message looks
+        rather than something the sender attached, and listing signatures and
+        tracking pixels would bury the documents. Attachments of trashed mail are
+        excluded too.
+      parameters:
+        - { name: account_id, in: query, required: false, schema: { type: integer } }
+        - { name: folder, in: query, required: false, schema: { type: string } }
+        - { name: q, in: query, required: false, schema: { type: string }, description: "Filename substring, case-insensitive." }
+        - { name: type, in: query, required: false, schema: { type: string, enum: [image, pdf, document, other] } }
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500 } }
+      responses:
+        "200":
+          description: One page of attachments.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        message_id: { type: string, format: uuid }
+                        filename: { type: [string, "null"] }
+                        content_type: { type: [string, "null"] }
+                        size: { type: integer }
+                        subject: { type: [string, "null"] }
+                        from: { type: [string, "null"] }
+                        folder: { type: [string, "null"] }
+                        date: { type: [string, "null"], format: date-time }
+                  meta: { type: object, properties: { total: { type: integer }, per_page: { type: integer }, current_page: { type: integer }, last_page: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /mail/attachments/{attachment}/raw:
     get:
       tags: [Mail]
@@ -13279,6 +13328,51 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/rules/apply:
+    post:
+      tags: [Mail]
+      operationId: mailRulesApplyAll
+      summary: Run every enabled rule over mail that is already archived
+      description: >
+        Throttle 6/min. Queued: it walks the whole archive, so a request never
+        does the work. Rules otherwise only run at ingest, which means a rule
+        written today does nothing about what is already there.
+
+
+        Two ingest actions are deliberately NOT applied. `skip` means "do not
+        archive" and is dropped entirely rather than ignored — the evaluator
+        short-circuits on it and returns an empty action set, so leaving it in
+        would silently disable every other rule for the backfill.
+        `file_receipt` needs the attachment bytes and would copy thousands of
+        documents into the receipt inbox on one click. What is applied is
+        reversible and cheap: mark read, trash, label.
+      responses:
+        "200":
+          description: Queued.
+          content:
+            application/json:
+              schema: { type: object, properties: { dispatched: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/rules/{rule}/apply:
+    post:
+      tags: [Mail]
+      operationId: mailRulesApply
+      summary: Run one rule over mail that is already archived
+      description: "Throttle 6/min. Owner-scoped (404 on a foreign rule). Same semantics as /mail/rules/apply; a skip rule applies nothing."
+      parameters:
+        - { name: rule, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Queued.
+          content:
+            application/json:
+              schema: { type: object, properties: { dispatched: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /mail/messages/flag:
     post:

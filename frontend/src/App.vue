@@ -13,6 +13,11 @@
       >
         <Icon :name="toastIcon" :size="18" />
         <span>{{ toastState.text }}</span>
+        <button
+          v-if="toastState.actionLabel" type="button"
+          class="ml-1 rounded px-2 py-0.5 text-xs font-semibold uppercase tracking-wide underline decoration-white/50 hover:bg-white/15"
+          @click="toastState.action?.()"
+        >{{ toastState.actionLabel }}</button>
       </div>
     </Transition>
   </div>

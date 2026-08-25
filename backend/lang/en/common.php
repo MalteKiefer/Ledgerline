@@ -12,6 +12,7 @@ return [
     'save' => 'Save',
     'edit' => 'Edit',
     'close' => 'Close',
+    'undo' => 'Undo',
     'actions' => 'Actions',
     'confirm' => 'Confirm',
     'confirm_title' => 'Are you sure?',

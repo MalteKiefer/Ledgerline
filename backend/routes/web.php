@@ -673,6 +673,8 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/mail/rules', [MailRuleController::class, 'store'])->middleware('throttle:60,1')->name('mail.rules.store');
         Route::put('/mail/rules/{rule}', [MailRuleController::class, 'update'])->whereNumber('rule')->middleware('throttle:60,1')->name('mail.rules.update');
         Route::delete('/mail/rules/{rule}', [MailRuleController::class, 'destroy'])->whereNumber('rule')->middleware('throttle:60,1')->name('mail.rules.destroy');
+        Route::post('/mail/rules/apply', [MailRuleController::class, 'apply'])->middleware('throttle:6,1')->name('mail.rules.apply-all');
+        Route::post('/mail/rules/{rule}/apply', [MailRuleController::class, 'apply'])->whereNumber('rule')->middleware('throttle:6,1')->name('mail.rules.apply');
         Route::get('/mail/saved-searches', [MailSavedSearchController::class, 'index'])->name('mail.saved-searches.index');
         Route::post('/mail/saved-searches', [MailSavedSearchController::class, 'store'])->middleware('throttle:60,1')->name('mail.saved-searches.store');
         Route::delete('/mail/saved-searches/{search}', [MailSavedSearchController::class, 'destroy'])->whereNumber('search')->middleware('throttle:60,1')->name('mail.saved-searches.destroy');
@@ -683,6 +685,7 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/mail/messages/compose', [MailSendController::class, 'compose'])->middleware('throttle:30,1')->name('mail.messages.compose');
         Route::post('/mail/messages/{message}/reply', [MailSendController::class, 'reply'])->whereUuid('message')->middleware('throttle:30,1')->name('mail.messages.reply');
         Route::post('/mail/messages/{message}/forward', [MailSendController::class, 'forward'])->whereUuid('message')->middleware('throttle:30,1')->name('mail.messages.forward');
+        Route::get('/mail/attachments', [MailAttachmentController::class, 'index'])->middleware('throttle:600,1')->name('mail.attachments.index');
         Route::get('/mail/attachments/{attachment}/raw', [MailAttachmentController::class, 'raw'])->whereUuid('attachment')->middleware('throttle:3000,1')->name('mail.attachments.raw');
         Route::post('/mail/attachments/{attachment}/save', [MailAttachmentController::class, 'save'])->whereUuid('attachment')->middleware('throttle:60,1')->name('mail.attachments.save');
         Route::get('/mail/keys', [MailKeyController::class, 'index'])->name('mail.keys.index');

@@ -12,6 +12,7 @@ return [
     'save' => 'Speichern',
     'edit' => 'Bearbeiten',
     'close' => 'Schließen',
+    'undo' => 'Rückgängig',
     'actions' => 'Aktionen',
     'confirm' => 'Bestätigen',
     'confirm_title' => 'Sind Sie sicher?',

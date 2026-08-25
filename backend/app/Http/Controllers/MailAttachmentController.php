@@ -11,6 +11,7 @@ use App\Services\Paperless\PaperlessClient;
 use App\Support\BlobStore;
 use App\Support\Redactor;
 use App\Support\StorageUsage;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -33,6 +34,83 @@ class MailAttachmentController extends Controller
     private const INLINE_TYPES = [
         'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf', 'text/plain',
     ];
+
+    /**
+     * Every attachment the account holds, newest first — "the mail with the PDF"
+     * without remembering which mail it was.
+     *
+     * Reads the attachment table directly rather than walking messages: the rows
+     * are already there, one query answers it, and the message it belongs to
+     * comes along as a subject so a hit can be opened.
+     *
+     * Filters: ?account_id ?folder ?q (filename) ?type (image|pdf|document|other).
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $perPage = min(max(1, $request->integer('per_page', 100)), 500);
+
+        $query = MailAttachment::query()
+            ->ownedBy($user->id)
+            // An inline image is part of how a message looks, not something the
+            // sender attached; listing signatures and tracking pixels here would
+            // bury the documents.
+            ->where('inline', false)
+            ->whereHas('message', function (Builder $m) use ($request): void {
+                $m->whereNull('trashed_at')
+                    ->when($request->filled('account_id'), fn (Builder $q) => $q->where('account_id', $request->integer('account_id')))
+                    ->when($request->filled('folder'), fn (Builder $q) => $q->where('folder', $request->string('folder')->value()));
+            })
+            ->with(['message:id,subject,from_name,from_email,date,created_at,folder,account_id']);
+
+        $q = trim($request->string('q')->value());
+        if ($q !== '') {
+            $query->whereRaw('lower(filename) like ?', ['%'.mb_strtolower($q).'%']);
+        }
+
+        $type = $request->string('type')->value();
+        if ($type !== '') {
+            $query->where(function (Builder $inner) use ($type): void {
+                match ($type) {
+                    'image' => $inner->where('content_type', 'like', 'image/%'),
+                    'pdf' => $inner->where('content_type', 'application/pdf'),
+                    'document' => $inner->where(fn (Builder $d) => $d
+                        ->where('content_type', 'like', '%word%')
+                        ->orWhere('content_type', 'like', '%excel%')
+                        ->orWhere('content_type', 'like', '%spreadsheet%')
+                        ->orWhere('content_type', 'like', '%presentation%')
+                        ->orWhere('content_type', 'like', 'text/%')),
+                    // Everything the three named buckets do not claim.
+                    default => $inner->whereNotNull('id')
+                        ->where('content_type', 'not like', 'image/%')
+                        ->where('content_type', '!=', 'application/pdf')
+                        ->where('content_type', 'not like', 'text/%'),
+                };
+            });
+        }
+
+        $page = $query->orderByDesc('created_at')->orderBy('id')->paginate($perPage);
+
+        return response()->json([
+            'data' => $page->getCollection()->map(fn (MailAttachment $a): array => [
+                'id' => $a->id,
+                'message_id' => $a->message_id,
+                'filename' => $a->filename,
+                'content_type' => $a->content_type,
+                'size' => (int) $a->size,
+                'subject' => $a->message?->subject,
+                'from' => $a->message?->from_name ?: $a->message?->from_email,
+                'folder' => $a->message?->folder,
+                'date' => $a->message?->date?->toIso8601String() ?? $a->message?->created_at?->toIso8601String(),
+            ])->all(),
+            'meta' => [
+                'total' => $page->total(),
+                'per_page' => $page->perPage(),
+                'current_page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+            ],
+        ]);
+    }
 
     /** Stream one attachment's bytes, sandboxed. Inline for the safe allowlist unless download is requested. */
     public function raw(Request $request, MailAttachment $attachment): StreamedResponse
