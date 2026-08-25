@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -23,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $date
  * @property string $amount
  * @property string|null $vat_cat
+ * @property string|null $scope Business/private; null = follow the account (see FinanceScope).
  * @property string|null $sig
  * @property int|null $invoice_id
  * @property string|null $invoice_number
@@ -45,7 +47,7 @@ class BankTransaction extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'payment_method_id', 'date', 'amount', 'vat_cat', 'sig',
+        'payment_method_id', 'date', 'amount', 'vat_cat', 'scope', 'sig',
         'invoice_id', 'invoice_number', 'finance_project_id',
         'counterparty', 'counterparty_iban', 'bic', 'purpose', 'booking_text', 'eref', 'receipts',
     ];
@@ -56,4 +58,15 @@ class BankTransaction extends Model
         'receipts' => 'array',
         'version' => 'integer',
     ];
+
+    /**
+     * The account this was paid from — it supplies the scope when the booking
+     * does not state one.
+     *
+     * @return BelongsTo<PaymentMethod, $this>
+     */
+    public function paymentMethod(): BelongsTo
+    {
+        return $this->belongsTo(PaymentMethod::class);
+    }
 }

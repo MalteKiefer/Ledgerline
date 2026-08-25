@@ -313,4 +313,12 @@ return [
     'dun_failed' => 'Could not send the reminder.',
     'dun_subject' => 'Payment reminder :level — invoice :number',
     'dun_body' => "Dear customer,\n\nInvoice :number (:gross) was due on :due and is now :days days overdue.\n\nThis is reminder no. :level. Please settle the attached invoice as soon as possible.\n\nKind regards,\n:company",
+    'scope_label' => 'Scope',
+    'scope_all' => 'All',
+    'scope_business' => 'Business',
+    'scope_private' => 'Private',
+    'scope_inherit' => 'From the account',
+    'scope_account_hint' => 'Bookings on this account inherit this unless they say otherwise.',
+    'scope_row_hint' => 'Leave on “From the account” unless this single entry belongs to the other side.',
+    'scope_invoices_business_only' => 'Invoices are always business, so they do not appear in the private view.',
 ];

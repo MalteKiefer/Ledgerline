@@ -1,6 +1,18 @@
 <template>
   <div>
-    <h1 class="mb-4 text-xl font-bold">{{ t('messages.nav.finance') }}</h1>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <h1 class="text-xl font-bold">{{ t('messages.nav.finance') }}</h1>
+      <!-- Business vs private: one switch for every tab below. Invoices are always
+           business, so the private view says so instead of showing an empty list. -->
+      <div class="flex items-center gap-1 rounded-lg border border-[var(--ll-border)] p-0.5 text-sm">
+        <button
+          v-for="opt in scopeOptions" :key="opt.value"
+          class="rounded-md px-2.5 py-1"
+          :class="scope === opt.value ? 'bg-primary-500/12 font-medium text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)] hover:bg-black/[0.03] dark:hover:bg-white/5'"
+          @click="setScope(opt.value)"
+        >{{ opt.title }}</button>
+      </div>
+    </div>
     <div class="flex flex-col gap-4 md:flex-row">
       <SectionNav :groups="financeNavGroups" :active="isFinanceSectionActive" @select="go($event.id)" />
 
@@ -169,6 +181,11 @@
          inbox, an outgoing invoice PDF becomes a draft invoice with the document
          attached. A dropped file cannot say which it is, so the overlay splits
          in two and the drop target decides. -->
+    <!-- In the private view the invoice half of this list is empty by definition;
+         saying so beats letting the reader wonder where their invoices went. -->
+    <div v-show="tab === 'documents' && scope === 'private'" class="mb-3 rounded-lg border border-[var(--ll-border)] bg-black/[0.02] px-4 py-2.5 text-sm text-[var(--ll-muted)] dark:bg-white/5">
+      {{ t('invoices.scope_invoices_business_only') }}
+    </div>
     <Card v-show="tab === 'documents'" :body-class="'p-0'">
       <template #header>
         <div class="flex flex-wrap items-center gap-2">
@@ -220,15 +237,18 @@
     <Card v-show="tab === 'payments'" :title="t('invoices.tab_payments')">
       <template #actions><Btn variant="solid" size="sm" icon="add" @click="newPayment">{{ t('common.add') }}</Btn></template>
       <div class="divide-y divide-[var(--ll-border)]">
-        <div v-for="p in f.paymentMethods" :key="p.id" class="flex items-center gap-3 py-2.5">
+        <div v-for="p in scopedPayments" :key="p.id" class="flex items-center gap-3 py-2.5">
           <div class="min-w-0 flex-1">
-            <div class="truncate text-sm font-medium">{{ p.name }}</div>
+            <div class="flex items-center gap-2">
+              <span class="truncate text-sm font-medium">{{ p.name }}</span>
+              <Badge v-if="p.scope === 'private'" tone="gray">{{ t('invoices.scope_private') }}</Badge>
+            </div>
             <div class="truncate text-xs text-[var(--ll-muted)]">{{ p.iban || p.type }}</div>
           </div>
           <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editPayment(p)" />
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="f.deletePayment(p.id).then(f.load)" />
         </div>
-        <div v-if="!f.paymentMethods.length" class="py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        <div v-if="!scopedPayments.length" class="py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
       </div>
     </Card>
 
@@ -741,6 +761,12 @@
     <Modal v-model="pDialog" :title="pForm.id ? t('common.edit') : t('common.add')" width="480px">
       <div class="space-y-3">
         <TextField v-model="pForm.name" :label="t('common.name')" />
+        <Select
+          v-model="pForm.scope"
+          :label="t('invoices.scope_label')"
+          :options="[{ title: t('invoices.scope_business'), value: 'business' }, { title: t('invoices.scope_private'), value: 'private' }]"
+          :hint="t('invoices.scope_account_hint')"
+        />
         <Select v-model="pForm.type" label="Type" :options="['bank', 'card', 'paypal', 'cash', 'other'].map((x) => ({ title: x, value: x }))" />
         <TextField v-model="pForm.holder" :label="t('invoices.pm_holder')" />
         <template v-if="pForm.type === 'bank'">
@@ -784,7 +810,7 @@
     <!-- Bank transaction editor -->
     <Modal v-model="txDialog" :title="txForm.id ? t('common.edit') : t('common.add')" width="480px">
       <div class="space-y-3">
-        <Select v-model.number="txForm.payment_method_id" :label="t('invoices.tab_payments')" :options="f.paymentMethods.map((p) => ({ title: p.name, value: p.id }))" />
+        <Select v-model.number="txForm.payment_method_id" :label="t('invoices.tab_payments')" :options="scopedPayments.map((p) => ({ title: p.name, value: p.id }))" />
         <div class="grid grid-cols-2 gap-3">
           <TextField v-model="txForm.date" :label="t('common.date')" type="date" />
           <TextField v-model="txForm.amount" :label="t('invoices.gross')" inputmode="decimal" />
@@ -797,6 +823,13 @@
         <TextField v-model="txForm.purpose" :label="t('invoices.tx_purpose')" />
         <TextField v-model="txForm.booking_text" :label="t('invoices.tx_booking_text')" />
         <Select v-model="txForm.vat_cat" :label="t('invoices.tx_vat')" :options="vatCatItems" />
+        <Select
+          :label="t('invoices.scope_label')"
+          :model-value="txForm.scope ?? ''"
+          :options="scopeRowOptions"
+          :hint="t('invoices.scope_row_hint')"
+          @update:model-value="txForm.scope = ($event as string) ? ($event as FinanceScope) : null"
+        />
         <Select
           :label="t('invoices.tab_projects')"
           :model-value="txForm.finance_project_id ?? ''"
@@ -1085,6 +1118,14 @@
           <div>
             <TextField v-model="rForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
             <div v-if="catAccountNo(rForm.category)" class="mt-1 text-xs text-[var(--ll-muted)]">{{ t('invoices.cat_account_no') }}: <span class="font-mono">{{ catAccountNo(rForm.category) }}</span></div>
+            <Select
+              class="mt-3"
+              :label="t('invoices.scope_label')"
+              :model-value="rForm.scope ?? ''"
+              :options="scopeRowOptions"
+              :hint="t('invoices.scope_row_hint')"
+              @update:model-value="rForm.scope = ($event as string) ? ($event as FinanceScope) : null"
+            />
           </div>
           <div>
             <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_tags') }}</span>
@@ -1788,7 +1829,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pag
 import type { AlignedData, Options } from 'uplot';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, ApiError, VersionConflict } from '@spa/api/client';
@@ -1809,6 +1850,36 @@ import {
 } from '@spa/shared/invoice-print';
 
 const f = useFinanceStore();
+
+// ---------------------------------------------------------------------------
+// Business vs private
+// ---------------------------------------------------------------------------
+// One switch drives every list. The server states each row's effective scope
+// (booking -> account), so this only reads that field and never re-derives the
+// inheritance rule. Remembered, because nobody wants to re-pick it every visit.
+type ScopeFilter = 'all' | FinanceScope;
+const scope = ref<ScopeFilter>((localStorage.getItem('ll_finance_scope') as ScopeFilter | null) ?? 'all');
+function setScope(v: ScopeFilter) { scope.value = v; localStorage.setItem('ll_finance_scope', v); }
+const scopeRowOptions = computed(() => [
+  { title: t('invoices.scope_inherit'), value: '' },
+  { title: t('invoices.scope_business'), value: 'business' },
+  { title: t('invoices.scope_private'), value: 'private' },
+]);
+const scopeOptions = computed(() => [
+  { title: t('invoices.scope_all'), value: 'all' as ScopeFilter },
+  { title: t('invoices.scope_business'), value: 'business' as ScopeFilter },
+  { title: t('invoices.scope_private'), value: 'private' as ScopeFilter },
+]);
+function inScope(rowScope: FinanceScope | null | undefined): boolean {
+  return scope.value === 'all' || (rowScope ?? 'business') === scope.value;
+}
+/** An invoice is always business — you do not invoice privately. */
+const invoicesInScope = computed(() => scope.value !== 'private');
+const scopedPayments = computed(() => f.paymentMethods.filter((p) => inScope(p.scope)));
+const scopedTransactions = computed(() => f.transactions.filter((t) => inScope(t.effective_scope)));
+const scopedReceipts = computed(() => f.standaloneReceipts.filter((r) => inScope(r.effective_scope)));
+const scopedInvoices = computed(() => (invoicesInScope.value ? f.invoices : []));
+const scopedProjects = computed(() => f.projects.filter((p) => inScope(p.kind)));
 // Sibling modules: a project also collects documents and site photos, and the
 // finance_project_id pointer lives on THEIR rows, so their stores do the write.
 const files = useFilesStore();
@@ -1895,12 +1966,12 @@ const saving = ref(false);
 
 const pDialog = ref(false);
 interface PPForm {
-  id?: number; version?: number; name: string; type?: string;
+  id?: number; version?: number; name: string; type?: string; scope?: FinanceScope;
   holder?: string | null; business?: boolean; url?: string | null; note?: string | null;
   iban?: string | null; bic?: string | null; bank?: string | null; account_no?: string | null;
   card_number?: string | null; card_network?: string | null; card_expiry?: string | null; paypal_email?: string | null;
 }
-const pForm = reactive<PPForm>({ name: '', type: 'bank', business: false });
+const pForm = reactive<PPForm>({ name: '', type: 'bank', business: false, scope: 'business' });
 
 // Receipt form
 const rDialog = ref(false);
@@ -1937,9 +2008,11 @@ interface RForm {
   id?: number; version?: number; name: string; category: string; tags: string[]; vat: string; note: string; partner_id: number | null;
   amount: string; currency: string; date: string; order_ref: string; doc_number: string; bank_transaction_id: number | null;
   linked_transaction_ids: number[] | null; finance_project_id: number | null;
+  /** null = follow the linked booking. */
+  scope: FinanceScope | null;
 }
 const rForm = reactive<RForm>({
-  name: '', category: '', tags: [], vat: '', note: '', partner_id: null,
+  name: '', category: '', tags: [], vat: '', note: '', partner_id: null, scope: null,
   amount: '', currency: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null, linked_transaction_ids: null,
   finance_project_id: null,
 });
@@ -2126,11 +2199,11 @@ function documentSortValue(document: FinanceDocument, key: string): unknown {
 }
 const documentRows = computed<FinanceDocument[]>(() => {
   const rows: FinanceDocument[] = [
-    ...f.invoices.map((item): FinanceDocument => ({
+    ...scopedInvoices.value.map((item): FinanceDocument => ({
       key: `invoice-${item.id}`, kind: 'invoice', direction: 'income', date: item.issue_date,
       partner: custName(item), reference: item.number || '—', amount: Number(item.gross ?? 0), matched: isInvoiceLinked(item.id), item,
     })),
-    ...f.standaloneReceipts.map((item): FinanceDocument => ({
+    ...scopedReceipts.value.map((item): FinanceDocument => ({
       key: `receipt-${item.id}`, kind: 'receipt', direction: 'expense', date: item.date,
       partner: partnerOptions.value.find((p) => p.id === item.partner_id)?.name ?? item.name,
       reference: item.doc_number || item.name, amount: Math.abs(Number(item.amount ?? 0)),
@@ -2139,7 +2212,7 @@ const documentRows = computed<FinanceDocument[]>(() => {
     // Documents attached directly to a booking. Always `matched` — being on a
     // booking is what matching means — and shown with that booking's amount,
     // which is what the document evidences.
-    ...f.transactions.flatMap((tx): FinanceDocument[] => (tx.receipts ?? [])
+    ...scopedTransactions.value.flatMap((tx): FinanceDocument[] => (tx.receipts ?? [])
       .filter((r) => r.kind !== 'invoice')
       .map((item): FinanceDocument => ({
         key: `tx-${tx.id}-${item.id}`, kind: 'tx_receipt',
@@ -2197,7 +2270,7 @@ function prjSortValue(p: Project, key: string): unknown {
 }
 const projectRows = computed(() => {
   const dirMul = prjSort.dir === 'asc' ? 1 : -1;
-  const sorted = [...f.projects].sort((a, b) => sortCmp(prjSortValue(a, prjSort.key), prjSortValue(b, prjSort.key)) * dirMul);
+  const sorted = [...scopedProjects.value].sort((a, b) => sortCmp(prjSortValue(a, prjSort.key), prjSortValue(b, prjSort.key)) * dirMul);
   return projectTree(sorted);
 });
 const prjPage = ref(1);
@@ -2331,7 +2404,7 @@ function newPayment() { resetForm({ name: '', type: 'bank' }); pDialog.value = t
 function editPayment(p: PaymentMethod) {
   resetForm({
     id: p.id, version: p.version, name: p.name, type: p.type,
-    holder: p.holder ?? '', business: !!p.business, url: p.url ?? '', note: p.note ?? '',
+    holder: p.holder ?? '', business: !!p.business, scope: p.scope ?? 'business', url: p.url ?? '', note: p.note ?? '',
     iban: p.iban ?? '', bic: p.bic ?? '', bank: p.bank ?? '', account_no: p.account_no ?? '',
     card_number: p.card_number ?? '', card_network: p.card_network ?? '', card_expiry: p.card_expiry ?? '', paypal_email: p.paypal_email ?? '',
   });
@@ -2350,7 +2423,7 @@ const bankAccount = ref(0); // 0 = all accounts
 const bankCsvInput = ref<HTMLInputElement | null>(null);
 const bankAccountItems = computed(() => [
   { title: t('invoices.tx_all_accounts'), value: 0 },
-  ...f.paymentMethods.map((p) => ({ title: p.name, value: p.id })),
+  ...scopedPayments.value.map((p) => ({ title: p.name, value: p.id })),
 ]);
 const txSort = reactive<{ key: string; dir: SortDir }>({ key: 'date', dir: 'desc' });
 function txSortBy(key: string) { toggleSort(txSort, key); }
@@ -2391,7 +2464,7 @@ const txDocItems = computed(() => [
   { title: t('invoices.tx_doc_undocumented'), value: 'undocumented' },
 ]);
 const bankTransactions = computed(() => {
-  let base = bankAccount.value ? f.transactions.filter((x) => x.payment_method_id === bankAccount.value) : f.transactions;
+  let base = bankAccount.value ? scopedTransactions.value.filter((x) => x.payment_method_id === bankAccount.value) : scopedTransactions.value;
   if (txDirection.value === 'income') base = base.filter((x) => x.amount >= 0);
   else if (txDirection.value === 'expense') base = base.filter((x) => x.amount < 0);
   if (txDocFilter.value === 'documented') base = base.filter((x) => isTxDocumented(x));
@@ -2419,7 +2492,7 @@ function txDocumentCount(tx: BankTransaction): number { return (linkedInvoiceFor
 function isTxDocumented(tx: BankTransaction): boolean { return txDocumentCount(tx) > 0; }
 function openLinkedInvoice(tx: BankTransaction) { const invoice = linkedInvoiceForTx(tx); if (invoice) openInvoiceDocument(invoice); }
 // Candidate pool for auto-pick/suggestions: expense transactions with no receipt yet.
-const unlinkedTransactions = computed<BankTransaction[]>(() => f.transactions.filter((t) => t.amount < 0 && !isTxDocumented(t)));
+const unlinkedTransactions = computed<BankTransaction[]>(() => scopedTransactions.value.filter((t) => t.amount < 0 && !isTxDocumented(t)));
 function txSummary(id: number): string {
   const t = f.transactions.find((x) => x.id === id);
   return t ? `${fmtDate(t.date)} · ${t.counterparty || '—'} · ${money(t.amount)}` : `#${id}`;
@@ -2458,12 +2531,14 @@ interface TxForm {
   id?: number; version?: number; payment_method_id: number | null;
   date: string; amount: string; counterparty: string; counterparty_iban: string;
   bic: string; purpose: string; booking_text: string; vat_cat: string; finance_project_id: number | null;
+  /** null = follow the account. */
+  scope: FinanceScope | null;
 }
 function blankTx(): TxForm {
   return {
     payment_method_id: bankAccount.value || (f.paymentMethods[0]?.id ?? null),
     date: todayYmd(), amount: '', counterparty: '', counterparty_iban: '',
-    bic: '', purpose: '', booking_text: '', vat_cat: '', finance_project_id: null,
+    bic: '', purpose: '', booking_text: '', vat_cat: '', finance_project_id: null, scope: null,
   };
 }
 const txForm = reactive<TxForm>(blankTx());
@@ -2476,6 +2551,7 @@ function editTx(tx: BankTransaction) {
     date: tx.date ? String(tx.date).slice(0, 10) : '', amount: moneyInput(tx.amount), counterparty: tx.counterparty ?? '',
     counterparty_iban: tx.counterparty_iban ?? '', bic: tx.bic ?? '', purpose: tx.purpose ?? '',
     booking_text: tx.booking_text ?? '', vat_cat: tx.vat_cat ?? '', finance_project_id: tx.finance_project_id,
+    scope: tx.scope ?? null,
   });
   txDialog.value = true;
 }
@@ -2486,7 +2562,7 @@ async function saveTx() {
       payment_method_id: txForm.payment_method_id, date: txForm.date, amount: parseMoney(txForm.amount) ?? 0,
       counterparty: txForm.counterparty, counterparty_iban: txForm.counterparty_iban, bic: txForm.bic,
       purpose: txForm.purpose, booking_text: txForm.booking_text, vat_cat: txForm.vat_cat || null,
-      finance_project_id: txForm.finance_project_id, version: txForm.version,
+      finance_project_id: txForm.finance_project_id, scope: txForm.scope, version: txForm.version,
     };
     if (txForm.id) await f.updateTransaction(txForm.id, body);
     else await f.createTransaction(body);
@@ -3195,6 +3271,7 @@ function editReceipt(r: Receipt) {
     date: r.date ? String(r.date).slice(0, 10) : '',
     order_ref: r.order_ref ?? '', doc_number: r.doc_number ?? '', bank_transaction_id: r.bank_transaction_id,
     linked_transaction_ids: r.linked_transaction_ids ?? null, finance_project_id: r.finance_project_id,
+    scope: r.scope ?? null,
   });
   rFile.value = null;
 }
@@ -3203,7 +3280,7 @@ async function saveReceipt() {
   try {
     if (rForm.id) {
       const body: Record<string, unknown> = {
-        name: rForm.name, category: rForm.category || null, tags: rForm.tags,
+        name: rForm.name, category: rForm.category || null, tags: rForm.tags, scope: rForm.scope,
         vat: rForm.vat || null, note: rForm.note || null, partner_id: rForm.partner_id,
         amount: parseMoney(rForm.amount), currency: rForm.currency || null,
         date: rForm.date || null, order_ref: rForm.order_ref || null, doc_number: rForm.doc_number || null,

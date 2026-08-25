@@ -313,4 +313,12 @@ return [
     'dun_failed' => 'Mahnung konnte nicht gesendet werden.',
     'dun_subject' => 'Zahlungserinnerung :level — Rechnung :number',
     'dun_body' => "Sehr geehrte Damen und Herren,\n\nRechnung :number (:gross) war am :due fällig und ist nun :days Tage überfällig.\n\nDies ist Mahnung Nr. :level. Bitte begleichen Sie die angehängte Rechnung schnellstmöglich.\n\nMit freundlichen Grüßen,\n:company",
+    'scope_label' => 'Bereich',
+    'scope_all' => 'Alle',
+    'scope_business' => 'Geschäftlich',
+    'scope_private' => 'Privat',
+    'scope_inherit' => 'Vom Konto',
+    'scope_account_hint' => 'Buchungen auf diesem Konto übernehmen das, solange sie nichts anderes sagen.',
+    'scope_row_hint' => 'Auf „Vom Konto“ stehen lassen, außer dieser eine Eintrag gehört auf die andere Seite.',
+    'scope_invoices_business_only' => 'Rechnungen sind immer geschäftlich und erscheinen daher nicht in der privaten Ansicht.',
 ];

@@ -1013,6 +1013,7 @@ components:
         user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
         type: { type: string, enum: [bank, card, paypal, cash, other] }
         name: { type: string }
+        scope: { type: string, enum: [business, private], description: "Business or private. An account always states its scope; its bookings inherit it. Existing accounts read as business." }
         holder: { type: [string, "null"] }
         note: { type: [string, "null"] }
         business: { type: boolean }
@@ -1272,6 +1273,8 @@ components:
         size: { type: integer }
         sig: { type: string, nullable: true, description: "Content dedup signature." }
         kind: { type: string }
+        scope: { type: [string, "null"], enum: [business, private, null], description: "null = follow the linked booking (which follows its account); a loose receipt is business." }
+        effective_scope: { type: string, enum: [business, private], description: "Resolved server-side. Read-only." }
         category: { type: string, nullable: true }
         tags: { type: array, items: { type: string } }
         vat: { type: string, nullable: true }
@@ -1843,6 +1846,8 @@ components:
         date: { type: string }
         amount: { type: string }
         vat_cat: { type: [string, "null"] }
+        scope: { type: [string, "null"], enum: [business, private, null], description: "null = follow the account; an explicit value overrides it. Distinct from vat_cat='private' (an owner withdrawal that stays in the books)." }
+        effective_scope: { type: string, enum: [business, private], description: "Resolved server-side (booking -> account) so no client re-derives the rule. Read-only." }
         sig: { type: [string, "null"] }
         invoice_id: { type: [integer, "null"] }
         invoice_number: { type: [string, "null"] }
@@ -1920,6 +1925,7 @@ components:
         holder: { type: [string, "null"], maxLength: 200 }
         note: { type: [string, "null"], maxLength: 20000 }
         business: { type: boolean }
+        scope: { type: string, enum: [business, private], description: "Defaults to business; its bookings inherit it." }
         url: { type: [string, "null"], maxLength: 2000 }
         icon: { type: [string, "null"], maxLength: 200000, description: "Data-URI or URL of a small bank/brand icon." }
         iban: { type: [string, "null"], maxLength: 64 }
@@ -1961,6 +1967,7 @@ components:
         date: { type: string, format: date }
         amount: { type: number }
         vat_cat: { type: [string, "null"], maxLength: 16 }
+        scope: { type: [string, "null"], enum: [business, private, null], description: "null/absent = follow the account." }
         sig: { type: [string, "null"], maxLength: 80, description: "Dedup signature." }
         invoice_id: { type: [integer, "null"], description: "Must be an existing, owned, non-deleted invoice." }
         invoice_number: { type: [string, "null"], maxLength: 64 }
@@ -6223,6 +6230,7 @@ paths:
               properties:
                 file: { type: string, format: binary }
                 name: { type: string, maxLength: 500 }
+                scope: { type: string, enum: [business, private], description: "Omit to follow the linked booking (a loose receipt is business)." }
                 kind: { type: string, maxLength: 24 }
                 category: { type: string, maxLength: 160 }
                 tags: { type: array, items: { type: string, maxLength: 100 } }

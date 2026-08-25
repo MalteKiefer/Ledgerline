@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -53,7 +54,7 @@ class FinanceReceipt extends Model
     // blob_path / size / sig are server-set (never trust the client), so they are
     // NOT fillable — the controller sets them via forceFill on create.
     protected $fillable = [
-        'bank_transaction_id', 'linked_transaction_ids', 'finance_project_id', 'name', 'kind',
+        'bank_transaction_id', 'linked_transaction_ids', 'finance_project_id', 'name', 'kind', 'scope',
         'category', 'tags', 'vat', 'amount', 'currency', 'date', 'order_ref', 'doc_number',
         'note', 'partner_id', 'ocr',
     ];
@@ -69,4 +70,15 @@ class FinanceReceipt extends Model
         'amount' => 'decimal:2',
         'date' => 'date',
     ];
+
+    /**
+     * The booking this receipt documents, if it has been matched to one — it
+     * supplies the scope when the receipt does not state one.
+     *
+     * @return BelongsTo<BankTransaction, $this>
+     */
+    public function bankTransaction(): BelongsTo
+    {
+        return $this->belongsTo(BankTransaction::class);
+    }
 }
