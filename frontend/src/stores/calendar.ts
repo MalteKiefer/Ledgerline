@@ -76,6 +76,26 @@ export interface EventDetail extends Record<string, unknown> {
   attendees?: { email: string; name: string | null; partstat: string }[];
 }
 
+// One gallery photo matched to an event (GET /calendar/events/{id}/photos).
+export interface EventPhoto {
+  id: number;
+  name: string;
+  media_type: string;
+  thumb: boolean;
+  taken_at: string | null;
+  place: string | null;
+  lat: number | null;
+  lng: number | null;
+}
+
+export interface EventPhotosResult {
+  matched_by: 'time' | 'time_and_place';
+  radius_m: number | null;
+  from: string | null;
+  to: string | null;
+  photos: EventPhoto[];
+}
+
 export interface CalSettings {
   default_view: 'month' | 'week' | 'agenda';
   week_start: 0 | 1;
@@ -105,6 +125,9 @@ export const useCalendarStore = defineStore('calendar', () => {
   }
 
   const show = (id: string) => api.get<EventDetail>(`/api/v1/calendar/events/${id}`);
+  // Gallery photos taken while the event ran (derived server-side from taken_at
+  // + coordinates; `matched_by` says how sure the match is).
+  const photos = (id: string) => api.get<EventPhotosResult>(`/api/v1/calendar/events/${id}/photos`);
   const create = (body: Record<string, unknown>) => api.post<{ id: string }>('/api/v1/calendar/events', body);
   const update = (id: string, body: Record<string, unknown>) =>
     api.put<{ ok: boolean; etag: string }>(`/api/v1/calendar/events/${id}`, body); // may 409 { error:'etag_conflict', etag }
@@ -175,7 +198,7 @@ export const useCalendarStore = defineStore('calendar', () => {
 
   return {
     calendars, settings, events,
-    loadData, loadRange, show, create, update, destroy, excludeOccurrence, overrideOccurrence,
+    loadData, loadRange, show, photos, create, update, destroy, excludeOccurrence, overrideOccurrence,
     createCalendar, updateCalendar, deleteCalendar, createSpecial, regenerate, saveSettings, importIcs, exportUrl,
     loadHolidayCountries, loadHolidaySubdivisions, geoSearch,
     loadShares, shareCalendar, revokeCalendarShare, freeBusy, findSlots, rsvp, imipIngest,

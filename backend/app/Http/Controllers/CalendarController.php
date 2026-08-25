@@ -15,6 +15,7 @@ use App\Services\Calendar\ImipService;
 use App\Services\Calendar\OpenHolidaysClient;
 use App\Services\Calendar\SpecialCalendarGenerator;
 use App\Support\CalendarAccess;
+use App\Support\EventPhotos;
 use App\Support\FreeBusy;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -232,6 +233,23 @@ class CalendarController extends Controller
                 'etag' => $event->etag,
             ],
         ));
+    }
+
+    /**
+     * The caller's photos taken while this event was running (read-only; see
+     * EventPhotos for the matching rules).
+     */
+    public function photos(Request $request, CalendarEvent $event, EventPhotos $photos): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        // 404, not 403: an event in a calendar the caller has no share for must
+        // not be confirmed to exist (same reasoning as store()).
+        abort_unless(CalendarAccess::canRead($uid, (string) $event->calendar_id), 404);
+
+        // The photos are always the caller's own, never the calendar owner's —
+        // on a shared calendar the recipient may read the appointment, which is
+        // no reason to hand them somebody else's gallery.
+        return response()->json($photos->forEvent($event));
     }
 
     public function store(Request $request, CalendarWriter $writer): JsonResponse

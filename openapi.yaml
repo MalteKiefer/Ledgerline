@@ -3668,6 +3668,51 @@ paths:
         "403": { $ref: '#/components/responses/Forbidden' }
         "404": { $ref: '#/components/responses/NotFound' }
         "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/events/{event}/photos:
+    get:
+      tags: [Calendar]
+      operationId: calendarEventsPhotos
+      summary: The caller's gallery photos taken during this event
+      description: >
+        Read-only join of two modules that share no relation, derived from columns both sides already have
+        (calendar_events.dtstart/dtend/geo_lat/geo_lon vs gallery_photos.taken_at/lat/lng) — nothing is recorded.
+        An all-day DTEND is exclusive (RFC 5545); a timed event without DTEND is treated as one hour long.
+        When the event carries coordinates, photos must additionally lie within `radius_m` of it (haversine) and
+        photos without coordinates are omitted (they cannot be placed there) — `matched_by` says which rule applied,
+        so a caller can tell a confident hit from a merely plausible one. Photos are always the *authenticated
+        user's*, never the calendar owner's, even on a shared calendar. Archived and trashed photos are excluded;
+        results are capped at 200, oldest first. Requires read access to the event's calendar (404 otherwise).
+      security: [ { bearerAuth: [] } ]
+      parameters: [{ name: event, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Matched photos.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matched_by, radius_m, from, to, photos]
+                properties:
+                  matched_by: { type: string, enum: [time, time_and_place], description: "Which rule decided the match." }
+                  radius_m: { type: [integer, "null"], description: "Proximity radius in metres; null when the event has no coordinates." }
+                  from: { type: [string, "null"], format: date-time, description: "Window start (the event's DTSTART); null when the event has no start." }
+                  to: { type: [string, "null"], format: date-time, description: "Window end (DTEND, or the assumed end)." }
+                  photos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        name: { type: string }
+                        media_type: { type: string, enum: [image, video] }
+                        thumb: { type: boolean, description: "Thumbnail rendition is ready (GET /gallery/{photo}/thumb)." }
+                        taken_at: { type: [string, "null"], format: date-time }
+                        place: { type: [string, "null"] }
+                        lat: { type: [number, "null"] }
+                        lng: { type: [number, "null"] }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /calendar/events/{event}/exclude:
     post:
       tags: [Calendar]
