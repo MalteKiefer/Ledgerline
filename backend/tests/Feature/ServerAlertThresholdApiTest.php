@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\CollectServerFacts;
 use App\Models\Server;
+use App\Models\ServerFact;
 use App\Models\User;
 use App\Services\Servers\ProbeResult;
 use App\Services\Servers\ServerProbe;
 use App\Services\Servers\ServerTarget;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -69,6 +72,58 @@ class ServerAlertThresholdApiTest extends TestCase
         ])->save();
 
         return $server;
+    }
+
+    public function test_the_poll_interval_is_bounded_and_honoured_by_the_sweep(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user);
+
+        // Bounds: half a minute to half an hour. Below that it is a load
+        // generator, above it the history is too coarse to read.
+        $this->putJson(route('api.servers.update', $server), ['poll_interval_s' => 29], $this->bearer($user))
+            ->assertStatus(422);
+        $this->putJson(route('api.servers.update', $server), ['poll_interval_s' => 1801], $this->bearer($user))
+            ->assertStatus(422);
+
+        $this->putJson(route('api.servers.update', $server), ['poll_interval_s' => 60], $this->bearer($user))
+            ->assertOk()->assertJsonPath('server.poll_interval_s', 60);
+
+        // A snapshot taken just now: not due yet on a 60s interval...
+        ServerFact::forceCreate([
+            'server_id' => $server->id, 'ok' => true, 'facts' => [],
+            'duration_ms' => 5, 'collected_at' => now(),
+        ]);
+        Queue::fake();
+        $this->artisan('servers:poll')->assertSuccessful();
+        Queue::assertNothingPushed();
+
+        // ...but due once the interval has passed.
+        ServerFact::query()->where('server_id', $server->id)->update(['collected_at' => now()->subSeconds(120)]);
+        $this->artisan('servers:poll')->assertSuccessful();
+        Queue::assertPushed(CollectServerFacts::class);
+    }
+
+    public function test_clearing_the_poll_interval_falls_back_to_the_default(): void
+    {
+        $user = User::factory()->create();
+        $server = $this->server($user, ['poll_interval_s' => 60]);
+
+        $this->putJson(route('api.servers.update', $server), ['poll_interval_s' => null], $this->bearer($user))
+            ->assertOk()->assertJsonPath('server.poll_interval_s', null);
+
+        // Default is 300s: a snapshot from two minutes ago is not due yet.
+        ServerFact::forceCreate([
+            'server_id' => $server->id, 'ok' => true, 'facts' => [],
+            'duration_ms' => 5, 'collected_at' => now()->subSeconds(120),
+        ]);
+        Queue::fake();
+        $this->artisan('servers:poll')->assertSuccessful();
+        Queue::assertNothingPushed();
+
+        // --force is the manual "refresh now" path and ignores the interval.
+        $this->artisan('servers:poll --force')->assertSuccessful();
+        Queue::assertPushed(CollectServerFacts::class);
     }
 
     public function test_thresholds_can_be_set(): void

@@ -93,6 +93,7 @@ echo "##LL:boot"; grep -m1 "^btime" /proc/stat 2>/dev/null
 echo "##LL:sessions"; who 2>/dev/null | head -10
 echo "##LL:procs"; ps -eo rss=,comm= 2>/dev/null | sort -rn | head -6
 echo "##LL:temp"; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null
+echo "##LL:gpu"; if command -v nvidia-smi >/dev/null 2>&1; then nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null | head -4; else for c in /sys/class/drm/card?/device; do [ -r "$c/gpu_busy_percent" ] || continue; n=$(cat "$c/../device/uevent" 2>/dev/null | grep -m1 "^DRIVER=" | cut -d= -f2); echo "${n:-gpu}, $(cat "$c/gpu_busy_percent" 2>/dev/null), , , "; done; fi
 echo "##LL:blockdev"; command -v lsblk >/dev/null 2>&1 && lsblk -dnb -P -o NAME,TYPE,SIZE,ROTA,MODEL 2>/dev/null | head -24 || echo "__absent__"
 echo "##LL:smart"; if command -v smartctl >/dev/null 2>&1; then for d in /dev/sd? /dev/nvme?n? /dev/vd?; do [ -b "$d" ] || continue; echo "##DEV:$d"; out=$(smartctl -H -A "$d" 2>&1); case "$out" in *"Unable to detect device type"*) out=$(smartctl -d sat -H -A "$d" 2>&1);; esac; echo "$out" | head -40; done; else echo "__absent__"; fi
 echo "##LL:mdstat"; cat /proc/mdstat 2>/dev/null | head -20

@@ -50,6 +50,7 @@ final class FactParser
             'sessions' => $this->sessions($s['sessions'] ?? ''),
             'processes' => $this->processes($s['procs'] ?? ''),
             'temp_c' => $this->tempC($s['temp'] ?? ''),
+            'gpus' => $this->gpus($s['gpu'] ?? ''),
             'storage' => $this->storage($s['blockdev'] ?? '', $s['smart'] ?? ''),
             'arrays' => $this->arrays($s['mdstat'] ?? '', $s['zpool'] ?? ''),
             'sensors' => $this->sensors($s['hwmon'] ?? ''),
@@ -187,6 +188,44 @@ final class FactParser
             'model' => $this->nullable((string) $model),
             'used_pct' => $this->cpuUsedPct($stat),
         ];
+    }
+
+    /**
+     * Graphics cards, when the host has any and can say so. nvidia-smi answers
+     * in CSV; an AMD card is read straight from sysfs (`gpu_busy_percent`),
+     * which is the only number that file offers — memory and temperature stay
+     * null there rather than being invented.
+     *
+     * A host with no GPU, or with one whose driver exposes nothing, simply has
+     * no rows: an empty list, not a zero, because "no card" and "an idle card"
+     * are different statements.
+     *
+     * @return list<array{name:string|null,used_pct:float|null,mem_used_mb:int|null,mem_total_mb:int|null,temp_c:float|null}>
+     */
+    private function gpus(string $text): array
+    {
+        $out = [];
+        foreach (explode("\n", trim($text)) as $line) {
+            $line = trim($line);
+            if ($line === '' || $line === '__absent__') {
+                continue;
+            }
+            $f = array_map('trim', explode(',', $line));
+            $name = $this->nullable($f[0] ?? '');
+            $used = is_numeric($f[1] ?? null) ? (float) $f[1] : null;
+            if ($name === null && $used === null) {
+                continue;
+            }
+            $out[] = [
+                'name' => $name,
+                'used_pct' => $used === null ? null : round(max(0.0, min(100.0, $used)), 1),
+                'mem_used_mb' => is_numeric($f[2] ?? null) ? (int) $f[2] : null,
+                'mem_total_mb' => is_numeric($f[3] ?? null) ? (int) $f[3] : null,
+                'temp_c' => is_numeric($f[4] ?? null) ? (float) $f[4] : null,
+            ];
+        }
+
+        return $out;
     }
 
     /**

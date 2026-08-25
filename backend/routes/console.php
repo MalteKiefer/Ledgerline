@@ -46,7 +46,9 @@ Schedule::command('contacts:sync-sources')->everyFiveMinutes()->withoutOverlappi
 // minutes rather than fifteen because each run is also a data point: CPU,
 // memory, load and disk are stored per snapshot, and a series sampled four
 // times an hour is a shape, not a history.
-Schedule::command('servers:poll')->everyFiveMinutes()->withoutOverlapping();
+// Ticks at the tightest interval a server may ask for; the command itself
+// only queues the servers whose own poll_interval_s has elapsed.
+Schedule::command('servers:poll')->everyThirtySeconds()->withoutOverlapping();
 
 // Ping every server and connect to its monitored ports. Runs far more often
 // than the SSH poll because it costs a socket rather than a session — an outage
