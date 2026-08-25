@@ -44,6 +44,7 @@ use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\ContactShareController;
 use App\Http\Controllers\ContactSyncSourceController;
 use App\Http\Controllers\CryptoController;
+use App\Http\Controllers\DeadlineController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesChangesController;
 use App\Http\Controllers\FilesController;
@@ -267,6 +268,13 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/finance/receipts/{id}/force', [FinanceController::class, 'forceDeleteStandaloneReceipt'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.receipts.force');
             Route::get('/finance/receipts/{receipt}/raw', [FinanceController::class, 'receiptFile'])->whereNumber('receipt')->middleware('throttle:3000,1')->name('api.finance.receipts.raw');
         });
+
+        // Deadlines read out of already-indexed document text. Not module-gated:
+        // the findings come from files, mail, gallery and finance alike, so gating
+        // it on one of them would hide the others' deadlines.
+        Route::get('/deadlines', [DeadlineController::class, 'index'])->middleware('throttle:120,1')->name('api.deadlines.index');
+        Route::put('/deadlines/{deadline}', [DeadlineController::class, 'update'])->middleware('throttle:120,1')->whereNumber('deadline')->name('api.deadlines.update');
+        Route::post('/deadlines/scan', [DeadlineController::class, 'scan'])->middleware('throttle:6,1')->name('api.deadlines.scan');
 
         // Generic address autocomplete (forward geocode). Device-authenticated but
         // NOT module-gated — both the calendar event editor and the contacts map

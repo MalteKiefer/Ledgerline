@@ -16,6 +16,7 @@ use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\ContactShareController;
 use App\Http\Controllers\ContactSyncSourceController;
 use App\Http\Controllers\CryptoController;
+use App\Http\Controllers\DeadlineController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
@@ -333,6 +334,13 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/finance/receipts/{receipt}/raw', [FinanceController::class, 'receiptFile'])->whereNumber('receipt')->middleware('throttle:3000,1')->name('finance.receipts.raw');
         Route::delete('/finance/transactions/{transaction}/receipts/{receipt}', [FinanceController::class, 'destroyReceipt'])->whereNumber('transaction')->middleware('throttle:600,1')->name('finance.transactions.receipts.destroy');
     });
+
+    // Deadlines read out of already-indexed document text. Not module-gated:
+    // the findings come from files, mail, gallery and finance alike, so gating
+    // it on one of them would hide the others' deadlines.
+    Route::get('/deadlines', [DeadlineController::class, 'index'])->middleware('throttle:120,1')->name('deadlines.index');
+    Route::put('/deadlines/{deadline}', [DeadlineController::class, 'update'])->middleware('throttle:120,1')->whereNumber('deadline')->name('deadlines.update');
+    Route::post('/deadlines/scan', [DeadlineController::class, 'scan'])->middleware('throttle:6,1')->name('deadlines.scan');
     Route::redirect('/invoices', '/finance'); // old bookmarks
 
     // Per-user Files preferences (version-history depth). The edit page render is

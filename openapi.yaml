@@ -1266,6 +1266,27 @@ components:
             at: { type: string, format: date }
         transaction_ids: { type: array, items: { type: integer } }
 
+    DocumentDeadline:
+      type: object
+      description: >
+        A deadline read out of already-indexed document text (files.search_text,
+        gallery_photos.ocr_text, mail_messages.search_text, finance_receipts.ocr).
+        A FINDING, not a fact: confirmed_at is null until a human agrees, and only
+        a confirmed deadline is ever reminded about — a pattern matcher misreads
+        eventually, and a wrong date asserted as true is worse than none.
+      properties:
+        id: { type: integer }
+        source_type: { type: string, enum: [file, photo, mail, receipt] }
+        source_id: { type: integer, description: "Row id in the owning module's table (polymorphic, no FK: an orphaned finding is harmless derived data)." }
+        due_on: { type: string, description: "Date; carries a time part (a `date` cast serialises like `datetime`)." }
+        kind: { type: string, enum: [contract_end, notice, warranty, expiry, other] }
+        evidence: { type: [string, "null"], description: "The sentence it was read from — without it nobody can judge the finding." }
+        label: { type: [string, "null"], description: "Document name or mail subject." }
+        confirmed_at: { type: [string, "null"], format: date-time }
+        dismissed_at: { type: [string, "null"], format: date-time, description: "Remembered, so a rescan cannot resurrect a rejected finding." }
+        reminded_at: { type: [string, "null"], format: date-time }
+        version: { type: integer }
+
     DuplicateGroup:
       type: object
       description: "A suspected-duplicate group (read-only). `ids` are the row ids sharing `key` for `reason`."
@@ -5323,6 +5344,90 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /deadlines:
+    get:
+      tags: [Finance]
+      operationId: deadlinesIndex
+      summary: Deadlines found in documents (contract ends, notice periods, expiry)
+      description: >
+        Upcoming and not-yet-dismissed findings, soonest first (max 500).
+        Not module-gated: the findings come from files, mail, gallery and finance
+        alike, so gating on one would hide the others'. Throttle 120/min.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deadlines: { type: array, items: { $ref: "#/components/schemas/DocumentDeadline" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /deadlines/{deadline}:
+    put:
+      tags: [Finance]
+      operationId: deadlinesUpdate
+      summary: Confirm, dismiss or correct a deadline finding
+      description: >
+        Confirming is what turns a suggestion into something reminded about.
+        Correcting `due_on` clears `reminded_at`, because a corrected date is a
+        different deadline and must fire again. Throttle 120/min.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: deadline, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirmed: { type: boolean }
+                dismissed: { type: boolean }
+                due_on: { type: string, format: date }
+                label: { type: [string, "null"], maxLength: 300 }
+                kind: { type: string, enum: [contract_end, notice, warranty, expiry, other] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deadline: { $ref: "#/components/schemas/DocumentDeadline" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /deadlines/scan:
+    post:
+      tags: [Finance]
+      operationId: deadlinesScan
+      summary: Re-read this account's documents for deadlines now
+      description: >
+        Runs the same scan the nightly job does (deadlines:scan), over text the
+        modules already indexed for search — it extracts nothing itself. A
+        dismissed finding stays dismissed. Throttle 6/min.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scanned: { type: integer }
+                  found: { type: integer }
+                  new: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /finance/duplicates:
     get:
       tags: [Finance]
