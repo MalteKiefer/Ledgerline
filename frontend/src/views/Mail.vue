@@ -135,12 +135,15 @@
         </div>
         <div class="ml-auto flex items-center gap-1.5">
           <Btn :variant="filters.seen === false ? 'soft' : 'ghost'" size="sm" @click="toggleUnread">{{ t('mail.list.unread') }}</Btn>
+          <Btn :variant="chipOn('is:starred') ? 'soft' : 'ghost'" size="sm" icon="star" :title="t('mail.list.only_starred')" @click="toggleChip('is:starred')" />
+          <Btn :variant="chipOn('has:attachment') ? 'soft' : 'ghost'" size="sm" icon="attach_file" :title="t('mail.list.only_attachment')" @click="toggleChip('has:attachment')" />
           <Btn :variant="filters.spam === true ? 'soft' : 'ghost'" size="sm" @click="toggleSpam">{{ t('mail.list.spam') }}</Btn>
           <DropdownMenuRoot>
             <DropdownMenuTrigger class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('mail.extras.export')">
               <Icon name="more_vert" :size="18" />
             </DropdownMenuTrigger>
             <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-52 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <DropdownMenuItem :class="menuItem" @select="markFolderRead"><Icon name="mark_email_read" :size="18" />{{ t('mail.actions.mark_all_read') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItem" @select="saveCurrentSearch"><Icon name="bookmark_add" :size="18" />{{ t('mail.extras.save_search') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItem" @select="doExport('mbox')"><Icon name="download" :size="18" />{{ t('mail.extras.export_mbox') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItem" @select="doExport('zip')"><Icon name="folder_zip" :size="18" />{{ t('mail.extras.export_zip') }}</DropdownMenuItem>
@@ -161,6 +164,8 @@
         <div class="ml-auto flex flex-wrap items-center gap-1">
           <Btn variant="ghost" size="xs" icon="mark_email_read" :loading="bulkBusy" @click="bulkSeen(true)">{{ t('mail.actions.mark_read') }}</Btn>
           <Btn variant="ghost" size="xs" icon="mark_email_unread" :loading="bulkBusy" @click="bulkSeen(false)">{{ t('mail.actions.mark_unread') }}</Btn>
+          <Btn variant="ghost" size="xs" icon="star" :loading="bulkBusy" :title="t('mail.actions.flag')" @click="bulkFlag(true)" />
+          <Btn variant="ghost" size="xs" icon="star_border" :loading="bulkBusy" :title="t('mail.actions.unflag')" @click="bulkFlag(false)" />
           <Btn v-if="!filters.trashed" variant="ghost" size="xs" icon="delete" :loading="bulkBusy" @click="bulkTrash">{{ t('mail.actions.trash') }}</Btn>
           <Btn v-else variant="ghost" size="xs" icon="restore" :loading="bulkBusy" @click="bulkRestore">{{ t('mail.actions.restore') }}</Btn>
 
@@ -316,6 +321,8 @@
           <div class="truncate text-base font-semibold">{{ reader.subject || t('mail.reader.subject') }}</div>
           <div class="truncate text-xs text-[var(--ll-muted)]">{{ reader.from_name || reader.from_email }}</div>
         </div>
+        <Btn variant="ghost" size="sm" icon="keyboard_arrow_up" :disabled="!hasNeighbour(-1)" :title="t('mail.reader.previous')" @click="moveCursor(-1)" />
+        <Btn variant="ghost" size="sm" icon="keyboard_arrow_down" :disabled="!hasNeighbour(1)" :title="t('mail.reader.next')" @click="moveCursor(1)" />
         <Btn variant="ghost" size="sm" icon="close" :title="t('common.close')" @click="readerOpen = false" />
       </div>
       <!-- Header -->
@@ -418,7 +425,16 @@
       </div>
     </div>
   </aside>
-  <section v-if="compose.show && !compose.minimized" class="fixed bottom-3 right-4 z-[1500] flex h-[min(48rem,calc(100vh-6rem))] w-[min(44rem,calc(100vw-2rem))] min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] shadow-2xl">
+  <section
+    v-if="compose.show && !compose.minimized"
+    class="fixed bottom-3 right-4 z-[1500] flex h-[min(48rem,calc(100vh-6rem))] w-[min(44rem,calc(100vw-2rem))] min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] shadow-2xl"
+    @dragenter.prevent="composeDragDepth++" @dragover.prevent
+    @dragleave.prevent="composeDragDepth = Math.max(0, composeDragDepth - 1)"
+    @drop.prevent="onComposeDrop"
+  >
+    <div v-if="composeDragDepth > 0" class="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-primary-500/10 backdrop-blur-[1px]">
+      <div class="rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white shadow-lg">{{ t('mail.send.drop_here') }}</div>
+    </div>
       <header class="border-b border-[var(--ll-border)] bg-[var(--ll-surface)]">
         <div class="flex items-center gap-2 px-4 py-3 md:px-5">
           <div class="min-w-0 flex-1"><div class="text-base font-semibold">{{ composeTitle }}</div><div class="flex items-center gap-1 text-xs text-[var(--ll-muted)]"><Icon :name="composeSaving ? 'sync' : 'cloud_done'" :size="14" :class="composeSaving ? 'animate-spin' : ''" />{{ composeSaving ? t('mail.send.draft_saving') : t('mail.send.draft_saved') }}</div></div>
@@ -719,7 +735,7 @@ const galleryStore = useGalleryStore();
 const cryptoStore = useCryptoStore();
 const route = useRoute();
 const router = useRouter();
-const { success, error } = useToast();
+const { success, error, toast, undoable } = useToast();
 const p = useProfileStore();
 const filters = s.filters;
 
@@ -869,6 +885,21 @@ onMounted(async () => {
 onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); window.removeEventListener('keydown', onKey); });
 
 const searchHelp = ref(false);
+
+/**
+ * Quick filters are search terms, not a parallel filter set.
+ *
+ * That way a chip composes with whatever is typed, survives a saved search, and
+ * there is one place where "what is being filtered" lives.
+ */
+const chipOn = (term: string) => filters.q.split(/\s+/).includes(term);
+function toggleChip(term: string) {
+  const parts = filters.q.split(/\s+/).filter(Boolean);
+  const at = parts.indexOf(term);
+  if (at >= 0) parts.splice(at, 1); else parts.push(term);
+  filters.q = parts.join(' ');
+  void reload();
+}
 const searchTips = computed(() => [
   t('mail.list.search_help_from'), t('mail.list.search_help_to'), t('mail.list.search_help_subject'),
   t('mail.list.search_help_folder'), t('mail.list.search_help_is'), t('mail.list.search_help_has'),
@@ -900,11 +931,23 @@ function keysBlocked(): boolean {
 async function moveCursor(delta: number) {
   const rows = s.messages;
   if (!rows.length) return;
-  const next = cursor.value < 0 ? (delta > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, cursor.value + delta));
+  // Opening a message by clicking it leaves the cursor unset; start from the
+  // row the reader shows so the arrows continue from what is on screen.
+  const from = cursor.value >= 0 ? cursor.value : rows.findIndex((m) => m.id === reader.value?.id);
+  const next = from < 0 ? (delta > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, from + delta));
   cursor.value = next;
   const row = rows[next];
   document.getElementById(`mail-row-${row.id}`)?.scrollIntoView({ block: 'nearest' });
   if (readerOpen.value) await openReader(row);
+}
+
+/** Whether there is a row in that direction — for the reader's arrows. */
+function hasNeighbour(delta: number): boolean {
+  const rows = s.messages;
+  if (!rows.length) return false;
+  const at = cursor.value >= 0 ? cursor.value : rows.findIndex((m) => m.id === reader.value?.id);
+  if (at < 0) return true;
+  return at + delta >= 0 && at + delta < rows.length;
 }
 
 /** The row a shortcut acts on: the cursor, else what the reader shows. */
@@ -1272,19 +1315,68 @@ async function saveAttToFolder(folderId: number | null) {
 const bulkBusy = ref(false);
 async function bulkSeen(seen: boolean) {
   if (!s.selected.length || bulkBusy.value) return;
+  const ids = [...s.selected];
   bulkBusy.value = true;
-  try { await s.setSeen([...s.selected], seen); await reload(); refreshCounts(); }
-  catch { error(t('common.error')); }
-  finally { bulkBusy.value = false; }
+  try {
+    await s.setSeen(ids, seen);
+    await reload(); refreshCounts();
+    undoable(t('mail.actions.marked_n', { n: String(ids.length) }), t('common.undo'), () => { void undoSeen(ids, !seen); });
+  } catch { error(t('common.error')); } finally { bulkBusy.value = false; }
 }
+async function undoSeen(ids: string[], seen: boolean) {
+  try { await s.setSeen(ids, seen); await reload(); refreshCounts(); } catch { error(t('common.error')); }
+}
+
+/**
+ * Trash the selection, offering to take it back.
+ *
+ * No confirmation dialog: trashing here is a soft hide the undo reverses, and a
+ * prompt in front of a reversible action is the kind that gets clicked through
+ * without reading — which then makes the irreversible ones read the same way.
+ */
 async function bulkTrash() {
-  if (!s.selected.length || bulkBusy.value || !await confirmAsk(t('mail.actions.confirm_trash'))) return;
+  if (!s.selected.length || bulkBusy.value) return;
+  const ids = [...s.selected];
   bulkBusy.value = true;
-  try { await s.trash([...s.selected]); await reload(); refreshCounts(); }
-  catch { error(t('common.error')); }
-  finally { bulkBusy.value = false; }
+  try {
+    await s.trash(ids);
+    await reload(); refreshCounts();
+    undoable(t('mail.actions.trashed_n', { n: String(ids.length) }), t('common.undo'), () => { void undoTrash(ids); });
+  } catch { error(t('common.error')); } finally { bulkBusy.value = false; }
+}
+async function undoTrash(ids: string[]) {
+  try { await s.restore(ids); await reload(); refreshCounts(); } catch { error(t('common.error')); }
 }
 async function bulkRestore() { if (!s.selected.length) return; try { await s.restore([...s.selected]); await reload(); } catch { error(t('common.error')); } }
+
+/** Star or unstar the selection — the endpoint already takes a list. */
+async function bulkFlag(flagged: boolean) {
+  if (!s.selected.length || bulkBusy.value) return;
+  const ids = [...s.selected];
+  bulkBusy.value = true;
+  try {
+    await s.setFlagged(ids, flagged);
+    for (const m of s.messages) if (ids.includes(m.id)) m.flagged = flagged;
+  } catch { error(t('mail.toast.flag_failed')); } finally { bulkBusy.value = false; }
+}
+
+/**
+ * Mark a whole folder read, not just the loaded page.
+ *
+ * The page is what the selection can reach; this asks the server for the unread
+ * ids under the current filter first, so "all" means all.
+ */
+async function markFolderRead() {
+  if (bulkBusy.value) return;
+  bulkBusy.value = true;
+  try {
+    const ids = await s.unreadIds();
+    if (!ids.length) { toast(t('mail.actions.nothing_unread')); return; }
+    await s.setSeen(ids, true);
+    await reload(); refreshCounts();
+    undoable(t('mail.actions.marked_n', { n: String(ids.length) }), t('common.undo'), () => { void undoSeen(ids, false); });
+  } catch { error(t('common.error')); } finally { bulkBusy.value = false; }
+}
 // Toggle a label across the selection: remove it if every selected message
 // already carries it, otherwise add it (uses the setLabels remove[] arm).
 function selectionHasLabel(id: number): boolean {
@@ -1550,6 +1642,17 @@ async function openAssetPicker(kind: 'files' | 'gallery') {
   assetPicker.kind = kind; assetPicker.q = '';
   try { if (kind === 'files' && !filesStore.files.length) await filesStore.load(); if (kind === 'gallery' && !galleryStore.photos.length) await galleryStore.load(); assetPicker.show = true; } catch { error(t('common.error')); }
 }
+// Files dropped on the compose window. A depth counter, not a boolean: a
+// dragleave also fires when the pointer crosses into a CHILD element, and a
+// boolean makes the overlay flicker across the editor.
+const composeDragDepth = ref(0);
+function onComposeDrop(e: DragEvent) {
+  composeDragDepth.value = 0;
+  const files = Array.from(e.dataTransfer?.files ?? []);
+  if (!files.length) return;   // dragging text or a link is not an attachment
+  addComposeFiles(files);
+}
+
 function selectAsset(id: number) { const ids = assetPicker.kind === 'files' ? compose.fileIds : compose.galleryPhotoIds; const index = ids.indexOf(id); if (index >= 0) ids.splice(index, 1); else if (ids.length + compose.files.length < 20) ids.push(id); scheduleDraft(); }
 function removeFileAttachment(id: number) { compose.fileIds = compose.fileIds.filter((value) => value !== id); scheduleDraft(); }
 function removeGalleryAttachment(id: number) { compose.galleryPhotoIds = compose.galleryPhotoIds.filter((value) => value !== id); scheduleDraft(); }
@@ -1567,7 +1670,15 @@ function lookupRecipients() {
   recipientTimer = setTimeout(async () => {
     const q = compose.to.split(/[,;\n]/).pop()?.trim() ?? '';
     if (q.length < 2) { recipientSuggestions.value = []; return; }
-    try { const data = await api.get<{ contacts: { fn?: string | null; emails?: string[] | null }[] }>('/api/v1/contacts/data'); recipientSuggestions.value = data.contacts.flatMap((contact) => (contact.emails ?? []).map((email) => ({ name: contact.fn ?? '', email }))).filter((entry) => `${entry.name} ${entry.email}`.toLowerCase().includes(q.toLowerCase())).slice(0, 8); } catch { recipientSuggestions.value = []; }
+    // /contacts/suggest searches server-side. The previous version fetched
+    // /contacts/data — the WHOLE address book — on every keystroke and filtered
+    // it here, so each typed letter moved the entire book over the wire.
+    try {
+      const data = await api.get<{ contacts: { fn?: string | null; emails?: string[] | null }[] }>(`/api/v1/contacts/suggest?q=${encodeURIComponent(q)}`);
+      recipientSuggestions.value = (data.contacts ?? [])
+        .flatMap((contact) => (contact.emails ?? []).map((email) => ({ name: contact.fn ?? '', email })))
+        .slice(0, 8);
+    } catch { recipientSuggestions.value = []; }
   }, 180);
 }
 function draftPayload(): Omit<MailDraft, 'id' | 'updated_at'> { return { mail_account_id: compose.accountId, mode: compose.mode, source_message_id: compose.sourceId, to: parseEmails(compose.to), cc: parseEmails(compose.cc), bcc: parseEmails(compose.bcc), subject: compose.subject || null, text_body: compose.body || null, html_body: compose.html || null, mail_signature_id: compose.signatureId, sent_folder: compose.sentFolder || null, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority, crypto_mode: compose.cryptoMode, crypto_type: compose.cryptoType, signing_key_id: compose.signingKeyId, recipient_key_ids: compose.recipientKeyIds }; }

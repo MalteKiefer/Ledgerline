@@ -308,6 +308,29 @@ export const useMailStore = defineStore('mail', () => {
   // --- Message state (bulk, metadata-only) ----------------------------------
   const setSeen = (ids: string[], seen: boolean) => api.post<{ updated: number }>('/api/v1/mail/messages/seen', { ids, seen });
   const setFlagged = (ids: string[], flagged: boolean) => api.post<{ updated: number }>('/api/v1/mail/messages/flag', { ids, flagged });
+
+  /**
+   * Every unread id under the current filter — for "mark all as read", which
+   * must mean the folder and not the page the client happens to have loaded.
+   */
+  async function unreadIds(): Promise<string[]> {
+    const f = filters.value;
+    const qs = new URLSearchParams();
+    if (f.accountId != null) qs.set('account_id', String(f.accountId));
+    if (f.folder) qs.set('folder', f.folder);
+    if (f.label != null) qs.set('label', String(f.label));
+    if (f.q.trim()) qs.set('q', f.q.trim());
+    qs.set('seen', '0');
+    qs.set('per_page', '1000');
+    const out: string[] = [];
+    for (let page = 1; page <= 20; page++) {   // 20k unread is a bound, not a limit anyone reaches
+      qs.set('page', String(page));
+      const r = await api.get<{ data: MailMessage[]; meta: PageMeta }>(`/api/v1/mail/messages?${qs}`);
+      out.push(...(r.data ?? []).map((m) => m.id));
+      if (page >= r.meta.last_page) break;
+    }
+    return out;
+  }
   const trash = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/trash', { ids });
   const restore = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/restore', { ids });
   const pushBack = (id: string, folder?: string | null) => api.post<{ ok: boolean }>(`/api/v1/mail/messages/${id}/pushback`, { folder: folder ?? null });
@@ -478,7 +501,7 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
-    setSeen, setFlagged, trash, restore, pushBack, deleteOrigin, setLabels,
+    setSeen, setFlagged, unreadIds, trash, restore, pushBack, deleteOrigin, setLabels,
     compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, updateRule, deleteRule,
