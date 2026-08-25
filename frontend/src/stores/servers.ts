@@ -168,6 +168,8 @@ export interface Server {
   disk_alert_pct?: number | null;
   mem_alert_pct?: number | null;
   temp_alert_c?: number | null;
+  /** Seconds between usage snapshots for THIS server (30..1800). Null = 300s default. */
+  poll_interval_s?: number | null;
   /** Extra TCP ports to watch. The SSH port is always checked and is not listed here. */
   monitor_ports: { port: number; label: string | null }[];
   /** Only returned by show(): derived from the stored key for the removal steps. */
@@ -185,6 +187,8 @@ export interface TrendPoint {
   mem_used_pct: number | null;
   cpu_used_pct: number | null;
   disk_max_pct: number | null;
+  /** Busiest GPU of the host, or null when it has none that reports a load. */
+  gpu_used_pct: number | null;
 }
 
 /** One reachability sample. */

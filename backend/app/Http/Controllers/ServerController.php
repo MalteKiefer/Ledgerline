@@ -462,6 +462,10 @@ class ServerController extends Controller
             'monitor_ports' => ['sometimes', 'array', 'max:20'],
             'monitor_ports.*.port' => ['required', 'integer', 'min:1', 'max:65535'],
             'monitor_ports.*.label' => ['nullable', 'string', 'max:40'],
+            // How often the usage snapshot is taken for THIS server. Bounded on
+            // both ends: under 30s it is a load generator, over 30min the
+            // history is too coarse to read. Null = the 300s default.
+            'poll_interval_s' => ['nullable', 'integer', 'min:30', 'max:1800'],
             'disk_alert_pct' => ['nullable', 'integer', 'min:50', 'max:99'],
             'mem_alert_pct' => ['nullable', 'integer', 'min:50', 'max:99'],
             'temp_alert_c' => ['nullable', 'integer', 'min:40', 'max:120'],
@@ -506,6 +510,9 @@ class ServerController extends Controller
                 // Null is a real value here — it means "use the default" — so
                 // an empty field has to clear the override rather than be
                 // ignored.
+                'poll_interval_s' => $request->has('poll_interval_s')
+                    ? ($request->integer('poll_interval_s') ?: null)
+                    : $server?->poll_interval_s,
                 'disk_alert_pct' => $request->has('disk_alert_pct')
                     ? ($request->integer('disk_alert_pct') ?: null)
                     : $server?->disk_alert_pct,
@@ -544,7 +551,28 @@ class ServerController extends Controller
             'mem_used_pct' => is_numeric($mem['used_pct'] ?? null) ? (float) $mem['used_pct'] : null,
             'cpu_used_pct' => is_numeric($cpu['used_pct'] ?? null) ? (float) $cpu['used_pct'] : null,
             'disk_max_pct' => is_numeric($facts['disk_max_pct'] ?? null) ? (float) $facts['disk_max_pct'] : null,
+            // Busiest card of the host — one line on the chart, not one per GPU.
+            // Null when the host has no GPU (or none that reports a load), which
+            // is what keeps the series absent instead of drawing a flat zero.
+            'gpu_used_pct' => $this->busiestGpuPct($facts),
         ];
+    }
+
+    /**
+     * The highest reported GPU load of a snapshot, or null when none reports one.
+     *
+     * @param  array<string, mixed>  $facts
+     */
+    private function busiestGpuPct(array $facts): ?float
+    {
+        $values = [];
+        foreach (is_array($facts['gpus'] ?? null) ? $facts['gpus'] : [] as $gpu) {
+            if (is_array($gpu) && is_numeric($gpu['used_pct'] ?? null)) {
+                $values[] = (float) $gpu['used_pct'];
+            }
+        }
+
+        return $values === [] ? null : max($values);
     }
 
     /**
@@ -571,6 +599,7 @@ class ServerController extends Controller
             'restricted_key' => $server->restricted_key,
             'account_created' => $server->account_created,
             'monitor_ports' => $server->monitorPorts(),
+            'poll_interval_s' => $server->poll_interval_s,
             'disk_alert_pct' => $server->disk_alert_pct,
             'mem_alert_pct' => $server->mem_alert_pct,
             'temp_alert_c' => $server->temp_alert_c,

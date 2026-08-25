@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.741.0
+  version: 1.742.0
   license:
     name: Proprietary
   description: >
@@ -1362,6 +1362,7 @@ components:
         disk_alert_pct: { type: [integer, "null"], minimum: 50, maximum: 99, description: "Filesystem share that triggers a notification. Null uses the built-in 90. Adjustable because 90 is right for a system disk and nonsense for an archive that lives at 95 — and a threshold nobody can move is one people learn to ignore." }
         mem_alert_pct: { type: [integer, "null"], minimum: 50, maximum: 99, description: "Memory share that triggers a notification. Null uses the built-in 95." }
         temp_alert_c: { type: [integer, "null"], minimum: 40, maximum: 120, description: "Hottest-sensor temperature that triggers a notification. Null uses the built-in 85." }
+        poll_interval_s: { type: [integer, "null"], minimum: 30, maximum: 1800, description: "Seconds between usage snapshots for THIS server. Null = the 300s default. The sweep ticks every 30s and only queues a server once its own interval has elapsed." }
         host_fingerprint: { type: [string, "null"], description: "Pinned host key fingerprint, OpenSSH form: SHA256 plus 43 base64 characters." }
         status:
           type: [object, "null"]
@@ -1582,6 +1583,7 @@ components:
         disk_alert_pct: { type: [integer, "null"], minimum: 50, maximum: 99, description: "Send null or omit to fall back to the default." }
         mem_alert_pct: { type: [integer, "null"], minimum: 50, maximum: 99 }
         temp_alert_c: { type: [integer, "null"], minimum: 40, maximum: 120 }
+        poll_interval_s: { type: [integer, "null"], minimum: 30, maximum: 1800, description: "Seconds between usage snapshots for this server; null restores the 300s default. Outside 30..1800 is rejected (422)." }
     ServerCheckSeries:
       type: object
       description: "Reachability history for one thing being checked: the ping, or one TCP port."
@@ -7654,7 +7656,9 @@ paths:
                         duration_ms: { type: integer }
                         load: { type: array, items: { type: number } }
                         mem_used_pct: { type: [number, "null"] }
+                        cpu_used_pct: { type: [number, "null"], description: "Busy share of the CPU (everything except idle and iowait), from two /proc/stat samples a second apart." }
                         disk_max_pct: { type: [number, "null"] }
+                        gpu_used_pct: { type: [number, "null"], description: "Busiest GPU of the host, or null when it has none that reports a load — the client draws no GPU series in that case rather than a flat zero." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }

@@ -135,9 +135,25 @@
 
       <Card v-if="trend.length > 1" :title="t('servers.history')" :body-class="'p-4'">
         <div class="-ml-1"><Chart :data="chartData" :options="chartOptions" :height="180" /></div>
-        <div class="mt-2 flex gap-4 text-[0.7rem] text-[var(--ll-muted)]">
+        <!-- One entry per drawn series. CPU was charted but not listed, which
+             left an unexplained line on the graph. -->
+        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.7rem] text-[var(--ll-muted)]">
+          <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full" :style="{ background: CHART_CPU }" />{{ t('servers.cpu') }}</span>
           <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full" :style="{ background: CHART_INK }" />{{ t('servers.memory') }}</span>
           <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full" :style="{ background: CHART_WARN }" />{{ t('servers.disks') }}</span>
+          <span v-if="hasGpuHistory" class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full" :style="{ background: CHART_GPU }" />{{ t('servers.gpu') }}</span>
+
+          <!-- How often the usage snapshot is taken for this server. Right here,
+               because this chart is the thing the interval shapes. -->
+          <span class="ml-auto flex items-center gap-2">
+            <span>{{ t('servers.poll_interval') }}</span>
+            <Select
+              class="w-32"
+              :model-value="pollInterval"
+              :options="pollIntervalOptions"
+              @update:model-value="savePollInterval($event)"
+            />
+          </span>
         </div>
       </Card>
     </template>
@@ -265,6 +281,7 @@ import { fmtDate, fmtDateTime, fmtTime } from '@spa/lib/datetime';
 const CHART_INK = '#6d4aff';
 const CHART_WARN = '#e0a11b';
 const CHART_CPU = '#2f9e6e';
+const CHART_GPU = '#d1568c';
 const AXIS_INK = '#625d69';
 const AXIS_FONT = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -547,12 +564,23 @@ const trend = computed(() => [...history.value].reverse().filter((p) => p.ok));
  * labels by hand — which is why they still collided. Given seconds and
  * `time: true` it picks tick positions that fit the width itself.
  */
-const chartData = computed<AlignedData>(() => [
-  trend.value.map((p) => Math.floor(new Date(p.collected_at).getTime() / 1000)),
-  trend.value.map((p) => p.cpu_used_pct ?? null),
-  trend.value.map((p) => p.mem_used_pct ?? null),
-  trend.value.map((p) => p.disk_max_pct ?? null),
-]);
+/**
+ * A GPU series is only drawn for a host that actually has one. Charting a line
+ * of nulls would put a legend entry next to empty space and read as "the GPU is
+ * idle" on a machine that has no GPU at all.
+ */
+const hasGpuHistory = computed(() => trend.value.some((p) => p.gpu_used_pct != null));
+
+const chartData = computed<AlignedData>(() => {
+  const cols: AlignedData = [
+    trend.value.map((p) => Math.floor(new Date(p.collected_at).getTime() / 1000)),
+    trend.value.map((p) => p.cpu_used_pct ?? null),
+    trend.value.map((p) => p.mem_used_pct ?? null),
+    trend.value.map((p) => p.disk_max_pct ?? null),
+  ] as AlignedData;
+  if (hasGpuHistory.value) (cols as unknown[]).push(trend.value.map((p) => p.gpu_used_pct ?? null));
+  return cols;
+});
 
 /** True once the window spans more than a day, when a bare clock time is ambiguous. */
 const trendSpansDays = computed(() => {
@@ -572,6 +600,7 @@ const chartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
     { label: t('servers.cpu'), stroke: CHART_CPU, width: 1.5 },
     { label: t('servers.memory'), stroke: CHART_INK, fill: CHART_INK + '26' },
     { label: t('servers.disks'), stroke: CHART_WARN },
+    ...(hasGpuHistory.value ? [{ label: t('servers.gpu'), stroke: CHART_GPU, width: 1.5 }] : []),
   ],
   axes: [
     {
@@ -592,6 +621,35 @@ const chartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
   ],
   scales: { x: { time: true }, y: { range: [0, 100] } },
 }));
+
+/**
+ * How often this server's usage snapshot is taken. Bounded 30s..30min by the
+ * server rules; the choices below are the useful points in that range, so a
+ * value cannot be typed that the API then refuses.
+ *
+ * Null on the row means "the default", which is what most servers want — it is
+ * shown as the 5-minute entry rather than as an empty select, because the
+ * server IS polled every five minutes and an empty field would suggest it is not.
+ */
+const POLL_DEFAULT_S = 300;
+const pollIntervalOptions = computed(() => [
+  { title: t('servers.poll_30s'), value: 30 },
+  { title: t('servers.poll_1m'), value: 60 },
+  { title: t('servers.poll_5m'), value: 300 },
+  { title: t('servers.poll_15m'), value: 900 },
+  { title: t('servers.poll_30m'), value: 1800 },
+]);
+const pollInterval = computed(() => server.value?.poll_interval_s ?? POLL_DEFAULT_S);
+
+async function savePollInterval(value: unknown) {
+  const seconds = Number(value);
+  if (!server.value || !Number.isFinite(seconds)) return;
+  try {
+    const updated = await s.update(server.value.id, { poll_interval_s: seconds });
+    server.value = { ...server.value, poll_interval_s: updated.poll_interval_s };
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
+}
 
 // ---- actions ----
 
