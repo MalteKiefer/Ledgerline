@@ -2351,6 +2351,7 @@ components:
             mark_read: { type: [boolean, "null"] }
             trash: { type: [boolean, "null"] }
             skip: { type: [boolean, "null"] }
+            file_receipt: { type: [boolean, "null"], description: "File the message's attachments in the finance receipt inbox on arrival (best-effort: a failure never costs the archived mail; deduplicated by content, so a resend stays one receipt)." }
       required: [id, name, enabled, priority]
 
     MailSavedSearch:
@@ -12989,7 +12990,7 @@ paths:
             schema:
               type: object
               properties:
-                target: { type: string, enum: [files, paperless] }
+                target: { type: string, enum: [files, paperless, finance], description: "finance = file it as a standalone receipt (the receipt inbox then OCRs it, recognises amount/date/merchant and matches it against a bank booking). Deduplicated by content: filing the same document twice returns the existing receipt with duplicate:true." }
                 folder_id: { type: [integer, "null"], description: "Owner-scoped Files folder (target=files only)." }
               required: [target]
       responses:

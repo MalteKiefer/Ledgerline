@@ -76,6 +76,7 @@ return [
     ],
 
     'reader' => [
+        'save_to_finance' => 'Als Beleg ablegen',
         'to' => 'An',
         'cc' => 'Cc',
         'subject' => 'Betreff',
@@ -331,6 +332,7 @@ return [
         'stats' => 'Speicher',
     ],
     'toast' => [
+        'saved_to_finance' => 'Im Beleg-Posteingang abgelegt',
         'saved' => 'Konto gespeichert.',
         'deleted' => 'Konto gelöscht.',
         'sync_started' => 'Synchronisierung gestartet.',

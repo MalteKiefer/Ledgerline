@@ -76,6 +76,7 @@ return [
     ],
 
     'reader' => [
+        'save_to_finance' => 'File as receipt',
         'to' => 'To',
         'cc' => 'Cc',
         'subject' => 'Subject',
@@ -331,6 +332,7 @@ return [
         'stats' => 'Storage',
     ],
     'toast' => [
+        'saved_to_finance' => 'Filed in the receipt inbox',
         'saved' => 'Account saved.',
         'deleted' => 'Account deleted.',
         'sync_started' => 'Sync started.',

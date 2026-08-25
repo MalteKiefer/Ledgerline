@@ -334,6 +334,9 @@
                 <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.reader.save_section') }}</div>
                 <DropdownMenuItem :class="menuItem" @select="openAttSaveToFiles(att.id)"><Icon name="folder" :size="18" />{{ t('mail.reader.save_to_files') }}</DropdownMenuItem>
                 <DropdownMenuItem :class="menuItem" @select="saveAtt(att.id, 'paperless')"><Icon name="description" :size="18" />{{ t('mail.reader.save_to_paperless') }}</DropdownMenuItem>
+                <!-- Invoices arrive by mail; from here the receipt inbox does the
+                     rest (OCR, amount/date, partner, matching against a booking). -->
+                <DropdownMenuItem v-if="auth.can('finance')" :class="menuItem" @select="saveAtt(att.id, 'finance')"><Icon name="receipt_long" :size="18" />{{ t('mail.reader.save_to_finance') }}</DropdownMenuItem>
                 <div class="my-1 border-t border-[var(--ll-border)]" />
                 <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.reader.security_section') }}</div>
                 <DropdownMenuItem :class="menuItem" :disabled="attachmentVirusLoading === att.id" @select="scanAttachment(att.id)"><Icon name="security" :size="18" />{{ t('mail.reader.virustotal_check') }}</DropdownMenuItem>
@@ -625,11 +628,13 @@ import { useCryptoStore } from '@spa/stores/crypto';
 import RichTextEditor from '@spa/components/RichTextEditor.vue';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
+import { useAuthStore } from '@spa/stores/auth';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { renderInvoicePdfBlob } from '@spa/shared/invoice-print';
 import DOMPurify from 'dompurify';
 
 const s = useMailStore();
+const auth = useAuthStore();
 const filesStore = useFilesStore();
 const galleryStore = useGalleryStore();
 const cryptoStore = useCryptoStore();
@@ -904,8 +909,9 @@ async function doDeleteOrigin(m: MailMessage) {
   if (!await confirmAsk(t('mail.actions.confirm_delete_origin'), { danger: true })) return;
   try { await s.deleteOrigin(m.id, m.folder); success(t('common.saved')); } catch { error(t('common.error')); }
 }
-async function saveAtt(attId: string, target: 'files' | 'paperless') {
-  try { await s.saveAttachment(attId, target); success(target === 'files' ? t('mail.toast.saved_to_files') : t('mail.toast.saved_to_paperless')); }
+async function saveAtt(attId: string, target: 'files' | 'paperless' | 'finance') {
+  const done = { files: 'mail.toast.saved_to_files', paperless: 'mail.toast.saved_to_paperless', finance: 'mail.toast.saved_to_finance' }[target];
+  try { await s.saveAttachment(attId, target); success(t(done)); }
   catch { error(t('mail.toast.save_attachment_failed')); }
 }
 async function scanAttachment(attId: string) {

@@ -18,17 +18,19 @@ use Illuminate\Support\Collection;
  *   mark_read  — store as \Seen
  *   trash      — store soft-hidden (trashed_at)
  *   add_label  — attach the given label id after the row is written
+ *   file_receipt — file the message's attachments in the finance receipt inbox
+ *                  (invoices arrive by mail; this is the step done by hand)
  */
 final class RuleEvaluator
 {
     /**
      * @param  Collection<int, MailRule>  $rules
      * @param  array{from:string, to:string, subject:string, folder:string, has_attachment:bool}  $ctx
-     * @return array{skip:bool, mark_read:bool, trash:bool, label_ids:list<int>}
+     * @return array{skip:bool, mark_read:bool, trash:bool, file_receipt:bool, label_ids:list<int>}
      */
     public function evaluate(Collection $rules, array $ctx): array
     {
-        $out = ['skip' => false, 'mark_read' => false, 'trash' => false, 'label_ids' => []];
+        $out = ['skip' => false, 'mark_read' => false, 'trash' => false, 'file_receipt' => false, 'label_ids' => []];
 
         foreach ($rules as $rule) {
             if (! $this->matches($rule->match_json, $ctx)) {
@@ -37,13 +39,16 @@ final class RuleEvaluator
 
             $action = $rule->action_json;
             if (($action['skip'] ?? false) === true) {
-                return ['skip' => true, 'mark_read' => false, 'trash' => false, 'label_ids' => []];
+                return ['skip' => true, 'mark_read' => false, 'trash' => false, 'file_receipt' => false, 'label_ids' => []];
             }
             if (($action['mark_read'] ?? false) === true) {
                 $out['mark_read'] = true;
             }
             if (($action['trash'] ?? false) === true) {
                 $out['trash'] = true;
+            }
+            if (($action['file_receipt'] ?? false) === true) {
+                $out['file_receipt'] = true;
             }
             $label = $action['add_label'] ?? null;
             if (is_numeric($label)) {

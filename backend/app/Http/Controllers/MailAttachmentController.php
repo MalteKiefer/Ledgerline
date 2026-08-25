@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FileEntry;
 use App\Models\MailAttachment;
+use App\Services\Finance\ReceiptFiler;
 use App\Services\Paperless\PaperlessClient;
 use App\Support\BlobStore;
 use App\Support\Redactor;
@@ -63,6 +64,10 @@ class MailAttachmentController extends Controller
      * holds the plaintext, so there is no client upload:
      *   - target=files    → a new FileEntry (owner quota enforced, 413).
      *   - target=paperless→ POST to the user's Paperless via their own creds.
+     *   - target=finance → a standalone receipt in the finance inbox, where the
+     *     existing chain takes over: OCR, amount/date/merchant recognition,
+     *     partner matching, sha256 dedup, matching against a bank booking.
+     *     Invoices arrive by mail; this is the step that was done by hand.
      * (Gallery is not a module in this deployment; it is rejected at validation.)
      */
     public function save(Request $request, MailAttachment $attachment): JsonResponse
@@ -71,7 +76,7 @@ class MailAttachmentController extends Controller
         $uid = (int) $this->requireUser($request)->id;
 
         $request->validate([
-            'target' => ['required', Rule::in(['files', 'paperless'])],
+            'target' => ['required', Rule::in(['files', 'paperless', 'finance'])],
             'folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
         ]);
 
@@ -83,6 +88,7 @@ class MailAttachmentController extends Controller
 
         return match ($request->string('target')->value()) {
             'files' => $this->saveToFiles($request, $attachment, $bytes, $uid),
+            'finance' => $this->saveToFinance($attachment, $bytes, $uid),
             default => $this->saveToPaperless($attachment, $bytes, $uid),
         };
     }
@@ -114,6 +120,17 @@ class MailAttachmentController extends Controller
         $file->save();
 
         return response()->json(['ok' => true, 'target' => 'files', 'file_id' => $file->id]);
+    }
+
+    /** File the attachment in the finance inbox (see ReceiptFiler for the rules). */
+    private function saveToFinance(MailAttachment $attachment, string $bytes, int $uid): JsonResponse
+    {
+        $filed = app(ReceiptFiler::class)->file($uid, $bytes, $attachment->filename, $attachment->content_type);
+        if ($filed === null) {
+            return response()->json(['ok' => false, 'detail' => 'unsupported_type'], 422);
+        }
+
+        return response()->json(['ok' => true, 'target' => 'finance'] + $filed);
     }
 
     /** Hand the bytes to the user's Paperless instance (their own credentials). */

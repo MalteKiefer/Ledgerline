@@ -284,7 +284,7 @@ export const useMailStore = defineStore('mail', () => {
   const attachmentRawUrl = (attId: string, download = false) => api.streamUrl(`/api/v1/mail/attachments/${attId}/raw${download ? '?download=1' : ''}`);
   const virusTotalAttachment = (attId: string) => api.post<VirusTotalResult>(`/api/v1/mail/attachments/${attId}/virustotal`);
 
-  const saveAttachment = (attId: string, target: 'files' | 'paperless', folderId?: number | null) =>
+  const saveAttachment = (attId: string, target: 'files' | 'paperless' | 'finance', folderId?: number | null) =>
     api.post<{ ok: boolean; target: string; file_id?: number; task?: string }>(`/api/v1/mail/attachments/${attId}/save`, { target, folder_id: folderId ?? null });
 
   // --- Message state (bulk, metadata-only) ----------------------------------
