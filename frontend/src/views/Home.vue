@@ -50,6 +50,55 @@
       </div>
     </Card>
 
+    <!-- What the day looks like. Eight modules exist and this page used to know
+         two of them; these are the ones with something time-bound to say. -->
+    <div v-if="agenda.length || sortedTodos.length || unreadMail || memoryPhotos.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <Card v-if="auth.can('calendar')" :title="t('dash.today')" :body-class="'p-0'">
+        <template #actions><Btn variant="ghost" size="sm" @click="$router.push('/calendar')">{{ t('common.open') }}</Btn></template>
+        <div v-if="!agenda.length" class="px-4 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('dash.no_events') }}</div>
+        <div v-else class="divide-y divide-[var(--ll-border)]">
+          <button v-for="e in agenda.slice(0, 5)" :key="e.id" class="flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-black/[0.02] dark:hover:bg-white/5" @click="$router.push({ path: '/calendar', query: { event: e.id } })">
+            <span class="w-11 shrink-0 font-mono text-xs tabular-nums text-[var(--ll-muted)]">{{ e.all_day ? t('dash.all_day') : hhmm(e.start) }}</span>
+            <span class="min-w-0 flex-1 truncate text-sm">{{ e.summary || '—' }}</span>
+          </button>
+        </div>
+      </Card>
+
+      <Card v-if="auth.can('calendar')" :title="t('dash.tasks')" :body-class="'p-0'">
+        <template #actions><Btn variant="ghost" size="sm" @click="$router.push('/tasks')">{{ t('common.open') }}</Btn></template>
+        <div v-if="!sortedTodos.length" class="px-4 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('dash.no_tasks') }}</div>
+        <div v-else class="divide-y divide-[var(--ll-border)]">
+          <button v-for="todo in sortedTodos" :key="todo.id" class="flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-black/[0.02] dark:hover:bg-white/5" @click="$router.push('/tasks')">
+            <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="todoOverdue(todo) ? 'bg-red-500' : 'bg-[var(--ll-border)]'" />
+            <span class="min-w-0 flex-1 truncate text-sm">{{ todo.summary || '—' }}</span>
+            <span v-if="todo.due" class="shrink-0 text-xs" :class="todoOverdue(todo) ? 'text-red-600 dark:text-red-400' : 'text-[var(--ll-muted)]'">{{ String(todo.due).slice(0, 10) }}</span>
+          </button>
+        </div>
+      </Card>
+
+      <Card v-if="auth.can('mail')" :title="t('messages.nav.mail')">
+        <template #actions><Btn variant="ghost" size="sm" @click="$router.push('/mail')">{{ t('common.open') }}</Btn></template>
+        <button class="flex w-full items-center gap-3 text-left" @click="$router.push('/mail')">
+          <span class="grid h-10 w-10 place-items-center rounded-lg bg-blue-500/12 text-blue-600 dark:text-blue-400"><Icon name="mail" :size="20" /></span>
+          <span>
+            <span class="block font-mono text-2xl font-bold tabular-nums">{{ unreadMail }}</span>
+            <span class="text-xs text-[var(--ll-muted)]">{{ t('dash.unread') }}</span>
+          </span>
+        </button>
+      </Card>
+
+      <!-- "On this day": GalleryMemories already computes it; the landing page is
+           where it belongs. -->
+      <Card v-if="auth.can('gallery') && memoryPhotos.length" :title="t('dash.memories')" :body-class="'p-3'">
+        <template #actions><Btn variant="ghost" size="sm" @click="$router.push('/gallery')">{{ t('common.open') }}</Btn></template>
+        <div class="grid grid-cols-4 gap-1">
+          <button v-for="p in memoryPhotos" :key="p.id" class="relative aspect-square overflow-hidden rounded-md" :title="t('dash.years_ago', { years: String(p.years) })" @click="$router.push({ path: '/gallery', query: { photo: String(p.id) } })">
+            <img :src="photoThumb(p.id)" class="h-full w-full object-cover" alt="" loading="lazy">
+          </button>
+        </div>
+      </Card>
+    </div>
+
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <!-- Recent invoices -->
       <Card v-if="auth.can('finance')" class="lg:col-span-2" :title="t('invoices.tab_invoices')" :body-class="'p-0'">
@@ -188,6 +237,24 @@ const modules = computed(() => {
   return m;
 });
 
+interface Occurrence { id: string; summary: string | null; start: string; end: string | null; all_day: boolean; location: string | null }
+interface Todo { id: string; summary: string | null; due: string | null; status: string | null }
+const agenda = ref<Occurrence[]>([]);
+const openTodos = ref<Todo[]>([]);
+const unreadMail = ref(0);
+const memories = ref<{ years_ago: number; photos: { id: number; thumb?: boolean }[] }[]>([]);
+function hhmm(iso: string) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+/** Overdue first, then today, then the rest — the order the day is worked in. */
+const sortedTodos = computed(() => [...openTodos.value].sort((a, b) => String(a.due ?? '9999').localeCompare(String(b.due ?? '9999'))).slice(0, 6));
+function todoOverdue(t: Todo): boolean {
+  return t.due != null && new Date(String(t.due).slice(0, 10)) < new Date(new Date().setHours(0, 0, 0, 0));
+}
+const memoryPhotos = computed(() => memories.value.flatMap((m) => m.photos.slice(0, 4).map((p) => ({ id: p.id, years: m.years_ago }))).slice(0, 8));
+function photoThumb(id: number) { return api.streamUrl(`/api/v1/gallery/${id}/thumb`); }
+
 interface Deadline { id: number; due_on: string; kind: string; label: string | null; evidence: string | null; confirmed_at: string | null }
 const deadlines = ref<Deadline[]>([]);
 /** Only what is actually approaching — a list of everything is not a warning. */
@@ -214,6 +281,30 @@ onMounted(async () => {
   // Deadlines are read out of files, mail, gallery and finance alike, so they
   // are not gated on any single module.
   try { deadlines.value = (await api.get<{ deadlines: Deadline[] }>('/api/v1/deadlines')).deadlines ?? []; } catch { /* none yet */ }
+
+  // Each tile is loaded independently and swallows its own failure: a module the
+  // user does not have must not take the rest of the page down with it.
+  if (auth.can('calendar')) {
+    const from = new Date(); from.setHours(0, 0, 0, 0);
+    const to = new Date(from); to.setDate(to.getDate() + 1);
+    try {
+      const qs = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() }).toString();
+      agenda.value = (await api.get<{ events: Occurrence[] }>(`/api/v1/calendar/events?${qs}`)).events ?? [];
+    } catch { /* calendar disabled */ }
+    try {
+      const todos = (await api.get<{ todos: Todo[] }>('/api/v1/calendar/todos')).todos ?? [];
+      openTodos.value = todos.filter((x) => x.status !== 'COMPLETED' && x.status !== 'CANCELLED');
+    } catch { /* no task lists */ }
+  }
+  if (auth.can('mail')) {
+    try { unreadMail.value = (await api.get<{ unread: number }>('/api/v1/mail/folders')).unread ?? 0; } catch { /* mail disabled */ }
+  }
+  if (auth.can('gallery')) {
+    try {
+      const m = await api.get<{ on_this_day: { years_ago: number; photos: { id: number }[] }[] }>('/api/v1/gallery/memories');
+      memories.value = m.on_this_day ?? [];
+    } catch { /* gallery disabled */ }
+  }
   // Independent of finance: a servers-only user still gets their tile.
   if (auth.can('servers')) {
     try { await serversStore.load(); } catch { /* module disabled mid-session */ }

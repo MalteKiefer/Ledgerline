@@ -31,4 +31,12 @@ return [
     'failed' => ':n fehlgeschlagen',
     'blocked' => 'Gesperrte IPs',
     'blocked_users' => ':n Nutzer',
+    'today' => 'Heute',
+    'no_events' => 'Nichts geplant',
+    'tasks' => 'Offene Aufgaben',
+    'no_tasks' => 'Nichts offen',
+    'unread' => 'ungelesen',
+    'memories' => 'Heute vor Jahren',
+    'years_ago' => 'vor :years Jahren',
+    'all_day' => 'ganztägig',
 ];

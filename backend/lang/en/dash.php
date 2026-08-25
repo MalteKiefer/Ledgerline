@@ -31,4 +31,12 @@ return [
     'failed' => ':n failed',
     'blocked' => 'Blocked IPs',
     'blocked_users' => ':n user(s)',
+    'today' => 'Today',
+    'no_events' => 'Nothing scheduled',
+    'tasks' => 'Open tasks',
+    'no_tasks' => 'Nothing open',
+    'unread' => 'unread',
+    'memories' => 'On this day',
+    'years_ago' => ':years years ago',
+    'all_day' => 'all day',
 ];
