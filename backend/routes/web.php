@@ -268,6 +268,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/finance/reports/vat-advance', [FinanceReportController::class, 'vatAdvance'])->middleware('throttle:120,1')->name('finance.reports.vat-advance');
         Route::get('/finance/reports/euer', [FinanceReportController::class, 'euer'])->middleware('throttle:120,1')->name('finance.reports.euer');
         Route::get('/finance/duplicates', [FinanceReportController::class, 'duplicates'])->middleware('throttle:60,1')->name('finance.duplicates');
+        Route::get('/finance/recurring', [FinanceReportController::class, 'recurring'])->middleware('throttle:60,1')->name('finance.recurring');
         Route::get('/finance/number-gaps', [FinanceReportController::class, 'numberGaps'])->middleware('throttle:60,1')->name('finance.number-gaps');
         Route::get('/finance/receipt-matches', [FinanceReportController::class, 'receiptMatches'])->middleware('throttle:60,1')->name('finance.receipt-matches');
         Route::get('/finance/category-suggestions', [FinanceReportController::class, 'categorySuggestions'])->middleware('throttle:60,1')->name('finance.category-suggestions');

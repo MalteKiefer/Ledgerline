@@ -24,6 +24,25 @@ export interface Partner {
 }
 export type FinanceScope = 'business' | 'private';
 
+/** One detected recurring charge (subscription, standing order). Read-only. */
+export interface RecurringCharge {
+  merchant: string;
+  scope: FinanceScope;
+  cadence: 'weekly' | 'monthly' | 'quarterly' | 'semiannual' | 'annual';
+  interval_days: number;
+  charges: number;
+  amount: number;
+  /** Annualised from the cadence, so a monthly and an annual line compare. */
+  yearly: number;
+  first_at: string;
+  last_at: string;
+  next_at: string;
+  /** The next charge is well overdue — cancelled, or silently stopped. */
+  stale: boolean;
+  price_change: { from: number; to: number; at: string } | null;
+  transaction_ids: number[];
+}
+
 export interface PaymentMethod {
   id: number; name: string; type: string; version: number;
   /** An account always states its scope; its bookings inherit it. */
@@ -158,6 +177,7 @@ export const useFinanceStore = defineStore('finance', () => {
   };
   const euer = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports/euer${year ? `?year=${year}` : ''}`);
   const duplicates = () => api.get<{ invoices: DuplicateGroup[]; transactions: DuplicateGroup[] }>('/api/v1/finance/duplicates');
+  const recurring = () => api.get<{ recurring: RecurringCharge[] }>('/api/v1/finance/recurring');
   const numberGaps = () => api.get<{ groups: NumberGapGroup[] }>('/api/v1/finance/number-gaps');
   const receiptMatches = () => api.get<{ groups: ReceiptMatchGroup[]; duplicates: ReceiptDuplicate[]; splitPayments: SplitPaymentGroup[] }>('/api/v1/finance/receipt-matches');
   const categorySuggestions = () => api.get<{ suggestions: CategorySuggestion[] }>('/api/v1/finance/category-suggestions');
@@ -215,7 +235,7 @@ export const useFinanceStore = defineStore('finance', () => {
 
   return {
     invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories, fxRates,
-    load, reports, vatAdvance, euer, accountVat, duplicates, numberGaps, receiptMatches, categorySuggestions,
+    load, reports, vatAdvance, euer, accountVat, duplicates, recurring, numberGaps, receiptMatches, categorySuggestions,
     createTransaction, updateTransaction, deleteTransaction, restoreTransaction, forceTransaction, bulkTransactions, loadTrash,
     attachTxReceipt, deleteTxReceipt, txReceiptUrl,
     createCategory, updateCategory, deleteCategory,

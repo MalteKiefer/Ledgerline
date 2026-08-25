@@ -115,6 +115,33 @@
           <div class="flex justify-between py-1 text-sm font-medium"><span>{{ t('invoices.euer_profit') }}</span><span class="font-mono tabular-nums">{{ money(Number(euerData?.profit ?? 0)) }}</span></div>
         </Card>
 
+        <!-- Recurring charges. Ordered by yearly cost, because that is the order
+             someone reviewing their subscriptions wants to read them in. -->
+        <Card v-if="scopedRecurring.length" :title="t('invoices.recurring_title')">
+          <div class="mb-2 flex items-baseline justify-between">
+            <span class="text-xs text-[var(--ll-muted)]">{{ t('invoices.recurring_yearly_total') }}</span>
+            <span class="font-mono text-lg font-bold tabular-nums">{{ money(recurringYearly) }}</span>
+          </div>
+          <div class="divide-y divide-[var(--ll-border)]">
+            <div v-for="r in scopedRecurring" :key="r.merchant + r.next_at" class="flex items-center gap-2 py-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <span class="truncate text-sm font-medium">{{ r.merchant }}</span>
+                  <Badge v-if="r.price_change" tone="warning">
+                    {{ money(r.price_change.from) }} → {{ money(r.price_change.to) }}
+                  </Badge>
+                  <Badge v-if="r.stale" tone="gray">{{ t('invoices.recurring_stale') }}</Badge>
+                </div>
+                <div class="truncate text-xs text-[var(--ll-muted)]">
+                  {{ cadenceLabel(r.cadence) }} · {{ money(r.amount) }}
+                  <template v-if="!r.stale"> · {{ t('invoices.recurring_next') }} {{ fmtDate(r.next_at) }}</template>
+                </div>
+              </div>
+              <span class="font-mono text-sm tabular-nums" :class="r.stale ? 'text-[var(--ll-muted)] line-through' : ''">{{ money(r.yearly) }}</span>
+            </div>
+          </div>
+        </Card>
+
         <!-- Aging -->
         <Card :title="t('invoices.aging_title')">
           <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.aging_current') }}</span><span class="font-mono tabular-nums">{{ money(agingGross('current')) }}</span></div>
@@ -1829,7 +1856,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pag
 import type { AlignedData, Options } from 'uplot';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, ApiError, VersionConflict } from '@spa/api/client';
@@ -2059,8 +2086,16 @@ async function loadReports(year?: number) {
     dupTransactions.value = dup.transactions ?? [];
     catSuggestions.value = (await f.categorySuggestions()).suggestions ?? [];
     numberGapGroups.value = (await f.numberGaps()).groups ?? [];
+    recurringCharges.value = (await f.recurring()).recurring ?? [];
   } catch { /* ignore */ }
 }
+// Recurring charges (subscriptions/standing orders) — read-only detection.
+const recurringCharges = ref<RecurringCharge[]>([]);
+const scopedRecurring = computed(() => recurringCharges.value.filter((r) => inScope(r.scope)));
+/** What the subscriptions cost per year, together. The headline figure. */
+const recurringYearly = computed(() => scopedRecurring.value.filter((r) => !r.stale).reduce((sum, r) => sum + r.yearly, 0));
+function cadenceLabel(c: RecurringCharge['cadence']) { return t('invoices.cadence_' + c); }
+
 // Duplicate + category-suggestion + number-gap read-outs (stats tab).
 const dupInvoices = ref<DuplicateGroup[]>([]);
 const dupTransactions = ref<DuplicateGroup[]>([]);

@@ -1238,6 +1238,34 @@ components:
         profit: { type: number }
         small_business: { type: boolean }
 
+    RecurringCharge:
+      type: object
+      description: >
+        One detected recurring charge (subscription, standing order), from
+        GET /finance/recurring. Read-only: the detector reports, it never writes a
+        row. Conservative by design — at least three charges and a stable interval,
+        because a false "you have a subscription" is worse than a miss.
+      properties:
+        merchant: { type: string, description: "Counterparty as booked (grouping normalises legal forms, so 'NETCUP GmbH' and 'netcup Deutschland' are one)." }
+        scope: { type: string, enum: [business, private] }
+        cadence: { type: string, enum: [weekly, monthly, quarterly, semiannual, annual] }
+        interval_days: { type: integer, description: "Median days between charges." }
+        charges: { type: integer }
+        amount: { type: number, format: double, description: "Most recent charge." }
+        yearly: { type: number, format: double, description: "Annualised from the cadence (not the measured gap), so a leap year does not move it and a monthly line compares with an annual one." }
+        first_at: { type: string, format: date }
+        last_at: { type: string, format: date }
+        next_at: { type: string, format: date, description: "Expected next charge (last + interval)." }
+        stale: { type: boolean, description: "The next charge is well overdue — cancelled, or silently stopped." }
+        price_change:
+          type: [object, "null"]
+          description: "Set when the most recent charge differs from the one before it."
+          properties:
+            from: { type: number, format: double }
+            to: { type: number, format: double }
+            at: { type: string, format: date }
+        transaction_ids: { type: array, items: { type: integer } }
+
     DuplicateGroup:
       type: object
       description: "A suspected-duplicate group (read-only). `ids` are the row ids sharing `key` for `reason`."
@@ -5316,6 +5344,29 @@ paths:
                 properties:
                   invoices: { type: array, items: { $ref: "#/components/schemas/DuplicateGroup" } }
                   transactions: { type: array, items: { $ref: "#/components/schemas/DuplicateGroup" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/recurring:
+    get:
+      tags: [Finance]
+      operationId: financeRecurring
+      summary: Recurring charges (subscriptions, standing orders)
+      description: >
+        Read-only detection over the owner's expense bookings: groups them by
+        normalised counterparty and reads the intervals. Reports the annualised
+        cost, a price change against the previous charge, and whether the charge
+        has stopped coming. Never mutates a row. Throttle 60/min.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recurring: { type: array, items: { $ref: "#/components/schemas/RecurringCharge" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
