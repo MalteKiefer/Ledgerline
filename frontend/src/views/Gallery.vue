@@ -69,6 +69,7 @@
               <!-- Library -->
               <div class="border-t border-[var(--ll-border)] px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.menu_library') }}</div>
               <button v-if="!showTrash" class="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="toggleArchive(); menuOpen = false"><Icon name="inventory_2" :size="18" class="text-[var(--ll-muted)]" /><span class="flex-1 text-left">{{ t('gallery.archive') }}</span><Icon v-if="showArchive" name="check" :size="16" class="text-primary-500" /></button>
+              <button v-if="!showTrash" class="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" :disabled="pairingLive" @click="pairLivePhotos(); menuOpen = false"><Icon :name="pairingLive ? 'progress_activity' : 'motion_photos_on'" :size="18" :class="pairingLive ? 'animate-spin text-primary-500' : 'text-[var(--ll-muted)]'" /><span class="flex-1 text-left">{{ t('gallery.pair_live') }}</span></button>
               <button v-if="!showArchive" class="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="toggleTrash(); menuOpen = false"><Icon :name="showTrash ? 'photo_library' : 'delete'" :size="18" class="text-[var(--ll-muted)]" /><span class="flex-1 text-left">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</span><Icon v-if="showTrash" name="check" :size="16" class="text-primary-500" /></button>
             </div>
           </div>
@@ -1603,6 +1604,26 @@ async function removeSelectedFromAlbum() {
 }
 
 // ---- Lightbox ----
+/**
+ * Fold Live Photo pairs that already sit in the library as two tiles (a still
+ * and its short clip) into one entry. New uploads are paired on the way in;
+ * this is for everything that landed before that, or in two separate batches.
+ *
+ * The clip is not deleted — its bytes become the live part of the photo. That is
+ * what the confirmation says, because "merge" and "delete the video" would feel
+ * the same from the outside and only one of them is true.
+ */
+const pairingLive = ref(false);
+async function pairLivePhotos() {
+  if (!await confirmAsk(t('gallery.pair_live_confirm'))) return;
+  pairingLive.value = true;
+  try {
+    const { merged } = await g.pairLivePhotos();
+    if (merged > 0) { await g.load(); success(t('gallery.pair_live_done', { count: String(merged) })); }
+    else success(t('gallery.pair_live_none'));
+  } catch { error(t('common.error')); } finally { pairingLive.value = false; }
+}
+
 function openViewer(i: number) { viewer.value = i; dlMenu.value = false; motionPlaying.value = false; }
 function step(d: number) {
   if (viewer.value < 0) return;

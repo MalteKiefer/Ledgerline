@@ -245,6 +245,61 @@ class GalleryFeatureTest extends TestCase
             ->assertHeader('Content-Type', 'video/mp4');
     }
 
+    /**
+     * Pairs that landed as two separate entries — uploaded before the merge
+     * existed, or in two batches — can be folded together afterwards. The clip's
+     * bytes must survive: the video row goes, the file becomes the live part.
+     */
+    public function test_pairing_folds_an_existing_still_and_clip_into_one_entry(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $disk = Storage::disk(config('files.disk'));
+
+        $stillId = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('IMG_9.heic')])->json('photo.id');
+        $clipId = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->create('IMG_9.mov', 40, 'video/quicktime')])->json('photo.id');
+        $clipPath = (string) GalleryPhoto::findOrFail($clipId)->storage_path;
+        $this->assertSame(2, GalleryPhoto::count());
+
+        $this->postJson(route('gallery.pair-live'))->assertOk()->assertJsonPath('merged', 1);
+
+        // One entry left, and it plays the clip whose bytes are still on disk.
+        $this->assertSame(1, GalleryPhoto::count());
+        $still = GalleryPhoto::findOrFail($stillId);
+        $this->assertSame($clipPath, $still->motion_path);
+        $disk->assertExists($clipPath);
+        $this->get(route('gallery.motion', ['photo' => $stillId]))->assertOk();
+    }
+
+    /**
+     * A long video that happens to share a name is a video, not a live photo.
+     * Hiding it inside a still would take it out of the grid for good.
+     */
+    public function test_pairing_leaves_a_long_video_alone(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $stillId = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('CLIP.jpg')])->json('photo.id');
+        $clipId = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->create('CLIP.mov', 40, 'video/quicktime')])->json('photo.id');
+        GalleryPhoto::query()->whereKey($clipId)->update(['duration' => 900]);
+
+        $this->postJson(route('gallery.pair-live'))->assertOk()->assertJsonPath('merged', 0);
+
+        $this->assertSame(2, GalleryPhoto::count());
+        $this->assertNull(GalleryPhoto::findOrFail($stillId)->motion_path);
+    }
+
+    /** Someone else's library is never touched, and never counted. */
+    public function test_pairing_is_owner_scoped(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('IMG_7.heic')]);
+        $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->create('IMG_7.mov', 40, 'video/quicktime')]);
+
+        $this->actingAs(User::factory()->create());
+        $this->postJson(route('gallery.pair-live'))->assertOk()->assertJsonPath('merged', 0);
+        $this->assertSame(2, GalleryPhoto::withoutGlobalScopes()->count());
+    }
+
     public function test_embedded_motion_photo_is_extracted_on_upload(): void
     {
         $this->actingAs(User::factory()->create());

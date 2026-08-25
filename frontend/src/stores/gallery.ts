@@ -179,6 +179,8 @@ export const useGalleryStore = defineStore('gallery', () => {
       throw e;
     }
   }
+  /** Fold already-uploaded Live Photo pairs (still + short clip) into single entries. */
+  const pairLivePhotos = () => api.post<{ merged: number }>('/api/v1/gallery/pair-live-photos');
   const attachMotion = (photoId: number, file: File, onProgress?: (fr: number) => void) => {
     const fd = new FormData();
     fd.append('file', file);
@@ -274,7 +276,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const sharedRawUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/raw`);
 
   return {
-    photos, albums, nextCursor, loadingMore, load, loadMore, jumpToMonth, dates, loadArchived, memories, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
+    photos, albums, nextCursor, loadingMore, load, loadMore, jumpToMonth, dates, loadArchived, memories, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, pairLivePhotos, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,

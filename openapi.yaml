@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.742.0
+  version: 1.743.0
   license:
     name: Proprietary
   description: >
@@ -7160,6 +7160,36 @@ paths:
         "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/pair-live-photos:
+    post:
+      tags: [Gallery]
+      operationId: galleryPairLivePhotos
+      summary: Fold existing Live Photo pairs into single entries
+      description: |
+        An Apple Live Photo is two files (a still and a short .MOV). The upload
+        path pairs them; anything that landed before that, through another
+        client, or in two separate batches sits in the grid as two tiles. This
+        folds those pairs together, owner-scoped.
+
+        Pairing uses two keys: the QuickTime `content_id` both halves carry
+        (authoritative on its own), then the base filename — and by filename only
+        for a clip of at most 6 seconds, since a long video that happens to share
+        a name is a video, not a live photo.
+
+        The clip's bytes are neither copied nor deleted: the still's motion
+        pointer is moved onto the file the video row already owns and only that
+        ROW is removed (with its own thumbnail/preview caches). Nothing is lost —
+        the video becomes the live part of the photo. Throttle 6/min.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Number of pairs folded together.
+          content:
+            application/json:
+              schema: { type: object, required: [merged], properties: { merged: { type: integer, description: "Pairs merged; 0 when nothing matched." } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /gallery/bulk-archive:
     post:
       tags: [Gallery]

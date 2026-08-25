@@ -558,6 +558,7 @@ Route::middleware('auth')->group(function (): void {
         Route::patch('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.favorite');
         Route::patch('/gallery/{photo}/archive', [GalleryController::class, 'archive'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.archive');
         Route::post('/gallery/bulk-archive', [GalleryController::class, 'bulkArchive'])->middleware('throttle:600,1')->name('gallery.bulk-archive');
+        Route::post('/gallery/pair-live-photos', [GalleryController::class, 'pairLivePhotos'])->middleware('throttle:6,1')->name('gallery.pair-live');
         Route::put('/gallery/{photo}', [GalleryController::class, 'update'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.update');
         Route::get('/gallery/{photo}/download', [GalleryController::class, 'download'])->whereNumber('photo')->withTrashed()->middleware('throttle:1200,1')->name('gallery.download');
         Route::get('/gallery/{photo}/play', [GalleryController::class, 'play'])->whereNumber('photo')->withTrashed()->middleware('throttle:3000,1')->name('gallery.play');
