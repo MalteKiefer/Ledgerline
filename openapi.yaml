@@ -13133,6 +13133,55 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/attachments:
+    get:
+      tags: [Mail]
+      operationId: mailAttachmentsIndex
+      summary: Every attachment the account holds
+      description: >
+        Throttle 600/min. Owner-scoped, paginated, newest first — "the mail with
+        the PDF" without remembering which mail it was. Read straight from the
+        attachment table rather than by walking messages, and each row carries
+        the subject/sender of the message it belongs to so a hit can be opened.
+
+
+        Inline parts are excluded: an inline image is part of how a message looks
+        rather than something the sender attached, and listing signatures and
+        tracking pixels would bury the documents. Attachments of trashed mail are
+        excluded too.
+      parameters:
+        - { name: account_id, in: query, required: false, schema: { type: integer } }
+        - { name: folder, in: query, required: false, schema: { type: string } }
+        - { name: q, in: query, required: false, schema: { type: string }, description: "Filename substring, case-insensitive." }
+        - { name: type, in: query, required: false, schema: { type: string, enum: [image, pdf, document, other] } }
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500 } }
+      responses:
+        "200":
+          description: One page of attachments.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        message_id: { type: string, format: uuid }
+                        filename: { type: [string, "null"] }
+                        content_type: { type: [string, "null"] }
+                        size: { type: integer }
+                        subject: { type: [string, "null"] }
+                        from: { type: [string, "null"] }
+                        folder: { type: [string, "null"] }
+                        date: { type: [string, "null"], format: date-time }
+                  meta: { type: object, properties: { total: { type: integer }, per_page: { type: integer }, current_page: { type: integer }, last_page: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /mail/attachments/{attachment}/raw:
     get:
       tags: [Mail]

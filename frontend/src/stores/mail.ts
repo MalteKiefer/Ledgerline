@@ -110,6 +110,17 @@ export interface MailRuleAction {
   file_receipt?: boolean | null;
 }
 export interface MailRule { id?: number; name: string; enabled: boolean; priority: number; match: MailRuleMatch; action: MailRuleAction }
+export interface MailAttachmentRow {
+  id: string;
+  message_id: string;
+  filename: string | null;
+  content_type: string | null;
+  size: number;
+  subject: string | null;
+  from: string | null;
+  folder: string | null;
+  date: string | null;
+}
 export interface MailSavedSearch { id: number; name: string; filters: Record<string, unknown> }
 /**
  * A user id parsed off a key/certificate at import/generate time — every part
@@ -308,6 +319,18 @@ export const useMailStore = defineStore('mail', () => {
 
   const bodyUrl = (id: string, remote = false) => api.streamUrl(`/api/v1/mail/messages/${id}/body${remote ? '?remote=1' : ''}`);
   const rawUrl = (id: string, download = false) => api.streamUrl(`/api/v1/mail/raw/${id}${download ? '?download=1' : ''}`);
+  /** One row of the attachment overview: the file plus the message it came from. */
+  const attachments = (params: { q?: string; type?: string; accountId?: number | null; folder?: string | null; page?: number }) => {
+    const qs = new URLSearchParams();
+    if (params.q?.trim()) qs.set('q', params.q.trim());
+    if (params.type) qs.set('type', params.type);
+    if (params.accountId != null) qs.set('account_id', String(params.accountId));
+    if (params.folder) qs.set('folder', params.folder);
+    qs.set('page', String(params.page ?? 1));
+    qs.set('per_page', '100');
+    return api.get<{ data: MailAttachmentRow[]; meta: PageMeta }>(`/api/v1/mail/attachments?${qs}`);
+  };
+
   const attachmentRawUrl = (attId: string, download = false) => api.streamUrl(`/api/v1/mail/attachments/${attId}/raw${download ? '?download=1' : ''}`);
   const virusTotalAttachment = (attId: string) => api.post<VirusTotalResult>(`/api/v1/mail/attachments/${attId}/virustotal`);
 
@@ -518,7 +541,7 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
-    setSeen, setFlagged, unreadIds, thread, trash, restore, pushBack, deleteOrigin, setLabels,
+    setSeen, setFlagged, unreadIds, thread, attachments, trash, restore, pushBack, deleteOrigin, setLabels,
     compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, applyRules, updateRule, deleteRule,

@@ -148,6 +148,7 @@
               <DropdownMenuItem :class="menuItem" @select="doExport('mbox')"><Icon name="download" :size="18" />{{ t('mail.extras.export_mbox') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItem" @select="doExport('zip')"><Icon name="folder_zip" :size="18" />{{ t('mail.extras.export_zip') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItem" @select="openRules"><Icon name="rule" :size="18" />{{ t('mail.extras.rules') }}</DropdownMenuItem>
+              <DropdownMenuItem :class="menuItem" @select="openAttachments"><Icon name="attach_file" :size="18" />{{ t('mail.extras.attachments') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItem" @select="openStats"><Icon name="storage" :size="18" />{{ t('mail.extras.stats') }}</DropdownMenuItem>
             </DropdownMenuContent></DropdownMenuPortal>
           </DropdownMenuRoot>
@@ -314,7 +315,18 @@
     </Card>
 
     <!-- Reader pane: docked beside the list on desktop, full screen on small displays. -->
-  <aside v-if="readerOpen" class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:basis-[44%] md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none">
+  <!-- Drag handle between list and reader (desktop only; on a phone the reader
+       is full screen and there is nothing to split). -->
+  <div
+    v-if="readerOpen" class="hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-primary-500/40 md:block"
+    :class="splitDragging ? 'bg-primary-500/60' : ''"
+    @pointerdown="splitStart"
+  />
+  <aside
+    v-if="readerOpen"
+    class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none"
+    :style="readerStyle"
+  >
     <div v-if="readerOpen && reader" class="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-5">
       <div class="sticky top-0 z-10 -mt-4 -mx-4 flex items-center gap-3 border-b border-[var(--ll-border)] bg-[var(--ll-surface)] px-4 py-3 md:-mt-5 md:-mx-5 md:px-5">
         <div class="min-w-0 flex-1">
@@ -362,6 +374,7 @@
             <DropdownMenuItem v-if="reader.thread_id" :class="menuItem" @select="viewThread"><Icon name="forum" :size="18" />{{ t('mail.reader.view_thread_list') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" :disabled="printing" @select="printMessage"><Icon name="print" :size="18" />{{ t('mail.reader.print') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" :disabled="pdfExporting" @select="exportPdf"><Icon name="picture_as_pdf" :size="18" />{{ t('mail.reader.export_pdf') }}</DropdownMenuItem>
+            <DropdownMenuItem v-if="unsubscribeTargets.length" :class="menuItem" @select="unsubscribeOpen = true"><Icon name="unsubscribe" :size="18" />{{ t('mail.reader.unsubscribe') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" @select="downloadEml"><Icon name="download" :size="18" />{{ t('mail.reader.download_eml') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" @select="readerSetSeen(!reader.seen)"><Icon :name="reader.seen ? 'mark_email_unread' : 'mark_email_read'" :size="18" />{{ reader.seen ? t('mail.actions.mark_unread') : t('mail.actions.mark_read') }}</DropdownMenuItem>
             <DropdownMenuItem v-if="hasHtml" :class="menuItem" @select="toggleRemote"><Icon :name="remoteOn ? 'visibility_off' : 'visibility'" :size="18" />{{ remoteOn ? t('mail.reader.block_remote') : t('mail.reader.load_remote') }}</DropdownMenuItem>
@@ -645,6 +658,54 @@
     <template #footer><Btn variant="ghost" @click="labelsDlg.show = false">{{ t('common.close') }}</Btn></template>
   </Modal>
 
+  <!-- Every attachment the account holds — "the mail with the PDF" without
+       remembering which mail it was. -->
+  <Modal v-model="attDlg.show" :title="t('mail.extras.attachments')" width="60rem">
+    <div class="mb-3 flex flex-wrap items-center gap-2">
+      <TextField v-model="attDlg.q" :placeholder="t('mail.extras.attachments_search')" icon="search" class="min-w-52 flex-1" @update:model-value="loadAttachments" />
+      <Select v-model="attDlg.type" :options="attTypeItems" class="w-44" @update:modelValue="loadAttachments" />
+    </div>
+    <div v-if="attDlg.loading" class="py-10 text-center"><Icon name="progress_activity" :size="24" class="animate-spin text-[var(--ll-muted)]" /></div>
+    <div v-else-if="!attDlg.rows.length" class="py-10 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.extras.attachments_empty') }}</div>
+    <table v-else class="w-full table-fixed text-sm">
+      <thead><tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]">
+        <th class="w-[34%] py-2 pr-3">{{ t('mail.reader.attachments') }}</th>
+        <th class="py-2 pr-3">{{ t('mail.list.col_subject') }}</th>
+        <th class="w-20 py-2 pr-3 text-right">{{ t('mail.list.col_size') }}</th>
+        <th class="w-24 py-2 pr-3 text-right">{{ t('mail.list.col_date') }}</th>
+        <th class="w-16" />
+      </tr></thead>
+      <tbody>
+        <tr v-for="row in attDlg.rows" :key="row.id" class="border-b border-[var(--ll-border)] last:border-0">
+          <td class="py-2 pr-3"><div class="flex min-w-0 items-center gap-2"><Icon name="attach_file" :size="15" class="shrink-0 text-[var(--ll-muted)]" /><span class="truncate">{{ row.filename || '—' }}</span></div></td>
+          <td class="py-2 pr-3">
+            <button type="button" class="min-w-0 max-w-full truncate text-left hover:text-primary-500" @click="openFromAttachment(row)">{{ row.subject || '—' }}</button>
+            <div class="truncate text-xs text-[var(--ll-muted)]">{{ row.from }}</div>
+          </td>
+          <td class="py-2 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtBytes(row.size) }}</td>
+          <td class="py-2 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(row.date) }}</td>
+          <td class="py-2 text-right"><a :href="s.attachmentRawUrl(row.id, true)" class="inline-grid h-7 w-7 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('common.download')"><Icon name="download" :size="16" /></a></td>
+        </tr>
+      </tbody>
+    </table>
+    <template #footer><Btn variant="ghost" @click="attDlg.show = false">{{ t('common.close') }}</Btn></template>
+  </Modal>
+
+  <!-- Unsubscribe: shows the target before anything happens, and the user acts -->
+  <Modal v-model="unsubscribeOpen" :title="t('mail.reader.unsubscribe')" width="480px">
+    <p class="mb-3 text-sm text-[var(--ll-muted)]">{{ t('mail.reader.unsubscribe_hint') }}</p>
+    <div class="divide-y divide-[var(--ll-border)] rounded-lg border border-[var(--ll-border)]">
+      <div v-for="target in unsubscribeTargets" :key="target.value" class="flex items-center gap-2 px-3 py-2 text-sm">
+        <Icon :name="target.kind === 'mailto' ? 'mail' : 'open_in_new'" :size="16" class="shrink-0 text-[var(--ll-muted)]" />
+        <span class="min-w-0 flex-1 truncate">{{ target.label }}</span>
+        <Btn variant="soft" size="xs" @click="doUnsubscribe(target)">
+          {{ target.kind === 'mailto' ? t('mail.reader.unsubscribe_write') : t('mail.reader.unsubscribe_open') }}
+        </Btn>
+      </div>
+    </div>
+    <template #footer><Btn variant="ghost" @click="unsubscribeOpen = false">{{ t('common.close') }}</Btn></template>
+  </Modal>
+
   <!-- Rules modal -->
   <Modal v-model="rulesDlg.show" :title="t('mail.extras.rules')" width="640px">
     <div v-if="s.rules.length" class="mb-3 divide-y divide-[var(--ll-border)]">
@@ -739,7 +800,7 @@ import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetim
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal, SortLabel } from '@spa/ui';
-import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft } from '@spa/stores/mail';
+import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft, type MailAttachmentRow } from '@spa/stores/mail';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
 import { useCryptoStore } from '@spa/stores/crypto';
@@ -751,6 +812,7 @@ import { useProfileStore } from '@spa/stores/profile';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { renderInvoicePdfBlob } from '@spa/shared/invoice-print';
 import DOMPurify from 'dompurify';
+import { parseUnsubscribe, type UnsubscribeTarget } from '@spa/shared/unsubscribe';
 
 const s = useMailStore();
 const auth = useAuthStore();
@@ -963,6 +1025,95 @@ async function moveCursor(delta: number) {
   const row = rows[next];
   document.getElementById(`mail-row-${row.id}`)?.scrollIntoView({ block: 'nearest' });
   if (readerOpen.value) await openReader(row);
+}
+
+// ---- Attachment overview -------------------------------------------------
+const attDlg = reactive<{ show: boolean; loading: boolean; q: string; type: string; rows: MailAttachmentRow[] }>({
+  show: false, loading: false, q: '', type: '', rows: [],
+});
+const attTypeItems = computed(() => [
+  { value: '', title: t('mail.extras.attachments_all') },
+  { value: 'pdf', title: 'PDF' },
+  { value: 'image', title: t('mail.extras.attachments_images') },
+  { value: 'document', title: t('mail.extras.attachments_documents') },
+  { value: 'other', title: t('mail.extras.attachments_other') },
+]);
+let attTimer: ReturnType<typeof setTimeout> | undefined;
+function loadAttachments() {
+  if (attTimer) clearTimeout(attTimer);
+  attTimer = setTimeout(async () => {
+    attDlg.loading = true;
+    try {
+      // Scoped to the account/folder in view: the overview answers "what came in
+      // here", not "everything I ever received".
+      const r = await s.attachments({ q: attDlg.q, type: attDlg.type, accountId: filters.accountId, folder: filters.folder });
+      attDlg.rows = r.data;
+    } catch { error(t('common.error')); } finally { attDlg.loading = false; }
+  }, 180);
+}
+function openAttachments() { attDlg.show = true; loadAttachments(); }
+
+/** Jump from an attachment to the message it came from. */
+async function openFromAttachment(row: MailAttachmentRow) {
+  attDlg.show = false;
+  try { reader.value = await s.show(row.message_id); readerOpen.value = true; }
+  catch { error(t('mail.toast.load_failed')); }
+}
+
+// ---- Split -----------------------------------------------------------------
+// The reader was a fixed 44% of the width. Where that split belongs depends on
+// the screen and on what is being read, so it is draggable and remembered — in
+// localStorage rather than the profile, because it describes this display, and
+// the same account on a laptop and on a wide monitor wants different answers.
+const SPLIT_KEY = 'll_mail_split';
+const splitPct = ref(Number(localStorage.getItem(SPLIT_KEY)) || 44);
+const splitDragging = ref(false);
+// Clamped so neither pane can be dragged away entirely — a list of zero width
+// is not a layout, it is a broken one.
+const readerStyle = computed(() => ({ flexBasis: `${Math.min(75, Math.max(25, splitPct.value))}%` }));
+
+function splitStart(e: PointerEvent) {
+  splitDragging.value = true;
+  const move = (ev: PointerEvent) => {
+    const host = (e.target as HTMLElement).parentElement;
+    if (!host) return;
+    const b = host.getBoundingClientRect();
+    splitPct.value = Math.min(75, Math.max(25, ((b.right - ev.clientX) / b.width) * 100));
+  };
+  const up = () => {
+    splitDragging.value = false;
+    localStorage.setItem(SPLIT_KEY, String(Math.round(splitPct.value)));
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
+// ---- Unsubscribe ---------------------------------------------------------
+// The List-Unsubscribe header (RFC 2369) is already in headers_raw, so this
+// needs no new server call. RFC 8058 one-click POST is deliberately NOT used:
+// posting on the user's behalf confirms to the sender that the address is live,
+// and doing it server-side would additionally hand them this server's address.
+// The link is opened in the browser, where the user can see where it goes.
+const unsubscribeOpen = ref(false);
+const unsubscribeTargets = computed(() => parseUnsubscribe(reader.value?.headers_raw ?? null));
+
+function doUnsubscribe(target: UnsubscribeTarget) {
+  unsubscribeOpen.value = false;
+  if (target.kind === 'mailto') {
+    // Compose it here rather than handing the address to the OS mail client,
+    // which is very likely not this app.
+    const address = target.label;
+    const params = new URLSearchParams(target.value.split('?')[1] ?? '');
+    openCompose();
+    compose.to = address;
+    compose.subject = params.get('subject') || 'unsubscribe';
+    compose.body = params.get('body') || 'unsubscribe';
+    return;
+  }
+  // noopener: the opened page must not get a handle on this window.
+  window.open(target.value, '_blank', 'noopener,noreferrer');
 }
 
 /** Whether there is a row in that direction — for the reader's arrows. */
