@@ -113,7 +113,7 @@
         <Btn variant="solid" size="sm" icon="edit_square" @click="openCompose">{{ t('mail.send.compose') }}</Btn>
         <span v-if="draftListActive" class="text-sm font-semibold">{{ t('mail.send.drafts') }}</span>
         <div class="relative flex min-w-48 flex-1 items-center gap-1">
-          <TextField ref="searchField" v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="flex-1" @update:model-value="debouncedReload" @enter="reload" />
+          <TextField id="mail-search" v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="flex-1" @update:model-value="debouncedReload" @enter="reload" />
           <Btn variant="ghost" size="xs" icon="help" :title="t('mail.list.search_help')" @click="searchHelp = !searchHelp" />
           <div v-if="searchHelp" class="absolute right-0 top-full z-20 mt-1 w-80 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] p-3 text-xs shadow-lg">
             <div class="mb-2 flex items-center gap-2"><span class="flex-1 font-semibold">{{ t('mail.list.search_help') }}</span><Btn variant="ghost" size="xs" icon="close" @click="searchHelp = false" /></div>
@@ -121,6 +121,12 @@
             <ul class="space-y-1">
               <li v-for="tip in searchTips" :key="tip" class="font-mono text-[0.7rem]">{{ tip }}</li>
             </ul>
+            <div class="mt-3 border-t border-[var(--ll-border)] pt-2">
+              <div class="mb-1 font-semibold">{{ t('mail.list.keys') }}</div>
+              <ul class="space-y-0.5">
+                <li v-for="k in keyTips" :key="k" class="text-[0.7rem]">{{ k }}</li>
+              </ul>
+            </div>
           </div>
         </div>
         <div class="flex items-center gap-1.5">
@@ -235,10 +241,10 @@
           </thead>
           <tbody>
             <tr
-              v-for="m in s.messages" :key="m.id"
+              v-for="(m, ri) in s.messages" :id="`mail-row-${m.id}`" :key="m.id"
               class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
-              :class="[!m.seen ? 'font-semibold' : '', reader?.id === m.id ? 'bg-primary-500/[0.06]' : '']"
-              @click="openReader(m)"
+              :class="[!m.seen ? 'font-semibold' : '', reader?.id === m.id ? 'bg-primary-500/[0.06]' : '', cursor === ri ? 'ring-1 ring-inset ring-primary-500/60' : '']"
+              @click="cursor = ri; openReader(m)"
             >
               <td class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="s.selected.includes(m.id)" @click.stop="toggleSelect(m.id)"></td>
               <td class="w-8 text-center align-middle">
@@ -842,6 +848,7 @@ async function applyRoute() {
 // --- Loading -----------------------------------------------------------------
 let statusTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
+  window.addEventListener('keydown', onKey);
   // The column choice is a display preference; without it the list would show
   // the default set until the profile page happened to be visited.
   if (!p.prefs) void p.loadPrefs();
@@ -851,7 +858,7 @@ onMounted(async () => {
     if (s.accounts.some((a) => a.status === 'syncing')) { await s.pollStatus(); await s.loadFolders(filters.accountId); }
   }, 5000);
 });
-onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); });
+onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); window.removeEventListener('keydown', onKey); });
 
 const searchHelp = ref(false);
 const searchTips = computed(() => [
@@ -860,6 +867,105 @@ const searchTips = computed(() => [
   t('mail.list.search_help_date'),
 ]);
 
+
+// ---- Keyboard ------------------------------------------------------------
+// A mailbox with sixteen thousand messages is read with the hands on the
+// keyboard, so the list has a cursor of its own, independent of the selection
+// (the checkboxes) and of what the reader shows.
+const cursor = ref(-1);
+
+/**
+ * Never while typing or while a dialog is up.
+ *
+ * The same rule the file browser learned: a shortcut that fires inside a text
+ * field eats the character, and one that fires behind a modal acts on something
+ * the reader cannot see.
+ */
+function keysBlocked(): boolean {
+  const el = document.activeElement as HTMLElement | null;
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return true;
+  return compose.show || editor.show || rulesDlg.show || statsDlg.show || labelsDlg.show
+    || logsDlg.show || attSave.show || assetPicker.show || searchHelp.value;
+}
+
+/** Move the cursor and open what it lands on, so j/k reads rather than points. */
+async function moveCursor(delta: number) {
+  const rows = s.messages;
+  if (!rows.length) return;
+  const next = cursor.value < 0 ? (delta > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, cursor.value + delta));
+  cursor.value = next;
+  const row = rows[next];
+  document.getElementById(`mail-row-${row.id}`)?.scrollIntoView({ block: 'nearest' });
+  if (readerOpen.value) await openReader(row);
+}
+
+/** The row a shortcut acts on: the cursor, else what the reader shows. */
+function focusedRow(): MailMessage | null {
+  const rows = s.messages;
+  if (cursor.value >= 0 && cursor.value < rows.length) return rows[cursor.value];
+  return reader.value;
+}
+
+async function onKey(e: KeyboardEvent) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  // Escape closes what is open, and it must work from inside the search field
+  // too — that is the one place a blocked shortcut would be wrong.
+  if (e.key === 'Escape') {
+    if (searchHelp.value) { searchHelp.value = false; return; }
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (readerOpen.value) readerOpen.value = false;
+    return;
+  }
+  if (keysBlocked()) return;
+
+  const row = focusedRow();
+  switch (e.key) {
+    case 'j': case 'ArrowDown': e.preventDefault(); await moveCursor(1); return;
+    case 'k': case 'ArrowUp': e.preventDefault(); await moveCursor(-1); return;
+    case 'n': e.preventDefault(); await moveCursor(1); return;
+    case 'p': e.preventDefault(); await moveCursor(-1); return;
+    case 'Enter': case 'o':
+      if (!row) return;
+      e.preventDefault(); await openReader(row); return;
+    case '/':
+      e.preventDefault();
+      // By id, not by a guess at which input comes first in the DOM.
+      (document.querySelector('#mail-search input, input#mail-search') as HTMLInputElement | null)?.focus();
+      return;
+    case 'x':
+      if (!row) return;
+      e.preventDefault(); toggleSelect(row.id); return;
+    case 's':
+      if (!row) return;
+      e.preventDefault(); await toggleFlag(row); return;
+    case 'u':
+      if (!row) return;
+      e.preventDefault();
+      try { await s.setSeen([row.id], !row.seen); row.seen = !row.seen; } catch { error(t('mail.toast.load_failed')); }
+      return;
+    case 'r':
+      if (!reader.value) return;
+      e.preventDefault(); openReply(false); return;
+    case 'a':
+      if (!reader.value) return;
+      e.preventDefault(); openReply(true); return;
+    case 'f':
+      if (!reader.value) return;
+      e.preventDefault(); openForward(); return;
+    case 'c':
+      e.preventDefault(); openCompose(); return;
+    case '#': case 'Delete':
+      if (!row) return;
+      e.preventDefault();
+      // Reuse the bulk path so trashing one row behaves exactly like trashing
+      // several, including what happens to the open reader.
+      s.selected.splice(0, s.selected.length, row.id);
+      await bulkTrash();
+      return;
+    default: return;
+  }
+}
 
 // ---- List columns --------------------------------------------------------
 // Which columns exist, in the order the picker offers them. Every one is a
@@ -945,6 +1051,12 @@ function moveColumn(col: string, delta: number) {
 
 /** Back to the default set — sending nothing means "default", not "no columns". */
 const resetColumns = () => { void saveColumns([]); };
+
+const keyTips = computed(() => [
+  t('mail.list.keys_move'), t('mail.list.keys_open'), t('mail.list.keys_reply'),
+  t('mail.list.keys_flag'), t('mail.list.keys_unread'), t('mail.list.keys_select'),
+  t('mail.list.keys_trash'), t('mail.list.keys_compose'), t('mail.list.keys_search'),
+]);
 
 /** What the sortable headers render their arrow from. */
 const listSort = computed(() => ({ key: filters.sort, dir: filters.dir }));
