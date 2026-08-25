@@ -92,6 +92,10 @@ Schedule::command('request-log:prune')->dailyAt('00:27')->withoutOverlapping();
 
 // Verify the latest successful backup restores, and alert on staleness/failure.
 Schedule::command('backups:verify')->dailyAt('04:30')->withoutOverlapping();
+// A restore drill, weekly rather than daily: it costs more than the integrity
+// check next to it, and it answers a different question — not "is the archive
+// readable" but "can this actually be restored".
+Schedule::command('backup:drill')->weeklyOn(0, '05:00')->withoutOverlapping();
 
 // Actually replay the latest backup into a throwaway target and re-hash a random
 // sample of mirrored blobs against the live copies. Weekly rather than daily:
