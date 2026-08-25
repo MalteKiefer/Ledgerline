@@ -12,6 +12,7 @@ use App\Services\Mail\MailDecryptor;
 use App\Support\BlobStore;
 use App\Support\Mail\MailHtmlSanitizer;
 use App\Support\Mail\MimeParser;
+use App\Support\Mail\SearchQuery;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Http\JsonResponse;
@@ -364,11 +365,64 @@ class MailMessageController extends Controller
         $query->orderBy('id', $direction);
     }
 
-    /** @param  EloquentBuilder<MailMessage>  $query */
+    /**
+     * Applies the search box: `from:`/`to:`/`subject:`/`folder:`, `has:attachment`,
+     * `is:unread|starred|answered|spam|encrypted`, `before:`/`after:`, and free
+     * text over the full-text column.
+     *
+     * The grammar lives in SearchQuery (pure, tested); this only turns terms into
+     * WHERE clauses. Terms combine with AND — narrowing is what a search box is
+     * for — and a repeated field narrows further rather than replacing.
+     *
+     * @param  EloquentBuilder<MailMessage>  $query
+     */
     private function applySearch(EloquentBuilder $query, string $q): void
     {
         if ($q === '') {
             return;
+        }
+
+        $parsed = SearchQuery::parse($q);
+
+        foreach ($parsed->text as $field => $values) {
+            foreach ($values as $value) {
+                $needle = '%'.$value.'%';
+                match ($field) {
+                    // The sender is two columns and people mean either.
+                    'from' => $query->where(fn (EloquentBuilder $i) => $i->where('from_email', 'like', $needle)->orWhere('from_name', 'like', $needle)),
+                    // Recipients live in JSON; searching it as text is exact
+                    // enough for an address and needs no extraction.
+                    'to' => $query->where(fn (EloquentBuilder $i) => $i->where('to_json', 'like', $needle)->orWhere('cc_json', 'like', $needle)),
+                    'subject' => $query->where('subject', 'like', $needle),
+                    'folder' => $query->where('folder', 'like', $needle),
+                    default => null,
+                };
+            }
+        }
+
+        foreach ($parsed->flags as $column => $expected) {
+            if ($column === 'encrypted') {
+                // Not a boolean column: a message is encrypted when it says how.
+                $expected ? $query->whereNotNull('encrypted_type') : $query->whereNull('encrypted_type');
+
+                continue;
+            }
+            $query->where($column, $expected);
+        }
+
+        if ($parsed->hasAttachment !== null) {
+            $query->where('has_attachment', $parsed->hasAttachment);
+        }
+        if ($parsed->after instanceof Carbon) {
+            $query->where('date', '>=', $parsed->after);
+        }
+        if ($parsed->before instanceof Carbon) {
+            $query->where('date', '<=', $parsed->before);
+        }
+
+        $q = $parsed->free;
+        if ($q === '') {
+            return; // a pure `is:unread has:attachment` search has no text part
         }
 
         $like = '%'.$q.'%';

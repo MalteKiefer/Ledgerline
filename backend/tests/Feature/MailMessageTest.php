@@ -268,4 +268,54 @@ class MailMessageTest extends TestCase
             ->assertOk()->assertJson(['updated' => 0]);
         $this->assertFalse((bool) $m->fresh()?->flagged);
     }
+
+    public function test_search_narrows_by_field_flag_and_date(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+
+        $this->message($user, $account, [
+            'subject' => 'Rechnung 2026-01', 'from_name' => 'netcup GmbH', 'from_email' => 'billing@netcup.de',
+            'seen' => false, 'has_attachment' => true, 'date' => '2026-03-01 10:00:00',
+        ]);
+        $this->message($user, $account, [
+            'subject' => 'Newsletter', 'from_name' => 'Telekom', 'from_email' => 'news@telekom.de',
+            'seen' => true, 'has_attachment' => false, 'date' => '2026-03-02 10:00:00',
+        ]);
+
+        $subjects = fn (string $q): array => collect(
+            $this->getJson(route('mail.messages.index', ['q' => $q]))->assertOk()->json('data')
+        )->pluck('subject')->all();
+
+        $this->assertSame(['Rechnung 2026-01'], $subjects('from:netcup'));
+        $this->assertSame(['Rechnung 2026-01'], $subjects('subject:rechnung'));
+        $this->assertSame(['Rechnung 2026-01'], $subjects('is:unread'));
+        $this->assertSame(['Newsletter'], $subjects('is:read'));
+        $this->assertSame(['Rechnung 2026-01'], $subjects('has:attachment'));
+        // AND: both terms must hold.
+        $this->assertSame(['Rechnung 2026-01'], $subjects('from:netcup is:unread'));
+        $this->assertSame([], $subjects('from:netcup is:read'));
+        // Inclusive date bounds.
+        $this->assertSame(['Rechnung 2026-01'], $subjects('before:2026-03-01'));
+        $this->assertSame(['Newsletter'], $subjects('after:2026-03-02'));
+    }
+
+    public function test_search_matches_recipients_and_leaves_a_typo_as_text(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+        $this->message($user, $account, ['subject' => 'To me', 'to_json' => [['name' => 'Malte', 'email' => 'me@example.org']]]);
+        $this->message($user, $account, ['subject' => 'To someone else', 'to_json' => [['name' => 'Bob', 'email' => 'bob@example.net']]]);
+
+        $subjects = fn (string $q): array => collect(
+            $this->getJson(route('mail.messages.index', ['q' => $q]))->assertOk()->json('data')
+        )->pluck('subject')->all();
+
+        $this->assertSame(['To me'], $subjects('to:me@example.org'));
+        // A mistyped field searches for the text instead of filtering to nothing.
+        $this->assertSame([], $subjects('fom:me@example.org'));
+        $this->assertCount(2, $subjects(''));
+    }
 }

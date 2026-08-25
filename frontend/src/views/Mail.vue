@@ -112,7 +112,17 @@
       <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-3">
         <Btn variant="solid" size="sm" icon="edit_square" @click="openCompose">{{ t('mail.send.compose') }}</Btn>
         <span v-if="draftListActive" class="text-sm font-semibold">{{ t('mail.send.drafts') }}</span>
-        <TextField v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="min-w-48 flex-1" @update:model-value="debouncedReload" @enter="reload" />
+        <div class="relative flex min-w-48 flex-1 items-center gap-1">
+          <TextField ref="searchField" v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="flex-1" @update:model-value="debouncedReload" @enter="reload" />
+          <Btn variant="ghost" size="xs" icon="help" :title="t('mail.list.search_help')" @click="searchHelp = !searchHelp" />
+          <div v-if="searchHelp" class="absolute right-0 top-full z-20 mt-1 w-80 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] p-3 text-xs shadow-lg">
+            <div class="mb-2 flex items-center gap-2"><span class="flex-1 font-semibold">{{ t('mail.list.search_help') }}</span><Btn variant="ghost" size="xs" icon="close" @click="searchHelp = false" /></div>
+            <p class="mb-2 text-[var(--ll-muted)]">{{ t('mail.list.search_help_intro') }}</p>
+            <ul class="space-y-1">
+              <li v-for="tip in searchTips" :key="tip" class="font-mono text-[0.7rem]">{{ tip }}</li>
+            </ul>
+          </div>
+        </div>
         <div class="flex items-center gap-1.5">
           <TextField v-model="dateFrom" type="date" :placeholder="t('mail.list.date_from')" class="w-36" @update:model-value="onDate" />
           <TextField v-model="dateTo" type="date" :placeholder="t('mail.list.date_to')" class="w-36" @update:model-value="onDate" />
@@ -801,6 +811,13 @@ onMounted(async () => {
   }, 5000);
 });
 onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); });
+
+const searchHelp = ref(false);
+const searchTips = computed(() => [
+  t('mail.list.search_help_from'), t('mail.list.search_help_to'), t('mail.list.search_help_subject'),
+  t('mail.list.search_help_folder'), t('mail.list.search_help_is'), t('mail.list.search_help_has'),
+  t('mail.list.search_help_date'),
+]);
 
 /** What the sortable headers render their arrow from. */
 const listSort = computed(() => ({ key: filters.sort, dir: filters.dir }));
