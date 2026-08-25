@@ -65,6 +65,11 @@ class UsersController extends Controller
                 'verified' => $u->email_verified_at !== null,
                 'two_factor' => $u->two_factor_confirmed_at !== null,
                 'last_login_at' => $loginAt instanceof Carbon ? $loginAt->toIso8601String() : null,
+                // Blocking is consequential and was visible nowhere but in the answer
+                // to the block itself: going through accounts after an incident,
+                // nothing said which ones had already been handled. A count on the
+                // dashboard says four are blocked, never which four.
+                'blocked_at' => $u->blocked_at instanceof Carbon ? $u->blocked_at->toIso8601String() : null,
             ];
         }
 
