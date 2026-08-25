@@ -54,6 +54,8 @@ use Illuminate\Support\Carbon;
  * @property ?string $encrypted_type
  * @property ?string $decrypt_status
  * @property bool $seen
+ * @property bool $flagged
+ * @property bool $answered
  * @property ?Carbon $seen_at
  * @property ?Carbon $trashed_at
  * @property ?Carbon $created_at
@@ -83,6 +85,8 @@ class MailMessage extends Model
             'date' => 'datetime',
             'indexed_at' => 'datetime',
             'seen' => 'boolean',
+            'flagged' => 'boolean',
+            'answered' => 'boolean',
             'spam' => 'boolean',
             'has_attachment' => 'boolean',
             'attachment_count' => 'integer',

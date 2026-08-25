@@ -154,4 +154,118 @@ class MailMessageTest extends TestCase
 
         $this->actingAs(User::factory()->create())->get(route('mail.raw', $m->id))->assertNotFound();
     }
+
+    public function test_the_list_is_ordered_by_the_message_date_not_the_import_time(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+
+        // The state a backfill leaves behind: imported in one go (so created_at is
+        // identical — the ingestor snaps it to the hour) but sent years apart.
+        $importedAt = now()->startOfHour();
+        $old = $this->message($user, $account, ['subject' => 'from 2019', 'date' => '2019-04-01 09:00:00', 'created_at' => $importedAt]);
+        $recent = $this->message($user, $account, ['subject' => 'yesterday', 'date' => now()->subDay(), 'created_at' => $importedAt]);
+
+        $subjects = collect($this->getJson(route('mail.messages.index'))->assertOk()->json('data'))->pluck('subject')->all();
+
+        $this->assertSame(['yesterday', 'from 2019'], $subjects, 'newest by its own date first');
+        $this->assertNotNull($old->id);
+        $this->assertNotNull($recent->id);
+    }
+
+    public function test_a_message_without_a_date_header_falls_back_to_when_we_saw_it(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+
+        $this->message($user, $account, ['subject' => 'dated', 'date' => now()->subDays(5)]);
+        // No Date header at all: it must still appear, ordered by arrival.
+        $this->message($user, $account, ['subject' => 'undated', 'date' => null, 'created_at' => now()]);
+
+        $subjects = collect($this->getJson(route('mail.messages.index'))->assertOk()->json('data'))->pluck('subject')->all();
+
+        $this->assertSame(['undated', 'dated'], $subjects);
+    }
+
+    public function test_the_list_can_be_sorted_and_reversed(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+        $this->message($user, $account, ['subject' => 'Beta', 'from_name' => 'Zoe', 'size' => 900, 'date' => now()->subDay()]);
+        $this->message($user, $account, ['subject' => 'Alpha', 'from_name' => 'Adam', 'size' => 100, 'date' => now()]);
+
+        $order = fn (array $q): array => collect($this->getJson(route('mail.messages.index', $q))->assertOk()->json('data'))->pluck('subject')->all();
+
+        $this->assertSame(['Alpha', 'Beta'], $order(['sort' => 'subject', 'dir' => 'asc']));
+        $this->assertSame(['Beta', 'Alpha'], $order(['sort' => 'subject', 'dir' => 'desc']));
+        $this->assertSame(['Alpha', 'Beta'], $order(['sort' => 'from', 'dir' => 'asc']));
+        $this->assertSame(['Beta', 'Alpha'], $order(['sort' => 'size', 'dir' => 'desc']));
+        // An unknown sort key must not 500 or return nothing — it falls back.
+        $this->assertCount(2, $order(['sort' => 'nonsense']));
+    }
+
+    public function test_unread_first_still_puts_the_newest_on_top_within_each_group(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+        $this->message($user, $account, ['subject' => 'read-old', 'seen' => true, 'date' => now()->subDays(3)]);
+        $this->message($user, $account, ['subject' => 'unread-old', 'seen' => false, 'date' => now()->subDays(2)]);
+        $this->message($user, $account, ['subject' => 'unread-new', 'seen' => false, 'date' => now()]);
+
+        $subjects = collect($this->getJson(route('mail.messages.index', ['sort' => 'unread']))->assertOk()->json('data'))->pluck('subject')->all();
+
+        $this->assertSame(['unread-new', 'unread-old', 'read-old'], $subjects);
+    }
+
+    public function test_the_row_carries_a_snippet_without_quoted_text(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+        $this->message($user, $account, [
+            // A reply: the quoted original says nothing about THIS message.
+            'text_body' => "Passt so,   danke.\n\n> Am 1.4. schrieb Bob:\n> Sollen wir?\n--\nSignatur",
+        ]);
+
+        $row = $this->getJson(route('mail.messages.index'))->assertOk()->json('data.0');
+
+        $this->assertSame('Passt so, danke.', $row['snippet']);
+    }
+
+    public function test_starring_a_message_and_the_flags_reaching_the_row(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+        $m = $this->message($user, $account);
+
+        $this->assertFalse($this->getJson(route('mail.messages.index'))->json('data.0.flagged'));
+
+        $this->postJson(route('mail.messages.flag'), ['ids' => [$m->id], 'flagged' => true])
+            ->assertOk()->assertJson(['updated' => 1]);
+        $this->assertTrue($this->getJson(route('mail.messages.index'))->json('data.0.flagged'));
+
+        // Setting it again changes nothing — the write is skipped, not repeated.
+        $this->postJson(route('mail.messages.flag'), ['ids' => [$m->id], 'flagged' => true])
+            ->assertOk()->assertJson(['updated' => 0]);
+    }
+
+    public function test_starring_never_reaches_another_account(): void
+    {
+        $owner = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $owner->id]);
+        $this->actingAs($owner);
+        $m = $this->message($owner, $account);
+
+        app('auth')->forgetGuards();
+        $stranger = User::factory()->create();
+        $this->actingAs($stranger)
+            ->postJson(route('mail.messages.flag'), ['ids' => [$m->id], 'flagged' => true])
+            ->assertOk()->assertJson(['updated' => 0]);
+        $this->assertFalse((bool) $m->fresh()?->flagged);
+    }
 }

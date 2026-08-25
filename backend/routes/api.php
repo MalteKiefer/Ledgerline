@@ -64,6 +64,7 @@ use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MailDeleteOriginController;
 use App\Http\Controllers\MailDraftController;
 use App\Http\Controllers\MailExportController;
+use App\Http\Controllers\MailFlagController;
 use App\Http\Controllers\MailFolderController;
 use App\Http\Controllers\MailKeyController;
 use App\Http\Controllers\MailLabelController;
@@ -647,6 +648,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/mail/messages/{message}', [MailMessageController::class, 'show'])->whereUuid('message')->middleware('throttle:1200,1')->name('api.mail.messages.show');
             Route::get('/mail/messages/{message}/body', [MailMessageController::class, 'body'])->whereUuid('message')->middleware('throttle:3000,1')->name('api.mail.messages.body');
             Route::post('/mail/messages/seen', [MailSeenController::class, 'update'])->middleware('throttle:120,1')->name('api.mail.messages.seen');
+            Route::post('/mail/messages/flag', [MailFlagController::class, 'update'])->middleware('throttle:120,1')->name('api.mail.messages.flag');
             Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware('throttle:60,1')->name('api.mail.messages.trash');
             Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('api.mail.messages.restore');
             Route::post('/mail/messages/labels', [MailLabelController::class, 'apply'])->middleware('throttle:120,1')->name('api.mail.messages.labels');

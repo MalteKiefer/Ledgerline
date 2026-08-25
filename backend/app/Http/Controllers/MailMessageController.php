@@ -52,6 +52,18 @@ class MailMessageController extends Controller
         $query = MailMessage::query()
             ->ownedBy($user->id)
             ->with('labels')
+            // Only what the list actually renders. Without this the query hands
+            // back every column, and two of them are the big ones: the sanitised
+            // HTML body and the search text that feeds the 42 MB full-text index.
+            // A page of fifty rows was moving megabytes to print sender, subject
+            // and a date. text_body stays — the snippet is read from it.
+            ->select([
+                'id', 'user_id', 'account_id', 'folder', 'message_id', 'thread_id',
+                'subject', 'from_name', 'from_email', 'to_json', 'cc_json', 'date', 'size',
+                'has_attachment', 'attachment_count', 'seen', 'flagged', 'answered',
+                'trashed_at', 'spam', 'spf', 'dkim', 'dmarc', 'encrypted_type',
+                'decrypt_status', 'created_at', 'text_body',
+            ])
             // Trashed = hidden. Excluded by default; ?trashed=1 returns ONLY those.
             ->when($wantTrashed, fn (Builder $q) => $q->whereNotNull('trashed_at'), fn (Builder $q) => $q->whereNull('trashed_at'))
             ->when($request->filled('account_id'), fn (Builder $q) => $q->where('account_id', $request->integer('account_id')))
@@ -64,7 +76,8 @@ class MailMessageController extends Controller
         $this->applyDateRange($query, $request);
         $this->applySearch($query, trim($request->string('q')->value()));
 
-        $paginator = $query->orderByDesc('created_at')->paginate($perPage);
+        $this->applySort($query, $request->string('sort')->value(), $request->string('dir')->value());
+        $paginator = $query->paginate($perPage);
 
         return response()->json([
             'data' => $paginator->getCollection()->map(fn (MailMessage $m): array => $this->presentRow($m))->all(),
@@ -292,6 +305,66 @@ class MailMessageController extends Controller
     }
 
     /** @param  EloquentBuilder<MailMessage>  $query */
+    /** First readable line of the body, collapsed to one line and capped. */
+    private function snippet(MailMessage $m): ?string
+    {
+        $text = $m->text_body;
+        if (! is_string($text) || trim($text) === '') {
+            return null;
+        }
+        // Quoted replies and signature blocks say nothing about THIS message.
+        $lines = [];
+        foreach (preg_split('/\R/u', $text) ?: [] as $line) {
+            $line = trim((string) $line);
+            if ($line === '' || str_starts_with($line, '>')) {
+                continue;
+            }
+            if ($line === '--' || $line === '-- ') {
+                break; // everything below the separator is signature
+            }
+            $lines[] = $line;
+            if (count($lines) >= 3) {
+                break;
+            }
+        }
+        $joined = trim((string) preg_replace('/\s+/u', ' ', implode(' ', $lines)));
+
+        return $joined === '' ? null : mb_substr($joined, 0, 200);
+    }
+
+    /**
+     * Order the list.
+     *
+     * The default is the message's OWN date, not `created_at`. created_at is the
+     * archive timestamp and the ingestor snaps it to the hour, so ordering by it
+     * put everything imported in one hour into an arbitrary order and sorted a
+     * backfilled 2019 mail above yesterday's. `date` is nullable (a message
+     * without a Date header), hence the coalesce — those fall back to the time we
+     * saw them, which is the best available answer.
+     *
+     * @param  EloquentBuilder<MailMessage>  $query
+     */
+    private function applySort(EloquentBuilder $query, string $sort, string $dir): void
+    {
+        $direction = strtolower($dir) === 'asc' ? 'asc' : 'desc';
+
+        match ($sort) {
+            'from' => $query->orderBy('from_name', $direction)->orderBy('from_email', $direction),
+            'subject' => $query->orderBy('subject', $direction),
+            'size' => $query->orderBy('size', $direction),
+            // Unread first is a reading order, not an alphabet: the group comes
+            // first and the newest still sits on top INSIDE it, so the date keeps
+            // the requested direction rather than being inverted with the group.
+            'unread' => $query->orderBy('seen', $direction === 'desc' ? 'asc' : 'desc')->orderByRaw('coalesce(date, created_at) '.$direction),
+            default => $query->orderByRaw('coalesce(date, created_at) '.$direction),
+        };
+
+        // A stable tiebreaker, or two messages with the same second swap places
+        // between two page loads and the reader sees a row twice.
+        $query->orderBy('id', $direction);
+    }
+
+    /** @param  EloquentBuilder<MailMessage>  $query */
     private function applySearch(EloquentBuilder $query, string $q): void
     {
         if ($q === '') {
@@ -353,6 +426,12 @@ class MailMessageController extends Controller
             'has_attachment' => $m->has_attachment,
             'attachment_count' => $m->attachment_count,
             'seen' => $m->seen,
+            // These two columns have existed since the archive was created and
+            // reached neither the API nor the UI.
+            'flagged' => $m->flagged,
+            'answered' => $m->answered,
+            // One line of the body, so the list can be scanned instead of opened.
+            'snippet' => $this->snippet($m),
             'trashed' => $m->trashed_at !== null,
             'spam' => $m->spam,
             'spf' => $m->spf,
