@@ -15,6 +15,7 @@ use App\Models\GalleryFace;
 use App\Models\GalleryPerson;
 use App\Models\GalleryPhoto;
 use App\Services\Files\FileTextIndex;
+use App\Support\BinaryProcess;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\GalleryMemories;
@@ -71,6 +72,9 @@ class GalleryController extends Controller
      * happens to share a name, and hiding it inside a photo would lose it.
      */
     private const LIVE_CLIP_MAX_S = 6;
+
+    /** How much of a still to stage when only its header tag is wanted. */
+    private const CONTENT_ID_SCAN_BYTES = 2 * 1024 * 1024;
 
     /** Broad video extension set — "any format" uploads; ffprobe validates later. */
     private const VIDEO_EXT = [
@@ -768,6 +772,18 @@ class GalleryController extends Controller
             if ($probe === null) {
                 $photo->forceFill(['status' => 'failed'])->save();
 
+                return;
+            }
+
+            // A Live Photo clip that arrived on its own (phone client, CLI, or a
+            // second batch) carries the same asset identifier as its still.
+            // Fold it here, BEFORE the poster and transcode work: that work is
+            // for a standalone video, and this is not one.
+            $assetId = $this->extractQuickTimeContentId($abs);
+            if ($assetId !== null && $photo->content_id === null) {
+                $photo->forceFill(['content_id' => $assetId])->save();
+            }
+            if ($this->foldClipIntoStill($photo)) {
                 return;
             }
 
@@ -1494,6 +1510,166 @@ class GalleryController extends Controller
         return response()->json(['merged' => $merged]);
     }
 
+    /**
+     * Fold a freshly uploaded clip into the still it belongs to, if the pair is
+     * PROVEN — never guessed.
+     *
+     * Client-side pairing (upload the still, then attach the clip to it) only
+     * covers the browser, and only when both halves are in the same batch: a
+     * phone client, the CLI, or a second batch left the .MOV standing next to
+     * its photo as a separate tile. Doing it here means every client gets it.
+     *
+     * Only the strong key is used: the QuickTime asset identifier Apple writes
+     * into BOTH halves of a Live Photo. Filename+duration is deliberately NOT
+     * accepted here — that heuristic can be wrong, and a wrong guess would make
+     * a video vanish from the grid without anyone asking for it. It stays behind
+     * the explicit "merge Live Photos" action.
+     *
+     * @return bool true when the clip was folded and its row removed
+     */
+    private function foldClipIntoStill(GalleryPhoto $clip): bool
+    {
+        $contentId = is_string($clip->content_id) ? $clip->content_id : '';
+        if ($contentId === '' || $clip->media_type !== 'video') {
+            return false;
+        }
+
+        $still = GalleryPhoto::query()
+            ->where('user_id', $clip->user_id)
+            ->where('content_id', $contentId)
+            ->where('media_type', 'image')
+            ->whereNull('motion_path')
+            ->whereNull('deleted_at')
+            ->orderBy('id')
+            ->first();
+        if ($still === null) {
+            return false;
+        }
+
+        return $this->foldClip($clip, $still);
+    }
+
+    /**
+     * Give a still its Apple asset identifier, and fold in the clip that already
+     * carries the same one.
+     *
+     * The identifier is written into BOTH halves of a Live Photo, but only the
+     * video side was ever read — the still's `content_id` stayed empty, so the
+     * two halves had nothing in common to match on and every pairing attempt
+     * fell back to the filename. Reading it here is what makes the strong key
+     * actually usable.
+     *
+     * Runs in the worker (exiftool on an untrusted image, and the upload path
+     * must not carry it), and only for the formats a Live Photo still comes in.
+     * Order between the two halves is not guaranteed, hence both directions:
+     * the clip folds itself in when it arrives second, this does it when the
+     * still does.
+     */
+    public function linkLivePhoto(GalleryPhoto $still): void
+    {
+        if ($still->media_type !== 'image' || $still->motion_path !== null) {
+            return;
+        }
+        $contentId = is_string($still->content_id) ? $still->content_id : '';
+        if ($contentId === '') {
+            if (! in_array((string) $still->mime, ['image/heic', 'image/heif', 'image/jpeg'], true)) {
+                return;
+            }
+            $contentId = $this->extractStillContentId($still) ?? '';
+            if ($contentId === '') {
+                return;
+            }
+            $still->forceFill(['content_id' => $contentId])->save();
+        }
+
+        $clip = GalleryPhoto::query()
+            ->where('user_id', $still->user_id)
+            ->where('content_id', $contentId)
+            ->where('media_type', 'video')
+            ->whereNull('deleted_at')
+            ->orderBy('id')
+            ->first();
+        if ($clip !== null) {
+            $this->foldClip($clip, $still);
+        }
+    }
+
+    /**
+     * Read the Apple asset identifier out of a still.
+     *
+     * exiftool because it is the one reader that finds the tag across HEIC and
+     * JPEG (it sits in the Apple maker note, which PHP's own EXIF reader hands
+     * back as raw bytes). Missing binary or missing tag both mean "no pair" —
+     * the photo is stored either way.
+     */
+    private function extractStillContentId(GalleryPhoto $still): ?string
+    {
+        if (! BinaryProcess::available('exiftool')) {
+            return null;
+        }
+        $src = $this->safeBlobPath($still->storage_path);
+        if ($src === null || ! $this->fs()->exists($src)) {
+            return null;
+        }
+        try {
+            $tmp = DiskTempFile::create('llcid')->withExtension('img');
+            $in = $this->fs()->readStream($src);
+            $dst = fopen($tmp->path(), 'wb');
+            if (! is_resource($in) || $dst === false) {
+                return null;
+            }
+            // The tag sits in the header; a bounded copy keeps a huge original
+            // from being staged in full just to read a UUID.
+            stream_copy_to_stream($in, $dst, self::CONTENT_ID_SCAN_BYTES);
+            fclose($in);
+            fclose($dst);
+            $out = BinaryProcess::run(['exiftool', '-s3', '-fast2', '-ContentIdentifier', $tmp->path()], 20);
+        } catch (\Throwable) {
+            return null;
+        }
+        if ($out === null) {
+            return null;
+        }
+        $value = trim($out);
+
+        return preg_match('/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/', $value) === 1
+            ? $value
+            : null;
+    }
+
+    /**
+     * Point the still at the clip's bytes and drop the clip's own row.
+     *
+     * Nothing is copied and nothing is deleted that carries content: the file
+     * the video row owns becomes the still's live part, only the video's own
+     * derived caches (thumbnail/preview/poster/transcode) go with the row.
+     */
+    private function foldClip(GalleryPhoto $clip, GalleryPhoto $still): bool
+    {
+        $path = $this->safeBlobPath($clip->storage_path);
+        if ($path === null) {
+            return false;
+        }
+
+        DB::transaction(function () use ($still, $clip, $path): void {
+            $still->forceFill(['motion_path' => $path])->save();
+            // The bytes stay — they are the clip now. Only the video's own
+            // derived caches and its ROW go.
+            $this->fs()->delete($this->thumbPath($clip));
+            $this->fs()->delete($this->previewPath($clip));
+            foreach ([$clip->poster_path, $clip->playback_path] as $derived) {
+                $p = $this->safeBlobPath($derived);
+                if ($p !== null) {
+                    $this->fs()->delete($p);
+                }
+            }
+            $clip->forceFill(['storage_path' => '', 'poster_path' => null, 'playback_path' => null])->save();
+            $clip->forceDelete();
+        });
+
+        return true;
+    }
+
     /** Filename without its extension, lowercased — the weaker of the two pairing keys. */
     private function baseName(string $name): string
     {
@@ -2172,8 +2348,38 @@ class GalleryController extends Controller
             }
         }
 
-        // Fallback (Samsung / Motion Photo v2): the first ISO-BMFF `ftyp` box after
-        // the JPEG SOI marks the appended MP4. Validate the 4-byte box-size prefix.
+        // Motion Photo v2 (current Pixel and Samsung): the XMP Container directory
+        // states the clip's exact byte length, and it is the LAST item in the file.
+        // An exact length beats scanning for a marker — no guessing where it starts.
+        if (preg_match('/Semantic\s*=\s*"MotionPhoto"/', $data, $m, PREG_OFFSET_CAPTURE) === 1) {
+            $at = (int) $m[0][1];
+            // Attribute order is not fixed, so read the whole item element around it.
+            $window = substr($data, max(0, $at - 400), 800);
+            if (preg_match('/Length\s*=\s*"(\d+)"/', $window, $lm) === 1) {
+                $length = (int) $lm[1];
+                $padding = preg_match('/Padding\s*=\s*"(\d+)"/', $window, $pm) === 1 ? (int) $pm[1] : 0;
+                foreach ([$padding, 0] as $pad) {
+                    $start = $len - $pad - $length;
+                    if ($length > 8 && $start >= 4 && substr($data, $start + 4, 4) === 'ftyp') {
+                        return substr($data, $start, $length);
+                    }
+                }
+            }
+        }
+
+        // Samsung's older layout: an ASCII marker sits immediately before the
+        // appended MP4.
+        $marker = strpos($data, 'MotionPhoto_Data');
+        if ($marker !== false) {
+            $start = $marker + 16;
+            if (substr($data, $start + 4, 4) === 'ftyp') {
+                return substr($data, $start);
+            }
+        }
+
+        // Last resort: the first ISO-BMFF `ftyp` box after the JPEG SOI marks the
+        // appended MP4. Validate the 4-byte box-size prefix — this one scans through
+        // image bytes and can therefore be wrong, which is why it runs last.
         $pos = strpos($data, 'ftyp', 4);
         if ($pos !== false && $pos >= 4) {
             $start = $pos - 4;
