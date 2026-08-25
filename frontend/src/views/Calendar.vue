@@ -285,6 +285,28 @@
           <Btn size="sm" variant="ghost" class="!text-red-600" @click="doRsvp('DECLINED')">{{ t('calendar.ui.rsvp_decline') }}</Btn>
         </div>
       </div>
+      <!-- Photos taken while the event ran (only rendered when there are any) -->
+      <div v-if="eventPhotos && eventPhotos.photos.length" class="rounded-lg border border-[var(--ll-border)] p-2">
+        <div class="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-[var(--ll-muted)]">
+          <Icon name="photo_library" :size="15" />
+          {{ t('calendar.ui.photos') }} ({{ eventPhotos.photos.length }})
+        </div>
+        <div class="grid grid-cols-5 gap-1.5 sm:grid-cols-8">
+          <button
+            v-for="p in eventPhotos.photos" :key="p.id" type="button"
+            class="aspect-square overflow-hidden rounded-md border border-[var(--ll-border)] bg-black/[0.04] dark:bg-white/5"
+            :title="p.name" @click="openPhoto(p.id)"
+          >
+            <img v-if="p.thumb" :src="photoThumb(p.id)" :alt="p.name" loading="lazy" class="h-full w-full object-cover">
+            <Icon v-else name="image" :size="16" class="text-[var(--ll-muted)]" />
+          </button>
+        </div>
+        <p class="mt-1.5 text-xs text-[var(--ll-muted)]">
+          {{ eventPhotos.matched_by === 'time_and_place'
+            ? t('calendar.ui.photos_by_time_place', { radius: String(eventPhotos.radius_m ?? 0) })
+            : t('calendar.ui.photos_by_time') }}
+        </p>
+      </div>
     </div>
     <template #footer>
       <Btn v-if="editingId" variant="danger" class="mr-auto" :loading="deleting" @click="onDelete">{{ t('calendar.ui.delete_event') }}</Btn>
@@ -369,7 +391,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { api, ApiError } from '@spa/api/client';
-import { useCalendarStore, type CalendarCol, type Occurrence, type CalendarShareRow } from '@spa/stores/calendar';
+import { useCalendarStore, type CalendarCol, type Occurrence, type CalendarShareRow, type EventPhotosResult } from '@spa/stores/calendar';
 import { useAuthStore } from '@spa/stores/auth';
 import LocationField from '@spa/components/LocationField.vue';
 import { useToast } from '@spa/composables/useToast';
@@ -549,6 +571,13 @@ watch([cursor, view], () => { reloadRange(); });
 // --- event editor -----------------------------------------------------------
 const eventModal = ref(false);
 const editingId = ref<string | null>(null);
+// Photos matched to the open event — fetched on open, not while rendering the
+// month grid (one request per visible occurrence would be absurd).
+const eventPhotos = ref<EventPhotosResult | null>(null);
+const photoThumb = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/thumb`);
+function openPhoto(id: number): void {
+  router.push({ path: '/gallery', query: { photo: String(id) } });
+}
 const currentEtag = ref<string>('');
 // Per-occurrence editing of a recurring series: scope = whole series vs the one
 // clicked occurrence (RECURRENCE-ID override / EXDATE on save/delete).
@@ -653,6 +682,7 @@ function openCreate(startVal: string): void {
     repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '', attendees: '',
   });
   attendeeDetails.value = [];
+  eventPhotos.value = null;
   eventModal.value = true;
 }
 async function openEdit(o: Occurrence): Promise<void> {
@@ -686,7 +716,11 @@ async function openEdit(o: Occurrence): Promise<void> {
     occStart.value = o.start;
     occEnd.value = o.end ?? '';
     editScope.value = 'series';
+    eventPhotos.value = null;
     eventModal.value = true;
+    // Best-effort: the editor must open even if the gallery module is off for
+    // this account (403) or the lookup fails.
+    store.photos(d.id).then((r) => { if (editingId.value === d.id) eventPhotos.value = r; }).catch(() => { /* no photo section */ });
   } catch { error(t('common.error')); }
 }
 // Decimals may arrive as strings (Laravel decimal cast) — normalise to a

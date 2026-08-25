@@ -610,6 +610,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/calendar/events/{event}', [CalendarController::class, 'show'])->name('calendar.events.show');
         Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('calendar.events.update');
         Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->middleware('throttle:600,1')->name('calendar.events.destroy');
+        Route::get('/calendar/events/{event}/photos', [CalendarController::class, 'photos'])->middleware('throttle:120,1')->name('calendar.events.photos');
         Route::post('/calendar/events/{event}/exclude', [CalendarController::class, 'excludeOccurrence'])->middleware('throttle:600,1')->name('calendar.events.exclude');
         Route::put('/calendar/events/{event}/occurrence', [CalendarController::class, 'overrideOccurrence'])->middleware('throttle:600,1')->name('calendar.events.occurrence');
 

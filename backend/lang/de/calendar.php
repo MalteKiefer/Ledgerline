@@ -171,6 +171,9 @@ return [
         'rolled' => 'Aufgabe auf den nächsten Termin verschoben.',
         'move_up' => 'Nach oben',
         'move_down' => 'Nach unten',
+        'photos' => 'Fotos',
+        'photos_by_time' => 'Während dieses Termins aufgenommen',
+        'photos_by_time_place' => 'Während dieses Termins und im Umkreis von :radius m des Orts aufgenommen',
     ],
     'imip' => [
         'cancelled' => 'Abgesagt',
