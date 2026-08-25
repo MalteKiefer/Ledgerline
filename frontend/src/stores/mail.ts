@@ -291,6 +291,15 @@ export const useMailStore = defineStore('mail', () => {
     meta.value = r.meta;
   }
 
+  /**
+   * The envelope rows of one conversation, oldest first — a conversation reads
+   * downward. Bounded at 200: beyond that it is a mailing list, not a thread.
+   */
+  async function thread(threadId: string): Promise<MailMessage[]> {
+    const r = await api.get<{ data: MailMessage[] }>(`/api/v1/mail/messages?thread_id=${encodeURIComponent(threadId)}&sort=date&dir=asc&per_page=200`);
+    return r.data ?? [];
+  }
+
   async function show(id: string): Promise<MailMessage> {
     const r = await api.get<{ message: MailMessage }>(`/api/v1/mail/messages/${id}`);
     openMessage.value = r.message;
@@ -440,6 +449,14 @@ export const useMailStore = defineStore('mail', () => {
     rules.value = r.rules;
   }
   const createRule = (rule: MailRule) => api.post<{ rule: MailRule }>('/api/v1/mail/rules', rule);
+  /**
+   * Run rules over mail that is already archived (queued server-side). Omit the
+   * id to run every enabled rule. Skip rules are left out server-side — they
+   * mean "do not archive", which says nothing about what already is.
+   */
+  const applyRules = (ruleId?: number) => api.post<{ dispatched: boolean }>(
+    ruleId ? `/api/v1/mail/rules/${ruleId}/apply` : '/api/v1/mail/rules/apply', {},
+  );
   const updateRule = (id: number, rule: MailRule) => api.put<{ rule: MailRule }>(`/api/v1/mail/rules/${id}`, rule);
   const deleteRule = (id: number) => api.delete(`/api/v1/mail/rules/${id}`);
 
@@ -501,10 +518,10 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
-    setSeen, setFlagged, unreadIds, trash, restore, pushBack, deleteOrigin, setLabels,
+    setSeen, setFlagged, unreadIds, thread, trash, restore, pushBack, deleteOrigin, setLabels,
     compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
-    loadRules, createRule, updateRule, deleteRule,
+    loadRules, createRule, applyRules, updateRule, deleteRule,
     loadSavedSearches, saveSearch, deleteSavedSearch,
     loadLogs, loadKeys, importKey, generateKey, deleteKey, exportKey, loadStats, exportMessages, resetFilters,
   };

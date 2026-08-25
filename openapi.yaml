@@ -13280,6 +13280,51 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/rules/apply:
+    post:
+      tags: [Mail]
+      operationId: mailRulesApplyAll
+      summary: Run every enabled rule over mail that is already archived
+      description: >
+        Throttle 6/min. Queued: it walks the whole archive, so a request never
+        does the work. Rules otherwise only run at ingest, which means a rule
+        written today does nothing about what is already there.
+
+
+        Two ingest actions are deliberately NOT applied. `skip` means "do not
+        archive" and is dropped entirely rather than ignored — the evaluator
+        short-circuits on it and returns an empty action set, so leaving it in
+        would silently disable every other rule for the backfill.
+        `file_receipt` needs the attachment bytes and would copy thousands of
+        documents into the receipt inbox on one click. What is applied is
+        reversible and cheap: mark read, trash, label.
+      responses:
+        "200":
+          description: Queued.
+          content:
+            application/json:
+              schema: { type: object, properties: { dispatched: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/rules/{rule}/apply:
+    post:
+      tags: [Mail]
+      operationId: mailRulesApply
+      summary: Run one rule over mail that is already archived
+      description: "Throttle 6/min. Owner-scoped (404 on a foreign rule). Same semantics as /mail/rules/apply; a skip rule applies nothing."
+      parameters:
+        - { name: rule, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Queued.
+          content:
+            application/json:
+              schema: { type: object, properties: { dispatched: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /mail/messages/flag:
     post:
       tags: [Mail]

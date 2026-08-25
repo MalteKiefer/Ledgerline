@@ -359,7 +359,7 @@
           <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="start" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
             <DropdownMenuItem :class="menuItem" @select="doPushBack(reader)"><Icon name="move_to_inbox" :size="18" />{{ t('mail.actions.push_back') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItemDanger" @select="doDeleteOrigin(reader)"><Icon name="delete_sweep" :size="18" />{{ t('mail.actions.delete_origin') }}</DropdownMenuItem>
-            <DropdownMenuItem v-if="reader.thread_id" :class="menuItem" @select="viewThread"><Icon name="forum" :size="18" />{{ t('mail.reader.view_thread') }}</DropdownMenuItem>
+            <DropdownMenuItem v-if="reader.thread_id" :class="menuItem" @select="viewThread"><Icon name="forum" :size="18" />{{ t('mail.reader.view_thread_list') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" :disabled="printing" @select="printMessage"><Icon name="print" :size="18" />{{ t('mail.reader.print') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" :disabled="pdfExporting" @select="exportPdf"><Icon name="picture_as_pdf" :size="18" />{{ t('mail.reader.export_pdf') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" @select="downloadEml"><Icon name="download" :size="18" />{{ t('mail.reader.download_eml') }}</DropdownMenuItem>
@@ -378,6 +378,27 @@
           </DropdownMenuContent></DropdownMenuPortal>
         </DropdownMenuRoot>
         <span class="ml-auto inline-flex items-center gap-1.5 pr-1 text-xs text-[var(--ll-muted)]"><Icon :name="remoteOn ? 'visibility' : 'shield'" :size="15" />{{ remoteOn ? t('mail.reader.remote_loaded') : t('mail.reader.remote_blocked') }}</span>
+      </div>
+
+      <!-- Earlier messages of the conversation, collapsed. -->
+      <div v-if="inThread" class="divide-y divide-[var(--ll-border)] rounded-lg border border-[var(--ll-border)]">
+        <div class="flex items-center gap-2 px-3 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">
+          <Icon name="forum" :size="14" />
+          {{ t('mail.reader.conversation_n', { n: String(threadMessages.length) }) }}
+          <button type="button" class="ml-auto font-medium normal-case underline hover:text-primary-500" @click="viewThread">{{ t('mail.reader.view_thread_list') }}</button>
+        </div>
+        <button
+          v-for="tm in threadMessages" :key="tm.id" type="button"
+          class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-black/[0.03] dark:hover:bg-white/5"
+          :class="tm.id === reader.id ? 'bg-primary-500/[0.07]' : ''"
+          @click="tm.id === reader.id ? undefined : openReader(tm)"
+        >
+          <Icon :name="tm.id === reader.id ? 'expand_less' : 'expand_more'" :size="15" class="shrink-0 text-[var(--ll-muted)]" />
+          <span class="w-40 shrink-0 truncate" :class="!tm.seen ? 'font-semibold' : ''">{{ senderLabel(tm) }}</span>
+          <span class="min-w-0 flex-1 truncate text-[var(--ll-muted)]">{{ tm.id === reader.id ? t('mail.reader.shown_below') : (tm.snippet || '') }}</span>
+          <Icon v-if="tm.has_attachment" name="attach_file" :size="14" class="shrink-0 text-[var(--ll-muted)]" />
+          <span class="shrink-0 tabular-nums text-[var(--ll-muted)]">{{ fmtDate(tm.date || tm.created_at) }}</span>
+        </button>
       </div>
 
       <pre v-if="showHeaders" class="max-h-52 overflow-auto rounded-lg bg-black/[0.03] p-3 text-xs dark:bg-white/5">{{ reader.headers_raw || '—' }}</pre>
@@ -634,6 +655,7 @@
           <span class="ml-1 text-xs text-[var(--ll-muted)]">{{ ruleSummary(r) }}</span>
         </span>
         <Badge v-if="!r.enabled" tone="gray">off</Badge>
+        <Btn variant="ghost" size="sm" icon="play_arrow" :loading="rulesDlg.busy" :title="t('mail.extras.rule_apply')" @click="runRule(r)" />
         <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="removeRule(r)" />
       </div>
     </div>
@@ -656,8 +678,10 @@
       <p v-if="rulesForm.file_receipt" class="text-xs text-[var(--ll-muted)]">{{ t('mail.extras.action_file_receipt_hint') }}</p>
       <Select v-if="s.labels.length" v-model="rulesForm.add_label" :label="t('mail.extras.action_add_label')" :options="labelRuleItems" />
     </div>
+    <p class="mt-3 text-xs text-[var(--ll-muted)]">{{ t('mail.extras.rule_apply_hint') }}</p>
     <template #footer>
       <Btn variant="ghost" @click="rulesDlg.show = false">{{ t('common.close') }}</Btn>
+      <Btn v-if="s.rules.length" variant="ghost" :loading="rulesDlg.busy" icon="play_arrow" @click="runRule(null)">{{ t('mail.extras.rule_apply_all') }}</Btn>
       <Btn variant="solid" :loading="rulesDlg.busy" @click="saveRule">{{ t('mail.extras.add_rule') }}</Btn>
     </template>
   </Modal>
@@ -1184,8 +1208,26 @@ async function openReader(m: MailMessage) {
   try {
     reader.value = await s.show(m.id);
     if (!m.seen) { await s.setSeen([m.id], true); m.seen = true; if (reader.value) reader.value.seen = true; refreshCounts(); }
+    void loadThread(m);
   } catch { error(t('mail.toast.load_failed')); }
 }
+
+// ---- Conversation --------------------------------------------------------
+// The messages of the open message's thread, oldest first. Only the open one
+// carries a body: an expanded message renders an iframe, and one document per
+// message in a forty-message thread is forty documents.
+const threadMessages = ref<MailMessage[]>([]);
+async function loadThread(m: MailMessage) {
+  if (!m.thread_id) { threadMessages.value = []; return; }
+  // Already showing this conversation — the stack does not need re-fetching
+  // just because another of its messages was expanded.
+  if (threadMessages.value.some((x) => x.id === m.id) && threadMessages.value[0]?.thread_id === m.thread_id) return;
+  try {
+    const rows = await s.thread(m.thread_id);
+    threadMessages.value = rows.length > 1 ? rows : [];
+  } catch { threadMessages.value = []; }
+}
+const inThread = computed(() => threadMessages.value.length > 1);
 function toggleRemote() { remoteOn.value = !remoteOn.value; }
 
 async function readerDocument(): Promise<string | null> {
@@ -1544,6 +1586,22 @@ async function saveRule() {
     Object.assign(rulesForm, { name: '', from: '', to: '', subject: '', folder: '', has_attachment: false, mark_read: false, trash: false, skip: false, file_receipt: false, add_label: 0 });
   } catch { error(t('common.error')); } finally { rulesDlg.busy = false; }
 }
+/**
+ * Run a rule (or all of them) over mail that is already archived.
+ *
+ * Confirmed first: it walks the whole archive and can mark thousands of
+ * messages read or trash them, which the undo toast cannot take back.
+ */
+async function runRule(rule: MailRule | null) {
+  if (rulesDlg.busy) return;
+  if (!await confirmAsk(rule ? t('mail.extras.rule_apply_confirm', { name: rule.name }) : t('mail.extras.rule_apply_all_confirm'))) return;
+  rulesDlg.busy = true;
+  try {
+    await s.applyRules(rule?.id);
+    success(t('mail.extras.rule_apply_started'));
+  } catch { error(t('common.error')); } finally { rulesDlg.busy = false; }
+}
+
 /** What a rule does, in one line — a list of names says nothing. */
 function ruleSummary(r: MailRule): string {
   const conditions: string[] = [];

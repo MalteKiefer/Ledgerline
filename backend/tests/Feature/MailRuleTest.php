@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\MailAccount;
 use App\Models\MailLabel;
+use App\Models\MailMessage;
 use App\Models\MailRule;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -106,5 +109,58 @@ class MailRuleTest extends TestCase
         $this->assertSame('INBOX', $rule['match']['folder']);
         $this->assertTrue($rule['match']['has_attachment']);
         $this->assertTrue($rule['action']['file_receipt']);
+    }
+
+    public function test_applying_rules_to_existing_mail_marks_labels_and_trashes_but_never_skips(): void
+    {
+        // Rules only ran at ingest, so a rule written today did nothing about the
+        // mail already archived - which is usually why it was written.
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $label = MailLabel::query()->forceCreate(['user_id' => $user->id, 'name' => 'Bills', 'color' => '#f00']);
+        $this->actingAs($user);
+
+        $seed = function (string $subject, string $from) use ($user, $account): MailMessage {
+            $m = new MailMessage;
+            $m->forceFill([
+                'id' => (string) Str::uuid(), 'user_id' => $user->id, 'account_id' => $account->id,
+                'folder' => 'INBOX', 'subject' => $subject, 'from_email' => $from, 'from_name' => '',
+                'to_json' => [], 'seen' => false, 'size' => 10, 'content_hash' => (string) Str::uuid(),
+                'date' => now(), 'created_at' => now(),
+            ])->save();
+
+            return $m;
+        };
+        $hit = $seed('Invoice 5', 'billing@netcup.de');
+        $miss = $seed('Hello', 'friend@example.org');
+
+        $this->postJson(route('mail.rules.store'), $this->payload([
+            'name' => 'Bills', 'match' => ['from' => 'netcup'],
+            'action' => ['mark_read' => true, 'add_label' => $label->id],
+        ]))->assertCreated();
+        // skip must be ignored: it means "do not archive", and this is archived.
+        $this->postJson(route('mail.rules.store'), $this->payload([
+            'name' => 'Would skip', 'match' => ['from' => 'netcup'], 'action' => ['skip' => true],
+        ]))->assertCreated();
+
+        $this->postJson(route('mail.rules.apply-all'))->assertOk()->assertJson(['dispatched' => true]);
+
+        $this->assertTrue((bool) $hit->fresh()?->seen, 'the matching message was marked read');
+        $this->assertSame([$label->id], $hit->fresh()?->labels->pluck('id')->all());
+        $this->assertNull($hit->fresh()?->trashed_at, 'skip never deletes what is already archived');
+        $this->assertFalse((bool) $miss->fresh()?->seen, 'a non-matching message is untouched');
+        $this->assertCount(0, $miss->fresh()?->labels ?? []);
+    }
+
+    public function test_applying_a_foreign_rule_is_a_404(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $id = $this->postJson(route('mail.rules.store'), $this->payload())->assertCreated()->json('rule.id');
+
+        app('auth')->forgetGuards();
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('mail.rules.apply', ['rule' => $id]))
+            ->assertNotFound();
     }
 }

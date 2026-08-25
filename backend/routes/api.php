@@ -660,6 +660,8 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/mail/rules', [MailRuleController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.rules.store');
             Route::put('/mail/rules/{rule}', [MailRuleController::class, 'update'])->whereNumber('rule')->middleware('throttle:60,1')->name('api.mail.rules.update');
             Route::delete('/mail/rules/{rule}', [MailRuleController::class, 'destroy'])->whereNumber('rule')->middleware('throttle:60,1')->name('api.mail.rules.destroy');
+            Route::post('/mail/rules/apply', [MailRuleController::class, 'apply'])->middleware('throttle:6,1')->name('api.mail.rules.apply-all');
+            Route::post('/mail/rules/{rule}/apply', [MailRuleController::class, 'apply'])->whereNumber('rule')->middleware('throttle:6,1')->name('api.mail.rules.apply');
             Route::get('/mail/saved-searches', [MailSavedSearchController::class, 'index'])->name('api.mail.saved-searches.index');
             Route::post('/mail/saved-searches', [MailSavedSearchController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.saved-searches.store');
             Route::delete('/mail/saved-searches/{search}', [MailSavedSearchController::class, 'destroy'])->whereNumber('search')->middleware('throttle:60,1')->name('api.mail.saved-searches.destroy');

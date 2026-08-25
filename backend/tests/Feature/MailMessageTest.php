@@ -344,4 +344,24 @@ class MailMessageTest extends TestCase
         })->toSql();
         $this->assertStringContainsString('lower(subject) like', $sql);
     }
+
+    public function test_a_conversation_can_be_read_oldest_first(): void
+    {
+        // The stacked conversation in the reader asks for one thread in ascending
+        // date order, because a conversation reads downward — the opposite of the
+        // list's default.
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+        $this->message($user, $account, ['subject' => 'second', 'thread_id' => 'T1', 'date' => now()->subDay()]);
+        $this->message($user, $account, ['subject' => 'first', 'thread_id' => 'T1', 'date' => now()->subDays(3)]);
+        $this->message($user, $account, ['subject' => 'other thread', 'thread_id' => 'T2', 'date' => now()]);
+
+        $subjects = collect(
+            $this->getJson(route('mail.messages.index', ['thread_id' => 'T1', 'sort' => 'date', 'dir' => 'asc']))
+                ->assertOk()->json('data')
+        )->pluck('subject')->all();
+
+        $this->assertSame(['first', 'second'], $subjects);
+    }
 }
