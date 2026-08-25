@@ -57,6 +57,20 @@ class UsersApiTest extends TestCase
             ->assertJsonFragment(['name' => 'Alice']);
     }
 
+    public function test_index_reports_which_accounts_are_blocked(): void
+    {
+        $token = $this->adminToken();
+        $blocked = User::factory()->create(['name' => 'Mallory']);
+        User::factory()->create(['name' => 'Alice']);
+
+        $this->postJson('/api/v1/admin/users/'.$blocked->id.'/block', [], $this->auth($token))->assertOk();
+
+        // The point of the field: after a reload the list still says who is blocked.
+        $rows = collect($this->getJson('/api/v1/users', $this->auth($token))->assertOk()->json('users'));
+        $this->assertNotNull($rows->firstWhere('name', 'Mallory')['blocked_at']);
+        $this->assertNull($rows->firstWhere('name', 'Alice')['blocked_at']);
+    }
+
     public function test_index_includes_group_membership(): void
     {
         $token = $this->adminToken();

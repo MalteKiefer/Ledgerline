@@ -997,6 +997,8 @@ components:
         invoice_email: { type: [string, "null"], description: "Dedicated invoice email (Rechnungs-E-Mail); invoices are sent here when set, else the general email." }
         phone: { type: [string, "null"] }
         vat_id: { type: [string, "null"] }
+        hourly_rate: { type: [string, "null"], description: "Default hourly rate as a decimal string (decimal:2 cast); prefills invoice line items for this partner." }
+        currency: { type: [string, "null"], description: "ISO 4217 code used when invoicing this partner." }
         contacts: { type: array, items: { type: object, additionalProperties: true } }
         version: { type: integer }
         created_at: { type: string, format: date-time }
@@ -1273,9 +1275,9 @@ components:
         category: { type: string, nullable: true }
         tags: { type: array, items: { type: string } }
         vat: { type: string, nullable: true }
-        amount: { type: number, format: double, nullable: true, description: "Gross total (editable, prefilled by OCR recognition)." }
+        amount: { type: [string, "null"], description: "Gross total as a decimal string (decimal:2 cast — Laravel serialises it as a string), editable, prefilled by OCR recognition." }
         currency: { type: string, nullable: true, description: "ISO 4217 code (EUR/USD/GBP/CHF), uppercased server-side; editable, prefilled by OCR recognition. Display/reference only — amount is never converted." }
-        date: { type: string, format: date, nullable: true, description: "Document date (editable, prefilled by OCR recognition)." }
+        date: { type: [string, "null"], description: "Document date (editable, prefilled by OCR recognition). Carries a time part: a `date` cast serialises exactly like `datetime`, so this is `2026-07-31T00:00:00.000000Z`, not a plain date." }
         order_ref: { type: string, nullable: true, description: "Merchant-printed payment/order reference (e.g. Amazon's \"Zahlungsreferenznummer\") — the strongest signal for grouping several receipts that settle as one charge." }
         doc_number: { type: string, nullable: true, description: "Recognised invoice/receipt number — display + de-dup signal for accidental re-uploads." }
         note: { type: string, nullable: true }
@@ -2013,6 +2015,7 @@ components:
         verified: { type: boolean }
         two_factor: { type: boolean }
         last_login_at: { type: [string, "null"], format: date-time }
+        blocked_at: { type: [string, "null"], format: date-time, description: "Set while the account is blocked (see POST /admin/users/{user}/block); null when active." }
 
     AdminUserWrite:
       type: object

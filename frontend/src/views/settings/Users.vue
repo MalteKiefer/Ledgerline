@@ -137,14 +137,12 @@ const roleOptions = [
 const form = reactive({ name: '', email: '', password: '', role: 'user' });
 const err = reactive<Record<string, string[] | undefined>>({});
 
-// Per-user block toggle. NOTE: the /api/v1/users list does not currently expose
-// `blocked_at`, so blocked-state is tracked optimistically here (seeded from an
-// optional `blocked_at` if a future backend adds it). The users list SHOULD
-// expose `blocked_at` so this survives a page reload.
+// Per-user block toggle. The list carries `blocked_at`, so the badge survives a
+// reload; the override only covers the moment between the click and the refetch.
 const blockedOverride = reactive<Record<number, boolean>>({});
 function isBlocked(u: AdminUser): boolean {
   if (u.id in blockedOverride) return blockedOverride[u.id];
-  return !!(u as { blocked_at?: string | null }).blocked_at;
+  return u.blocked_at != null;
 }
 async function onBlockUser(u: AdminUser) {
   if (!await confirmAsk(t('settings.users_block_confirm'), { danger: true })) return;

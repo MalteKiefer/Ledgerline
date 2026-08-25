@@ -13,6 +13,8 @@ export interface AdminUser {
   verified: boolean;
   two_factor: boolean;
   last_login_at: string | null;
+  /** Set while the account is blocked; null when active. */
+  blocked_at: string | null;
 }
 
 export interface Group {
