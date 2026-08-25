@@ -70,6 +70,8 @@ class MailRuleController extends Controller
             'action.mark_read' => ['nullable', 'boolean'],
             'action.trash' => ['nullable', 'boolean'],
             'action.skip' => ['nullable', 'boolean'],
+            // File the message's attachments in the finance receipt inbox.
+            'action.file_receipt' => ['nullable', 'boolean'],
         ]);
 
         return [

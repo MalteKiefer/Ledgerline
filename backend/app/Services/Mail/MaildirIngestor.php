@@ -12,6 +12,7 @@ use App\Models\MailMessage;
 use App\Models\MailRule;
 use App\Services\Calendar\ImipService;
 use App\Services\Files\FileTextIndex;
+use App\Services\Finance\ReceiptFiler;
 use App\Support\BlobStore;
 use App\Support\Mail\MailHtmlSanitizer;
 use App\Support\Mail\MailLogger;
@@ -325,6 +326,21 @@ class MaildirIngestor
                 }
             }
         });
+
+        // A rule asked for the attachments to be filed as receipts. After the
+        // commit and best-effort: an invoice that fails to file must never cost
+        // the archived mail. Deduplicated by content, so a resend does not become
+        // a second receipt.
+        if ($rule['file_receipt']) {
+            $filer = app(ReceiptFiler::class);
+            foreach ($attachments as $attachment) {
+                try {
+                    $filer->file((int) $account->user_id, $attachment->bytes, $attachment->filename, $attachment->contentType);
+                } catch (Throwable) {
+                    Log::warning('mail.ingest.receipt_file_failed', ['account_id' => $account->id]);
+                }
+            }
+        }
 
         // iMIP: if the message carried a text/calendar part (a meeting
         // REQUEST/REPLY/CANCEL), apply it to the recipient's calendars.

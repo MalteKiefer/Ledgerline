@@ -6,10 +6,12 @@ namespace Tests\Feature;
 
 use App\Console\Commands\SweepOrphanMailBlobs;
 use App\Models\FileEntry;
+use App\Models\FinanceReceipt;
 use App\Models\MailAccount;
 use App\Models\MailAttachment;
 use App\Models\MailBlob;
 use App\Models\MailMessage;
+use App\Models\MailRule;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Mail\MaildirIngestor;
@@ -105,6 +107,105 @@ class MailAttachmentTest extends TestCase
         app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
 
         return MailMessage::query()->where('user_id', $account->user_id)->firstOrFail();
+    }
+
+    /** A message carrying one PDF attachment — an invoice, as they actually arrive. */
+    private function invoiceEml(string $messageId = 'inv1@example.com'): string
+    {
+        $boundary = 'INVBOUND';
+        $pdf = base64_encode("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
+
+        return implode("\r\n", [
+            'From: Rechnung <billing@netcup.de>',
+            'To: bob@example.com',
+            'Subject: Ihre Rechnung',
+            'Message-ID: <'.$messageId.'>',
+            'Date: Wed, 05 Aug 2026 10:00:00 +0000',
+            'MIME-Version: 1.0',
+            'Content-Type: multipart/mixed; boundary="'.$boundary.'"',
+            '',
+            '--'.$boundary,
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            'Rechnung im Anhang.',
+            '',
+            '--'.$boundary,
+            'Content-Type: application/pdf; name="rechnung.pdf"',
+            'Content-Disposition: attachment; filename="rechnung.pdf"',
+            'Content-Transfer-Encoding: base64',
+            '',
+            $pdf,
+            '',
+            '--'.$boundary.'--',
+            '',
+        ]);
+    }
+
+    private function ingestInvoice(MailAccount $account, string $name = '1700000001.M1,U=8:2,S', string $messageId = 'inv1@example.com'): void
+    {
+        $path = $this->maildir.'/cur/'.$name;
+        file_put_contents($path, $this->invoiceEml($messageId));
+        app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
+    }
+
+    public function test_an_invoice_attachment_can_be_filed_as_a_receipt(): void
+    {
+        $account = $this->account();
+        $this->ingestInvoice($account);
+        $att = MailAttachment::query()->where('user_id', $account->user_id)->where('inline', false)->firstOrFail();
+        $user = User::findOrFail($account->user_id);
+
+        $res = $this->actingAs($user)
+            ->postJson(route('mail.attachments.save', $att->id), ['target' => 'finance'])
+            ->assertOk()
+            ->assertJson(['ok' => true, 'target' => 'finance', 'duplicate' => false]);
+
+        $receipt = FinanceReceipt::query()->withoutGlobalScopes()->where('user_id', $account->user_id)->firstOrFail();
+        $this->assertSame('rechnung.pdf', $receipt->name);
+        $this->assertSame('application/pdf', $receipt->mime);
+        $this->assertNotNull($receipt->sig, 'a signature, or the inbox cannot dedup it');
+        Storage::disk(config('files.disk'))->assertExists((string) $receipt->blob_path);
+
+        // Filing it twice is not two receipts.
+        $this->actingAs($user)
+            ->postJson(route('mail.attachments.save', $att->id), ['target' => 'finance'])
+            ->assertOk()
+            ->assertJson(['duplicate' => true, 'receipt_id' => (int) $res->json('receipt_id')]);
+        $this->assertSame(1, FinanceReceipt::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_a_text_attachment_is_not_a_receipt(): void
+    {
+        $account = $this->account();
+        $msg = $this->ingest($account);
+        $att = MailAttachment::query()->where('message_id', $msg->id)->where('inline', false)->firstOrFail();
+
+        // notes.txt is a document, but not one a receipt can be made of.
+        $this->actingAs(User::findOrFail($account->user_id))
+            ->postJson(route('mail.attachments.save', $att->id), ['target' => 'finance'])
+            ->assertUnprocessable()
+            ->assertJson(['ok' => false, 'detail' => 'unsupported_type']);
+        $this->assertSame(0, FinanceReceipt::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_a_rule_files_invoices_on_arrival(): void
+    {
+        $account = $this->account();
+        // user_id is owner-stamped from auth, so it is not mass-assignable.
+        (new MailRule)->forceFill([
+            'user_id' => $account->user_id, 'name' => 'Rechnungen', 'enabled' => true, 'priority' => 0,
+            'match_json' => ['from' => 'billing@netcup.de'],
+            'action_json' => ['file_receipt' => true],
+        ])->save();
+
+        $this->ingestInvoice($account);
+
+        $receipt = FinanceReceipt::query()->withoutGlobalScopes()->where('user_id', $account->user_id)->firstOrFail();
+        $this->assertSame('rechnung.pdf', $receipt->name);
+
+        // A resend must not become a second receipt (content dedup).
+        $this->ingestInvoice($account, '1700000002.M1,U=9:2,S', 'inv2@example.com');
+        $this->assertSame(1, FinanceReceipt::query()->withoutGlobalScopes()->count());
     }
 
     public function test_ingest_extracts_attachment_rows_and_blobs(): void
