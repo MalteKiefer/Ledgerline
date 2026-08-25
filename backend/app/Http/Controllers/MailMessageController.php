@@ -386,15 +386,14 @@ class MailMessageController extends Controller
 
         foreach ($parsed->text as $field => $values) {
             foreach ($values as $value) {
-                $needle = '%'.$value.'%';
                 match ($field) {
                     // The sender is two columns and people mean either.
-                    'from' => $query->where(fn (EloquentBuilder $i) => $i->where('from_email', 'like', $needle)->orWhere('from_name', 'like', $needle)),
+                    'from' => $this->whereLikeAny($query, ['lower(from_email) like ?', 'lower(from_name) like ?'], $value),
                     // Recipients live in JSON; searching it as text is exact
                     // enough for an address and needs no extraction.
-                    'to' => $query->where(fn (EloquentBuilder $i) => $i->where('to_json', 'like', $needle)->orWhere('cc_json', 'like', $needle)),
-                    'subject' => $query->where('subject', 'like', $needle),
-                    'folder' => $query->where('folder', 'like', $needle),
+                    'to' => $this->whereLikeAny($query, ['lower(to_json) like ?', 'lower(cc_json) like ?'], $value),
+                    'subject' => $this->whereLikeAny($query, ['lower(subject) like ?'], $value),
+                    'folder' => $this->whereLikeAny($query, ['lower(folder) like ?'], $value),
                     default => null,
                 };
             }
@@ -425,26 +424,54 @@ class MailMessageController extends Controller
             return; // a pure `is:unread has:attachment` search has no text part
         }
 
-        $like = '%'.$q.'%';
+        // Same case folding as the field terms: on PostgreSQL a plain LIKE would
+        // miss every capitalised subject, and only the tsvector half (which
+        // lowercases itself) would carry the search.
+        $like = '%'.mb_strtolower($q).'%';
         if (DB::getDriverName() === 'pgsql') {
             $query->where(function (EloquentBuilder $inner) use ($q, $like): void {
                 $inner->whereRaw(
                     "to_tsvector('simple', coalesce(search_text, '')) @@ plainto_tsquery('simple', ?)",
                     [$q]
                 )
-                    ->orWhere('subject', 'like', $like)
-                    ->orWhere('from_email', 'like', $like)
-                    ->orWhere('from_name', 'like', $like);
+                    ->orWhereRaw('lower(subject) like ?', [$like])
+                    ->orWhereRaw('lower(from_email) like ?', [$like])
+                    ->orWhereRaw('lower(from_name) like ?', [$like]);
             });
 
             return;
         }
 
         $query->where(function (EloquentBuilder $inner) use ($like): void {
-            $inner->where('search_text', 'like', $like)
-                ->orWhere('subject', 'like', $like)
-                ->orWhere('from_email', 'like', $like)
-                ->orWhere('from_name', 'like', $like);
+            $inner->whereRaw('lower(coalesce(search_text, \'\')) like ?', [$like])
+                ->orWhereRaw('lower(coalesce(subject, \'\')) like ?', [$like])
+                ->orWhereRaw('lower(coalesce(from_email, \'\')) like ?', [$like])
+                ->orWhereRaw('lower(coalesce(from_name, \'\')) like ?', [$like]);
+        });
+    }
+
+    /**
+     * Case-insensitive substring match, ORed across the given comparisons.
+     *
+     * `lower(col) LIKE lower(?)` rather than plain LIKE, because PostgreSQL's
+     * LIKE is case-SENSITIVE and SQLite's is not: `subject:rechnung` found 52 of
+     * 406 German subjects on the server while every test stayed green. Folding
+     * both sides costs nothing here — a leading-wildcard search cannot use an
+     * index on either driver anyway.
+     *
+     * The comparisons are passed in as literal SQL, so no caller can build a
+     * fragment out of anything that came from a request.
+     *
+     * @param  EloquentBuilder<MailMessage>  $query
+     * @param  non-empty-list<literal-string>  $comparisons
+     */
+    private function whereLikeAny(EloquentBuilder $query, array $comparisons, string $value): void
+    {
+        $needle = '%'.mb_strtolower($value).'%';
+        $query->where(function (EloquentBuilder $inner) use ($comparisons, $needle): void {
+            foreach ($comparisons as $i => $sql) {
+                $i === 0 ? $inner->whereRaw($sql, [$needle]) : $inner->orWhereRaw($sql, [$needle]);
+            }
         });
     }
 
