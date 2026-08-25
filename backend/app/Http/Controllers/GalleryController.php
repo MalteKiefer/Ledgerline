@@ -65,6 +65,13 @@ class GalleryController extends Controller
 
     private const MOTION_ALLOW = ['mov', 'mp4', 'm4v', 'qt'];
 
+    /**
+     * Longest clip that may be folded into a still by FILENAME alone. An Apple
+     * Live Photo is about three seconds; past this it is a real video that
+     * happens to share a name, and hiding it inside a photo would lose it.
+     */
+    private const LIVE_CLIP_MAX_S = 6;
+
     /** Broad video extension set — "any format" uploads; ffprobe validates later. */
     private const VIDEO_EXT = [
         'mp4', 'm4v', 'mov', 'qt', 'webm', 'mkv', 'avi', 'wmv', 'flv', 'mpg', 'mpeg',
@@ -1363,6 +1370,134 @@ class GalleryController extends Controller
         }
 
         return response()->json(['photo' => $this->row($photo)]);
+    }
+
+    /**
+     * Fold already-uploaded Live Photo pairs into single entries.
+     *
+     * An Apple Live Photo arrives as two files (the still plus a short .MOV).
+     * The upload path pairs them, but anything that landed before that — or came
+     * in through another client, or in two separate batches — sits in the grid
+     * as two tiles, which doubles the library and reads as clutter.
+     *
+     * Pairing uses two keys, in order of how much they prove:
+     *
+     * 1. `content_id` — the QuickTime asset identifier Apple writes into BOTH
+     *    halves. When both sides carry one and they match, that IS the pair;
+     *    nothing else needs to agree.
+     * 2. the base filename, and only for a SHORT clip (<= 6s). A 20-minute video
+     *    that happens to sit next to a photo of the same name is a video, not a
+     *    live photo, and merging it would hide it from the grid.
+     *
+     * The clip's bytes are not copied or deleted: the still's `motion_path` is
+     * pointed at the file the video row already owns, and only that ROW is
+     * removed (its own thumbnail/preview caches go with it). So nothing is lost —
+     * the video becomes the live part of the photo it belonged to.
+     */
+    public function pairLivePhotos(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+
+        $photos = GalleryPhoto::query()
+            ->where('user_id', $uid)
+            ->orderBy('id')
+            ->get();
+
+        /** @var array<int, GalleryPhoto> $stills */
+        $stills = [];
+        /** @var array<int, GalleryPhoto> $clips */
+        $clips = [];
+        foreach ($photos as $p) {
+            if ($p->media_type === 'video') {
+                $clips[$p->id] = $p;
+            } elseif ($p->motion_path === null) {
+                $stills[$p->id] = $p;
+            }
+        }
+
+        $pairs = [];
+        $takenClips = [];
+
+        // Pass 1: the asset identifier both halves carry.
+        $stillByContent = [];
+        foreach ($stills as $still) {
+            if (is_string($still->content_id) && $still->content_id !== '') {
+                $stillByContent[$still->content_id] ??= $still;
+            }
+        }
+        foreach ($clips as $clip) {
+            $cid = is_string($clip->content_id) ? $clip->content_id : '';
+            if ($cid === '' || ! isset($stillByContent[$cid])) {
+                continue;
+            }
+            $still = $stillByContent[$cid];
+            if (isset($pairs[$still->id]) || isset($takenClips[$clip->id])) {
+                continue;
+            }
+            $pairs[$still->id] = $clip;
+            $takenClips[$clip->id] = true;
+        }
+
+        // Pass 2: same base filename, short clip only.
+        $stillByBase = [];
+        foreach ($stills as $still) {
+            $base = $this->baseName($still->name);
+            if ($base !== '') {
+                $stillByBase[$base] ??= $still;
+            }
+        }
+        foreach ($clips as $clip) {
+            if (isset($takenClips[$clip->id])) {
+                continue;
+            }
+            $duration = $clip->duration;
+            if ($duration !== null && $duration > self::LIVE_CLIP_MAX_S) {
+                continue;
+            }
+            $base = $this->baseName($clip->name);
+            $still = $base === '' ? null : ($stillByBase[$base] ?? null);
+            if ($still === null || isset($pairs[$still->id])) {
+                continue;
+            }
+            $pairs[$still->id] = $clip;
+            $takenClips[$clip->id] = true;
+        }
+
+        $merged = 0;
+        foreach ($pairs as $stillId => $clip) {
+            $still = $stills[$stillId];
+            $path = $this->safeBlobPath($clip->storage_path);
+            if ($path === null) {
+                continue;
+            }
+            DB::transaction(function () use ($still, $clip, $path): void {
+                $still->forceFill([
+                    'motion_path' => $path,
+                    'content_id' => $still->content_id ?? $clip->content_id,
+                ])->save();
+                // The row goes, the bytes stay: they are the clip now. Only the
+                // video's own derived caches are removed.
+                $this->fs()->delete($this->thumbPath($clip));
+                $this->fs()->delete($this->previewPath($clip));
+                foreach ([$clip->poster_path, $clip->playback_path] as $derived) {
+                    $p = $this->safeBlobPath($derived);
+                    if ($p !== null) {
+                        $this->fs()->delete($p);
+                    }
+                }
+                $clip->forceFill(['storage_path' => '', 'motion_path' => null, 'poster_path' => null, 'playback_path' => null])->save();
+                $clip->forceDelete();
+            });
+            $merged++;
+        }
+
+        return response()->json(['merged' => $merged]);
+    }
+
+    /** Filename without its extension, lowercased — the weaker of the two pairing keys. */
+    private function baseName(string $name): string
+    {
+        return mb_strtolower(trim(preg_replace('/\.[^.]+$/', '', $name) ?? ''));
     }
 
     /**
