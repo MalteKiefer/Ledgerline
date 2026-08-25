@@ -9,6 +9,7 @@ use App\Models\UserSetting;
 use App\Services\Finance\CategorySuggester;
 use App\Services\Finance\FinanceDuplicates;
 use App\Services\Finance\FinanceNumberGaps;
+use App\Services\Finance\FinanceRecurring;
 use App\Services\Finance\FinanceReports;
 use App\Services\Finance\ReceiptMatcher;
 use Illuminate\Http\JsonResponse;
@@ -87,6 +88,17 @@ class FinanceReportController extends Controller
         $this->requireUser($request);
 
         return response()->json($dupes->detect());
+    }
+
+    /**
+     * Read-only report of the payments that keep coming back (subscriptions,
+     * standing orders). Never writes a row — it only says what it sees.
+     */
+    public function recurring(Request $request, FinanceRecurring $recurring): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json(['recurring' => $recurring->detect()]);
     }
 
     /** Read-only GoBD invoice-numbering gap report (never mutates a row). */

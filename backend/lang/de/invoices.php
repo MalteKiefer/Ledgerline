@@ -321,4 +321,13 @@ return [
     'scope_account_hint' => 'Buchungen auf diesem Konto übernehmen das, solange sie nichts anderes sagen.',
     'scope_row_hint' => 'Auf „Vom Konto“ stehen lassen, außer dieser eine Eintrag gehört auf die andere Seite.',
     'scope_invoices_business_only' => 'Rechnungen sind immer geschäftlich und erscheinen daher nicht in der privaten Ansicht.',
+    'recurring_title' => 'Wiederkehrende Zahlungen',
+    'recurring_yearly_total' => 'Pro Jahr',
+    'recurring_next' => 'nächste',
+    'recurring_stale' => 'ausgeblieben',
+    'cadence_weekly' => 'wöchentlich',
+    'cadence_monthly' => 'monatlich',
+    'cadence_quarterly' => 'quartalsweise',
+    'cadence_semiannual' => 'halbjährlich',
+    'cadence_annual' => 'jährlich',
 ];

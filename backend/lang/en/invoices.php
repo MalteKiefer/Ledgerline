@@ -321,4 +321,13 @@ return [
     'scope_account_hint' => 'Bookings on this account inherit this unless they say otherwise.',
     'scope_row_hint' => 'Leave on “From the account” unless this single entry belongs to the other side.',
     'scope_invoices_business_only' => 'Invoices are always business, so they do not appear in the private view.',
+    'recurring_title' => 'Recurring charges',
+    'recurring_yearly_total' => 'Per year',
+    'recurring_next' => 'next',
+    'recurring_stale' => 'stopped',
+    'cadence_weekly' => 'weekly',
+    'cadence_monthly' => 'monthly',
+    'cadence_quarterly' => 'quarterly',
+    'cadence_semiannual' => 'twice a year',
+    'cadence_annual' => 'yearly',
 ];

@@ -321,4 +321,13 @@ return [
     'scope_account_hint' => 'Проводки по этому счёту наследуют это значение, если не указано иное.',
     'scope_row_hint' => 'Оставьте «Из счёта», если только эта запись не относится к другой области.',
     'scope_invoices_business_only' => 'Счета всегда относятся к бизнесу и поэтому не показываются в личной области.',
+    'recurring_title' => 'Регулярные платежи',
+    'recurring_yearly_total' => 'В год',
+    'recurring_next' => 'следующий',
+    'recurring_stale' => 'прекратился',
+    'cadence_weekly' => 'еженедельно',
+    'cadence_monthly' => 'ежемесячно',
+    'cadence_quarterly' => 'ежеквартально',
+    'cadence_semiannual' => 'раз в полгода',
+    'cadence_annual' => 'ежегодно',
 ];
