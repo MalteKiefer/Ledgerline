@@ -59,6 +59,12 @@ export interface MailLabel { id: number; name: string; color: string; message_co
 
 export interface MailMessage {
   id: string;
+  /** Starred (the IMAP \Flagged flag). */
+  flagged: boolean;
+  /** Set automatically when a reply to this message goes out. */
+  answered: boolean;
+  /** First unquoted line of the body, so the list can be scanned. */
+  snippet: string | null;
   account_id: number | null;
   folder: string;
   message_id: string | null;
@@ -155,6 +161,9 @@ export interface MailFilters {
   dateTo: string | null;
   trashed: boolean;
   threadId: string | null;
+  /** Column the list is ordered by; empty = newest sent first. */
+  sort: string;
+  dir: 'asc' | 'desc';
 }
 
 export interface PageMeta { total: number; per_page: number; current_page: number; last_page: number }
@@ -200,7 +209,7 @@ export interface ForwardPayload extends CryptoPayload {
 }
 
 function defaultFilters(): MailFilters {
-  return { accountId: null, folder: null, q: '', seen: null, spam: null, label: null, dateFrom: null, dateTo: null, trashed: false, threadId: null };
+  return { accountId: null, folder: null, q: '', seen: null, spam: null, label: null, dateFrom: null, dateTo: null, trashed: false, threadId: null, sort: 'date', dir: 'desc' };
 }
 
 export const useMailStore = defineStore('mail', () => {
@@ -266,6 +275,8 @@ export const useMailStore = defineStore('mail', () => {
     if (f.q.trim()) qs.set('q', f.q.trim());
     if (f.dateFrom) qs.set('from', f.dateFrom);
     if (f.dateTo) qs.set('to', f.dateTo);
+    if (f.sort) qs.set('sort', f.sort);
+    if (f.dir) qs.set('dir', f.dir);
     qs.set('per_page', String(meta.value.per_page));
     qs.set('page', String(page));
     const r = await api.get<{ data: MailMessage[]; meta: PageMeta }>(`/api/v1/mail/messages?${qs}`);
@@ -289,6 +300,7 @@ export const useMailStore = defineStore('mail', () => {
 
   // --- Message state (bulk, metadata-only) ----------------------------------
   const setSeen = (ids: string[], seen: boolean) => api.post<{ updated: number }>('/api/v1/mail/messages/seen', { ids, seen });
+  const setFlagged = (ids: string[], flagged: boolean) => api.post<{ updated: number }>('/api/v1/mail/messages/flag', { ids, flagged });
   const trash = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/trash', { ids });
   const restore = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/restore', { ids });
   const pushBack = (id: string, folder?: string | null) => api.post<{ ok: boolean }>(`/api/v1/mail/messages/${id}/pushback`, { folder: folder ?? null });
@@ -459,7 +471,7 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
-    setSeen, trash, restore, pushBack, deleteOrigin, setLabels,
+    setSeen, setFlagged, trash, restore, pushBack, deleteOrigin, setLabels,
     compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, updateRule, deleteRule,

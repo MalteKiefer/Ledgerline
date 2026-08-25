@@ -182,7 +182,14 @@ class MailSendController extends Controller
             return $failure;
         }
 
-        return $this->dispatch($sender, $account, $composed);
+        $result = $this->dispatch($sender, $account, $composed);
+        // We know exactly which message this answered, so nobody should have to
+        // mark it. Only on success, and never a reason to fail the send.
+        if ($result->getStatusCode() < 300 && ! $message->answered) {
+            $message->forceFill(['answered' => true])->saveQuietly();
+        }
+
+        return $result;
     }
 
     /** Forward an archived message to new recipients (attaches the original .eml). */

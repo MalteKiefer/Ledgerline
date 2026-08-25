@@ -191,9 +191,11 @@
           <thead class="sticky top-0 z-[1] bg-[var(--ll-surface)]">
             <tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]">
               <th class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="allSelected" @change="toggleSelectAll"></th>
-              <th class="w-[36%] py-2 pr-3">{{ t('mail.list.col_from') }}</th>
-              <th class="py-2 pr-3">{{ t('mail.list.col_subject') }}</th>
-              <th class="w-28 py-2 pr-3 text-right">{{ t('mail.list.col_date') }}</th>
+              <th class="w-8 cursor-pointer select-none py-2 text-center" :title="t('mail.list.sort_flagged')" @click="sortBy('flagged')"><Icon name="star" :size="15" :class="filters.sort === 'flagged' ? 'text-amber-500' : ''" /></th>
+              <th class="w-[32%] cursor-pointer select-none py-2 pr-3" @click="sortBy('from')"><SortLabel :label="t('mail.list.col_from')" active-key="from" :sort="listSort" /></th>
+              <th class="cursor-pointer select-none py-2 pr-3" @click="sortBy('subject')"><SortLabel :label="t('mail.list.col_subject')" active-key="subject" :sort="listSort" /></th>
+              <th class="w-20 cursor-pointer select-none py-2 pr-3 text-right" @click="sortBy('size')"><SortLabel :label="t('mail.list.col_size')" active-key="size" :sort="listSort" justify="end" /></th>
+              <th class="w-28 cursor-pointer select-none py-2 pr-3 text-right" @click="sortBy('date')"><SortLabel :label="t('mail.list.col_date')" active-key="date" :sort="listSort" justify="end" /></th>
             </tr>
           </thead>
           <tbody>
@@ -204,6 +206,17 @@
               @click="openReader(m)"
             >
               <td class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="s.selected.includes(m.id)" @click.stop="toggleSelect(m.id)"></td>
+              <td class="w-8 text-center align-middle">
+                <button
+                  type="button" class="group/star p-1 align-middle" :title="m.flagged ? t('mail.actions.unflag') : t('mail.actions.flag')"
+                  :aria-pressed="m.flagged" @click.stop="toggleFlag(m)"
+                >
+                  <Icon
+                    :name="m.flagged ? 'star' : 'star_border'" :size="17"
+                    :class="m.flagged ? 'text-amber-500' : 'text-transparent group-hover/star:text-[var(--ll-muted)] group-hover:text-[var(--ll-muted)]'"
+                  />
+                </button>
+              </td>
               <td class="py-2.5 pr-3 align-middle">
                 <div class="flex items-center gap-2">
                   <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-primary-500'" />
@@ -215,13 +228,18 @@
               </td>
               <td class="py-2.5 pr-3 align-middle">
                 <div class="flex items-center gap-1.5">
-                  <span class="min-w-0 flex-1 truncate">{{ m.subject || '—' }}</span>
+                  <Icon v-if="m.answered" name="reply" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.list.answered')" />
+                  <span class="min-w-0 flex-1 truncate">
+                    {{ m.subject || '—' }}
+                    <span v-if="m.snippet" class="font-normal text-[var(--ll-muted)]"> — {{ m.snippet }}</span>
+                  </span>
                   <span v-for="l in (m.labels || [])" :key="l.id" class="hidden shrink-0 rounded px-1.5 py-0.5 text-[0.6rem] font-medium sm:inline" :style="{ background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }">{{ l.name }}</span>
                   <Icon v-if="m.encrypted_type" name="lock" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.reader.encrypted')" />
                   <Icon v-if="m.spam" name="report" :size="15" class="shrink-0 text-amber-500" :title="t('mail.list.spam')" />
                   <Icon v-if="m.has_attachment" name="attach_file" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.list.attachment')" />
                 </div>
               </td>
+              <td class="truncate py-2.5 pr-3 text-right text-xs font-normal text-[var(--ll-muted)]">{{ fmtBytes(m.size) }}</td>
               <td class="truncate py-2.5 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(m.date || m.created_at) }}</td>
             </tr>
           </tbody>
@@ -620,7 +638,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from 'reka-ui';
-import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal, SortLabel } from '@spa/ui';
 import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft } from '@spa/stores/mail';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
@@ -783,6 +801,39 @@ onMounted(async () => {
   }, 5000);
 });
 onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); });
+
+/** What the sortable headers render their arrow from. */
+const listSort = computed(() => ({ key: filters.sort, dir: filters.dir }));
+
+/**
+ * Clicking a column sorts by it; clicking the active one reverses.
+ *
+ * The first direction differs per column because "sorted" means something
+ * different for each: newest mail first, but names A-Z, and the largest mail is
+ * the one worth finding.
+ */
+function sortBy(key: string) {
+  if (filters.sort === key) {
+    filters.dir = filters.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    filters.sort = key;
+    filters.dir = key === 'from' || key === 'subject' ? 'asc' : 'desc';
+  }
+  void reload();
+}
+
+/**
+ * Star a message. Written straight to the row on success so the list does not
+ * have to be re-fetched for a single flag.
+ */
+async function toggleFlag(m: MailMessage) {
+  const next = !m.flagged;
+  try {
+    await s.setFlagged([m.id], next);
+    m.flagged = next;
+    if (reader.value?.id === m.id) reader.value.flagged = next;
+  } catch { error(t('mail.toast.flag_failed')); }
+}
 
 async function reload() {
   if (draftListActive.value) return;
