@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property int $user_id
  * @property string $type
  * @property string $name
+ * @property string $scope Business or private (see FinanceScope); bookings inherit it.
  * @property bool $business
  * @property string|null $url
  * @property string|null $icon
@@ -41,7 +42,7 @@ class PaymentMethod extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'type', 'name', 'holder', 'business', 'url', 'icon',
+        'type', 'name', 'scope', 'holder', 'business', 'url', 'icon',
         'iban', 'bic', 'bank', 'account_no',
         'card_number', 'card_network', 'card_expiry', 'paypal_email', 'note',
     ];

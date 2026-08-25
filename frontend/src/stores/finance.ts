@@ -22,8 +22,12 @@ export interface Partner {
   phone: string | null; vat_id: string | null; hourly_rate: string | number | null; currency: string | null;
   contacts: PartnerContact[] | null; version: number;
 }
+export type FinanceScope = 'business' | 'private';
+
 export interface PaymentMethod {
   id: number; name: string; type: string; version: number;
+  /** An account always states its scope; its bookings inherit it. */
+  scope: FinanceScope;
   holder?: string | null; business?: boolean; url?: string | null; note?: string | null;
   iban?: string | null; bic?: string | null; bank?: string | null; account_no?: string | null;
   card_number?: string | null; card_network?: string | null; card_expiry?: string | null; paypal_email?: string | null;
@@ -40,6 +44,10 @@ export interface Receipt {
   id: number; name: string; category: string | null; tags: string[] | null; vat: string | null;
   note: string | null; partner_id: number | null; version: number; mime?: string | null;
   bank_transaction_id: number | null; finance_project_id: number | null;
+  /** null = follow the linked booking (which follows its account). */
+  scope: FinanceScope | null;
+  /** Resolved server-side so no client re-derives the inheritance rule. */
+  effective_scope?: FinanceScope;
   sig?: string | null;
   // A split-payment link (one receipt settled by several separate bank charges) —
   // mutually exclusive with bank_transaction_id, see FinanceReceipt on the backend.
@@ -56,7 +64,12 @@ export interface BankTransaction {
   // stricter formatter render every row as 0,00 and `amountMatches` call
   // `.toFixed` on a string.
   amount: number;
-  vat_cat: string | null; counterparty: string | null; counterparty_iban: string | null;
+  vat_cat: string | null;
+  /** null = follow the account; an explicit value overrides it. */
+  scope: FinanceScope | null;
+  /** Resolved server-side (booking -> account). */
+  effective_scope?: FinanceScope;
+  counterparty: string | null; counterparty_iban: string | null;
   bic: string | null; purpose: string | null; booking_text: string | null; eref: string | null;
   invoice_id: number | null; invoice_number: string | null; finance_project_id: number | null;
   receipts: TxReceipt[] | null; version: number;

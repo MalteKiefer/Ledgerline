@@ -8,6 +8,7 @@ use App\Models\BankTransaction;
 use App\Models\FinanceProject;
 use App\Models\Invoice;
 use App\Models\UserSetting;
+use App\Support\FinanceScope;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -590,7 +591,7 @@ class FinanceReports
         }
 
         // ---- Plus FinanceProject manual (hand-entered) expenses for the year ----
-        foreach (FinanceProject::query()->get() as $project) {
+        foreach (FinanceProject::query()->where('kind', '!=', FinanceScope::PRIVATE)->get() as $project) {
             foreach (is_array($project->expenses) ? $project->expenses : [] as $exp) {
                 if (! is_array($exp)) {
                     continue;
@@ -642,9 +643,16 @@ class FinanceReports
         // Push the year predicate to the DB (range over the indexed `date` column)
         // instead of loading every historical negative row and filtering in PHP.
         return BankTransaction::query()
+            ->with('paymentMethod')
             ->where('amount', '<', 0)
             ->whereBetween('date', ["{$year}-01-01", "{$year}-12-31"])
             ->get()
+            // A private account (or a booking marked private on a business
+            // account) is outside the books: it is not an expense, carries no
+            // input VAT, and must not reach the EUeR or the VAT return. This is
+            // a different thing from vat_cat = 'private', which is an owner
+            // withdrawal that stays in the books.
+            ->filter(fn (BankTransaction $tx): bool => FinanceScope::isBusiness(FinanceScope::ofTransaction($tx)))
             ->values();
     }
 

@@ -19,6 +19,7 @@ use App\Models\GalleryPhoto;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\UserSetting;
+use App\Support\FinanceScope;
 use App\Support\OutboundUrl;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\View\View;
@@ -116,8 +117,14 @@ class FinanceController extends Controller
             'paymentMethods' => PaymentMethod::query()->orderBy('name')->get(),
             'projects' => FinanceProject::query()->orderBy('name')->get(),
             'financeCategories' => FinanceCategory::query()->orderBy('name')->get(),
-            'transactions' => BankTransaction::query()->orderByDesc('date')->orderByDesc('id')->get(),
-            'standaloneReceipts' => FinanceReceipt::query()->orderByDesc('created_at')->orderByDesc('id')->get(),
+            // effective_scope travels with the row so no client has to re-derive
+            // the inheritance rule (booking -> account) and drift from it.
+            'transactions' => BankTransaction::query()->with('paymentMethod')->orderByDesc('date')->orderByDesc('id')->get()
+                ->each(fn (BankTransaction $tx) => $tx->setAttribute('effective_scope', FinanceScope::ofTransaction($tx)))
+                ->each(fn (BankTransaction $tx) => $tx->unsetRelation('paymentMethod')),
+            'standaloneReceipts' => FinanceReceipt::query()->with('bankTransaction.paymentMethod')->orderByDesc('created_at')->orderByDesc('id')->get()
+                ->each(fn (FinanceReceipt $r) => $r->setAttribute('effective_scope', FinanceScope::ofReceipt($r)))
+                ->each(fn (FinanceReceipt $r) => $r->unsetRelation('bankTransaction')),
             // Foreign-currency receipts are matched against euro bookings, so the
             // client needs today's rates. finance:fetch-fx refreshes this cache
             // daily; the config values are the fallback until it first succeeds.
@@ -342,6 +349,8 @@ class FinanceController extends Controller
         return [
             'type' => [$create ? 'required' : 'sometimes', 'string', Rule::in(['bank', 'card', 'paypal', 'cash', 'other'])],
             'name' => [$create ? 'required' : 'sometimes', 'string', 'max:200'],
+            // An account always states its scope; its bookings inherit it.
+            'scope' => ['sometimes', 'string', Rule::in(FinanceScope::ALL)],
             'holder' => ['nullable', 'string', 'max:200'],
             'note' => ['nullable', 'string', 'max:20000'],
             'business' => ['sometimes', 'boolean'],
@@ -371,6 +380,9 @@ class FinanceController extends Controller
         }
         if ($create || $request->has('business')) {
             $patch['business'] = $request->boolean('business');
+        }
+        if ($create || $request->has('scope')) {
+            $patch['scope'] = FinanceScope::normalise($request->string('scope')->value());
         }
 
         return $patch;
@@ -1611,6 +1623,8 @@ class FinanceController extends Controller
             'date' => [$create ? 'required' : 'sometimes', 'date'],
             'amount' => [$create ? 'required' : 'sometimes', 'numeric'],
             'vat_cat' => ['nullable', 'string', 'max:16'],
+            // null/absent = follow the account; an explicit value overrides it.
+            'scope' => ['nullable', 'string', Rule::in(FinanceScope::ALL)],
             'sig' => ['nullable', 'string', 'max:80'],
             'invoice_id' => ['nullable', 'integer', Rule::exists('invoices', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'invoice_number' => ['nullable', 'string', 'max:64'],
@@ -1641,7 +1655,7 @@ class FinanceController extends Controller
         if ($create || $request->has('amount')) {
             $patch['amount'] = $request->float('amount');
         }
-        foreach (['vat_cat', 'sig', 'invoice_number', 'counterparty', 'counterparty_iban', 'bic', 'purpose', 'booking_text', 'eref'] as $field) {
+        foreach (['vat_cat', 'scope', 'sig', 'invoice_number', 'counterparty', 'counterparty_iban', 'bic', 'purpose', 'booking_text', 'eref'] as $field) {
             if ($create || $request->has($field)) {
                 $patch[$field] = $request->filled($field) ? $request->string($field)->value() : null;
             }
@@ -1888,6 +1902,8 @@ class FinanceController extends Controller
             'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp,heic,heif,gif', 'max:'.$this->maxUploadKb()],
             'name' => ['nullable', 'string', 'max:500'],
             'kind' => ['nullable', 'string', 'max:24'],
+            // Business/private; null = follow the linked booking, else business.
+            'scope' => ['nullable', 'string', Rule::in(FinanceScope::ALL)],
             'category' => ['nullable', 'string', 'max:160'],
             'tags' => ['nullable', 'array', 'max:100'],
             'tags.*' => ['string', 'max:100'],
@@ -1936,6 +1952,9 @@ class FinanceController extends Controller
             $receipt = new FinanceReceipt;
             $receipt->fill([
                 'kind' => $request->filled('kind') ? $request->string('kind')->value() : 'receipt',
+                // Left null on purpose when unstated: FinanceScope then follows the
+                // linked booking, so a receipt does not have to repeat its account.
+                'scope' => $request->filled('scope') ? FinanceScope::normalise($request->string('scope')->value()) : null,
                 'category' => $request->filled('category') ? $request->string('category')->value() : null,
                 'tags' => $tags,
                 'vat' => $request->filled('vat') ? $request->string('vat')->value() : null,
@@ -1977,6 +1996,8 @@ class FinanceController extends Controller
             'tags' => ['sometimes', 'nullable', 'array', 'max:100'],
             'tags.*' => ['string', 'max:100'],
             'vat' => ['sometimes', 'nullable', 'string', 'max:16'],
+            // null = follow the linked booking (which follows its account).
+            'scope' => ['sometimes', 'nullable', 'string', Rule::in(FinanceScope::ALL)],
             'amount' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:999999999.99'],
             'currency' => ['sometimes', 'nullable', 'string', 'max:8'],
             'date' => ['sometimes', 'nullable', 'date'],
@@ -1994,7 +2015,7 @@ class FinanceController extends Controller
             'version' => ['sometimes', 'integer', 'min:0'],
         ]);
         $patch = [];
-        foreach (['name', 'category', 'vat', 'amount', 'currency', 'date', 'order_ref', 'doc_number', 'note', 'partner_id', 'bank_transaction_id', 'linked_transaction_ids', 'finance_project_id', 'tags'] as $f) {
+        foreach (['name', 'category', 'scope', 'vat', 'amount', 'currency', 'date', 'order_ref', 'doc_number', 'note', 'partner_id', 'bank_transaction_id', 'linked_transaction_ids', 'finance_project_id', 'tags'] as $f) {
             if ($request->has($f)) {
                 $patch[$f] = $request->input($f);
             }
