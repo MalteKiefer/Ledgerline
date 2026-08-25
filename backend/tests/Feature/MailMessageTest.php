@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\MailMessageController;
 use App\Models\MailAccount;
 use App\Models\MailMessage;
 use App\Models\User;
@@ -317,5 +318,30 @@ class MailMessageTest extends TestCase
         // A mistyped field searches for the text instead of filtering to nothing.
         $this->assertSame([], $subjects('fom:me@example.org'));
         $this->assertCount(2, $subjects(''));
+    }
+
+    public function test_search_ignores_capitalisation_on_every_driver(): void
+    {
+        // PostgreSQL LIKE is case-sensitive, SQLite's is not: subject:rechnung
+        // matched 52 of 406 German subjects on the server while this suite stayed
+        // green. The behaviour is asserted here and the case folding is asserted
+        // in the SQL, because on SQLite the behaviour alone cannot fail.
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user);
+        $this->message($user, $account, ['subject' => 'Rechnung Februar', 'from_name' => 'NETCUP GmbH']);
+
+        $hits = fn (string $q): int => count($this->getJson(route('mail.messages.index', ['q' => $q]))->assertOk()->json('data'));
+
+        $this->assertSame(1, $hits('subject:rechnung'));
+        $this->assertSame(1, $hits('subject:RECHNUNG'));
+        $this->assertSame(1, $hits('from:netcup'));
+        $this->assertSame(1, $hits('rechnung'));
+
+        $sql = MailMessage::query()->ownedBy($user->id)->tap(function ($q): void {
+            (new \ReflectionMethod(MailMessageController::class, 'applySearch'))
+                ->invoke(app(MailMessageController::class), $q, 'subject:rechnung');
+        })->toSql();
+        $this->assertStringContainsString('lower(subject) like', $sql);
     }
 }

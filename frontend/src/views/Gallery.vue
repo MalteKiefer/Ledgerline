@@ -785,9 +785,19 @@ const trashBusy = ref(false);
 const albumId = ref<number | null>(null);
 const albumMenu = ref(false);
 const menuOpen = ref(false);
+/**
+ * The counts in the header.
+ *
+ * The timeline is paginated, so counting the loaded rows showed the page size —
+ * "200 photos" for a library of eighteen thousand. The server counts the whole
+ * filtered set; only the views that return everything at once (trash, search,
+ * duplicates) are counted here.
+ */
 const mediaCounts = computed(() => {
+  const showingWholeResult = showTrash.value || searchActive.value;
+  if (!showingWholeResult && g.totals) return { ph: g.totals.images, vid: g.totals.videos };
   let ph = 0; let vid = 0;
-  for (const p of g.photos) { if (p.media_type === 'video') vid++; else ph++; }
+  for (const p of current.value) { if (p.media_type === 'video') vid++; else ph++; }
   return { ph, vid };
 });
 const dlMenu = ref(false);
