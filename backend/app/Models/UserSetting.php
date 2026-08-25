@@ -51,6 +51,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $company_smtp_from_name
  * @property ?string $mail_signature
  * @property array<string, mixed>|null $notification_prefs
+ * @property list<string>|null $mail_columns
  */
 #[Fillable([
     'user_id',
@@ -79,6 +80,8 @@ use Illuminate\Database\Eloquent\Model;
     'mail_signature',
     // Per-user, per-category push preferences: {"<category>": {"push": bool}}.
     'notification_prefs',
+    // Which columns the mail list shows, in order: ["from","subject","date"].
+    'mail_columns',
     // Per-user company identity + invoice numbering (formerly workspace-global).
     'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
     'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',
@@ -148,6 +151,9 @@ class UserSetting extends Model
             'date_format' => (string) ($this->date_format ?? 'system'),
             'mail_load_remote' => (bool) ($this->mail_load_remote ?? false),
             'notifications' => is_array($this->notification_prefs) ? $this->notification_prefs : [],
+            // null = never chosen; the client uses its own default set rather
+            // than a frozen copy of today's.
+            'mail_columns' => is_array($this->mail_columns) ? array_values(array_filter($this->mail_columns, 'is_string')) : null,
             'mail_signature' => $this->mail_signature !== null ? (string) $this->mail_signature : null,
         ];
     }
@@ -184,6 +190,7 @@ class UserSetting extends Model
             'mail_load_remote' => 'boolean',
             'mail_allow_scripts' => 'boolean',
             'notification_prefs' => 'array',
+            'mail_columns' => 'array',
             'invoice_number_padding' => 'integer',
             'invoice_next_number' => 'integer',
             'invoice_payment_terms_days' => 'integer',

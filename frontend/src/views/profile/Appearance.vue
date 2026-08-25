@@ -7,11 +7,11 @@
     <template v-if="p.prefs">
       <div class="my-4 border-t border-[var(--ll-border)]" />
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Select v-model="p.prefs.unit_distance" :label="t('account.pref_distance')" :options="opts(['km', 'mi'])" @update:modelValue="savePref('unit_distance')" />
-        <Select v-model="p.prefs.unit_elevation" :label="t('account.pref_elevation')" :options="opts(['m', 'ft'])" @update:modelValue="savePref('unit_elevation')" />
-        <Select v-model="p.prefs.unit_weight" :label="t('account.pref_weight')" :options="opts(['kg', 'lb'])" @update:modelValue="savePref('unit_weight')" />
-        <Select v-model="p.prefs.unit_temp" :label="t('account.pref_temp')" :options="opts(['c', 'f'])" @update:modelValue="savePref('unit_temp')" />
-        <Select v-model="p.prefs.unit_glucose" :label="t('account.pref_glucose')" :options="opts(['mgdl', 'mmoll'])" @update:modelValue="savePref('unit_glucose')" />
+        <Select v-model="p.prefs.distance" :label="t('account.pref_distance')" :options="opts(['km', 'mi'])" @update:modelValue="savePref('distance')" />
+        <Select v-model="p.prefs.elevation" :label="t('account.pref_elevation')" :options="opts(['m', 'ft'])" @update:modelValue="savePref('elevation')" />
+        <Select v-model="p.prefs.weight" :label="t('account.pref_weight')" :options="opts(['kg', 'lb'])" @update:modelValue="savePref('weight')" />
+        <Select v-model="p.prefs.temp" :label="t('account.pref_temp')" :options="opts(['c', 'f'])" @update:modelValue="savePref('temp')" />
+        <Select v-model="p.prefs.glucose" :label="t('account.pref_glucose')" :options="opts(['mgdl', 'mmoll'])" @update:modelValue="savePref('glucose')" />
         <Select v-model="p.prefs.time_format" :label="t('account.pref_time')" :options="opts(['24h', '12h'])" @update:modelValue="savePref('time_format')" />
       </div>
       <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">

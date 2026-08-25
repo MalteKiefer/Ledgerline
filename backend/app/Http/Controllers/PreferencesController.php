@@ -17,6 +17,31 @@ use Illuminate\Http\Request;
  */
 class PreferencesController extends Controller
 {
+    /**
+     * Columns the mail list can show. Every one is a field the row already
+     * carries — no new query, no new extraction.
+     *
+     * `subject` is not in the picker: a message list without a subject is not a
+     * list of messages. The checkbox and the star are controls rather than data
+     * and are likewise not configurable.
+     *
+     * @var list<string>
+     */
+    public const MAIL_COLUMNS = [
+        'from',        // sender name/address
+        'to',          // recipients — the only useful identity in a Sent folder
+        'snippet',     // first unquoted body line, as its own column so it can be off
+        'labels',
+        'folder',      // which mailbox folder, worth a column in a unified inbox
+        'account',     // which account it arrived in
+        'attachment',  // paperclip
+        'security',    // encrypted/signed marker
+        'answered',    // replied-to marker
+        'spam',
+        'size',
+        'date',
+    ];
+
     public function update(Request $request): RedirectResponse|JsonResponse
     {
         $request->validate([
@@ -36,6 +61,10 @@ class PreferencesController extends Controller
             // Per-category push toggle: { "<category>": { "push": bool } }.
             'notifications' => ['sometimes', 'array'],
             'notifications.*.push' => ['sometimes', 'boolean'],
+            // Mail list columns, in display order. An empty array is allowed and
+            // means "back to the default set".
+            'mail_columns' => ['sometimes', 'nullable', 'array', 'max:'.count(self::MAIL_COLUMNS)],
+            'mail_columns.*' => ['string', 'in:'.implode(',', self::MAIL_COLUMNS)],
         ]);
 
         $map = [
@@ -53,6 +82,21 @@ class PreferencesController extends Controller
                 $update[$column] = $request->string($key)->value();
             }
         }
+        if ($request->has('mail_columns')) {
+            $raw = $request->input('mail_columns');
+            $picked = [];
+            foreach (is_array($raw) ? $raw : [] as $key) {
+                // Keep the given order, drop duplicates and anything unknown: a
+                // column removed in a later release must not break the list, and
+                // a client cannot poison the set.
+                if (is_string($key) && in_array($key, self::MAIL_COLUMNS, true) && ! in_array($key, $picked, true)) {
+                    $picked[] = $key;
+                }
+            }
+            // Empty selection = null = "use the default set", not "show nothing".
+            $update['mail_columns'] = $picked === [] ? null : $picked;
+        }
+
         // Timezone: empty string clears the override (follow browser) → null.
         if ($request->has('timezone')) {
             $tz = trim($request->string('timezone')->value());

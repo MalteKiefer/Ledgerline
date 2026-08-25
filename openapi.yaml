@@ -787,6 +787,18 @@ components:
         time_format: { type: string, enum: [24h, 12h] }
         timezone: { type: [string, "null"], description: "Hard IANA timezone override (e.g. Europe/Berlin); null follows the browser/system zone." }
         date_format: { type: string, enum: [system, dmy, dmy_dot, mdy, ymd], description: "Date-format preset; 'system' uses the locale's regional format." }
+        mail_columns:
+          type: [array, "null"]
+          maxItems: 12
+          items: { type: string, enum: [from, to, snippet, labels, folder, account, attachment, security, answered, spam, size, date] }
+          description: >
+            Mail list columns in display order. null = never chosen; the client
+            uses its own default set, so a column added in a later release
+            appears rather than being frozen out. Sending an empty array resets
+            to null (default set) — it never means "show no columns". Unknown
+            keys and duplicates are dropped, order is kept. `subject` is not in
+            the set: a message list without a subject is not one, so it is always
+            rendered.
         mail_load_remote: { type: boolean, deprecated: true, description: "Deprecated and ignored: remote mail content is controlled per message." }
         mail_signature: { type: [string, "null"], description: "Signature appended to outgoing mail; blank clears it to null." }
         notifications:
@@ -13030,6 +13042,18 @@ paths:
         Throttle 1200/min. Owner-scoped, paginated envelope listing. Omit
         account_id for a unified inbox. Full-text search (?q) runs server-side
         (pgsql tsvector / sqlite LIKE) over the search column + subject + sender.
+
+
+        `q` also understands field-scoped terms, parsed server-side so every
+        client behaves the same: `from:` / `to:` / `subject:` / `folder:`
+        (substring; quote a value to keep its spaces), `has:attachment`,
+        `is:unread|read|starred|answered|spam|encrypted`, and
+        `after:` / `before:` (YYYY-MM-DD or DD.MM.YYYY, both bounds inclusive).
+        Terms combine with AND and a repeated field narrows further. An
+        unrecognised field is searched as plain text rather than filtering to
+        nothing, so a typo cannot silently return an empty list. Note the
+        collision: `?from=`/`?to=` are the DATE range parameters, while `from:`
+        and `to:` inside `q` mean the address.
 
 
         Ordered newest-sent-first by default: `coalesce(date, created_at)` — the

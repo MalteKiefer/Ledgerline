@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -19,7 +20,7 @@ class PreferencesTest extends TestCase
         $this->assertSame([
             'distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl',
             'time_format' => '24h', 'timezone' => null, 'date_format' => 'system',
-            'mail_load_remote' => false, 'notifications' => [], 'mail_signature' => null,
+            'mail_load_remote' => false, 'notifications' => [], 'mail_columns' => null, 'mail_signature' => null,
         ], $prefs);
     }
 
@@ -105,5 +106,48 @@ class PreferencesTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/me')->assertOk()
             ->assertJsonPath('user.preferences.weight', 'lb');
+    }
+
+    public function test_the_unit_selects_use_the_documented_field_names(): void
+    {
+        // The SPA once posted unit_distance while the API takes distance, so the
+        // five unit selects neither showed the stored value nor saved a new one.
+        // This pins the documented names on both halves.
+        $user = User::factory()->create();
+        $this->actingAs($user)
+            ->postJson(route('api.preferences.update'), [
+                'distance' => 'mi', 'elevation' => 'ft', 'weight' => 'lb', 'temp' => 'f', 'glucose' => 'mmoll',
+            ])
+            ->assertOk();
+
+        $prefs = UserSetting::for($user->id)->displayPrefs();
+        $this->assertSame('mi', $prefs['distance']);
+        $this->assertSame('ft', $prefs['elevation']);
+        $this->assertSame('lb', $prefs['weight']);
+        $this->assertSame('f', $prefs['temp']);
+        $this->assertSame('mmoll', $prefs['glucose']);
+    }
+
+    public function test_mail_columns_keep_their_order_and_reject_the_unknown(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        // Not chosen yet: null, so the client falls back to its default set
+        // instead of a frozen copy of today's columns.
+        $this->assertNull(UserSetting::for($user->id)->displayPrefs()['mail_columns']);
+
+        $this->postJson(route('api.preferences.update'), ['mail_columns' => ['date', 'from', 'attachment']])->assertOk();
+        $this->assertSame(['date', 'from', 'attachment'], UserSetting::for($user->id)->displayPrefs()['mail_columns']);
+
+        // Duplicates collapse, unknown keys are dropped, order survives.
+        $this->postJson(route('api.preferences.update'), ['mail_columns' => ['from', 'from', 'size']])->assertOk();
+        $this->assertSame(['from', 'size'], UserSetting::for($user->id)->displayPrefs()['mail_columns']);
+
+        $this->postJson(route('api.preferences.update'), ['mail_columns' => ['from', 'nonsense']])->assertStatus(422);
+
+        // An empty selection means "default set", never "show nothing".
+        $this->postJson(route('api.preferences.update'), ['mail_columns' => []])->assertOk();
+        $this->assertNull(UserSetting::for($user->id)->displayPrefs()['mail_columns']);
     }
 }

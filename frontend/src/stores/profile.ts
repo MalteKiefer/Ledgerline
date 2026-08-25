@@ -3,17 +3,24 @@ import { ref } from 'vue';
 import { api, ApiError } from '@spa/api/client';
 import { setDateTimePrefs } from '@spa/lib/datetime';
 
+/**
+ * Field names are the API's, not prettier ones: this interface is the single
+ * declaration of what /preferences takes and /me returns, so a mismatch is a
+ * type error instead of a select that silently saves nothing.
+ */
 export interface DisplayPreferences {
-  unit_distance: 'km' | 'mi';
-  unit_elevation: 'm' | 'ft';
-  unit_weight: 'kg' | 'lb';
-  unit_temp: 'c' | 'f';
-  unit_glucose: 'mgdl' | 'mmoll';
+  distance: 'km' | 'mi';
+  elevation: 'm' | 'ft';
+  weight: 'kg' | 'lb';
+  temp: 'c' | 'f';
+  glucose: 'mgdl' | 'mmoll';
   time_format: '24h' | '12h';
   timezone: string | null;
   date_format: 'system' | 'dmy' | 'dmy_dot' | 'mdy' | 'ymd';
   mail_load_remote: boolean;
   mail_signature: string | null;
+  /** Mail list columns in display order; null = never chosen, use the default set. */
+  mail_columns: string[] | null;
 }
 
 export interface DeviceToken {

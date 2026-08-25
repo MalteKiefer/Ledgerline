@@ -112,7 +112,23 @@
       <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-3">
         <Btn variant="solid" size="sm" icon="edit_square" @click="openCompose">{{ t('mail.send.compose') }}</Btn>
         <span v-if="draftListActive" class="text-sm font-semibold">{{ t('mail.send.drafts') }}</span>
-        <TextField v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="min-w-48 flex-1" @update:model-value="debouncedReload" @enter="reload" />
+        <div class="relative flex min-w-48 flex-1 items-center gap-1">
+          <TextField id="mail-search" v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="flex-1" @update:model-value="debouncedReload" @enter="reload" />
+          <Btn variant="ghost" size="xs" icon="help" :title="t('mail.list.search_help')" @click="searchHelp = !searchHelp" />
+          <div v-if="searchHelp" class="absolute right-0 top-full z-20 mt-1 w-80 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] p-3 text-xs shadow-lg">
+            <div class="mb-2 flex items-center gap-2"><span class="flex-1 font-semibold">{{ t('mail.list.search_help') }}</span><Btn variant="ghost" size="xs" icon="close" @click="searchHelp = false" /></div>
+            <p class="mb-2 text-[var(--ll-muted)]">{{ t('mail.list.search_help_intro') }}</p>
+            <ul class="space-y-1">
+              <li v-for="tip in searchTips" :key="tip" class="font-mono text-[0.7rem]">{{ tip }}</li>
+            </ul>
+            <div class="mt-3 border-t border-[var(--ll-border)] pt-2">
+              <div class="mb-1 font-semibold">{{ t('mail.list.keys') }}</div>
+              <ul class="space-y-0.5">
+                <li v-for="k in keyTips" :key="k" class="text-[0.7rem]">{{ k }}</li>
+              </ul>
+            </div>
+          </div>
+        </div>
         <div class="flex items-center gap-1.5">
           <TextField v-model="dateFrom" type="date" :placeholder="t('mail.list.date_from')" class="w-36" @update:model-value="onDate" />
           <TextField v-model="dateTo" type="date" :placeholder="t('mail.list.date_to')" class="w-36" @update:model-value="onDate" />
@@ -192,18 +208,43 @@
             <tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]">
               <th class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="allSelected" @change="toggleSelectAll"></th>
               <th class="w-8 cursor-pointer select-none py-2 text-center" :title="t('mail.list.sort_flagged')" @click="sortBy('flagged')"><Icon name="star" :size="15" :class="filters.sort === 'flagged' ? 'text-amber-500' : ''" /></th>
-              <th class="w-[32%] cursor-pointer select-none py-2 pr-3" @click="sortBy('from')"><SortLabel :label="t('mail.list.col_from')" active-key="from" :sort="listSort" /></th>
-              <th class="cursor-pointer select-none py-2 pr-3" @click="sortBy('subject')"><SortLabel :label="t('mail.list.col_subject')" active-key="subject" :sort="listSort" /></th>
-              <th class="w-20 cursor-pointer select-none py-2 pr-3 text-right" @click="sortBy('size')"><SortLabel :label="t('mail.list.col_size')" active-key="size" :sort="listSort" justify="end" /></th>
-              <th class="w-28 cursor-pointer select-none py-2 pr-3 text-right" @click="sortBy('date')"><SortLabel :label="t('mail.list.col_date')" active-key="date" :sort="listSort" justify="end" /></th>
+              <th
+                v-for="col in activeColumns" :key="col"
+                class="select-none py-2 pr-3" :class="[columnWidth(col), columnAlign(col), sortKeyFor(col) ? 'cursor-pointer' : '']"
+                @click="sortKeyFor(col) && sortBy(sortKeyFor(col)!)"
+              >
+                <SortLabel
+                  v-if="sortKeyFor(col)" :label="columnLabel(col)" :active-key="sortKeyFor(col)!"
+                  :sort="listSort" :justify="columnAlign(col) === 'text-right' ? 'end' : 'start'"
+                />
+                <span v-else>{{ columnLabel(col) }}</span>
+              </th>
+              <th class="w-9">
+                <DropdownMenuRoot>
+                  <DropdownMenuTrigger as-child><button type="button" class="p-1" :title="t('mail.list.columns')"><Icon name="view_column" :size="16" /></button></DropdownMenuTrigger>
+                  <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] max-h-[70vh] min-w-56 overflow-y-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+                    <div :class="menuSection">{{ t('mail.list.columns') }}</div>
+                    <div v-for="col in ALL_COLUMNS" :key="col" class="flex items-center gap-1 px-2 py-1 text-sm">
+                      <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                        <input type="checkbox" class="accent-primary-500" :checked="activeColumns.includes(col)" @change="toggleColumn(col)">
+                        <span class="truncate">{{ columnLabel(col) }}</span>
+                      </label>
+                      <button type="button" class="p-0.5 disabled:opacity-30" :disabled="!canMove(col, -1)" :title="t('mail.list.columns_up')" @click="moveColumn(col, -1)"><Icon name="arrow_upward" :size="14" /></button>
+                      <button type="button" class="p-0.5 disabled:opacity-30" :disabled="!canMove(col, 1)" :title="t('mail.list.columns_down')" @click="moveColumn(col, 1)"><Icon name="arrow_downward" :size="14" /></button>
+                    </div>
+                    <div class="my-1 h-px bg-[var(--ll-border)]" />
+                    <DropdownMenuItem :class="menuItem" @select="resetColumns"><Icon name="restart_alt" :size="18" />{{ t('mail.list.columns_reset') }}</DropdownMenuItem>
+                  </DropdownMenuContent></DropdownMenuPortal>
+                </DropdownMenuRoot>
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="m in s.messages" :key="m.id"
+              v-for="(m, ri) in s.messages" :id="`mail-row-${m.id}`" :key="m.id"
               class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
-              :class="[!m.seen ? 'font-semibold' : '', reader?.id === m.id ? 'bg-primary-500/[0.06]' : '']"
-              @click="openReader(m)"
+              :class="[!m.seen ? 'font-semibold' : '', reader?.id === m.id ? 'bg-primary-500/[0.06]' : '', cursor === ri ? 'ring-1 ring-inset ring-primary-500/60' : '']"
+              @click="cursor = ri; openReader(m)"
             >
               <td class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="s.selected.includes(m.id)" @click.stop="toggleSelect(m.id)"></td>
               <td class="w-8 text-center align-middle">
@@ -217,30 +258,41 @@
                   />
                 </button>
               </td>
-              <td class="py-2.5 pr-3 align-middle">
-                <div class="flex items-center gap-2">
+              <td v-for="col in activeColumns" :key="col" class="py-2.5 pr-3 align-middle" :class="[columnAlign(col), col === 'date' || col === 'size' ? 'truncate text-xs font-normal text-[var(--ll-muted)]' : '']">
+                <!-- from -->
+                <div v-if="col === 'from'" class="flex items-center gap-2">
                   <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-primary-500'" />
-                  <span class="min-w-0 flex-1 truncate">
-                    <span class="truncate">{{ senderLabel(m) }}</span>
-                    <span v-if="isUnified || !filters.folder" class="ml-1.5 rounded bg-black/[0.04] px-1.5 py-0.5 text-[0.6rem] font-medium text-[var(--ll-muted)] dark:bg-white/[0.07]">{{ m.folder }}</span>
-                  </span>
+                  <span class="min-w-0 flex-1 truncate">{{ senderLabel(m) }}</span>
                 </div>
-              </td>
-              <td class="py-2.5 pr-3 align-middle">
-                <div class="flex items-center gap-1.5">
-                  <Icon v-if="m.answered" name="reply" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.list.answered')" />
+                <span v-else-if="col === 'to'" class="block truncate">{{ recipientLabel(m) }}</span>
+                <!-- subject: always present, carries the inline markers -->
+                <div v-else-if="col === 'subject'" class="flex items-center gap-1.5">
+                  <Icon v-if="m.answered && !activeColumns.includes('answered')" name="reply" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.list.answered')" />
                   <span class="min-w-0 flex-1 truncate">
                     {{ m.subject || '—' }}
-                    <span v-if="m.snippet" class="font-normal text-[var(--ll-muted)]"> — {{ m.snippet }}</span>
+                    <span v-if="m.snippet && !activeColumns.includes('snippet')" class="font-normal text-[var(--ll-muted)]"> — {{ m.snippet }}</span>
                   </span>
-                  <span v-for="l in (m.labels || [])" :key="l.id" class="hidden shrink-0 rounded px-1.5 py-0.5 text-[0.6rem] font-medium sm:inline" :style="{ background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }">{{ l.name }}</span>
-                  <Icon v-if="m.encrypted_type" name="lock" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.reader.encrypted')" />
-                  <Icon v-if="m.spam" name="report" :size="15" class="shrink-0 text-amber-500" :title="t('mail.list.spam')" />
-                  <Icon v-if="m.has_attachment" name="attach_file" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.list.attachment')" />
+                  <template v-if="!activeColumns.includes('labels')">
+                    <span v-for="l in (m.labels || [])" :key="l.id" class="hidden shrink-0 rounded px-1.5 py-0.5 text-[0.6rem] font-medium sm:inline" :style="{ background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }">{{ l.name }}</span>
+                  </template>
+                  <Icon v-if="m.encrypted_type && !activeColumns.includes('security')" name="lock" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.reader.encrypted')" />
+                  <Icon v-if="m.spam && !activeColumns.includes('spam')" name="report" :size="15" class="shrink-0 text-amber-500" :title="t('mail.list.spam')" />
+                  <Icon v-if="m.has_attachment && !activeColumns.includes('attachment')" name="attach_file" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.list.attachment')" />
                 </div>
+                <span v-else-if="col === 'snippet'" class="block truncate font-normal text-[var(--ll-muted)]">{{ m.snippet || '' }}</span>
+                <div v-else-if="col === 'labels'" class="flex items-center gap-1">
+                  <span v-for="l in (m.labels || [])" :key="l.id" class="shrink-0 truncate rounded px-1.5 py-0.5 text-[0.6rem] font-medium" :style="{ background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }">{{ l.name }}</span>
+                </div>
+                <span v-else-if="col === 'folder'" class="block truncate text-xs font-normal text-[var(--ll-muted)]">{{ m.folder }}</span>
+                <span v-else-if="col === 'account'" class="block truncate text-xs font-normal text-[var(--ll-muted)]">{{ accountName(m.account_id) }}</span>
+                <Icon v-else-if="col === 'attachment' && m.has_attachment" name="attach_file" :size="15" class="text-[var(--ll-muted)]" :title="t('mail.list.attachment')" />
+                <Icon v-else-if="col === 'security' && m.encrypted_type" name="lock" :size="15" class="text-[var(--ll-muted)]" :title="t('mail.reader.encrypted')" />
+                <Icon v-else-if="col === 'answered' && m.answered" name="reply" :size="15" class="text-[var(--ll-muted)]" :title="t('mail.list.answered')" />
+                <Icon v-else-if="col === 'spam' && m.spam" name="report" :size="15" class="text-amber-500" :title="t('mail.list.spam')" />
+                <template v-else-if="col === 'size'">{{ fmtBytes(m.size) }}</template>
+                <template v-else-if="col === 'date'">{{ fmtDate(m.date || m.created_at) }}</template>
               </td>
-              <td class="truncate py-2.5 pr-3 text-right text-xs font-normal text-[var(--ll-muted)]">{{ fmtBytes(m.size) }}</td>
-              <td class="truncate py-2.5 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(m.date || m.created_at) }}</td>
+              <td class="w-9" />
             </tr>
           </tbody>
         </table>
@@ -647,6 +699,7 @@ import RichTextEditor from '@spa/components/RichTextEditor.vue';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { useAuthStore } from '@spa/stores/auth';
+import { useProfileStore } from '@spa/stores/profile';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { renderInvoicePdfBlob } from '@spa/shared/invoice-print';
 import DOMPurify from 'dompurify';
@@ -659,6 +712,7 @@ const cryptoStore = useCryptoStore();
 const route = useRoute();
 const router = useRouter();
 const { success, error } = useToast();
+const p = useProfileStore();
 const filters = s.filters;
 
 const menuItem = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10';
@@ -794,13 +848,215 @@ async function applyRoute() {
 // --- Loading -----------------------------------------------------------------
 let statusTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
+  window.addEventListener('keydown', onKey);
+  // The column choice is a display preference; without it the list would show
+  // the default set until the profile page happened to be visited.
+  if (!p.prefs) void p.loadPrefs();
   await Promise.all([s.loadAccounts(), s.loadLabels(), s.loadSavedSearches(), s.loadDrafts().then((rows) => { drafts.value = rows; }), api.get<{ signatures: MailSignature[] }>('/api/v1/mail/signatures').then((r) => { signatures.value = r.signatures; })]);
   await applyRoute();
   statusTimer = setInterval(async () => {
     if (s.accounts.some((a) => a.status === 'syncing')) { await s.pollStatus(); await s.loadFolders(filters.accountId); }
   }, 5000);
 });
-onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); });
+onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); window.removeEventListener('keydown', onKey); });
+
+const searchHelp = ref(false);
+const searchTips = computed(() => [
+  t('mail.list.search_help_from'), t('mail.list.search_help_to'), t('mail.list.search_help_subject'),
+  t('mail.list.search_help_folder'), t('mail.list.search_help_is'), t('mail.list.search_help_has'),
+  t('mail.list.search_help_date'),
+]);
+
+
+// ---- Keyboard ------------------------------------------------------------
+// A mailbox with sixteen thousand messages is read with the hands on the
+// keyboard, so the list has a cursor of its own, independent of the selection
+// (the checkboxes) and of what the reader shows.
+const cursor = ref(-1);
+
+/**
+ * Never while typing or while a dialog is up.
+ *
+ * The same rule the file browser learned: a shortcut that fires inside a text
+ * field eats the character, and one that fires behind a modal acts on something
+ * the reader cannot see.
+ */
+function keysBlocked(): boolean {
+  const el = document.activeElement as HTMLElement | null;
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return true;
+  return compose.show || editor.show || rulesDlg.show || statsDlg.show || labelsDlg.show
+    || logsDlg.show || attSave.show || assetPicker.show || searchHelp.value;
+}
+
+/** Move the cursor and open what it lands on, so j/k reads rather than points. */
+async function moveCursor(delta: number) {
+  const rows = s.messages;
+  if (!rows.length) return;
+  const next = cursor.value < 0 ? (delta > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, cursor.value + delta));
+  cursor.value = next;
+  const row = rows[next];
+  document.getElementById(`mail-row-${row.id}`)?.scrollIntoView({ block: 'nearest' });
+  if (readerOpen.value) await openReader(row);
+}
+
+/** The row a shortcut acts on: the cursor, else what the reader shows. */
+function focusedRow(): MailMessage | null {
+  const rows = s.messages;
+  if (cursor.value >= 0 && cursor.value < rows.length) return rows[cursor.value];
+  return reader.value;
+}
+
+async function onKey(e: KeyboardEvent) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  // Escape closes what is open, and it must work from inside the search field
+  // too — that is the one place a blocked shortcut would be wrong.
+  if (e.key === 'Escape') {
+    if (searchHelp.value) { searchHelp.value = false; return; }
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (readerOpen.value) readerOpen.value = false;
+    return;
+  }
+  if (keysBlocked()) return;
+
+  const row = focusedRow();
+  switch (e.key) {
+    case 'j': case 'ArrowDown': e.preventDefault(); await moveCursor(1); return;
+    case 'k': case 'ArrowUp': e.preventDefault(); await moveCursor(-1); return;
+    case 'n': e.preventDefault(); await moveCursor(1); return;
+    case 'p': e.preventDefault(); await moveCursor(-1); return;
+    case 'Enter': case 'o':
+      if (!row) return;
+      e.preventDefault(); await openReader(row); return;
+    case '/':
+      e.preventDefault();
+      // By id, not by a guess at which input comes first in the DOM.
+      (document.querySelector('#mail-search input, input#mail-search') as HTMLInputElement | null)?.focus();
+      return;
+    case 'x':
+      if (!row) return;
+      e.preventDefault(); toggleSelect(row.id); return;
+    case 's':
+      if (!row) return;
+      e.preventDefault(); await toggleFlag(row); return;
+    case 'u':
+      if (!row) return;
+      e.preventDefault();
+      try { await s.setSeen([row.id], !row.seen); row.seen = !row.seen; } catch { error(t('mail.toast.load_failed')); }
+      return;
+    case 'r':
+      if (!reader.value) return;
+      e.preventDefault(); openReply(false); return;
+    case 'a':
+      if (!reader.value) return;
+      e.preventDefault(); openReply(true); return;
+    case 'f':
+      if (!reader.value) return;
+      e.preventDefault(); openForward(); return;
+    case 'c':
+      e.preventDefault(); openCompose(); return;
+    case '#': case 'Delete':
+      if (!row) return;
+      e.preventDefault();
+      // Reuse the bulk path so trashing one row behaves exactly like trashing
+      // several, including what happens to the open reader.
+      s.selected.splice(0, s.selected.length, row.id);
+      await bulkTrash();
+      return;
+    default: return;
+  }
+}
+
+// ---- List columns --------------------------------------------------------
+// Which columns exist, in the order the picker offers them. Every one is a
+// field the row already carries — no extra query. `subject` is not here: a
+// message list without a subject is not a list of messages, so it is always
+// rendered and cannot be switched off. The checkbox and the star are controls
+// rather than data and are likewise fixed.
+const ALL_COLUMNS = ['from', 'to', 'snippet', 'labels', 'folder', 'account', 'attachment', 'security', 'answered', 'spam', 'size', 'date'] as const;
+type ColumnKey = typeof ALL_COLUMNS[number];
+
+/** The default set: what a mail list needs to be readable. */
+const DEFAULT_COLUMNS: string[] = ['from', 'subject', 'size', 'date'];
+
+/**
+ * The active columns, always including subject.
+ *
+ * The stored preference is null until the picker is used, so a column added in
+ * a later release appears for everyone instead of only for accounts that never
+ * touched the picker.
+ */
+const activeColumns = computed<string[]>(() => {
+  const saved = p.prefs?.mail_columns;
+  const chosen = Array.isArray(saved) && saved.length ? saved.slice() : DEFAULT_COLUMNS.slice();
+  if (!chosen.includes('subject')) {
+    // Keep it where a reader expects it: after the sender, else at the front.
+    const at = chosen.indexOf('from');
+    chosen.splice(at >= 0 ? at + 1 : 0, 0, 'subject');
+  }
+  return chosen;
+});
+
+const COLUMN_WIDTH: Record<string, string> = {
+  from: 'w-[26%]', to: 'w-[20%]', folder: 'w-24', account: 'w-28',
+  attachment: 'w-8', security: 'w-8', answered: 'w-8', spam: 'w-8',
+  labels: 'w-32', size: 'w-20', date: 'w-28',
+};
+/** Which server sort key a column maps to; null = not sortable. */
+const COLUMN_SORT: Record<string, string | null> = {
+  from: 'from', subject: 'subject', size: 'size', date: 'date', folder: 'folder',
+  to: null, snippet: null, labels: null, account: null, attachment: null,
+  security: null, answered: null, spam: null,
+};
+
+const columnWidth = (col: string) => COLUMN_WIDTH[col] ?? '';
+const columnAlign = (col: string) => (col === 'size' || col === 'date' ? 'text-right' : col === 'attachment' || col === 'security' || col === 'answered' || col === 'spam' ? 'text-center' : '');
+const sortKeyFor = (col: string) => COLUMN_SORT[col] ?? null;
+const columnLabel = (col: string) => t(`mail.list.col_${col}`);
+
+function recipientLabel(m: MailMessage): string {
+  const list = (m.to ?? []) as MailAddress[];
+  if (!list.length) return '—';
+  const first = list[0].name?.trim() || list[0].email || '—';
+  return list.length > 1 ? `${first} +${list.length - 1}` : first;
+}
+
+/** Persist the picker. Columns are a display preference, like units and clock. */
+async function saveColumns(next: string[]) {
+  try {
+    await p.savePrefs({ mail_columns: next.filter((c) => c !== 'subject') });
+  } catch { error(t('common.error')); }
+}
+
+function toggleColumn(col: ColumnKey) {
+  const next = activeColumns.value.slice();
+  const at = next.indexOf(col);
+  if (at >= 0) next.splice(at, 1);
+  else next.splice(ALL_COLUMNS.indexOf(col) >= ALL_COLUMNS.indexOf('size') ? next.length : Math.max(1, next.length - 2), 0, col);
+  void saveColumns(next);
+}
+
+const canMove = (col: string, delta: number) => {
+  const at = activeColumns.value.indexOf(col);
+  return at >= 0 && at + delta >= 0 && at + delta < activeColumns.value.length;
+};
+
+function moveColumn(col: string, delta: number) {
+  if (!canMove(col, delta)) return;
+  const next = activeColumns.value.slice();
+  const at = next.indexOf(col);
+  next.splice(at + delta, 0, next.splice(at, 1)[0]);
+  void saveColumns(next);
+}
+
+/** Back to the default set — sending nothing means "default", not "no columns". */
+const resetColumns = () => { void saveColumns([]); };
+
+const keyTips = computed(() => [
+  t('mail.list.keys_move'), t('mail.list.keys_open'), t('mail.list.keys_reply'),
+  t('mail.list.keys_flag'), t('mail.list.keys_unread'), t('mail.list.keys_select'),
+  t('mail.list.keys_trash'), t('mail.list.keys_compose'), t('mail.list.keys_search'),
+]);
 
 /** What the sortable headers render their arrow from. */
 const listSort = computed(() => ({ key: filters.sort, dir: filters.dir }));
