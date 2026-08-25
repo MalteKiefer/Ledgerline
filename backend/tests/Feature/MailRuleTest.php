@@ -84,4 +84,27 @@ class MailRuleTest extends TestCase
     {
         $this->getJson(route('api.mail.rules.index'))->assertUnauthorized();
     }
+
+    public function test_every_condition_and_action_the_form_offers_round_trips(): void
+    {
+        // The form only offered from/subject and three actions, so the recipient,
+        // folder and attachment conditions and the file-as-receipt action were
+        // reachable only by editing the database — including the automatic
+        // mail-to-receipt filing, which was the point of building it.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $rule = $this->postJson(route('mail.rules.store'), $this->payload([
+            'name' => 'Invoices',
+            'match' => ['from' => 'billing@', 'to' => 'me@', 'subject' => 'invoice', 'folder' => 'INBOX', 'has_attachment' => true],
+            'action' => ['mark_read' => true, 'file_receipt' => true],
+        ]))->assertCreated()->json('rule');
+
+        $this->assertSame('billing@', $rule['match']['from']);
+        $this->assertSame('me@', $rule['match']['to']);
+        $this->assertSame('invoice', $rule['match']['subject']);
+        $this->assertSame('INBOX', $rule['match']['folder']);
+        $this->assertTrue($rule['match']['has_attachment']);
+        $this->assertTrue($rule['action']['file_receipt']);
+    }
 }
