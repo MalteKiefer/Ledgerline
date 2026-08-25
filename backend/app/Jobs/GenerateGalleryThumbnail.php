@@ -39,8 +39,15 @@ class GenerateGalleryThumbnail implements ShouldQueue
         // No auth in a queued context → the owner global scope is a no-op, so a
         // plain find resolves the row (thumbnailing is an internal operation).
         $photo = GalleryPhoto::withTrashed()->find($this->photoId);
-        if ($photo instanceof GalleryPhoto) {
-            $controller->generateThumb($photo, $images);
+        if (! $photo instanceof GalleryPhoto) {
+            return;
+        }
+        $controller->generateThumb($photo, $images);
+        // A Live Photo still and its clip may arrive in either order and from any
+        // client; this is the still's half of the pairing. Never fatal — a photo
+        // that cannot be paired is still a photo.
+        if ($photo->deleted_at === null) {
+            $controller->linkLivePhoto($photo);
         }
     }
 }

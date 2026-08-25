@@ -320,6 +320,85 @@ class GalleryFeatureTest extends TestCase
         $this->get(route('gallery.motion', ['photo' => $id]))->assertOk();
     }
 
+    public function test_pixel_motion_photo_uses_the_declared_length(): void
+    {
+        $this->actingAs(User::factory()->create());
+        // Current Pixel/Samsung: the XMP container states the clip's exact length,
+        // and the clip is the last thing in the file. A trailing byte after it must
+        // not end up in the video.
+        $clip = pack('N', 9012).'ftyp'.'isom'.str_repeat("\0", 9000);
+        $xmp = '<Container:Directory><rdf:Seq><rdf:li><Container:Item Item:Mime="video/mp4" '
+            .'Item:Semantic="MotionPhoto" Item:Length="'.strlen($clip).'" Item:Padding="0"/></rdf:li></rdf:Seq></Container:Directory>';
+        $base = UploadedFile::fake()->image('PXL.jpg', 60, 60);
+        $jpeg = (string) file_get_contents($base->getRealPath());
+
+        $id = (int) $this->post(route('gallery.upload'), [
+            'file' => UploadedFile::fake()->createWithContent('PXL.jpg', $jpeg.$xmp.$clip),
+        ])->assertCreated()->json('photo.id');
+
+        $photo = GalleryPhoto::findOrFail($id);
+        $this->assertNotNull($photo->motion_path);
+        $this->assertSame($clip, Storage::disk(config('files.disk'))->get((string) $photo->motion_path));
+    }
+
+    public function test_samsung_marker_motion_photo_is_extracted(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $clip = pack('N', 9012).'ftyp'.'isom'.str_repeat("\0", 9000);
+        $base = UploadedFile::fake()->image('SAM.jpg', 60, 60);
+        $jpeg = (string) file_get_contents($base->getRealPath());
+
+        $id = (int) $this->post(route('gallery.upload'), [
+            'file' => UploadedFile::fake()->createWithContent('SAM.jpg', $jpeg.'MotionPhoto_Data'.$clip),
+        ])->assertCreated()->json('photo.id');
+
+        $this->assertNotNull(GalleryPhoto::findOrFail($id)->motion_path);
+    }
+
+    public function test_a_clip_that_arrives_alone_folds_into_its_still(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $stillId = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('IMG_9.heic')])->json('photo.id');
+        $clipId = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->create('IMG_9.mov', 40, 'video/quicktime')])->json('photo.id');
+
+        // Both halves carry the same asset identifier — the state the worker reaches
+        // after reading it out of each file.
+        $still = GalleryPhoto::findOrFail($stillId);
+        $clip = GalleryPhoto::findOrFail($clipId);
+        $asset = '11111111-2222-3333-4444-555555555555';
+        $still->forceFill(['content_id' => $asset])->save();
+        $clip->forceFill(['content_id' => $asset, 'media_type' => 'video'])->save();
+        $clipBytes = (string) $clip->storage_path;
+
+        app(GalleryController::class)->linkLivePhoto($still->refresh());
+
+        $still->refresh();
+        $this->assertSame($clipBytes, $still->motion_path, 'the still now owns the clip');
+        $this->assertNull(GalleryPhoto::withoutGlobalScopes()->find($clipId), 'the separate tile is gone');
+        Storage::disk(config('files.disk'))->assertExists($clipBytes);
+    }
+
+    public function test_folding_never_reaches_across_users(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $stillId = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('IMG_10.heic')])->json('photo.id');
+
+        $this->actingAs(User::factory()->create());
+        $clipId = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->create('IMG_10.mov', 40, 'video/quicktime')])->json('photo.id');
+
+        $asset = '99999999-8888-7777-6666-555555555555';
+        $still = GalleryPhoto::withoutGlobalScopes()->findOrFail($stillId);
+        $still->forceFill(['content_id' => $asset])->save();
+        GalleryPhoto::withoutGlobalScopes()->findOrFail($clipId)->forceFill(['content_id' => $asset, 'media_type' => 'video'])->save();
+
+        app(GalleryController::class)->linkLivePhoto($still);
+
+        $this->assertNull($still->refresh()->motion_path);
+        $this->assertNotNull(GalleryPhoto::withoutGlobalScopes()->find($clipId));
+    }
+
     public function test_plain_jpeg_gets_no_motion(): void
     {
         $this->actingAs(User::factory()->create());

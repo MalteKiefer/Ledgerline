@@ -1110,10 +1110,17 @@ function onDrop(e: DragEvent) { dragDepth.value = 0; if (!hasFiles(e)) return; c
 
 function baseName(name: string): string { return name.replace(/\.[^.]+$/, '').toLowerCase(); }
 function isMotionFile(f: File): boolean { return f.type.startsWith('video/') || /\.(mov|mp4|m4v|qt)$/i.test(f.name); }
+// Not every picture announces itself: a browser that does not know HEIC/HEIF
+// hands back an empty File.type, and filtering on the type alone dropped those
+// files from the upload without a word — the very format a Live Photo still
+// comes in. The extension is the fallback, exactly as it already is for clips.
+function isImageFile(f: File): boolean {
+  return f.type.startsWith('image/') || (f.type === '' && /\.(heic|heif|jpe?g|png|webp|gif|avif|tiff?|bmp)$/i.test(f.name));
+}
 
 async function uploadList(list: FileList) {
   const all = Array.from(list);
-  const images = all.filter((f) => f.type.startsWith('image/'));
+  const images = all.filter(isImageFile);
   const motions = all.filter(isMotionFile);
   if (!images.length && !motions.length) return;
   Object.assign(up, { active: true, done: 0, total: images.length + motions.length, name: '', frac: 0 });
