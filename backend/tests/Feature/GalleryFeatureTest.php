@@ -695,4 +695,43 @@ class GalleryFeatureTest extends TestCase
         $this->post(route('gallery.bulk-archive'), ['ids' => [$a], 'archived' => false])->assertOk();
         $this->assertCount(2, $this->get(route('gallery.data'))->json('photos'));
     }
+
+    public function test_data_reports_totals_for_the_whole_set_not_the_page(): void
+    {
+        // The header counted the rows the client had loaded, which on a
+        // paginated timeline is the page size: eighteen thousand photos read as
+        // "200". The totals must describe the filtered set.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $seed = function (int $userId, string $mediaType, ?string $archivedAt = null): void {
+            (new GalleryPhoto)->forceFill([
+                'user_id' => $userId,
+                'storage_path' => 'gallery/'.Str::uuid(),
+                'name' => 'p.jpg', 'mime' => 'image/jpeg', 'media_type' => $mediaType,
+                'status' => 'ready', 'size' => 10, 'archived_at' => $archivedAt,
+            ])->save();
+        };
+
+        for ($i = 0; $i < 3; $i++) {
+            $seed($user->id, 'image');
+        }
+        $seed($user->id, 'video');
+        $seed($user->id, 'image');
+
+        $body = $this->getJson(route('gallery.data', ['limit' => 2]))->assertOk()->json();
+
+        $this->assertCount(2, $body['photos'], 'one page');
+        $this->assertSame(4, $body['totals']['images']);
+        $this->assertSame(1, $body['totals']['videos']);
+
+        // Archived photos are out of the timeline, so they are out of its counts.
+        $seed($user->id, 'image', now()->toDateTimeString());
+        $this->assertSame(4, $this->getJson(route('gallery.data'))->assertOk()->json('totals.images'));
+
+        // And another account's library never shows up in them.
+        $stranger = User::factory()->create();
+        $seed($stranger->id, 'video');
+        $this->assertSame(1, $this->getJson(route('gallery.data'))->assertOk()->json('totals.videos'));
+    }
 }

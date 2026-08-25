@@ -6578,7 +6578,7 @@ paths:
         - { name: person_id, in: query, required: false, schema: { type: integer }, description: "Filter to photos containing a visible face of this person." }
         - { name: archived, in: query, required: false, schema: { type: boolean }, description: "1 = only archived photos (Archive view); default hides archived from the timeline. Ignored when album_id/person_id is set." }
       responses:
-        "200": { description: "One page of photos (without bytes) plus the next cursor.", content: { application/json: { schema: { type: object, required: [photos], properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } }, next_cursor: { type: [string, "null"], description: "Pass as ?cursor= for the next page; null when the timeline is exhausted." } } } } } }
+        "200": { description: "One page of photos (without bytes) plus the next cursor.", content: { application/json: { schema: { type: object, required: [photos], properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } }, next_cursor: { type: [string, "null"], description: "Pass as ?cursor= for the next page; null when the timeline is exhausted." }, totals: { type: object, description: "Counts for the whole filtered set, not this page — the listing is keyset-paginated, so a client cannot count them from `photos`. Anything that is not a video counts as an image.", properties: { images: { type: integer }, videos: { type: integer } } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /gallery/dates:

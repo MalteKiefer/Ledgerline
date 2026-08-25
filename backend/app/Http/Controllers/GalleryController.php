@@ -102,6 +102,10 @@ class GalleryController extends Controller
             $query->{$request->boolean('archived') ? 'whereNotNull' : 'whereNull'}('archived_at');
         }
 
+        // The filtered set without any pagination clause — the totals below are
+        // counted from this, the page from the same query once narrowed.
+        $countable = clone $query;
+
         // Keyset (cursor) pagination over COALESCE(taken_at, created_at) DESC, id DESC.
         // Backward compatible: with no limit/cursor a client still gets a usable first
         // page (the default limit) — the old "everything at once" behaviour is gone
@@ -127,6 +131,20 @@ class GalleryController extends Controller
             $query->whereRaw("($sortExpr < ? OR ($sortExpr = ? AND id < ?))", [$cursor['ts'], $cursor['ts'], $cursor['id']]);
         }
 
+        // How many there are in total, counted BEFORE the cursor narrows the
+        // query to one page. Without this the client can only count the rows it
+        // has loaded, which on a paginated timeline is the page size — the header
+        // read "200 photos" for a library of eighteen thousand.
+        $videos = 0;
+        $images = 0;
+        foreach ((clone $countable)->selectRaw('media_type, count(*) as n')->groupBy('media_type')->get() as $group) {
+            $n = is_numeric($group->getAttribute('n')) ? (int) $group->getAttribute('n') : 0;
+            // Two kinds today; anything that is not a video is counted as a
+            // still, so a third kind added later shows up somewhere rather than
+            // vanishing from the header.
+            $group->getAttribute('media_type') === 'video' ? $videos += $n : $images += $n;
+        }
+
         $rows = $query->orderByRaw($sortExpr.' DESC')->orderByDesc('id')->limit($limit + 1)->get();
 
         $hasMore = $rows->count() > $limit;
@@ -143,6 +161,8 @@ class GalleryController extends Controller
         return response()->json([
             'photos' => $page->map(fn (GalleryPhoto $p): array => $this->row($p))->values()->all(),
             'next_cursor' => $next,
+            // Counts for the whole filtered set, not the page.
+            'totals' => ['images' => $images, 'videos' => $videos],
         ]);
     }
 

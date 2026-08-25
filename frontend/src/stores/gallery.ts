@@ -82,6 +82,13 @@ export const useGalleryStore = defineStore('gallery', () => {
   const albums = ref<Album[]>([]);
   // Keyset pagination cursor for the timeline (null = exhausted / not yet loaded).
   const nextCursor = ref<string | null>(null);
+  /**
+   * How many photos and videos the current filter holds in total — counted by
+   * the server, because the timeline is paginated and the loaded array is one
+   * page. null for the views that return their whole result at once (trash,
+   * search, duplicates, a person), where counting the array is correct.
+   */
+  const totals = ref<{ images: number; videos: number } | null>(null);
   const loadingMore = ref(false);
   // The filter the current timeline page-set was loaded under, so loadMore/poll
   // request the same slice. archived is a boolean; albumId/personId narrow it.
@@ -101,8 +108,8 @@ export const useGalleryStore = defineStore('gallery', () => {
   // pagination: the un-paged "everything at once" load timed out on large libraries.
   const load = (albumId?: number, opts?: { archived?: boolean; ym?: string }) => {
     pageParams = { albumId, archived: opts?.archived };
-    return api.get<{ photos: Photo[]; next_cursor: string | null }>(timelineUrl({ limit: PAGE_SIZE, cursor_ym: opts?.ym }))
-      .then((r) => { photos.value = r.photos ?? []; nextCursor.value = r.next_cursor ?? null; });
+    return api.get<{ photos: Photo[]; next_cursor: string | null; totals?: { images: number; videos: number } }>(timelineUrl({ limit: PAGE_SIZE, cursor_ym: opts?.ym }))
+      .then((r) => { photos.value = r.photos ?? []; nextCursor.value = r.next_cursor ?? null; totals.value = r.totals ?? null; });
   };
 
   // Append the next page (infinite scroll). No-op when exhausted or already fetching.
@@ -147,6 +154,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const loadArchived = () => load(undefined, { archived: true });
   const memories = () => api.get<MemoriesResult>('/api/v1/gallery/memories');
   const trash = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/trash').then((r) => r.photos);
+  // These return their whole result, so the header counts the array itself.
   const search = (q: string) => api.get<{ photos: Photo[] }>(`/api/v1/gallery/search?q=${encodeURIComponent(q)}`).then((r) => r.photos ?? []);
   const duplicates = () => api.get<{ groups: { photos: Photo[] }[] }>('/api/v1/gallery/duplicates').then((r) => r.groups ?? []);
   const loadAlbums = () => api.get<{ albums: Album[] }>('/api/v1/gallery/albums').then((r) => { albums.value = r.albums ?? []; });
@@ -216,7 +224,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   // Load a person's photos (sortable by capture date) into the main grid.
   const browsePerson = (id: number, sort: 'asc' | 'desc' = 'desc') =>
     api.get<{ person: Person; photos: Photo[] }>(`/api/v1/gallery/people/${id}?sort=${sort}`)
-      .then((r) => { photos.value = r.photos ?? []; nextCursor.value = null; return r.person; });
+      .then((r) => { photos.value = r.photos ?? []; nextCursor.value = null; totals.value = null; return r.person; });
   const updatePerson = (id: number, patch: { name?: string | null; contact_id?: string | null; cover_face_id?: number | null }) =>
     api.put<{ ok: boolean; person: Person }>(`/api/v1/gallery/people/${id}`, patch).then((r) => r.person);
   const deletePerson = (id: number) => api.delete(`/api/v1/gallery/people/${id}`);
@@ -276,7 +284,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const sharedRawUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/raw`);
 
   return {
-    photos, albums, nextCursor, loadingMore, load, loadMore, jumpToMonth, dates, loadArchived, memories, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, pairLivePhotos, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
+    photos, albums, nextCursor, totals, loadingMore, load, loadMore, jumpToMonth, dates, loadArchived, memories, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, pairLivePhotos, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,
