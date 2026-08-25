@@ -613,7 +613,10 @@
     <div v-if="s.rules.length" class="mb-3 divide-y divide-[var(--ll-border)]">
       <div v-for="r in s.rules" :key="r.id" class="flex items-center gap-2 py-2">
         <Icon name="rule" :size="18" class="text-[var(--ll-muted)]" />
-        <span class="min-w-0 flex-1 truncate text-sm">{{ r.name }}</span>
+        <span class="min-w-0 flex-1 truncate text-sm">
+          {{ r.name }}
+          <span class="ml-1 text-xs text-[var(--ll-muted)]">{{ ruleSummary(r) }}</span>
+        </span>
         <Badge v-if="!r.enabled" tone="gray">off</Badge>
         <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="removeRule(r)" />
       </div>
@@ -621,15 +624,20 @@
     <div class="space-y-3 border-t border-[var(--ll-border)] pt-3">
       <TextField v-model="rulesForm.name" :label="t('mail.extras.rule_match')" placeholder="Name" />
       <div class="grid grid-cols-2 gap-3">
-        <TextField v-model="rulesForm.from" label="from" />
-        <TextField v-model="rulesForm.subject" label="subject" />
+        <TextField v-model="rulesForm.from" :label="t('mail.extras.rule_from')" />
+        <TextField v-model="rulesForm.to" :label="t('mail.extras.rule_to')" />
+        <TextField v-model="rulesForm.subject" :label="t('mail.extras.rule_subject')" />
+        <TextField v-model="rulesForm.folder" :label="t('mail.extras.rule_folder')" />
       </div>
+      <label class="flex items-center gap-1.5 text-sm"><input v-model="rulesForm.has_attachment" type="checkbox" class="accent-primary-500">{{ t('mail.extras.rule_has_attachment') }}</label>
       <div class="flex flex-wrap items-center gap-3 text-sm">
         <span class="text-xs text-[var(--ll-muted)]">{{ t('mail.extras.rule_action') }}:</span>
         <label class="flex items-center gap-1.5"><input v-model="rulesForm.mark_read" type="checkbox" class="accent-primary-500">{{ t('mail.extras.action_mark_read') }}</label>
         <label class="flex items-center gap-1.5"><input v-model="rulesForm.trash" type="checkbox" class="accent-primary-500">{{ t('mail.extras.action_trash') }}</label>
         <label class="flex items-center gap-1.5"><input v-model="rulesForm.skip" type="checkbox" class="accent-primary-500">{{ t('mail.extras.action_skip') }}</label>
+        <label v-if="auth.can('finance')" class="flex items-center gap-1.5"><input v-model="rulesForm.file_receipt" type="checkbox" class="accent-primary-500">{{ t('mail.extras.action_file_receipt') }}</label>
       </div>
+      <p v-if="rulesForm.file_receipt" class="text-xs text-[var(--ll-muted)]">{{ t('mail.extras.action_file_receipt_hint') }}</p>
       <Select v-if="s.labels.length" v-model="rulesForm.add_label" :label="t('mail.extras.action_add_label')" :options="labelRuleItems" />
     </div>
     <template #footer>
@@ -1418,7 +1426,7 @@ async function removeLabel(l: MailLabel) {
 
 // --- Rules -------------------------------------------------------------------
 const rulesDlg = reactive<{ show: boolean; busy: boolean }>({ show: false, busy: false });
-const rulesForm = reactive<{ name: string; from: string; subject: string; mark_read: boolean; trash: boolean; skip: boolean; add_label: number }>({ name: '', from: '', subject: '', mark_read: false, trash: false, skip: false, add_label: 0 });
+const rulesForm = reactive<{ name: string; from: string; to: string; subject: string; folder: string; has_attachment: boolean; mark_read: boolean; trash: boolean; skip: boolean; file_receipt: boolean; add_label: number }>({ name: '', from: '', to: '', subject: '', folder: '', has_attachment: false, mark_read: false, trash: false, skip: false, file_receipt: false, add_label: 0 });
 async function openRules() { rulesDlg.show = true; try { await s.loadRules(); } catch { /* ignore */ } }
 async function saveRule() {
   const name = rulesForm.name.trim(); if (!name) return;
@@ -1426,14 +1434,41 @@ async function saveRule() {
   try {
     const rule: MailRule = {
       name, enabled: true, priority: (s.rules.length + 1) * 10,
-      match: { from: rulesForm.from || null, subject: rulesForm.subject || null },
-      action: { mark_read: rulesForm.mark_read || null, trash: rulesForm.trash || null, skip: rulesForm.skip || null, add_label: Number(rulesForm.add_label) || null },
+      // Send only what was filled in: an empty string as a condition would
+      // match nothing, which is not the same as "no condition".
+      match: {
+        from: rulesForm.from || null, to: rulesForm.to || null,
+        subject: rulesForm.subject || null, folder: rulesForm.folder || null,
+        has_attachment: rulesForm.has_attachment || null,
+      },
+      action: {
+        mark_read: rulesForm.mark_read || null, trash: rulesForm.trash || null,
+        skip: rulesForm.skip || null, file_receipt: rulesForm.file_receipt || null,
+        add_label: Number(rulesForm.add_label) || null,
+      },
     };
     await s.createRule(rule);
     await s.loadRules();
-    Object.assign(rulesForm, { name: '', from: '', subject: '', mark_read: false, trash: false, skip: false, add_label: 0 });
+    Object.assign(rulesForm, { name: '', from: '', to: '', subject: '', folder: '', has_attachment: false, mark_read: false, trash: false, skip: false, file_receipt: false, add_label: 0 });
   } catch { error(t('common.error')); } finally { rulesDlg.busy = false; }
 }
+/** What a rule does, in one line — a list of names says nothing. */
+function ruleSummary(r: MailRule): string {
+  const conditions: string[] = [];
+  if (r.match.from) conditions.push(`from:${r.match.from}`);
+  if (r.match.to) conditions.push(`to:${r.match.to}`);
+  if (r.match.subject) conditions.push(`subject:${r.match.subject}`);
+  if (r.match.folder) conditions.push(`folder:${r.match.folder}`);
+  if (r.match.has_attachment) conditions.push(t('mail.extras.rule_has_attachment'));
+  const actions: string[] = [];
+  if (r.action.skip) actions.push(t('mail.extras.action_skip'));
+  if (r.action.trash) actions.push(t('mail.extras.action_trash'));
+  if (r.action.mark_read) actions.push(t('mail.extras.action_mark_read'));
+  if (r.action.file_receipt) actions.push(t('mail.extras.action_file_receipt'));
+  if (r.action.add_label) actions.push(s.labels.find((l) => l.id === r.action.add_label)?.name ?? '');
+  return `${conditions.join(' ')} → ${actions.filter(Boolean).join(', ')}`;
+}
+
 async function removeRule(r: MailRule) { if (!r.id || !await confirmAsk(t('common.confirm_delete'), { danger: true })) return; try { await s.deleteRule(r.id); await s.loadRules(); } catch { error(t('common.error')); } }
 
 // --- Saved searches ----------------------------------------------------------

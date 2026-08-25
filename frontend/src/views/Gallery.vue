@@ -289,30 +289,44 @@
             <Icon name="progress_activity" :size="20" class="animate-spin opacity-60" />
           </div>
         </div>
-        <!-- Google-Photos-style draggable date scrubber: an invisible fixed
-             rail on the right; drag/click maps to the timeline scroll position,
-             a bubble shows the date. Year ticks (from /gallery/dates, the full
-             histogram) are clickable to jump straight to any year — even one not
-             yet loaded (keyset pagination fetches that page on demand). -->
+        <!-- Date rail: one axis, and it is time. Each month of the library gets
+             an equal slice, newest at the top, so the spacing reads
+             chronologically. The thumb shows the month you are looking at;
+             dragging picks a month (label only, no fetch per pixel) and
+             releasing jumps there — which works for a month that was never
+             loaded, because the server can start a page at any month. -->
         <div
           v-if="showScrubber" ref="railRef"
-          class="fixed right-0 top-[4.75rem] bottom-3 z-20 hidden w-8 cursor-ns-resize touch-none md:block"
+          class="fixed right-0 top-[4.75rem] bottom-3 z-20 hidden w-11 cursor-ns-resize touch-none select-none md:block"
           @pointerenter="scrubHover = true" @pointerleave="scrubHover = false"
           @pointerdown="scrubStart" @pointermove="scrubMove" @pointerup="scrubEnd" @pointercancel="scrubEnd"
         >
-          <!-- clickable year jump ticks (full range from the histogram) -->
+          <!-- the rail itself, so there is something to aim at -->
+          <div class="absolute right-[0.6rem] top-0 bottom-0 w-px bg-[var(--ll-border)] transition-opacity" :class="scrubActive ? 'opacity-100' : 'opacity-50'" />
+          <!-- year labels, at the position of that year's newest month -->
           <button
             v-for="y in yearTicks" :key="y.year" type="button"
-            class="absolute right-2.5 -translate-y-1/2 whitespace-nowrap text-[10px] font-semibold text-[var(--ll-muted)] transition-opacity duration-150 hover:text-primary-500"
-            :class="scrubActive ? 'opacity-90' : 'opacity-40'" :style="{ top: y.pct + '%' }"
-            @pointerdown.stop @click.stop="jumpYear(y.ym)"
+            class="absolute right-0 -translate-y-1/2 pr-4 text-right text-[10px] font-semibold tabular-nums transition-colors"
+            :class="y.year === currentYear ? 'text-primary-500' : 'text-[var(--ll-muted)] hover:text-primary-500'"
+            :style="{ top: y.pct + '%' }"
+            @pointerdown.stop @click.stop="jumpTo(y.ym)"
           >{{ y.year }}</button>
-          <!-- slim always-on thumb indicator -->
-          <div class="pointer-events-none absolute right-1 h-9 w-1 -translate-y-1/2 rounded-full bg-[var(--ll-border)] transition-colors" :class="scrubActive ? 'bg-primary-500' : ''" :style="{ top: thumbTop + 'px' }" />
-          <!-- date bubble (only while active) -->
+          <!-- month ticks: a hairline per month, so the density of a year is visible -->
           <div
-            class="pointer-events-none absolute right-4 flex -translate-y-1/2 items-center whitespace-nowrap rounded-full bg-primary-500 px-2.5 py-1 text-[11px] font-medium text-white shadow-lg transition-opacity duration-150"
-            :class="scrubActive ? 'opacity-100' : 'opacity-0'" :style="{ top: thumbTop + 'px' }"
+            v-for="mk in monthTicks" :key="mk.ym"
+            class="pointer-events-none absolute right-[0.6rem] h-px transition-opacity"
+            :class="scrubActive ? 'opacity-70' : 'opacity-0'"
+            :style="{ top: mk.pct + '%', width: mk.major ? '0.55rem' : '0.3rem', background: 'var(--ll-border)' }"
+          />
+          <!-- thumb: where you are, or where you are about to go -->
+          <div
+            class="pointer-events-none absolute right-[0.35rem] h-1.5 w-1.5 -translate-y-1/2 rounded-full transition-colors"
+            :class="scrubActive ? 'bg-primary-500 ring-4 ring-primary-500/20' : 'bg-[var(--ll-muted)]'"
+            :style="{ top: thumbPct + '%' }"
+          />
+          <div
+            class="pointer-events-none absolute right-5 -translate-y-1/2 whitespace-nowrap rounded-md bg-primary-500 px-2 py-1 text-[11px] font-medium text-white shadow-lg transition-opacity duration-150"
+            :class="scrubActive ? 'opacity-100' : 'opacity-0'" :style="{ top: thumbPct + '%' }"
           >{{ scrubLabel }}</div>
         </div>
       </div>
@@ -865,87 +879,124 @@ const scrubber = computed(() => {
 });
 const showScrubber = computed(() => viewMode.value === 'grid' && !showTrash.value && !searchActive.value && (scrubber.value.length > 3 || allMonths.value.length > 3));
 
-// ---- Google-Photos-style scrubber ----------------------------------------
+// ---- Date rail -----------------------------------------------------------
+// One coordinate system, and it is time: the library's months, newest first,
+// each getting an equal slice of the rail. The previous rail mixed two - the
+// thumb followed the scroll offset of the LOADED page while the year labels
+// were placed by cumulative photo count - so with 200 of 18,600 photos loaded
+// the two pointed at different things and dragging to a year scrolled to the
+// bottom of the current page instead.
 const railRef = ref<HTMLElement | null>(null);
 const scrubHover = ref(false);
 const scrubDrag = ref(false);
 const scrubActive = computed(() => scrubHover.value || scrubDrag.value);
-const thumbTop = ref(0);           // px from the rail's top edge
-const scrubLabel = ref('');
 
-// Full month histogram from the server (/gallery/dates) — the timeline is now
-// keyset-paginated, so the scrubber can't derive the whole date range from the
-// loaded rows. Newest-first { ym, count }.
+/** Full month histogram (newest-first) from the server; the loaded rows are one page. */
 const allMonths = ref<{ ym: string; count: number }[]>([]);
 const loadDates = () => g.dates().then((m) => { allMonths.value = m; }).catch(() => { /* best-effort */ });
 
-// Year jump ticks: one per distinct year in the full histogram, positioned by
-// cumulative photo count (an estimate of where the year sits in the timeline).
-// Clicking a tick jumps straight to that year via cursor_ym — no need to have
-// scrolled/loaded that far. Covers the whole library regardless of what's loaded.
-const yearTicks = computed(() => {
-  const total = allMonths.value.reduce((s, m) => s + m.count, 0) || 1;
-  const out: { year: number; ym: string; pct: number }[] = [];
-  let cum = 0; let lastYear = -1;
-  for (const m of allMonths.value) {
-    const year = Number(m.ym.slice(0, 4));
-    if (year !== lastYear && Number.isFinite(year)) { out.push({ year, ym: m.ym, pct: Math.min(98, (cum / total) * 100) }); lastYear = year; }
-    cum += m.count;
-  }
-  return out;
-});
-function jumpYear(ym: string) {
-  void g.jumpToMonth(ym).then(() => (document.scrollingElement || document.documentElement).scrollTo({ top: 0 }));
+/** Months in rail order. Falls back to the loaded months before the histogram arrives. */
+const railMonths = computed<string[]>(() => (
+  allMonths.value.length ? allMonths.value.map((m) => m.ym) : scrubber.value.map((m) => m.key)
+));
+
+/** Equal slice per month, centred — index 0 (newest) at the top. */
+const pctOf = (i: number) => (railMonths.value.length ? ((i + 0.5) / railMonths.value.length) * 100 : 0);
+
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  if (!y || !m) return ym;
+  return `${new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'short' })} ${y}`;
 }
 
-function scrollMetrics() {
-  const el = (document.scrollingElement || document.documentElement) as HTMLElement;
-  return { top: el.scrollTop, max: Math.max(1, el.scrollHeight - el.clientHeight) };
-}
-// Which month is currently at the top of the viewport → bubble label.
-function currentMonthLabel(): string {
-  const y = window.scrollY + 120;
-  let hit: { label: string; year: number } | null = null;
-  for (const m of scrubber.value) {
-    const a = document.getElementById('g-m-' + m.key);
-    if (!a) continue;
-    if (a.offsetTop <= y) hit = m; else break;
+const monthTicks = computed(() => railMonths.value.map((ym, i) => ({
+  ym, pct: pctOf(i), major: ym.endsWith('-01') || ym.endsWith('-07'),
+})));
+
+/**
+ * One label per year, at that year's newest month. Thinned out when the rail is
+ * too short for all of them — an unreadable stack of numbers is worse than a
+ * decade shown every other year.
+ */
+const yearTicks = computed(() => {
+  const out: { year: number; ym: string; pct: number }[] = [];
+  let lastYear = -1;
+  railMonths.value.forEach((ym, i) => {
+    const year = Number(ym.slice(0, 4));
+    if (Number.isFinite(year) && year !== lastYear) { out.push({ year, ym, pct: pctOf(i) }); lastYear = year; }
+  });
+  const railPx = railRef.value?.getBoundingClientRect().height ?? 600;
+  const minGap = (14 / railPx) * 100;               // ~14px between labels
+  const keep: typeof out = [];
+  for (const tick of out) {
+    if (!keep.length || tick.pct - keep[keep.length - 1].pct >= minGap) keep.push(tick);
   }
-  const m = hit ?? scrubber.value[0];
-  return m ? `${m.label} ${m.year}` : '';
+  return keep;
+});
+
+/** The month at the top of the viewport, read from the loaded month anchors. */
+function visibleYm(): string {
+  const y = window.scrollY + 120;
+  let hit = '';
+  for (const m of scrubber.value) {
+    const anchor = document.getElementById('g-m-' + m.key);
+    if (!anchor) continue;
+    if (anchor.offsetTop <= y) hit = m.key; else break;
+  }
+  return hit || scrubber.value[0]?.key || railMonths.value[0] || '';
 }
+
+const currentYm = ref('');
+const dragYm = ref('');
+/** Where the thumb sits: the drag target while dragging, else where you are. */
+const thumbPct = computed(() => {
+  const ym = scrubDrag.value && dragYm.value ? dragYm.value : currentYm.value;
+  const i = railMonths.value.indexOf(ym);
+  return i >= 0 ? pctOf(i) : 0;
+});
+const scrubLabel = computed(() => monthLabel(scrubDrag.value && dragYm.value ? dragYm.value : currentYm.value));
+const currentYear = computed(() => Number((scrubDrag.value && dragYm.value ? dragYm.value : currentYm.value).slice(0, 4)));
+
 let syncQueued = false;
 function syncScrubber() {
   if (syncQueued) return;
   syncQueued = true;
-  requestAnimationFrame(() => {
-    syncQueued = false;
-    const rail = railRef.value; if (!rail) return;
-    const { top, max } = scrollMetrics();
-    const f = Math.min(1, Math.max(0, top / max));
-    thumbTop.value = f * rail.getBoundingClientRect().height;
-    if (scrubActive.value) scrubLabel.value = currentMonthLabel();
+  requestAnimationFrame(() => { syncQueued = false; currentYm.value = visibleYm(); });
+}
+
+/** Load the page that starts at a month, and put it at the top of the viewport. */
+function jumpTo(ym: string) {
+  if (!ym) return;
+  currentYm.value = ym;
+  void g.jumpToMonth(ym).then(() => {
+    (document.scrollingElement || document.documentElement).scrollTo({ top: 0 });
+    syncScrubber();
   });
 }
-function scrubToClientY(clientY: number) {
-  const rail = railRef.value; if (!rail) return;
+
+function ymAtClientY(clientY: number): string {
+  const rail = railRef.value;
+  const months = railMonths.value;
+  if (!rail || !months.length) return '';
   const b = rail.getBoundingClientRect();
   const f = Math.min(1, Math.max(0, (clientY - b.top) / b.height));
-  const { max } = scrollMetrics();
-  (document.scrollingElement || document.documentElement).scrollTo({ top: f * max });
-  thumbTop.value = f * b.height;
-  scrubLabel.value = currentMonthLabel();
+  return months[Math.min(months.length - 1, Math.floor(f * months.length))];
 }
+
+// Dragging only moves the label. Fetching a page per pixel would put a request
+// behind every twitch of the wrist; the jump happens once, on release.
 function scrubStart(e: PointerEvent) {
   scrubDrag.value = true;
   try { railRef.value?.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-
-  scrubToClientY(e.clientY);
+  dragYm.value = ymAtClientY(e.clientY);
 }
-function scrubMove(e: PointerEvent) { if (scrubDrag.value) scrubToClientY(e.clientY); }
+function scrubMove(e: PointerEvent) { if (scrubDrag.value) dragYm.value = ymAtClientY(e.clientY); }
 function scrubEnd(e: PointerEvent) {
+  const target = dragYm.value;
   scrubDrag.value = false;
+  dragYm.value = '';
   try { railRef.value?.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+  if (target && target !== currentYm.value) jumpTo(target);
 }
 
 // Day → photo-ids map (O(n), stable across thumb patches).
@@ -1084,7 +1135,8 @@ watch(loadSentinel, (el) => { if (el && moreObserver) { moreObserver.disconnect(
 watch(() => [g.photos.length, scrubber.value.length, viewMode.value], () => {
   void nextTick(() => { syncScrubber(); });
 });
-watch(scrubActive, (a) => { if (a) { scrubLabel.value = currentMonthLabel(); } });
+// The label is derived, so hovering only needs the current month refreshed.
+watch(scrubActive, (a) => { if (a) syncScrubber(); });
 function onFocus() { if (!document.hidden && !up.active && !showTrash.value && !showArchive.value && !searchActive.value && !showPeople.value) void g.load(albumId.value ?? undefined); }
 
 function dayLabel(iso: string | null): string {

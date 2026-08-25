@@ -101,8 +101,15 @@ export interface MailMessage {
 export interface MailFolder { account_id: number | null; folder: string; total: number; unread: number }
 export interface MailLog { id: number; level: 'info' | 'warn' | 'error'; event: string; folder: string | null; message: string | null; created_at: string | null }
 export interface MailRuleMatch { from?: string | null; to?: string | null; subject?: string | null; folder?: string | null; has_attachment?: boolean | null }
-export interface MailRuleAction { add_label?: number | null; mark_read?: boolean | null; trash?: boolean | null; skip?: boolean | null }
-export interface MailRule { id?: number; name: string; enabled: boolean; priority: number; match?: MailRuleMatch; action?: MailRuleAction }
+export interface MailRuleAction {
+  add_label?: number | null;
+  mark_read?: boolean | null;
+  trash?: boolean | null;
+  skip?: boolean | null;
+  /** File the message's attachments in the finance receipt inbox. */
+  file_receipt?: boolean | null;
+}
+export interface MailRule { id?: number; name: string; enabled: boolean; priority: number; match: MailRuleMatch; action: MailRuleAction }
 export interface MailSavedSearch { id: number; name: string; filters: Record<string, unknown> }
 /**
  * A user id parsed off a key/certificate at import/generate time — every part
