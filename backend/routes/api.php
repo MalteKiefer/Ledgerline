@@ -228,6 +228,12 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/finance/partners/{id}/restore', [FinanceController::class, 'restorePartner'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.partners.restore');
             Route::delete('/finance/partners/{id}/force', [FinanceController::class, 'forceDeletePartner'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.partners.force');
 
+            // Customer management: contact log + archive (hide from pickers without
+            // deleting, because the partner's documents keep pointing at it).
+            Route::post('/finance/partners/{partner}/archive', [FinanceController::class, 'archivePartner'])->whereNumber('partner')->middleware('throttle:600,1')->name('api.finance.partners.archive');
+            Route::get('/finance/partners/{partner}/notes', [FinanceController::class, 'partnerNotes'])->whereNumber('partner')->middleware('throttle:600,1')->name('api.finance.partners.notes');
+            Route::post('/finance/partners/{partner}/notes', [FinanceController::class, 'storePartnerNote'])->whereNumber('partner')->middleware('throttle:600,1')->name('api.finance.partners.notes.store');
+            Route::delete('/finance/partners/{partner}/notes/{note}', [FinanceController::class, 'destroyPartnerNote'])->whereNumber('partner')->whereNumber('note')->middleware('throttle:600,1')->name('api.finance.partners.notes.destroy');
             Route::post('/finance/payment-methods', [FinanceController::class, 'storePaymentMethod'])->middleware('throttle:600,1')->name('api.finance.payment-methods.store');
             Route::put('/finance/payment-methods/{paymentMethod}', [FinanceController::class, 'updatePaymentMethod'])->whereNumber('paymentMethod')->middleware('throttle:600,1')->name('api.finance.payment-methods.update');
             Route::delete('/finance/payment-methods/{paymentMethod}', [FinanceController::class, 'destroyPaymentMethod'])->whereNumber('paymentMethod')->middleware('throttle:600,1')->name('api.finance.payment-methods.destroy');

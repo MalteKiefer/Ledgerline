@@ -1011,6 +1011,12 @@ components:
         phone: { type: [string, "null"] }
         vat_id: { type: [string, "null"] }
         hourly_rate: { type: [string, "null"], description: "Default hourly rate as a decimal string (decimal:2 cast); prefills invoice line items for this partner." }
+        customer_number: { type: [string, "null"], description: "Assigned by the server on create from the `customer_number_format` template, unless the caller supplies one (migrating from another system). Only for a party we sell to — a supplier has no use for ours. Binned partners keep their number out of circulation." }
+        kind: { type: [string, "null"], enum: [customer, supplier, both, lead, null], description: "What the partner is to us. The column existed unused since the pivot and carries this meaning from v1.782.0." }
+        payment_terms_days: { type: [integer, "null"], description: "Prefills a new document's due date." }
+        discount_percent: { type: [string, "null"], description: "Standing discount; prefills a new document." }
+        delivery_address: { type: [string, "null"], description: "Where goods go, when that is not where the invoice goes." }
+        archived_at: { type: [string, "null"], format: date-time, description: "Hidden from the pickers but not gone; its documents still point at it." }
         currency: { type: [string, "null"], description: "ISO 4217 code used when invoicing this partner." }
         contacts: { type: array, items: { type: object, additionalProperties: true } }
         version: { type: integer }
@@ -1085,6 +1091,18 @@ components:
         category: { type: [string, "null"], description: "Free-text expense category — matched by name against the managed finance categories (for the Sachkonto) and used as the EÜR grouping label." }
         payment_method_id: { type: [integer, "null"], description: "Which account the money moved through (informational; not validated server-side)." }
 
+    FinancePartnerNote:
+      type: object
+      description: "One entry in a partner's contact log. `occurred_at` is when it happened; `created_at` is when it was typed, which can be days later."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        finance_partner_id: { type: integer }
+        kind: { type: string, enum: [call, meeting, mail, note] }
+        body: { type: string }
+        occurred_at: { type: string, format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
     FinanceProduct:
       type: object
       description: "A sellable article. `stock_qty` is a denormalised read of the movement ledger, written only alongside a movement; treat it as reporting, not as an input."
@@ -6144,6 +6162,77 @@ paths:
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
       responses:
         "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/partners/{partner}/archive:
+    post:
+      tags: [Finance]
+      operationId: financePartnerArchive
+      summary: Hide a partner from the pickers without deleting it
+      description: "An old customer's documents keep pointing at their partner, so the useful state is \"do not offer this any more\", not deletion. The row stays listed by `/finance/data`; the client filters on `archived_at`. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: partner, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [archived], properties: { archived: { type: boolean } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [partner], properties: { partner: { $ref: "#/components/schemas/FinancePartner" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/partners/{partner}/notes:
+    get:
+      tags: [Finance]
+      operationId: financePartnerNotes
+      summary: A partner's contact log
+      description: "Newest first by `occurred_at`, capped at 500. `occurred_at` is separate from `created_at` because a call is logged after it ends — sorting by the typing time would put the history in the order it was remembered. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: partner, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Log., content: { application/json: { schema: { type: object, required: [notes], properties: { notes: { type: array, items: { $ref: "#/components/schemas/FinancePartnerNote" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Finance]
+      operationId: financePartnerNoteStore
+      summary: Log a contact
+      description: "`occurred_at` defaults to now but is meant to carry when it actually happened. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: partner, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                kind: { type: string, enum: [call, meeting, mail, note], default: note }
+                body: { type: string, maxLength: 20000 }
+                occurred_at: { type: [string, "null"], format: date-time }
+      responses:
+        "201": { description: Logged., content: { application/json: { schema: { type: object, required: [note], properties: { note: { $ref: "#/components/schemas/FinancePartnerNote" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/partners/{partner}/notes/{note}:
+    delete:
+      tags: [Finance]
+      operationId: financePartnerNoteDestroy
+      summary: Remove a log entry
+      description: "Scoped through the partner as well as the owner: a note id alone must not reach into another partner's log. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: partner, in: path, required: true, schema: { type: integer } }
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }

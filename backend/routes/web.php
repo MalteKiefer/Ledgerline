@@ -290,6 +290,12 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/finance/partners/{id}/force', [FinanceController::class, 'forceDeletePartner'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.partners.force');
 
         // Payment methods
+        // Customer management: contact log + archive (hide from pickers without
+        // deleting, because the partner's documents keep pointing at it).
+        Route::post('/finance/partners/{partner}/archive', [FinanceController::class, 'archivePartner'])->whereNumber('partner')->middleware('throttle:600,1')->name('finance.partners.archive');
+        Route::get('/finance/partners/{partner}/notes', [FinanceController::class, 'partnerNotes'])->whereNumber('partner')->middleware('throttle:600,1')->name('finance.partners.notes');
+        Route::post('/finance/partners/{partner}/notes', [FinanceController::class, 'storePartnerNote'])->whereNumber('partner')->middleware('throttle:600,1')->name('finance.partners.notes.store');
+        Route::delete('/finance/partners/{partner}/notes/{note}', [FinanceController::class, 'destroyPartnerNote'])->whereNumber('partner')->whereNumber('note')->middleware('throttle:600,1')->name('finance.partners.notes.destroy');
         Route::post('/finance/payment-methods', [FinanceController::class, 'storePaymentMethod'])->middleware('throttle:600,1')->name('finance.payment-methods.store');
         Route::put('/finance/payment-methods/{paymentMethod}', [FinanceController::class, 'updatePaymentMethod'])->whereNumber('paymentMethod')->middleware('throttle:600,1')->name('finance.payment-methods.update');
         Route::delete('/finance/payment-methods/{paymentMethod}', [FinanceController::class, 'destroyPaymentMethod'])->whereNumber('paymentMethod')->middleware('throttle:600,1')->name('finance.payment-methods.destroy');

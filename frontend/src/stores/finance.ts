@@ -17,7 +17,11 @@ export interface Invoice {
 export interface PartnerContact { id?: string; name?: string; email?: string; phone?: string; role?: string }
 export interface Partner {
   id: number; name: string;
-  category: string | null; kind: string | null; url: string | null; logo: string | null;
+  category: string | null; kind: 'customer' | 'supplier' | 'both' | 'lead' | null;
+  customer_number: string | null;
+  payment_terms_days: number | null; discount_percent: string | number | null;
+  delivery_address: string | null; archived_at: string | null;
+  url: string | null; logo: string | null;
   note: string | null; address: string | null; email: string | null; invoice_email: string | null;
   phone: string | null; vat_id: string | null; hourly_rate: string | number | null; currency: string | null;
   contacts: PartnerContact[] | null; version: number;
@@ -144,6 +148,13 @@ export interface FinanceQuote {
   converted_invoice_id: number | null; converted_project_id: number | null;
   version?: number;
 }
+export interface PartnerNote {
+  id: number; finance_partner_id: number;
+  kind: 'call' | 'meeting' | 'mail' | 'note';
+  body: string;
+  /** When it happened — not when it was typed, which can be days later. */
+  occurred_at: string;
+}
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
 export interface NumberGapGroup { group: string; missing: string[]; min: string; max: string; count: number }
 export interface ReceiptMatchGroup { transaction_id: number; receipt_ids: number[]; reason: 'order_ref' | 'exact' | 'sum'; total: number }
@@ -236,6 +247,17 @@ export const useFinanceStore = defineStore('finance', () => {
   // future import cannot disagree about the shape.
   const productLine = (productId: number) => api.get<{ line: QuoteLine }>(`/api/v1/finance/products/${productId}/line`);
 
+  // ---- Customer management ----
+  // Archiving hides a partner from the pickers without deleting it: its
+  // documents keep pointing at it, so removal is not the useful state.
+  const archivePartner = (id: number, archived: boolean) =>
+    api.post<{ partner: Partner }>(`/api/v1/finance/partners/${id}/archive`, { archived });
+  const partnerNotes = (id: number) => api.get<{ notes: PartnerNote[] }>(`/api/v1/finance/partners/${id}/notes`);
+  const addPartnerNote = (id: number, body: Record<string, unknown>) =>
+    api.post<{ note: PartnerNote }>(`/api/v1/finance/partners/${id}/notes`, body);
+  const deletePartnerNote = (partnerId: number, noteId: number) =>
+    api.delete(`/api/v1/finance/partners/${partnerId}/notes/${noteId}`);
+
   // ---- Reports (read-only) ----
   const reports = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports${year ? `?year=${year}` : ''}`);
   const vatAdvance = (year?: number, quarter?: number) => {
@@ -313,6 +335,7 @@ export const useFinanceStore = defineStore('finance', () => {
     quotes, createQuote, updateQuote, sendQuote, decideQuote, convertQuote, duplicateQuote, deleteQuote, restoreQuote, forceQuote, productLine,
     createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl, uploadInvoicePdf,
     savePartner, deletePartner, savePayment, deletePayment,
+    archivePartner, partnerNotes, addPartnerNote, deletePartnerNote,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,
     saveProject, deleteProject, moveProject, restoreProject, forceProject,
     projectAttachments, linkFileToProject, linkPhotoToProject,
