@@ -13568,6 +13568,53 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/avatars:
+    post:
+      tags: [Mail]
+      operationId: mailAvatars
+      summary: A picture for each of these senders
+      description: >
+        Resolved in order of what it costs you: the owner's address book first
+        (own data, nothing leaves the machine, and the only source that can show
+        a person rather than a company mark), then — only if the account's
+        `mail_avatars` preference says `domain` — the sender's DOMAIN via BIMI
+        (the standard by which a company publishes a logo for mail, in DNS) and
+        then favicons. That reveals which domains write to you, never which
+        address.
+
+
+        Gravatar and Libravatar are deliberately NOT used: they are keyed by a
+        hash of the address itself, so querying them announces that this exact
+        mailbox exists and its mail is being read — for every correspondent, on
+        every page.
+
+
+        Batched because a page of the list asks about ~50 senders at once.
+        Answers omit addresses with no picture; the client keeps its initials.
+        Cached per owner for 14 days, misses included. Throttled 600/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emails]
+              properties:
+                emails: { type: array, maxItems: 60, items: { type: string, maxLength: 320 } }
+      responses:
+        "200":
+          description: "Address => data URI, for those that resolved"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatars:
+                    type: object
+                    additionalProperties: { type: string, description: "data:image/…;base64,…" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /mail/recipients:
     get:
       tags: [Mail]

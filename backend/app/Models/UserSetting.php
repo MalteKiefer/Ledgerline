@@ -50,6 +50,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $company_smtp_from_address
  * @property ?string $company_smtp_from_name
  * @property ?string $mail_signature
+ * @property string $mail_avatars off|contacts|domain — where a sender picture may come from.
  * @property array<string, mixed>|null $notification_prefs
  * @property list<string>|null $mail_columns
  */
@@ -78,6 +79,7 @@ use Illuminate\Database\Eloquent\Model;
     // Per-user plaintext mail signature appended to composed/reply/forward
     // bodies (non-secret presentation, not encrypted/hidden).
     'mail_signature',
+    'mail_avatars',
     // Per-user, per-category push preferences: {"<category>": {"push": bool}}.
     'notification_prefs',
     // Which columns the mail list shows, in order: ["from","subject","date"].
@@ -155,6 +157,7 @@ class UserSetting extends Model
             // than a frozen copy of today's.
             'mail_columns' => is_array($this->mail_columns) ? array_values(array_filter($this->mail_columns, 'is_string')) : null,
             'mail_signature' => $this->mail_signature !== null ? (string) $this->mail_signature : null,
+            'mail_avatars' => (string) ($this->mail_avatars ?? 'contacts'),
         ];
     }
 

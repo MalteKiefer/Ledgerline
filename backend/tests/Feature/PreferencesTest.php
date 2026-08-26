@@ -21,6 +21,8 @@ class PreferencesTest extends TestCase
             'distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl',
             'time_format' => '24h', 'timezone' => null, 'date_format' => 'system',
             'mail_load_remote' => false, 'notifications' => [], 'mail_columns' => null, 'mail_signature' => null,
+            // Default is the setting that sends nothing: the address book only.
+            'mail_avatars' => 'contacts',
         ], $prefs);
     }
 

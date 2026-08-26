@@ -18,6 +18,7 @@ export interface DisplayPreferences {
   timezone: string | null;
   date_format: 'system' | 'dmy' | 'dmy_dot' | 'mdy' | 'ymd';
   mail_load_remote: boolean;
+  mail_avatars: 'off' | 'contacts' | 'domain';
   mail_signature: string | null;
   /** Mail list columns in display order; null = never chosen, use the default set. */
   mail_columns: string[] | null;

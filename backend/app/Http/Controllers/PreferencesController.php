@@ -58,6 +58,7 @@ class PreferencesController extends Controller
             // Mail display prefs: always-load remote images default + send signature.
             'mail_load_remote' => ['sometimes', 'boolean'],
             'mail_signature' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'mail_avatars' => ['nullable', 'string', 'in:off,contacts,domain'],
             // Per-category push toggle: { "<category>": { "push": bool } }.
             'notifications' => ['sometimes', 'array'],
             'notifications.*.push' => ['sometimes', 'boolean'],
@@ -108,6 +109,9 @@ class PreferencesController extends Controller
         if ($request->has('mail_signature')) {
             $sig = $request->input('mail_signature');
             $update['mail_signature'] = is_string($sig) && trim($sig) !== '' ? $sig : null;
+        }
+        if ($request->has('mail_avatars')) {
+            $data['mail_avatars'] = $request->string('mail_avatars')->value();
         }
 
         $setting = UserSetting::for($this->requireUser($request)->id);
