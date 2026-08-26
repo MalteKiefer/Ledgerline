@@ -30,6 +30,10 @@ use Illuminate\Support\Carbon;
  * @property int $user_id
  * @property ?int $account_id
  * @property string $folder
+ * @property ?int $uid Origin IMAP UID, null when the message did not come from a sync.
+ * @property ?int $uidvalidity Generation the UID belongs to; a UID without it is meaningless.
+ * @property ?Carbon $removed_from_server_at When the origin copy was deleted; this is then the only one.
+ * @property ?string $restore_folder Where it lived before the trash folder.
  * @property string $content_hash
  * @property int $size
  * @property ?string $message_id
@@ -81,6 +85,7 @@ class MailMessage extends Model
         return [
             'created_at' => 'datetime',
             'trashed_at' => 'datetime',
+            'removed_from_server_at' => 'datetime',
             'seen_at' => 'datetime',
             'date' => 'datetime',
             'indexed_at' => 'datetime',
@@ -90,6 +95,8 @@ class MailMessage extends Model
             'spam' => 'boolean',
             'has_attachment' => 'boolean',
             'attachment_count' => 'integer',
+            'uid' => 'integer',
+            'uidvalidity' => 'integer',
             'size' => 'integer',
             'to_json' => 'array',
             'cc_json' => 'array',

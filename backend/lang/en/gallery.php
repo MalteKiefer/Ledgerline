@@ -57,6 +57,7 @@ return [
     'view_grid' => 'Grid',
     'view_map' => 'Map',
     'no_located' => 'No photos with location data yet.',
+    'map_truncated' => 'Showing the first 20000 located photos.',
     'edit' => 'Edit',
     'rotate_left' => 'Left',
     'rotate_right' => 'Right',

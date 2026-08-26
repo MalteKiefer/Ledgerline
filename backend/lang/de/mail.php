@@ -35,6 +35,11 @@ return [
         'backfill_since' => 'Archivieren ab',
         'skip_spam' => 'Spam überspringen',
         'delete_after_import' => 'Nach dem Archivieren vom Server löschen',
+        'write_back_flags' => 'Gelesen-Markierungen und Sterne zurück ins Postfach schreiben',
+        'write_back_flags_hint' => 'Aus heißt: das Postfach bleibt eine reine Lesequelle — was du hier markierst, bleibt hier.',
+        'write_back_deletes' => 'Auch auf dem Server löschen',
+        'write_back_deletes_hint' => 'Löschen verschiebt die Mail in den Papierkorb-Ordner des Servers, Wiederherstellen holt sie zurück. Die archivierte Kopie bleibt immer erhalten.',
+        'trash_folder' => 'Papierkorb-Ordner',
         'delete_after_import_warn' => 'Destruktiv: entfernt die Nachricht nach dem Archivieren aus dem Ursprungspostfach.',
         'enabled' => 'Aktiviert',
         'sync_interval' => 'Sync-Intervall (Minuten)',
@@ -168,6 +173,8 @@ return [
     'actions' => [
         'selected_n' => ':n ausgewählt',
         'clear_selection' => 'Auswahl aufheben',
+        'move_to' => 'Verschieben nach',
+        'moved' => ':n Nachricht(en) nach :folder verschoben',
         'mark_all_read' => 'Alle als gelesen',
         'select_all_matching' => 'Alle :n auswählen',
         'whole_result_selected' => 'Alle Treffer sind ausgewählt',
@@ -374,6 +381,14 @@ return [
         'presence_published' => 'Schlüssel veröffentlicht.',
         'presence_publish_failed' => 'Schlüssel konnte nicht veröffentlicht werden.',
     ],
+    'folders' => [
+        'manage' => 'Ordner verwalten',
+        'new' => 'Neuer Ordner',
+        'rename_prompt' => 'Ordner umbenennen',
+        'delete_confirm' => '„:folder“ löschen? Geht nur, solange er leer ist — der Server löscht die Nachrichten mit.',
+        'delete_hint' => 'Ein Ordner lässt sich nur löschen, solange er leer ist: auf dem Server verschwinden seine Nachrichten mit ihm, und das lässt sich nicht rückgängig machen.',
+    ],
+
     'extras' => [
         'labels' => 'Labels',
         'label_name' => 'Name',

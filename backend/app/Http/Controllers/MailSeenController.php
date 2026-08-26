@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\Mail\WriteBackMailFlags;
 use App\Models\MailMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -54,6 +55,12 @@ class MailSeenController extends Controller
                 ->where('seen', '!=', $seen)
                 ->update(['seen' => $seen, 'seen_at' => $seen ? now() : null]);
         }
+
+        // Carry it back to the mailbox, so the archive and the phone's mail app
+        // do not give two different answers. Queued and best effort: the local
+        // change is already committed, and messages without an origin reference
+        // are skipped rather than guessed at.
+        WriteBackMailFlags::queueFor((int) $user->id, $ids, 'seen', $seen);
 
         return response()->json(['updated' => $count]);
     }

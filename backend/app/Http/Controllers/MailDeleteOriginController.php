@@ -46,6 +46,14 @@ class MailDeleteOriginController extends Controller
             return $this->fail('delete_failed', 502);
         }
 
+        // The archived copy is now the only one. Recorded so the reader can say
+        // so rather than leaving the message looking like any other.
+        $message->forceFill([
+            'removed_from_server_at' => now(),
+            'uid' => null,
+            'uidvalidity' => null,
+        ])->save();
+
         return response()->json(['ok' => true, 'expunged' => $expunged])->header('Cache-Control', 'no-store');
     }
 

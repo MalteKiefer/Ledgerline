@@ -243,6 +243,62 @@ class GalleryController extends Controller
         ]);
     }
 
+    /**
+     * Every located photo in the library, for the map.
+     *
+     * The map used to plot whatever page of the timeline happened to be loaded,
+     * so a library of eighteen thousand showed the two hundred most recent —
+     * the same mistake the counter made. A map that silently omits most of its
+     * subject is worse than no map, because nothing about it looks wrong.
+     *
+     * Three columns and a coordinate filter, so the whole library is cheap to
+     * send even when the timeline is not. Capped all the same, and the cap is
+     * reported rather than quietly applied.
+     */
+    public function map(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+
+        $limit = 20_000;
+        $query = GalleryPhoto::query()
+            ->whereNotNull('lat')
+            ->whereNotNull('lng');
+
+        $albumId = $request->integer('album_id');
+        if ($albumId > 0) {
+            $query->whereHas('albums', fn ($q) => $q->whereKey($albumId));
+        }
+        $personId = $request->integer('person_id');
+        if ($personId > 0) {
+            $query->whereHas('faces', fn ($q) => $q->where('gallery_person_id', $personId)->where('hidden', false));
+        }
+        if ($albumId <= 0 && $personId <= 0) {
+            $query->{$request->boolean('archived') ? 'whereNotNull' : 'whereNull'}('archived_at');
+        }
+
+        $rows = $query
+            ->orderByRaw('COALESCE(taken_at, created_at) DESC')
+            ->limit($limit + 1)
+            ->get(['id', 'lat', 'lng', 'thumb_ready', 'name', 'taken_at', 'created_at']);
+
+        $truncated = $rows->count() > $limit;
+
+        return response()->json([
+            'points' => $rows->take($limit)->map(fn (GalleryPhoto $p): array => [
+                'id' => $p->id,
+                'lat' => (float) $p->lat,
+                'lng' => (float) $p->lng,
+                'thumb' => (bool) $p->thumb_ready,
+                'name' => $p->name,
+                // Which month of the timeline it lives in, so a click on a pin
+                // for a photo outside the loaded page can jump there instead of
+                // paging through everything in between.
+                'ym' => ($p->taken_at ?? $p->created_at)?->format('Y-m'),
+            ])->values()->all(),
+            'truncated' => $truncated,
+        ]);
+    }
+
     /** Seed terms for CLIP-based auto theme cards (client localizes the label). */
     private const THEME_SEEDS = ['beach', 'mountains', 'food', 'sunset', 'city', 'nature', 'animals', 'snow'];
 

@@ -35,6 +35,11 @@ return [
         'backfill_since' => 'Archive since',
         'skip_spam' => 'Skip spam',
         'delete_after_import' => 'Delete from server after archiving',
+        'write_back_flags' => 'Write read marks and stars back to the mailbox',
+        'write_back_flags_hint' => 'Off keeps the mailbox a read-only source: what you mark here stays here.',
+        'write_back_deletes' => 'Delete on the server too',
+        'write_back_deletes_hint' => 'Trashing moves the mail to the trash folder on the server, and restoring moves it back. The archived copy is always kept.',
+        'trash_folder' => 'Trash folder',
         'delete_after_import_warn' => 'Destructive: removes the message from the origin mailbox once archived.',
         'enabled' => 'Enabled',
         'sync_interval' => 'Sync interval (minutes)',
@@ -168,6 +173,8 @@ return [
     'actions' => [
         'selected_n' => ':n selected',
         'clear_selection' => 'Clear selection',
+        'move_to' => 'Move to',
+        'moved' => 'Moved :n message(s) to :folder',
         'mark_all_read' => 'Mark all as read',
         'select_all_matching' => 'Select all :n',
         'whole_result_selected' => 'Everything matching is selected',
@@ -374,6 +381,14 @@ return [
         'presence_published' => 'Key published.',
         'presence_publish_failed' => 'Could not publish the key.',
     ],
+    'folders' => [
+        'manage' => 'Manage folders',
+        'new' => 'New folder',
+        'rename_prompt' => 'Rename folder',
+        'delete_confirm' => 'Delete “:folder”? Only works while it is empty — the server removes the messages with it.',
+        'delete_hint' => 'A folder can only be removed while it is empty: deleting it on the server takes its messages with it, and that cannot be undone.',
+    ],
+
     'extras' => [
         'labels' => 'Labels',
         'label_name' => 'Name',

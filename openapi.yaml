@@ -420,6 +420,7 @@ components:
         vat: { type: [string, "null"] }
         locked: { type: boolean, description: "A locked receipt (e.g. an auto-linked invoice) cannot be deleted." }
         trashed: { type: boolean }
+        removed_from_server: { type: boolean, description: "The origin copy has been deleted; the archived copy is the only one left." }
 
     WebDavAccess:
       type: object
@@ -2296,6 +2297,9 @@ components:
         folders: { type: [array, "null"], items: { type: string }, description: "Sync allow-list; null = all folders." }
         backfill_since: { type: [string, "null"], format: date }
         delete_after_import: { type: boolean }
+        write_back_flags: { type: boolean, description: "Carry read marks and stars set in the archive back to the mailbox (UID STORE). Default true; off keeps the mailbox a read-only source." }
+        write_back_deletes: { type: boolean, description: "Let deleting here delete on the server: trashing moves the message to trash_folder, restoring moves it back. Default true. Its own switch because it destroys the origin copy; the archived copy is never removed." }
+        trash_folder: { type: [string, "null"], description: "Where 'throw away' puts a message on this server (Trash, Deleted Items, INBOX.Trash …). Null falls back to Trash." }
         skip_spam: { type: boolean }
         enabled: { type: boolean }
         sync_interval_minutes: { type: [integer, "null"], description: "Per-account override; null = workspace default." }
@@ -2341,6 +2345,7 @@ components:
         attachment_count: { type: integer }
         seen: { type: boolean }
         trashed: { type: boolean }
+        removed_from_server: { type: boolean, description: "The origin copy has been deleted; the archived copy is the only one left." }
         spam: { type: boolean }
         spf: { type: [string, "null"] }
         dkim: { type: [string, "null"] }
@@ -6594,6 +6599,42 @@ paths:
         - { name: archived, in: query, required: false, schema: { type: boolean } }
       responses:
         "200": { description: "Month buckets, newest-first.", content: { application/json: { schema: { type: object, required: [months], properties: { months: { type: array, items: { type: object, required: [ym, count], properties: { ym: { type: string, example: "2026-08" }, count: { type: integer } } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /gallery/map:
+    get:
+      tags: [Gallery]
+      operationId: galleryMap
+      summary: Every located photo in the library, for the map
+      description: >
+        Coordinates for all photos that have them, not just the page of the
+        timeline that happens to be loaded. Three columns per photo, so a large
+        library is still cheap to send. Capped at 20000 points; `truncated`
+        says when the cap was reached rather than leaving the omission silent.
+      parameters:
+        - { in: query, name: album_id, schema: { type: integer } }
+        - { in: query, name: person_id, schema: { type: integer } }
+        - { in: query, name: archived, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Located photos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  points:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        lat: { type: number }
+                        lng: { type: number }
+                        thumb: { type: boolean }
+                        name: { type: [string, "null"] }
+                        ym: { type: [string, "null"], description: "YYYY-MM of the photo in the timeline." }
+                  truncated: { type: boolean }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /gallery/memories:
@@ -12850,6 +12891,9 @@ paths:
                 folders: { type: [array, "null"], items: { type: string } }
                 backfill_since: { type: [string, "null"], format: date }
                 delete_after_import: { type: [boolean, "null"] }
+                write_back_flags: { type: [boolean, "null"] }
+                write_back_deletes: { type: [boolean, "null"] }
+                trash_folder: { type: [string, "null"] }
                 skip_spam: { type: [boolean, "null"] }
                 enabled: { type: [boolean, "null"] }
                 sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
@@ -12895,6 +12939,9 @@ paths:
                 folders: { type: [array, "null"], items: { type: string } }
                 backfill_since: { type: [string, "null"], format: date }
                 delete_after_import: { type: [boolean, "null"] }
+                write_back_flags: { type: [boolean, "null"] }
+                write_back_deletes: { type: [boolean, "null"] }
+                trash_folder: { type: [string, "null"] }
                 skip_spam: { type: [boolean, "null"] }
                 enabled: { type: [boolean, "null"] }
                 sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
@@ -13489,6 +13536,136 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/move:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesMove
+      summary: Move messages into another folder
+      description: >
+        Files mail here and on the origin server (UID MOVE, or COPY + \Deleted
+        + expunge where MOVE is unavailable). Marking spam is this endpoint with
+        the junk folder as the target — there is deliberately no second way to
+        do the same thing. The server half is queued and best effort, and is
+        skipped for accounts with write_back_deletes off; the archived row is
+        never destroyed. Throttled 60/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, folder]
+              properties:
+                ids: { type: array, maxItems: 1000, items: { type: string } }
+                folder: { type: string, maxLength: 255, description: "Target folder. Control characters are refused: the name reaches an IMAP command line." }
+      responses:
+        "200":
+          description: Moved
+          content:
+            application/json:
+              schema: { type: object, properties: { updated: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/server-folders:
+    get:
+      tags: [Mail]
+      operationId: mailServerFoldersIndex
+      summary: The folders that exist on the mailbox
+      description: >
+        Asks the origin server, unlike /mail/folders which lists the folders the
+        ARCHIVE holds mail in — an empty folder does not appear there, and a new
+        one cannot be filed into until something is already in it. Runs inline
+        with the short interactive timeouts, like the connection test.
+        Throttled 30/min. `no-store`.
+      parameters:
+        - { in: query, name: account_id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Folders on the server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        delimiter: { type: [string, "null"], description: "Hierarchy separator the server uses." }
+                        selectable: { type: boolean, description: "False for \\Noselect: holds folders, not mail." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "502": { description: "The mailbox refused or could not be reached; detail carries the server's own words." }
+    post:
+      tags: [Mail]
+      operationId: mailServerFoldersStore
+      summary: Create a folder on the mailbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, name]
+              properties:
+                account_id: { type: integer }
+                name: { type: string, maxLength: 255, description: "Control characters refused: the name reaches an IMAP command line." }
+      responses:
+        "200": { description: Created }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "502": { description: Server refused }
+  /mail/server-folders/rename:
+    post:
+      tags: [Mail]
+      operationId: mailServerFoldersRename
+      summary: Rename a folder on the mailbox
+      description: Archive rows in that folder are repointed, so they do not name a folder the server no longer has.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, from, to]
+              properties:
+                account_id: { type: integer }
+                from: { type: string, maxLength: 255 }
+                to: { type: string, maxLength: 255 }
+      responses:
+        "200": { description: Renamed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "502": { description: Server refused }
+  /mail/server-folders/delete:
+    post:
+      tags: [Mail]
+      operationId: mailServerFoldersDestroy
+      summary: Remove an empty folder from the mailbox
+      description: >
+        Refused while the folder still holds mail: IMAP's DELETE takes the
+        messages with it and there is no undo on the server. The count comes
+        from the server, because mail that was never fetched is still mail.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, name]
+              properties:
+                account_id: { type: integer }
+                name: { type: string, maxLength: 255 }
+      responses:
+        "200": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "502": { description: "Server refused, or the folder still holds mail." }
   /mail/messages/{message}/pushback:
     post:
       tags: [Mail]

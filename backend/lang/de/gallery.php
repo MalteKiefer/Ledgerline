@@ -57,6 +57,7 @@ return [
     'view_grid' => 'Raster',
     'view_map' => 'Karte',
     'no_located' => 'Noch keine Fotos mit Standortdaten.',
+    'map_truncated' => 'Es werden die ersten 20000 verorteten Fotos gezeigt.',
     'edit' => 'Bearbeiten',
     'rotate_left' => 'Links',
     'rotate_right' => 'Rechts',

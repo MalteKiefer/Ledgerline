@@ -40,6 +40,9 @@ use Illuminate\Support\Carbon;
  * @property ?array<int,string> $folders
  * @property ?Carbon $backfill_since
  * @property bool $delete_after_import
+ * @property bool $write_back_flags Carry read marks and stars back to the mailbox.
+ * @property ?string $trash_folder Where 'throw away' puts a message on this server.
+ * @property bool $write_back_deletes Let deleting here delete on the server too.
  * @property bool $skip_spam
  * @property bool $enabled
  * @property ?int $sync_interval_minutes
@@ -54,7 +57,7 @@ use Illuminate\Support\Carbon;
     // Per-account SMTP for compose/reply/forward (smtp_password is the one new
     // encrypted-at-rest secret; from_name/from_email set the composed From).
     'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'smtp_encryption', 'from_name', 'from_email',
-    'folders', 'backfill_since', 'delete_after_import', 'skip_spam', 'enabled', 'status', 'last_error', 'last_synced_at',
+    'folders', 'backfill_since', 'delete_after_import', 'write_back_flags', 'trash_folder', 'write_back_deletes', 'skip_spam', 'enabled', 'status', 'last_error', 'last_synced_at',
     'sync_interval_minutes',
 ])]
 // Defence in depth on top of the API controllers' explicit present() arrays
@@ -81,6 +84,8 @@ class MailAccount extends Model
             'folders' => 'array',
             'backfill_since' => 'date',
             'delete_after_import' => 'boolean',
+            'write_back_flags' => 'boolean',
+            'write_back_deletes' => 'boolean',
             'skip_spam' => 'boolean',
             'enabled' => 'boolean',
             'last_synced_at' => 'datetime',
