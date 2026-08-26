@@ -766,7 +766,9 @@ class GalleryFeatureTest extends TestCase
         $this->assertCount(1, $body['groups'], 'only the two-format group');
         $names = collect($body['groups'][0]['photos'])->pluck('name')->sort()->values()->all();
         $this->assertSame(['IMG_1.HEIC', 'IMG_1.JPEG'], $names);
-        $this->assertSame(['image/heic' => 1, 'image/jpeg' => 1], $body['formats']);
+        // Counts, not key order: the map is sorted most-common-first, and with a
+        // tie there is no meaningful first.
+        $this->assertEqualsCanonicalizing(['image/heic' => 1, 'image/jpeg' => 1], $body['formats']);
     }
 
     public function test_format_duplicates_never_reach_another_library(): void
@@ -781,6 +783,24 @@ class GalleryFeatureTest extends TestCase
         }
 
         $this->actingAs(User::factory()->create());
+        $this->assertCount(0, $this->getJson(route('gallery.duplicates.formats'))->assertOk()->json('groups'));
+    }
+
+    public function test_format_duplicates_leave_video_alone(): void
+    {
+        // A live photo's clip and a standalone recording can share a second
+        // without being the same thing, so one video format against another is
+        // not the re-export signal this scan looks for.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        foreach ([['a.mov', 'video/quicktime'], ['b.mp4', 'video/mp4']] as [$name, $mime]) {
+            (new GalleryPhoto)->forceFill([
+                'user_id' => $user->id, 'storage_path' => 'gallery/'.Str::uuid(),
+                'name' => $name, 'mime' => $mime, 'media_type' => 'video', 'status' => 'ready',
+                'size' => 10, 'taken_at' => '2026-06-16 07:03:49',
+            ])->save();
+        }
+
         $this->assertCount(0, $this->getJson(route('gallery.duplicates.formats'))->assertOk()->json('groups'));
     }
 }
