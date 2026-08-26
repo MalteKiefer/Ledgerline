@@ -40,5 +40,8 @@ return [
     'no' => 'No',
     'previous' => 'Previous',
     'next' => 'Next',
+    'page' => 'Page',
+    'first_page' => 'First page',
+    'last_page' => 'Last page',
     'per_page' => 'per page',
 ];

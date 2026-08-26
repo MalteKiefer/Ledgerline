@@ -40,5 +40,8 @@ return [
     'no' => 'Nein',
     'previous' => 'Zurück',
     'next' => 'Weiter',
+    'page' => 'Seite',
+    'first_page' => 'Erste Seite',
+    'last_page' => 'Letzte Seite',
     'per_page' => 'pro Seite',
 ];

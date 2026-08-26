@@ -156,7 +156,13 @@ export const useGalleryStore = defineStore('gallery', () => {
   const trash = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/trash').then((r) => r.photos);
   // These return their whole result, so the header counts the array itself.
   const search = (q: string) => api.get<{ photos: Photo[] }>(`/api/v1/gallery/search?q=${encodeURIComponent(q)}`).then((r) => r.photos ?? []);
-  const duplicates = () => api.get<{ groups: { photos: Photo[] }[] }>('/api/v1/gallery/duplicates').then((r) => r.groups ?? []);
+  /** Visually near-identical photos (CLIP). Capped server-side; `truncated` says so. */
+  const duplicates = () => api.get<{ groups: { photos: Photo[] }[]; truncated?: boolean; scanned?: number }>('/api/v1/gallery/duplicates');
+  /**
+   * The same shot held in two file formats — a library exported twice. Exact
+   * and uncapped, unlike the CLIP scan.
+   */
+  const formatDuplicates = () => api.get<{ groups: { photos: Photo[] }[]; formats: Record<string, number> }>('/api/v1/gallery/duplicates/formats');
   const loadAlbums = () => api.get<{ albums: Album[] }>('/api/v1/gallery/albums').then((r) => { albums.value = r.albums ?? []; });
 
   type UploadResult = { photo: Photo; duplicate?: boolean };
@@ -284,7 +290,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const sharedRawUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/raw`);
 
   return {
-    photos, albums, nextCursor, totals, loadingMore, load, loadMore, jumpToMonth, dates, loadArchived, memories, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, pairLivePhotos, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
+    photos, albums, nextCursor, totals, loadingMore, load, loadMore, jumpToMonth, dates, loadArchived, memories, mergeData, trash, search, duplicates, formatDuplicates, loadAlbums, upload, attachMotion, pairLivePhotos, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,

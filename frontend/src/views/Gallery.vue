@@ -156,10 +156,33 @@
 
       <!-- Duplicates view -->
       <div v-if="showDupes && !showTrash" class="space-y-4 p-3">
-        <div v-if="!dupeGroups.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.dupes_none') }}</div>
+        <!-- Two questions, two scans: which photos LOOK alike, and which are the
+             same shot held twice because a library was exported in two formats. -->
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="inline-flex rounded-xl bg-black/[0.04] p-0.5 dark:bg-white/[0.07]">
+            <button
+              v-for="mode in (['formats', 'similar'] as const)" :key="mode" type="button"
+              class="rounded-lg px-3 py-1 text-xs font-medium transition"
+              :class="dupeMode === mode ? 'bg-white text-primary-600 shadow-sm dark:bg-[#2c2c2e]' : 'text-[var(--ll-muted)]'"
+              @click="setDupeMode(mode)"
+            >{{ mode === 'formats' ? t('gallery.dupes_mode_formats') : t('gallery.dupes_mode_similar') }}</button>
+          </div>
+          <span v-if="dupeGroups.length" class="text-xs text-[var(--ll-muted)]">{{ t('gallery.dupes_groups_n', { n: String(dupeGroups.length) }) }}</span>
+          <!-- Cleaning up a thousand copies one group at a time is not cleaning up. -->
+          <template v-if="dupeMode === 'formats'">
+            <Btn
+              v-for="(count, mime) in dupeFormats" :key="mime" variant="soft" size="sm"
+              :disabled="dupeBusy" @click="keepFormat(String(mime))"
+            >{{ t('gallery.dupes_keep_format', { format: shortFormat(String(mime)), n: String(count) }) }}</Btn>
+          </template>
+        </div>
+        <div v-if="dupeTruncated" class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">{{ t('gallery.dupes_truncated') }}</div>
+        <div v-if="dupeBusy && !dupeGroups.length" class="py-20 text-center"><Icon name="progress_activity" :size="26" class="animate-spin text-[var(--ll-muted)]" /></div>
+        <div v-else-if="!dupeGroups.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.dupes_none') }}</div>
         <div v-for="(grp, gi) in dupeGroups" :key="gi" class="rounded-lg border border-[var(--ll-border)] p-2">
           <div class="mb-2 flex items-center gap-2 px-1 text-xs text-[var(--ll-muted)]">
-            <span>{{ grp.photos.length }} {{ t('gallery.dupes_similar') }}</span>
+            <span>{{ grp.photos.length }} {{ dupeMode === 'formats' ? t('gallery.dupes_same_shot') : t('gallery.dupes_similar') }}</span>
+            <span v-if="dupeMode === 'formats'" class="truncate">{{ grp.photos.map((p) => shortFormat(p.mime ?? '')).join(' · ') }}</span>
             <Btn variant="ghost" size="sm" icon="delete" class="ml-auto text-red-600" @click="trashDupeGroup(gi)">{{ t('gallery.dupes_keep_one') }}</Btn>
           </div>
           <div class="grid grid-cols-5 gap-1 sm:grid-cols-8 md:grid-cols-12">
@@ -1231,23 +1254,97 @@ async function doSearch() {
 }
 function clearSearch() { searchActive.value = false; searchResults.value = []; searchQuery.value = ''; }
 
-// ---- Near-duplicates (CLIP) ----
+// ---- Duplicates ----------------------------------------------------------
+// Two kinds, because they are two different questions. The CLIP scan finds
+// photos that LOOK alike (and is capped — it runs a vector search per photo).
+// The format scan finds the same shot held twice because a library was exported
+// as HEIC and again as JPEG; that one is exact and uncapped.
+const dupeMode = ref<'formats' | 'similar'>('formats');
+const dupeTruncated = ref(false);
+const dupeFormats = ref<Record<string, number>>({});
+const dupeBusy = ref(false);
+
 async function openDupes() {
   if (showPeople.value) closePeople();
   showDupes.value = true; clearSearch(); clearSelection(); viewer.value = -1;
-  try { dupeGroups.value = await g.duplicates(); } catch { error(t('common.error')); }
+  await loadDupes();
 }
-function closeDupes() { showDupes.value = false; dupeGroups.value = []; }
+async function loadDupes() {
+  dupeBusy.value = true;
+  try {
+    if (dupeMode.value === 'formats') {
+      const r = await g.formatDuplicates();
+      dupeGroups.value = r.groups ?? [];
+      dupeFormats.value = r.formats ?? {};
+      dupeTruncated.value = false;
+    } else {
+      const r = await g.duplicates();
+      dupeGroups.value = r.groups ?? [];
+      dupeTruncated.value = r.truncated === true;
+      dupeFormats.value = {};
+    }
+  } catch { error(t('common.error')); } finally { dupeBusy.value = false; }
+}
+function setDupeMode(mode: 'formats' | 'similar') { dupeMode.value = mode; void loadDupes(); }
+function closeDupes() { showDupes.value = false; dupeGroups.value = []; dupeFormats.value = {}; }
+
+/**
+ * Drop a group from the list instead of re-running the scan.
+ *
+ * Re-scanning after every deletion is what produced the 429: the CLIP scan runs
+ * one vector search per photo, and cleaning up two hundred groups meant two
+ * hundred of those. The group is gone either way — the server does not need to
+ * be asked again to know that.
+ */
+function dropGroup(gi: number) { dupeGroups.value.splice(gi, 1); }
+
 async function trashDupeGroup(gi: number) {
   const grp = dupeGroups.value[gi];
-  if (!grp) return;
+  if (!grp || dupeBusy.value) return;
   const ids = grp.photos.slice(1).map((p) => p.id); // keep the first
   if (!ids.length) return;
-  try { await g.bulkDestroy(ids); dupeGroups.value = await g.duplicates(); await refresh(); success(t('common.saved')); } catch { error(t('common.error')); }
+  dupeBusy.value = true;
+  try { await g.bulkDestroy(ids); dropGroup(gi); success(t('common.saved')); }
+  catch { error(t('common.error')); } finally { dupeBusy.value = false; }
 }
 async function trashDupeOne(gi: number, id: number) {
-  try { await g.bulkDestroy([id]); dupeGroups.value = await g.duplicates(); await refresh(); } catch { error(t('common.error')); }
+  const grp = dupeGroups.value[gi];
+  if (!grp || dupeBusy.value) return;
+  dupeBusy.value = true;
+  try {
+    await g.bulkDestroy([id]);
+    grp.photos = grp.photos.filter((p) => p.id !== id);
+    if (grp.photos.length < 2) dropGroup(gi);
+  } catch { error(t('common.error')); } finally { dupeBusy.value = false; }
 }
+
+/**
+ * Keep one format across every group and bin the rest.
+ *
+ * A thousand redundant copies are not cleaned up group by group. Only photos
+ * whose group actually holds the kept format are touched — otherwise a group
+ * that happens to lack it would lose everything.
+ */
+async function keepFormat(mime: string) {
+  const doomed: number[] = [];
+  for (const grp of dupeGroups.value) {
+    if (!grp.photos.some((p) => p.mime === mime)) continue;
+    for (const p of grp.photos) if (p.mime !== mime) doomed.push(p.id);
+  }
+  if (!doomed.length) return;
+  if (!await confirmAsk(t('gallery.dupes_keep_confirm', { n: String(doomed.length), format: shortFormat(mime) }), { danger: true })) return;
+  dupeBusy.value = true;
+  try {
+    // The bulk endpoint takes a bounded list; a thousand ids go in chunks.
+    for (let i = 0; i < doomed.length; i += 200) await g.bulkDestroy(doomed.slice(i, i + 200));
+    success(t('common.saved'));
+    await loadDupes();
+    await refresh();
+  } catch { error(t('common.error')); } finally { dupeBusy.value = false; }
+}
+
+/** "image/heic" reads as HEIC in a button. */
+const shortFormat = (mime: string) => (mime.split('/')[1] || mime || '?').toUpperCase();
 
 // ---- People / faces (opt-in face recognition) ----
 const personSort = ref<'asc' | 'desc'>('desc');

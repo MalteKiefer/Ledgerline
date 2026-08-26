@@ -734,4 +734,53 @@ class GalleryFeatureTest extends TestCase
         $seed($stranger->id, 'video');
         $this->assertSame(1, $this->getJson(route('gallery.data'))->assertOk()->json('totals.videos'));
     }
+
+    public function test_format_duplicates_find_a_reexported_library_but_never_a_burst(): void
+    {
+        // A library exported once as HEIC and again as JPEG puts every picture in
+        // the timeline twice. The bytes differ, so the upload's sha256 check
+        // cannot see it. The signal is the capture second PLUS more than one
+        // format — a burst shares the second but is always one format.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $seed = function (string $name, string $mime, string $takenAt) use ($user): void {
+            (new GalleryPhoto)->forceFill([
+                'user_id' => $user->id, 'storage_path' => 'gallery/'.Str::uuid(),
+                'name' => $name, 'mime' => $mime, 'media_type' => 'image', 'status' => 'ready',
+                'size' => 10, 'taken_at' => $takenAt,
+            ])->save();
+        };
+
+        // The same shot, twice, in two formats.
+        $seed('IMG_1.HEIC', 'image/heic', '2026-06-16 07:03:49');
+        $seed('IMG_1.JPEG', 'image/jpeg', '2026-06-16 07:03:49');
+        // A burst: same second, one format. Must be left alone.
+        $seed('IMG_2.JPEG', 'image/jpeg', '2026-06-16 08:00:00');
+        $seed('IMG_3.JPEG', 'image/jpeg', '2026-06-16 08:00:00');
+        // A lone photo.
+        $seed('IMG_4.HEIC', 'image/heic', '2026-06-16 09:00:00');
+
+        $body = $this->getJson(route('gallery.duplicates.formats'))->assertOk()->json();
+
+        $this->assertCount(1, $body['groups'], 'only the two-format group');
+        $names = collect($body['groups'][0]['photos'])->pluck('name')->sort()->values()->all();
+        $this->assertSame(['IMG_1.HEIC', 'IMG_1.JPEG'], $names);
+        $this->assertSame(['image/heic' => 1, 'image/jpeg' => 1], $body['formats']);
+    }
+
+    public function test_format_duplicates_never_reach_another_library(): void
+    {
+        $stranger = User::factory()->create();
+        foreach (['image/heic', 'image/jpeg'] as $mime) {
+            (new GalleryPhoto)->forceFill([
+                'user_id' => $stranger->id, 'storage_path' => 'gallery/'.Str::uuid(),
+                'name' => 'x', 'mime' => $mime, 'media_type' => 'image', 'status' => 'ready',
+                'size' => 10, 'taken_at' => '2026-06-16 07:03:49',
+            ])->save();
+        }
+
+        $this->actingAs(User::factory()->create());
+        $this->assertCount(0, $this->getJson(route('gallery.duplicates.formats'))->assertOk()->json('groups'));
+    }
 }
