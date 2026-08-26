@@ -346,16 +346,34 @@ export const useMailStore = defineStore('mail', () => {
    * must mean the folder and not the page the client happens to have loaded.
    */
   async function unreadIds(): Promise<string[]> {
+    return matchingIds({ unreadOnly: true });
+  }
+
+  /**
+   * Every id under the current filter, paged through with the ordinary listing.
+   *
+   * Used where "all" has to mean the folder rather than the page the client
+   * happens to hold — marking a folder read, selecting a whole search result.
+   * Bounded at 20 pages of 1000: twenty thousand is a stop, not a target, and
+   * without one a mistyped filter would walk the entire archive.
+   */
+  async function matchingIds(opts: { unreadOnly?: boolean } = {}): Promise<string[]> {
     const f = filters.value;
     const qs = new URLSearchParams();
     if (f.accountId != null) qs.set('account_id', String(f.accountId));
     if (f.folder) qs.set('folder', f.folder);
     if (f.label != null) qs.set('label', String(f.label));
+    if (f.threadId) qs.set('thread_id', f.threadId);
+    if (f.trashed) qs.set('trashed', '1');
+    if (f.spam != null) qs.set('spam', f.spam ? '1' : '0');
+    if (f.dateFrom) qs.set('from', f.dateFrom);
+    if (f.dateTo) qs.set('to', f.dateTo);
     if (f.q.trim()) qs.set('q', f.q.trim());
-    qs.set('seen', '0');
+    if (opts.unreadOnly) qs.set('seen', '0');
+    else if (f.seen != null) qs.set('seen', f.seen ? '1' : '0');
     qs.set('per_page', '1000');
     const out: string[] = [];
-    for (let page = 1; page <= 20; page++) {   // 20k unread is a bound, not a limit anyone reaches
+    for (let page = 1; page <= 20; page++) {
       qs.set('page', String(page));
       const r = await api.get<{ data: MailMessage[]; meta: PageMeta }>(`/api/v1/mail/messages?${qs}`);
       out.push(...(r.data ?? []).map((m) => m.id));
@@ -541,7 +559,7 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
-    setSeen, setFlagged, unreadIds, thread, attachments, trash, restore, pushBack, deleteOrigin, setLabels,
+    setSeen, setFlagged, unreadIds, matchingIds, thread, attachments, trash, restore, pushBack, deleteOrigin, setLabels,
     compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, applyRules, updateRule, deleteRule,

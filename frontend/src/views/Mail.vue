@@ -106,6 +106,10 @@
       </nav>
     </Card>
 
+    <!-- List and reader share a splitter. The rail must not be part of it, or
+         switching the reader below would put the folder list on top. -->
+    <div class="flex min-w-0 flex-1 flex-col md:overflow-hidden" :class="readerPos === 'bottom' ? 'md:flex-col' : 'md:flex-row'">
+
     <!-- Center: toolbar + envelope table -->
     <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex w-full min-w-0 flex-1 flex-col self-stretch md:!rounded-none md:!border-0 md:!shadow-none">
       <!-- Toolbar -->
@@ -176,6 +180,14 @@
           <input type="checkbox" class="accent-primary-500" :checked="allSelected" @change="toggleSelectAll">
           {{ t('mail.actions.selected_n', { n: String(s.selected.length) }) }}
         </label>
+
+        <!-- The checkbox reaches the page; the folder is bigger than the page. -->
+        <button
+          v-if="allSelected && s.meta.total > s.selected.length" type="button"
+          class="text-xs font-medium text-primary-600 underline hover:no-underline dark:text-primary-300"
+          :disabled="bulkBusy" @click="selectAllMatching"
+        >{{ t('mail.actions.select_all_matching', { n: String(s.meta.total) }) }}</button>
+        <span v-else-if="selectionIsWholeResult" class="text-xs text-[var(--ll-muted)]">{{ t('mail.actions.whole_result_selected') }}</span>
 
         <div class="ml-auto flex flex-wrap items-center gap-1">
           <Btn variant="ghost" size="xs" icon="mark_email_read" :loading="bulkBusy" @click="bulkSeen(true)">{{ t('mail.actions.mark_read') }}</Btn>
@@ -281,6 +293,10 @@
                       <button type="button" class="p-0.5 disabled:opacity-30" :disabled="!canMove(col, 1)" :title="t('mail.list.columns_down')" @click="moveColumn(col, 1)"><Icon name="arrow_downward" :size="14" /></button>
                     </div>
                     <div class="my-1 h-px bg-[var(--ll-border)]" />
+                    <div :class="menuSection">{{ t('mail.list.layout') }}</div>
+                    <DropdownMenuItem :class="menuItem" @select="setReaderPos('side')"><Icon name="splitscreen_right" :size="18" />{{ t('mail.list.layout_side') }}<Icon v-if="readerPos === 'side'" name="check" :size="15" class="ml-auto" /></DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItem" @select="setReaderPos('bottom')"><Icon name="splitscreen_bottom" :size="18" />{{ t('mail.list.layout_bottom') }}<Icon v-if="readerPos === 'bottom'" name="check" :size="15" class="ml-auto" /></DropdownMenuItem>
+                    <div class="my-1 h-px bg-[var(--ll-border)]" />
                     <div :class="menuSection">{{ t('mail.list.density') }}</div>
                     <DropdownMenuItem :class="menuItem" @select="setDensity('comfortable')"><Icon name="density_medium" :size="18" />{{ t('mail.list.density_comfortable') }}<Icon v-if="density === 'comfortable'" name="check" :size="15" class="ml-auto" /></DropdownMenuItem>
                     <DropdownMenuItem :class="menuItem" @select="setDensity('compact')"><Icon name="density_small" :size="18" />{{ t('mail.list.density_compact') }}<Icon v-if="density === 'compact'" name="check" :size="15" class="ml-auto" /></DropdownMenuItem>
@@ -367,13 +383,15 @@
   <!-- Drag handle between list and reader (desktop only; on a phone the reader
        is full screen and there is nothing to split). -->
   <div
-    v-if="readerOpen" class="hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-primary-500/40 md:block"
-    :class="splitDragging ? 'bg-primary-500/60' : ''"
+    v-if="readerOpen"
+    class="hidden shrink-0 bg-transparent transition-colors hover:bg-primary-500/40 md:block"
+    :class="[readerPos === 'bottom' ? 'h-1 w-full cursor-row-resize' : 'h-full w-1 cursor-col-resize', splitDragging ? 'bg-primary-500/60' : '']"
     @pointerdown="splitStart"
   />
   <aside
     v-if="readerOpen"
-    class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none"
+    class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:shrink-0 md:border-[var(--ll-border)] md:shadow-none"
+    :class="readerPos === 'bottom' ? 'md:border-t' : 'md:border-l'"
     :style="readerStyle"
   >
     <div v-if="readerOpen && reader" class="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-5">
@@ -509,6 +527,7 @@
       </div>
     </div>
   </aside>
+    </div>
   <section
     v-if="compose.show && !compose.minimized"
     class="fixed bottom-3 right-4 z-[1500] flex h-[min(48rem,calc(100vh-6rem))] w-[min(44rem,calc(100vw-2rem))] min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] shadow-2xl"
@@ -1219,8 +1238,16 @@ async function openFromAttachment(row: MailAttachmentRow) {
 const SPLIT_KEY = 'll_mail_split';
 const splitPct = ref(Number(localStorage.getItem(SPLIT_KEY)) || 44);
 const splitDragging = ref(false);
-// Clamped so neither pane can be dragged away entirely — a list of zero width
-// is not a layout, it is a broken one.
+// Beside the list or below it. Below is the other classic reading layout: wide
+// lines suit a long message, a narrow column suits a long list.
+const readerPos = ref<'side' | 'bottom'>(localStorage.getItem('ll_mail_reader_pos') === 'bottom' ? 'bottom' : 'side');
+function setReaderPos(next: 'side' | 'bottom') {
+  readerPos.value = next;
+  localStorage.setItem('ll_mail_reader_pos', next);
+}
+// Clamped so neither pane can be dragged away entirely — a pane of zero size is
+// not a layout, it is a broken one. flex-basis follows the main axis, so the
+// same number works for both directions.
 const readerStyle = computed(() => ({ flexBasis: `${Math.min(75, Math.max(25, splitPct.value))}%` }));
 
 function splitStart(e: PointerEvent) {
@@ -1229,7 +1256,9 @@ function splitStart(e: PointerEvent) {
     const host = (e.target as HTMLElement).parentElement;
     if (!host) return;
     const b = host.getBoundingClientRect();
-    splitPct.value = Math.min(75, Math.max(25, ((b.right - ev.clientX) / b.width) * 100));
+    splitPct.value = readerPos.value === 'bottom'
+      ? Math.min(75, Math.max(25, ((b.bottom - ev.clientY) / b.height) * 100))
+      : Math.min(75, Math.max(25, ((b.right - ev.clientX) / b.width) * 100));
   };
   const up = () => {
     splitDragging.value = false;
@@ -1664,18 +1693,42 @@ async function saveAttToFolder(folderId: number | null) {
 
 // --- Bulk --------------------------------------------------------------------
 const bulkBusy = ref(false);
+/**
+ * The bulk endpoints take at most a thousand ids, and a whole-result selection
+ * can be far more than that — so every bulk path goes through here.
+ */
+async function inChunks(ids: string[], run: (part: string[]) => Promise<unknown>) {
+  for (let i = 0; i < ids.length; i += 500) await run(ids.slice(i, i + 500));
+}
+
 async function bulkSeen(seen: boolean) {
   if (!s.selected.length || bulkBusy.value) return;
   const ids = [...s.selected];
   bulkBusy.value = true;
   try {
-    await s.setSeen(ids, seen);
+    await inChunks(ids, (part) => s.setSeen(part, seen));
     await reload(); refreshCounts();
     undoable(t('mail.actions.marked_n', { n: String(ids.length) }), t('common.undo'), () => { void undoSeen(ids, !seen); });
   } catch { error(t('common.error')); } finally { bulkBusy.value = false; }
 }
+/**
+ * Select every message the current filter matches, not just the loaded page.
+ *
+ * Offered only once the page itself is fully selected, so it reads as "and the
+ * rest" rather than as a second, competing way to select.
+ */
+const selectionIsWholeResult = computed(() => s.selected.length > 0 && s.selected.length === s.meta.total);
+async function selectAllMatching() {
+  if (bulkBusy.value) return;
+  bulkBusy.value = true;
+  try {
+    const ids = await s.matchingIds();
+    s.selected.splice(0, s.selected.length, ...ids);
+  } catch { error(t('common.error')); } finally { bulkBusy.value = false; }
+}
+
 async function undoSeen(ids: string[], seen: boolean) {
-  try { await s.setSeen(ids, seen); await reload(); refreshCounts(); } catch { error(t('common.error')); }
+  try { await inChunks(ids, (part) => s.setSeen(part, seen)); await reload(); refreshCounts(); } catch { error(t('common.error')); }
 }
 
 /**
@@ -1690,13 +1743,13 @@ async function bulkTrash() {
   const ids = [...s.selected];
   bulkBusy.value = true;
   try {
-    await s.trash(ids);
+    await inChunks(ids, (part) => s.trash(part));
     await reload(); refreshCounts();
     undoable(t('mail.actions.trashed_n', { n: String(ids.length) }), t('common.undo'), () => { void undoTrash(ids); });
   } catch { error(t('common.error')); } finally { bulkBusy.value = false; }
 }
 async function undoTrash(ids: string[]) {
-  try { await s.restore(ids); await reload(); refreshCounts(); } catch { error(t('common.error')); }
+  try { await inChunks(ids, (part) => s.restore(part)); await reload(); refreshCounts(); } catch { error(t('common.error')); }
 }
 async function bulkRestore() { if (!s.selected.length) return; try { await s.restore([...s.selected]); await reload(); } catch { error(t('common.error')); } }
 
@@ -1706,7 +1759,7 @@ async function bulkFlag(flagged: boolean) {
   const ids = [...s.selected];
   bulkBusy.value = true;
   try {
-    await s.setFlagged(ids, flagged);
+    await inChunks(ids, (part) => s.setFlagged(part, flagged));
     for (const m of s.messages) if (ids.includes(m.id)) m.flagged = flagged;
   } catch { error(t('mail.toast.flag_failed')); } finally { bulkBusy.value = false; }
 }
@@ -1723,7 +1776,7 @@ async function markFolderRead() {
   try {
     const ids = await s.unreadIds();
     if (!ids.length) { toast(t('mail.actions.nothing_unread')); return; }
-    await s.setSeen(ids, true);
+    await inChunks(ids, (part) => s.setSeen(part, true));
     await reload(); refreshCounts();
     undoable(t('mail.actions.marked_n', { n: String(ids.length) }), t('common.undo'), () => { void undoSeen(ids, false); });
   } catch { error(t('common.error')); } finally { bulkBusy.value = false; }

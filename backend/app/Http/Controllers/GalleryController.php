@@ -1370,6 +1370,13 @@ class GalleryController extends Controller
         $haveThumb = $this->fs()->exists($thumbPath);
         $havePreview = $this->fs()->exists($previewPath);
         if ($haveThumb && $havePreview) {
+            // A photo whose renditions already exist still gets its size read
+            // when it has none — that is the whole point of the backfill, and
+            // this branch is where those photos land. Only then, though: staging
+            // the file on every routine run would be a copy for nothing.
+            if ($photo->media_type === 'image' && ($photo->width === null || $photo->height === null)) {
+                $this->fillDimensions($photo, $src);
+            }
             $this->markRenditionReady($photo, true, true);
 
             return true;
@@ -1387,9 +1394,16 @@ class GalleryController extends Controller
             stream_copy_to_stream($in, $dst);
             fclose($in);
             fclose($dst);
-            $dims = @getimagesize($tmp->path());
-            if (is_array($dims) && (int) $dims[0] * (int) $dims[1] > self::THUMB_MAX_PIXELS) {
+            $dims = $this->readDimensions($tmp->path());
+            if ($dims !== null && $dims[0] * $dims[1] > self::THUMB_MAX_PIXELS) {
                 return false;
+            }
+            // Fill in what the upload could not read. PHP's getimagesize does not
+            // understand HEIC, so 1859 photos in a real library had no size at
+            // all — and, worse, the pixel-budget guard above silently did not
+            // apply to them either, because it had nothing to check.
+            if ($dims !== null && ($photo->width === null || $photo->height === null)) {
+                $photo->forceFill(['width' => $dims[0], 'height' => $dims[1]])->saveQuietly();
             }
             // One decode → a browser-viewable large preview (HEIC/HEIF cannot be
             // shown in an <img> directly) AND the 400px grid thumbnail.
@@ -1410,6 +1424,62 @@ class GalleryController extends Controller
         $this->markRenditionReady($photo, true, true);
 
         return true;
+    }
+
+    /** Stage a stored image and record its size (worker-only). */
+    private function fillDimensions(GalleryPhoto $photo, string $src): void
+    {
+        if ($src === '' || ! $this->fs()->exists($src)) {
+            return;
+        }
+        try {
+            $tmp = DiskTempFile::create('llgdim')->withExtension('img');
+            $in = $this->fs()->readStream($src);
+            $dst = fopen($tmp->path(), 'wb');
+            if (! is_resource($in) || $dst === false) {
+                return;
+            }
+            stream_copy_to_stream($in, $dst);
+            fclose($in);
+            fclose($dst);
+            $dims = $this->readDimensions($tmp->path());
+            if ($dims !== null) {
+                $photo->forceFill(['width' => $dims[0], 'height' => $dims[1]])->saveQuietly();
+            }
+        } catch (\Throwable) {
+            // A size that cannot be read leaves the row as it was.
+        }
+    }
+
+    /**
+     * Width and height of a stored image, without decoding it.
+     *
+     * getimagesize covers the formats PHP knows; for HEIC/HEIF it returns false,
+     * which is why exiftool is the fallback — it reads the header only (-fast2),
+     * so this stays a header read rather than becoming a decode. Worker-only,
+     * array-argv, short timeout: the same posture as every other binary here.
+     *
+     * @return array{0: int, 1: int}|null
+     */
+    private function readDimensions(string $path): ?array
+    {
+        $dims = @getimagesize($path);
+        if (is_array($dims) && (int) $dims[0] > 0 && (int) $dims[1] > 0) {
+            return [(int) $dims[0], (int) $dims[1]];
+        }
+
+        $out = BinaryProcess::run(['exiftool', '-s3', '-fast2', '-ImageWidth', '-ImageHeight', $path], 20);
+        if (! is_string($out)) {
+            return null;
+        }
+        $lines = preg_split('/\R/', trim($out)) ?: [];
+        if (count($lines) < 2 || ! is_numeric($lines[0]) || ! is_numeric($lines[1])) {
+            return null;
+        }
+        $w = (int) $lines[0];
+        $h = (int) $lines[1];
+
+        return $w > 0 && $h > 0 ? [$w, $h] : null;
     }
 
     /** Persist rendition readiness on the row (worker-only; the timeline reads it). */
