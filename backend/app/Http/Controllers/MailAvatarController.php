@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Contact;
+use App\Models\MailMessage;
 use App\Models\UserSetting;
 use App\Services\Contacts\VCardService;
 use App\Support\BrandIcon;
@@ -92,11 +93,56 @@ class MailAvatarController extends Controller
                     return null;
                 }
 
-                $domain = substr($email, strrpos($email, '@') + 1);
+                foreach ($this->domainsFor($userId, $email) as $domain) {
+                    $icon = BrandIcon::forDomain($domain);
+                    if ($icon !== null) {
+                        return $icon;
+                    }
+                }
 
-                return BrandIcon::forDomain($domain);
+                return null;
             },
         );
+    }
+
+    /**
+     * Domains worth asking for a logo, best guess first.
+     *
+     * An alias service puts its own domain in the address — mail forwarded by
+     * SimpleLogin arrives from `…_at_twitch_tv_xxxx@simplelogin.co`, so asking
+     * that domain returns SimpleLogin's mark rather than the sender's. What the
+     * service does put the real sender in is the display NAME, deliberately, as
+     * a readable address: "purchase-noreply@twitch.tv".
+     *
+     * So when the stored display name contains something that looks like an
+     * address, its domain is tried first and the envelope domain second. It is
+     * a heuristic on a field the sender controls, which is why it can only ever
+     * pick which logo to show — never who the message is from, and never
+     * anything the message is trusted for.
+     *
+     * @return list<string>
+     */
+    private function domainsFor(int $userId, string $email): array
+    {
+        $envelope = substr($email, strrpos($email, '@') + 1);
+
+        $name = MailMessage::query()
+            ->where('user_id', $userId)
+            ->whereRaw('lower(from_email) = ?', [$email])
+            ->whereNotNull('from_name')
+            ->orderByDesc('created_at')
+            ->value('from_name');
+
+        $out = [];
+        if (is_string($name) && preg_match('/[\w.+-]+@([\w-]+(?:\.[\w-]+)+)/', $name, $m) === 1) {
+            $claimed = strtolower($m[1]);
+            if ($claimed !== $envelope) {
+                $out[] = $claimed;
+            }
+        }
+        $out[] = $envelope;
+
+        return $out;
     }
 
     /**
