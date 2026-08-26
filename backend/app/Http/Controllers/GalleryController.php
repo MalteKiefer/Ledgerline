@@ -82,6 +82,9 @@ class GalleryController extends Controller
 
     private const DUP_MAX_GROUPS = 200;
 
+    /** How many photos the exact format scan returns at once. */
+    private const FORMAT_DUP_MAX_PHOTOS = 4000;
+
     /** Broad video extension set — "any format" uploads; ffprobe validates later. */
     private const VIDEO_EXT = [
         'mp4', 'm4v', 'mov', 'qt', 'webm', 'mkv', 'avi', 'wmv', 'flv', 'mpg', 'mpeg',
@@ -1254,25 +1257,37 @@ class GalleryController extends Controller
     {
         $uid = (int) $this->requireUser($request)->id;
 
-        $seconds = GalleryPhoto::query()
-            ->where('user_id', $uid)
-            ->whereNull('deleted_at')
-            ->whereNotNull('taken_at')
-            ->groupBy('taken_at')
-            ->havingRaw('count(*) > 1 and count(distinct mime) > 1')
-            ->orderByDesc('taken_at')
-            ->limit(2000)
-            ->pluck('taken_at');
-
-        if ($seconds->isEmpty()) {
-            return response()->json(['groups' => [], 'formats' => []]);
-        }
-
+        // One round trip: the duplicate seconds are found and joined in the same
+        // statement. Collecting them first and sending them back as a thousand-
+        // item IN list took twenty-three seconds on a library of eighteen
+        // thousand — long enough that a proxy gives up before the answer does.
+        // No table alias: the owner-scope qualifies its condition with the real
+        // table name, and aliasing the outer query breaks it.
         $photos = GalleryPhoto::query()
-            ->where('user_id', $uid)
-            ->whereNull('deleted_at')
-            ->whereIn('taken_at', $seconds)
-            ->orderBy('taken_at')
+            ->joinSub(
+                DB::table('gallery_photos')
+                    ->select('taken_at')
+                    ->where('user_id', $uid)
+                    ->whereNull('deleted_at')
+                    ->whereNotNull('taken_at')
+                    // Stills only. A photo library exported twice is the case
+                    // this answers; for video, one format against another is not
+                    // the same signal — a live photo's clip and a standalone
+                    // recording can share a second without being the same thing.
+                    ->where('media_type', 'image')
+                    ->groupBy('taken_at')
+                    ->havingRaw('count(*) > 1 and count(distinct mime) > 1'),
+                'dup',
+                'dup.taken_at',
+                '=',
+                'gallery_photos.taken_at',
+            )
+            ->where('gallery_photos.user_id', $uid)
+            ->whereNull('gallery_photos.deleted_at')
+            ->where('gallery_photos.media_type', 'image')
+            ->orderByDesc('gallery_photos.taken_at')
+            ->limit(self::FORMAT_DUP_MAX_PHOTOS)
+            ->select('gallery_photos.*')
             ->get();
 
         $groups = [];
