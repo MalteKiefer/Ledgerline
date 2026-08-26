@@ -113,7 +113,22 @@
         <Btn variant="solid" size="sm" icon="edit_square" @click="openCompose">{{ t('mail.send.compose') }}</Btn>
         <span v-if="draftListActive" class="text-sm font-semibold">{{ t('mail.send.drafts') }}</span>
         <div class="relative flex min-w-48 flex-1 items-center gap-1">
-          <TextField id="mail-search" v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="flex-1" @update:model-value="debouncedReload" @enter="reload" />
+          <TextField
+            id="mail-search" v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="flex-1"
+            autocomplete="off" @update:model-value="debouncedReload" @enter="rememberSearch(); reload();"
+            @focus="searchFocused = true" @blur="blurSearch"
+          />
+          <div v-if="searchFocused && !filters.q && searchHistory.length" class="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] p-1 shadow-lg">
+            <div :class="menuSection">{{ t('mail.list.recent_searches') }}</div>
+            <button
+              v-for="term in searchHistory" :key="term" type="button"
+              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-black/[0.05] dark:hover:bg-white/10"
+              @mousedown.prevent="filters.q = term; reload();"
+            >
+              <Icon name="history" :size="15" class="shrink-0 text-[var(--ll-muted)]" />
+              <span class="min-w-0 flex-1 truncate">{{ term }}</span>
+            </button>
+          </div>
           <Btn variant="ghost" size="xs" icon="help" :title="t('mail.list.search_help')" @click="searchHelp = !searchHelp" />
           <div v-if="searchHelp" class="absolute right-0 top-full z-20 mt-1 w-80 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] p-3 text-xs shadow-lg">
             <div class="mb-2 flex items-center gap-2"><span class="flex-1 font-semibold">{{ t('mail.list.search_help') }}</span><Btn variant="ghost" size="xs" icon="close" @click="searchHelp = false" /></div>
@@ -209,7 +224,34 @@
         <div v-else-if="draftListActive && !drafts.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.list.empty') }}</div>
         <table v-else-if="draftListActive" class="w-full table-fixed text-sm"><thead class="sticky top-0 z-[1] bg-[var(--ll-surface)]"><tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]"><th class="w-[32%] py-2 pl-3 pr-3">{{ t('mail.send.from_email') }}</th><th class="py-2 pr-3">{{ t('mail.list.col_subject') }}</th><th class="w-28 py-2 pr-3 text-right">{{ t('mail.list.col_date') }}</th></tr></thead><tbody><tr v-for="draft in drafts" :key="draft.id" class="cursor-pointer border-b border-[var(--ll-border)] hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openDraft(draft)"><td class="py-2.5 pl-3 pr-3"><div class="flex min-w-0 items-center gap-2"><Icon name="drafts" :size="17" class="text-primary-600" /><span class="truncate">{{ accountName(draft.mail_account_id) }}</span></div></td><td class="py-2.5 pr-3"><div class="truncate font-medium">{{ draft.subject || t('mail.send.new_draft') }}</div><div class="truncate text-xs text-[var(--ll-muted)]">{{ (draft.to ?? []).join(', ') || t('mail.send.to') }}</div></td><td class="py-2.5 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(draft.updated_at) }}</td></tr></tbody></table>
         <div v-else-if="!s.messages.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.list.empty') }}</div>
-        <table v-else class="w-full table-fixed text-sm">
+        <!-- Phone: two-line cards. The table has fixed column widths and, with
+             the columns picker, possibly six of them - unreadable on a narrow
+             screen, and shrinking the columns would only make it unreadable in
+             a different way. -->
+        <div v-else class="divide-y divide-[var(--ll-border)] md:hidden">
+          <button
+            v-for="(m, ri) in s.messages" :key="`c-${m.id}`" type="button"
+            class="flex w-full items-start gap-2.5 px-3 py-2.5 text-left"
+            :class="[!m.seen ? 'font-semibold' : '', reader?.id === m.id ? 'bg-primary-500/[0.06]' : '']"
+            @click="cursor = ri; openReader(m)"
+          >
+            <span class="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-white" :style="{ background: avatarColour(m) }">{{ initials(m) }}</span>
+            <span class="min-w-0 flex-1">
+              <span class="flex items-baseline gap-2">
+                <span class="min-w-0 flex-1 truncate text-sm">{{ senderLabel(m) }}</span>
+                <span class="shrink-0 text-[11px] font-normal text-[var(--ll-muted)]">{{ fmtDate(m.date || m.created_at) }}</span>
+              </span>
+              <span class="block truncate text-sm">{{ m.subject || '—' }}</span>
+              <span v-if="m.snippet" class="block truncate text-xs font-normal text-[var(--ll-muted)]">{{ m.snippet }}</span>
+            </span>
+            <span class="mt-0.5 flex shrink-0 flex-col items-end gap-1">
+              <Icon v-if="!m.seen" name="circle" :size="9" class="text-primary-500" />
+              <Icon v-if="m.flagged" name="star" :size="14" class="text-amber-500" />
+              <Icon v-if="m.has_attachment" name="attach_file" :size="14" class="text-[var(--ll-muted)]" />
+            </span>
+          </button>
+        </div>
+        <table v-if="s.messages.length" class="hidden w-full table-fixed text-sm md:table">
           <thead class="sticky top-0 z-[1] bg-[var(--ll-surface)]">
             <tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]">
               <th class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="allSelected" @change="toggleSelectAll"></th>
@@ -239,6 +281,10 @@
                       <button type="button" class="p-0.5 disabled:opacity-30" :disabled="!canMove(col, 1)" :title="t('mail.list.columns_down')" @click="moveColumn(col, 1)"><Icon name="arrow_downward" :size="14" /></button>
                     </div>
                     <div class="my-1 h-px bg-[var(--ll-border)]" />
+                    <div :class="menuSection">{{ t('mail.list.density') }}</div>
+                    <DropdownMenuItem :class="menuItem" @select="setDensity('comfortable')"><Icon name="density_medium" :size="18" />{{ t('mail.list.density_comfortable') }}<Icon v-if="density === 'comfortable'" name="check" :size="15" class="ml-auto" /></DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItem" @select="setDensity('compact')"><Icon name="density_small" :size="18" />{{ t('mail.list.density_compact') }}<Icon v-if="density === 'compact'" name="check" :size="15" class="ml-auto" /></DropdownMenuItem>
+                    <div class="my-1 h-px bg-[var(--ll-border)]" />
                     <DropdownMenuItem :class="menuItem" @select="resetColumns"><Icon name="restart_alt" :size="18" />{{ t('mail.list.columns_reset') }}</DropdownMenuItem>
                   </DropdownMenuContent></DropdownMenuPortal>
                 </DropdownMenuRoot>
@@ -264,11 +310,14 @@
                   />
                 </button>
               </td>
-              <td v-for="col in activeColumns" :key="col" class="py-2.5 pr-3 align-middle" :class="[columnAlign(col), col === 'date' || col === 'size' ? 'truncate text-xs font-normal text-[var(--ll-muted)]' : '']">
+              <td v-for="col in activeColumns" :key="col" class="pr-3 align-middle" :class="[density === 'compact' ? 'py-1' : 'py-2.5', columnAlign(col), col === 'date' || col === 'size' ? 'truncate text-xs font-normal text-[var(--ll-muted)]' : '']">
                 <!-- from -->
                 <div v-if="col === 'from'" class="flex items-center gap-2">
                   <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-primary-500'" />
-                  <span class="min-w-0 flex-1 truncate">{{ senderLabel(m) }}</span>
+                  <span v-if="density !== 'compact'" class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold text-white" :style="{ background: avatarColour(m) }">{{ initials(m) }}</span>
+                  <!-- Clicking the sender filters by them: faster than typing
+                       from: and it is the same search term either way. -->
+                  <span class="min-w-0 flex-1 truncate hover:underline" @click.stop="filterBySender(m)">{{ senderLabel(m) }}</span>
                 </div>
                 <span v-else-if="col === 'to'" class="block truncate">{{ recipientLabel(m) }}</span>
                 <!-- subject: always present, carries the inline markers -->
@@ -304,14 +353,14 @@
         </table>
       </div>
 
-      <!-- Pagination -->
-      <div v-if="!draftListActive && s.meta.last_page > 1" class="flex items-center justify-between border-t border-[var(--ll-border)] px-3 py-2 text-sm">
-        <span class="text-xs text-[var(--ll-muted)]">{{ s.meta.current_page }} / {{ s.meta.last_page }} · {{ s.meta.total }}</span>
-        <div class="flex items-center gap-1">
-          <Btn variant="ghost" size="sm" icon="chevron_left" :disabled="s.meta.current_page <= 1" @click="goto(s.meta.current_page - 1)" />
-          <Btn variant="ghost" size="sm" icon="chevron_right" :disabled="s.meta.current_page >= s.meta.last_page" @click="goto(s.meta.current_page + 1)" />
-        </div>
-      </div>
+      <!-- Pagination: the shared pager, so a 335-page folder can be reached by
+           typing a number instead of stepping through it. -->
+      <Pager
+        v-if="!draftListActive"
+        :page="s.meta.current_page" :per-page="s.meta.per_page" :total="s.meta.total"
+        :options="[25, 50, 100, 200]"
+        @update:page="goto" @update:per-page="setPerPage"
+      />
     </Card>
 
     <!-- Reader pane: docked beside the list on desktop, full screen on small displays. -->
@@ -799,7 +848,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from 'reka-ui';
-import { Icon, Btn, Card, TextField, Select, Badge, Modal, SortLabel } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal, SortLabel, Pager } from '@spa/ui';
 import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft, type MailAttachmentRow } from '@spa/stores/mail';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
@@ -959,6 +1008,8 @@ async function applyRoute() {
 let statusTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
   window.addEventListener('keydown', onKey);
+  const savedPerPage = Number(localStorage.getItem('ll_mail_per_page'));
+  if ([25, 50, 100, 200].includes(savedPerPage)) s.meta.per_page = savedPerPage;
   // The column choice is a display preference; without it the list would show
   // the default set until the profile page happened to be visited.
   if (!p.prefs) void p.loadPrefs();
@@ -971,6 +1022,24 @@ onMounted(async () => {
 onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); window.removeEventListener('keydown', onKey); });
 
 const searchHelp = ref(false);
+const searchFocused = ref(false);
+
+// Recent searches, on this display. Only terms that were actually submitted
+// land here — recording every keystroke would fill the list with prefixes of
+// one search.
+const HISTORY_KEY = 'll_mail_searches';
+const searchHistory = ref<string[]>(JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as string[]);
+// A click on a suggestion is a mousedown then a blur; closing on blur without
+// the delay would remove the item before the click lands on it.
+function blurSearch() { window.setTimeout(() => { searchFocused.value = false; }, 150); }
+
+function rememberSearch() {
+  const term = filters.q.trim();
+  if (term.length < 2) return;
+  const next = [term, ...searchHistory.value.filter((x) => x !== term)].slice(0, 8);
+  searchHistory.value = next;
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+}
 
 /**
  * Quick filters are search terms, not a parallel filter set.
@@ -1025,6 +1094,46 @@ async function moveCursor(delta: number) {
   const row = rows[next];
   document.getElementById(`mail-row-${row.id}`)?.scrollIntoView({ block: 'nearest' });
   if (readerOpen.value) await openReader(row);
+}
+
+// ---- Row presentation ----------------------------------------------------
+// Density and the split are display choices about THIS screen, so they live in
+// localStorage rather than the profile — unlike the columns, which say what a
+// reader wants to see and belong to the account.
+const density = ref<'comfortable' | 'compact'>(localStorage.getItem('ll_mail_density') === 'compact' ? 'compact' : 'comfortable');
+function setDensity(next: 'comfortable' | 'compact') {
+  density.value = next;
+  localStorage.setItem('ll_mail_density', next);
+}
+
+/** Initials of the sender — something to aim at when scanning a long list. */
+function initials(m: MailMessage): string {
+  const name = (m.from_name || m.from_email || '').trim();
+  if (!name) return '?';
+  const parts = name.replace(/[<>"]/g, '').split(/[\s.@_-]+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? '';
+  const second = parts.length > 1 ? parts[1][0] : '';
+  return (first + second).toUpperCase() || '?';
+}
+
+/**
+ * A stable colour per sender, so the same correspondent looks the same every
+ * time. Hashed from the address rather than assigned in order — order changes
+ * with every reload.
+ */
+function avatarColour(m: MailMessage): string {
+  const key = (m.from_email || m.from_name || '?').toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) % 360;
+  return `hsl(${hash} 55% 45%)`;
+}
+
+/** Click a sender to see everything from them — the same term the box takes. */
+function filterBySender(m: MailMessage) {
+  const who = m.from_email || m.from_name;
+  if (!who) return;
+  filters.q = `from:${who}`;
+  void reload();
 }
 
 // ---- Attachment overview -------------------------------------------------
@@ -1315,6 +1424,13 @@ async function toggleFlag(m: MailMessage) {
     m.flagged = next;
     if (reader.value?.id === m.id) reader.value.flagged = next;
   } catch { error(t('mail.toast.flag_failed')); }
+}
+
+/** Rows per page. Kept in localStorage: it describes this display, like the split. */
+function setPerPage(n: number) {
+  s.meta.per_page = n;
+  localStorage.setItem('ll_mail_per_page', String(n));
+  void goto(1);   // page 7 of the old size is not page 7 of the new one
 }
 
 async function reload() {
