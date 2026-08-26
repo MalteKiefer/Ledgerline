@@ -125,34 +125,33 @@
       </div>
 
       <!-- Selection bar -->
-      <div v-if="!showTrash && !showDupes && !peopleGrid && viewMode === 'grid' && selected.size" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2 text-sm">
-        <span class="font-medium">{{ selected.size }} {{ t('gallery.selected') }}</span>
-        <div class="ml-auto flex items-center gap-1">
-          <div class="relative">
-            <Btn variant="ghost" size="sm" icon="library_add" @click="albumMenu = !albumMenu">{{ t('gallery.add_to_album') }}</Btn>
-            <div v-if="albumMenu" class="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] py-1 shadow-lg">
-              <div v-if="!g.albums.length" class="px-3 py-2 text-xs text-[var(--ll-muted)]">{{ t('gallery.no_albums') }}</div>
-              <button v-for="a in g.albums" :key="a.id" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="addSelectedToAlbum(a)">{{ a.name }}</button>
-              <button class="block w-full border-t border-[var(--ll-border)] px-3 py-1.5 text-left text-sm text-primary-600" @click="newAlbumWithSelection">+ {{ t('gallery.new_album') }}</button>
-            </div>
+      <!-- The selection is made by scrolling, so the actions float rather than
+           sitting at the top of a list that has long since scrolled past. -->
+      <FloatingBar :show="!showTrash && !showDupes && !peopleGrid && viewMode === 'grid' && selected.size > 0" :label="`${selected.size} ${t('gallery.selected')}`">
+        <div class="relative">
+          <!-- Catches the next click anywhere so the menu closes; behind the
+               menu, above the page, only present while the menu is open. -->
+          <div v-if="albumMenu" class="fixed inset-0 z-10" @click="albumMenu = false"></div>
+          <Btn variant="ghost" size="sm" icon="library_add" @click="albumMenu = !albumMenu">{{ t('gallery.add_to_album') }}</Btn>
+          <!-- Opens upward: the bar sits at the bottom edge. -->
+          <div v-if="albumMenu" class="absolute bottom-full right-0 z-20 mb-1 max-h-72 w-52 overflow-y-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] py-1 shadow-lg">
+            <div v-if="!g.albums.length" class="px-3 py-2 text-xs text-[var(--ll-muted)]">{{ t('gallery.no_albums') }}</div>
+            <button v-for="a in g.albums" :key="a.id" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="addSelectedToAlbum(a)">{{ a.name }}</button>
+            <button class="block w-full border-t border-[var(--ll-border)] px-3 py-1.5 text-left text-sm text-primary-600" @click="newAlbumWithSelection">+ {{ t('gallery.new_album') }}</button>
           </div>
-          <Btn v-if="albumId !== null" variant="ghost" size="sm" icon="playlist_remove" @click="removeSelectedFromAlbum">{{ t('gallery.remove_from_album') }}</Btn>
-          <Btn v-if="!showArchive" variant="ghost" size="sm" icon="edit" @click="openBulkEdit">{{ t('gallery.edit') }}</Btn>
-          <Btn variant="ghost" size="sm" :icon="showArchive ? 'unarchive' : 'inventory_2'" @click="archiveSelection(!showArchive)">{{ showArchive ? t('gallery.unarchive') : t('gallery.archive_action') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="bulkTrash">{{ t('common.delete') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="close" @click="clearSelection">{{ t('gallery.clear_selection') }}</Btn>
         </div>
-      </div>
+        <Btn v-if="albumId !== null" variant="ghost" size="sm" icon="playlist_remove" @click="removeSelectedFromAlbum">{{ t('gallery.remove_from_album') }}</Btn>
+        <Btn v-if="!showArchive" variant="ghost" size="sm" icon="edit" @click="openBulkEdit">{{ t('gallery.edit') }}</Btn>
+        <Btn variant="ghost" size="sm" :icon="showArchive ? 'unarchive' : 'inventory_2'" @click="archiveSelection(!showArchive)">{{ showArchive ? t('gallery.unarchive') : t('gallery.archive_action') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="bulkTrash">{{ t('common.delete') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="close" @click="clearSelection">{{ t('gallery.clear_selection') }}</Btn>
+      </FloatingBar>
 
-      <!-- Trash selection bar -->
-      <div v-if="showTrash && selected.size" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2 text-sm">
-        <span class="font-medium">{{ selected.size }} {{ t('gallery.selected') }}</span>
-        <div class="ml-auto flex items-center gap-1">
-          <Btn variant="ghost" size="sm" icon="restore" :disabled="trashBusy" @click="bulkRestore">{{ t('common.restore') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="delete_forever" class="text-red-600" :disabled="trashBusy" @click="bulkForce">{{ t('gallery.delete_forever') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="close" @click="clearSelection">{{ t('gallery.clear_selection') }}</Btn>
-        </div>
-      </div>
+      <FloatingBar :show="showTrash && selected.size > 0" :label="`${selected.size} ${t('gallery.selected')}`">
+        <Btn variant="ghost" size="sm" icon="restore" :disabled="trashBusy" @click="bulkRestore">{{ t('common.restore') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="delete_forever" class="text-red-600" :disabled="trashBusy" @click="bulkForce">{{ t('gallery.delete_forever') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="close" @click="clearSelection">{{ t('gallery.clear_selection') }}</Btn>
+      </FloatingBar>
 
       <!-- Duplicates view -->
       <div v-if="showDupes && !showTrash" class="space-y-4 p-3">
@@ -779,7 +778,7 @@ import { fmtDate, fmtDateTime } from '@spa/lib/datetime';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
-import { Card, Btn, Icon } from '@spa/ui';
+import { Card, Btn, Icon, FloatingBar } from '@spa/ui';
 import LocationField from '@spa/components/LocationField.vue';
 import { useGalleryStore, type Photo, type Album, type PhotoEdit, type Person, type Face, type ContactSuggestion, type ExifDetail, type PublicShareRow, type InternalShareRow, type SharedWithMeRow, type SharedPhoto } from '@spa/stores/gallery';
 import { useToast } from '@spa/composables/useToast';

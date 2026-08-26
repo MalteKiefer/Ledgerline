@@ -184,19 +184,17 @@
         <Btn variant="ghost" size="xs" icon="sell" class="ml-auto" @click="openLabels">{{ t('files.labels_manage') }}</Btn>
       </div>
 
-      <!-- Selection bar -->
-      <div v-if="selCount && view!=='mount'" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2.5">
-        <span class="text-xs font-medium">{{ selCount }} {{ t('files.selected_word') }}</span>
+      <!-- Floats: on a narrow screen the whole page scrolls, so a bar in the
+           flow is gone by the time the selection is made. -->
+      <FloatingBar :show="selCount > 0 && view !== 'mount'" :label="`${selCount} ${t('files.selected_word')}`">
         <Btn variant="ghost" size="sm" icon="select_all" @click="selectAllRows">{{ t('files.select_all') }}</Btn>
-        <div class="ml-auto flex items-center gap-1">
-          <Btn variant="ghost" size="sm" icon="folder_zip" @click="zipSelected">{{ t('files.download_zip') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="archive" @click="openArchive">{{ t('files.archive_create') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="drive_file_move" @click="openBulk('move')">{{ t('files.move') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="content_copy" @click="openBulk('copy')">{{ t('files.copy') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="bulkTrash">{{ t('files.trash') }}</Btn>
-          <Btn variant="ghost" size="sm" @click="clearSelection()">{{ t('common.close') }}</Btn>
-        </div>
-      </div>
+        <Btn variant="ghost" size="sm" icon="folder_zip" @click="zipSelected">{{ t('files.download_zip') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="archive" @click="openArchive">{{ t('files.archive_create') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="drive_file_move" @click="openBulk('move')">{{ t('files.move') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="content_copy" @click="openBulk('copy')">{{ t('files.copy') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="bulkTrash">{{ t('files.trash') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="close" @click="clearSelection()">{{ t('common.close') }}</Btn>
+      </FloatingBar>
 
       <!-- Shared by me: public links + cross-user folder shares, with revoke -->
       <div v-if="view==='shared'" class="flex-1 space-y-6 overflow-y-auto p-4">
@@ -1327,7 +1325,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { fmtDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
-import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Badge, Modal, Select, FloatingBar } from '@spa/ui';
 import StlViewer from '@spa/components/StlViewer.vue';
 import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo, type FolderInfo, type VirusTotalResult } from '@spa/stores/files';
 import { useCryptoStore } from '@spa/stores/crypto';
