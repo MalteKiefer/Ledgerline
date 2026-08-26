@@ -35,6 +35,8 @@ return [
         'backfill_since' => 'Archivieren ab',
         'skip_spam' => 'Spam überspringen',
         'delete_after_import' => 'Nach dem Archivieren vom Server löschen',
+        'write_back_flags' => 'Gelesen-Markierungen und Sterne zurück ins Postfach schreiben',
+        'write_back_flags_hint' => 'Aus heißt: das Postfach bleibt eine reine Lesequelle — was du hier markierst, bleibt hier.',
         'delete_after_import_warn' => 'Destruktiv: entfernt die Nachricht nach dem Archivieren aus dem Ursprungspostfach.',
         'enabled' => 'Aktiviert',
         'sync_interval' => 'Sync-Intervall (Minuten)',

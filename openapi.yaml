@@ -2296,6 +2296,7 @@ components:
         folders: { type: [array, "null"], items: { type: string }, description: "Sync allow-list; null = all folders." }
         backfill_since: { type: [string, "null"], format: date }
         delete_after_import: { type: boolean }
+        write_back_flags: { type: boolean, description: "Carry read marks and stars set in the archive back to the mailbox (UID STORE). Default true; off keeps the mailbox a read-only source." }
         skip_spam: { type: boolean }
         enabled: { type: boolean }
         sync_interval_minutes: { type: [integer, "null"], description: "Per-account override; null = workspace default." }
@@ -12850,6 +12851,7 @@ paths:
                 folders: { type: [array, "null"], items: { type: string } }
                 backfill_since: { type: [string, "null"], format: date }
                 delete_after_import: { type: [boolean, "null"] }
+                write_back_flags: { type: [boolean, "null"] }
                 skip_spam: { type: [boolean, "null"] }
                 enabled: { type: [boolean, "null"] }
                 sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
@@ -12895,6 +12897,7 @@ paths:
                 folders: { type: [array, "null"], items: { type: string } }
                 backfill_since: { type: [string, "null"], format: date }
                 delete_after_import: { type: [boolean, "null"] }
+                write_back_flags: { type: [boolean, "null"] }
                 skip_spam: { type: [boolean, "null"] }
                 enabled: { type: [boolean, "null"] }
                 sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }

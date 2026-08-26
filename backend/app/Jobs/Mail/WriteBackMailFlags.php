@@ -94,13 +94,17 @@ class WriteBackMailFlags implements ShouldQueue
      * @param  list<string>  $messageIds  archive ids, not Message-Id headers
      * @param  'seen'|'flagged'  $flag
      */
-    public static function queueFor(array $messageIds, string $flag, bool $add): void
+    public static function queueFor(int $userId, array $messageIds, string $flag, bool $add): void
     {
         if ($messageIds === []) {
             return;
         }
 
         MailMessage::query()
+            // Explicit, not only the global scope: this decides which mailbox
+            // gets written to, and it must not depend on who happens to be
+            // authenticated when it runs.
+            ->where('user_id', $userId)
             ->whereIn('id', $messageIds)
             ->whereNotNull('uid')
             ->whereNotNull('uidvalidity')
@@ -116,7 +120,7 @@ class WriteBackMailFlags implements ShouldQueue
                     (int) $first->account_id,
                     $first->folder,
                     (int) $first->uidvalidity,
-                    $group->map(fn (MailMessage $m): int => (int) $m->uid)->values()->all(),
+                    array_values($group->map(fn (MailMessage $m): int => (int) $m->uid)->all()),
                     $flag,
                     $add,
                 );

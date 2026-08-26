@@ -35,6 +35,8 @@ return [
         'backfill_since' => 'Archive since',
         'skip_spam' => 'Skip spam',
         'delete_after_import' => 'Delete from server after archiving',
+        'write_back_flags' => 'Write read marks and stars back to the mailbox',
+        'write_back_flags_hint' => 'Off keeps the mailbox a read-only source: what you mark here stays here.',
         'delete_after_import_warn' => 'Destructive: removes the message from the origin mailbox once archived.',
         'enabled' => 'Enabled',
         'sync_interval' => 'Sync interval (minutes)',

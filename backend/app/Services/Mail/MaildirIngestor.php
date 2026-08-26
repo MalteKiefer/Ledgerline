@@ -453,7 +453,9 @@ class MaildirIngestor
 
         $line = trim(strtok($first, "\n") ?: '');
 
-        return ctype_digit($line) && $line !== '' ? (int) $line : null;
+        // ctype_digit is false for the empty string, so a blank first line
+        // already falls through to null.
+        return ctype_digit($line) ? (int) $line : null;
     }
 
     /**

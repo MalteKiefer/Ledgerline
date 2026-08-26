@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\Mail\WriteBackMailFlags;
 use App\Models\MailMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,6 +48,12 @@ class MailFlagController extends Controller
                 ->where('flagged', '!=', $flagged)
                 ->update(['flagged' => $flagged]);
         }
+
+        // Carry it back to the mailbox, so the archive and the phone's mail app
+        // do not give two different answers. Queued and best effort: the local
+        // change is already committed, and messages without an origin reference
+        // are skipped rather than guessed at.
+        WriteBackMailFlags::queueFor((int) $user->id, $ids, 'flagged', $flagged);
 
         return response()->json(['updated' => $count]);
     }
