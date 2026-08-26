@@ -13568,6 +13568,40 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/recipients:
+    get:
+      tags: [Mail]
+      operationId: mailRecipients
+      summary: Addresses to suggest when writing, ranked by correspondence
+      description: >
+        The address book was the only source of suggestions, and most people you
+        write to are not in it. Ranked by how many messages you have received
+        from an address — a plain column, so one grouped query rather than a
+        scan. Covers who has written TO you: recipients live in a JSON column
+        and scanning it per keystroke would be the wrong trade, so the one case
+        this misses is an address you have only ever written to. Needs at least
+        two characters; below that the ranking would just be your busiest
+        senders. Throttled 600/min.
+      parameters:
+        - { in: query, name: q, required: true, schema: { type: string, minLength: 2 } }
+      responses:
+        "200":
+          description: Ranked addresses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recipients:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        email: { type: string }
+                        name: { type: string }
+                        hits: { type: integer, description: "Messages received from this address." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /mail/server-folders:
     get:
       tags: [Mail]

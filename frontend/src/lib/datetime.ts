@@ -112,6 +112,33 @@ export function fmtTime(input: string | number | Date | null | undefined, opts?:
   return d.toLocaleTimeString(loc, { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: is12h() });
 }
 
+/**
+ * Time down to the second, in the effective timezone.
+ *
+ * Two mails in the same minute are common — a bounce right after a send, a
+ * mailing list fanning out — and a stack of them showing the same label says
+ * nothing about their order. Only used where that ordering matters; hour and
+ * minute is enough everywhere else.
+ */
+export function fmtTimeSeconds(input: string | number | Date | null | undefined, opts?: { tz?: string }): string {
+  if (input == null || input === '') return '';
+  const d = toDate(input);
+  if (!d) return String(input);
+  const tz = opts?.tz ?? effectiveTz();
+  const loc = document.documentElement.lang || 'en';
+  return d.toLocaleTimeString(loc, { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: is12h() });
+}
+
+/** Full date plus time to the second. */
+export function fmtDateTimeSeconds(input: string | number | Date | null | undefined, opts?: { tz?: string }): string {
+  if (input == null || input === '') return '';
+  const d = toDate(input);
+  if (!d) return String(input);
+  const date = fmtDate(d, opts);
+  const time = fmtTimeSeconds(d, opts);
+  return date && time ? `${date}, ${time}` : (date || time);
+}
+
 /** Format a full date + time, in the effective timezone. */
 export function fmtDateTime(input: string | number | Date | null | undefined, opts?: { tz?: string }): string {
   if (input == null || input === '') return '';

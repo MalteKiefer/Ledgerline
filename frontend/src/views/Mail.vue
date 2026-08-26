@@ -492,7 +492,9 @@
           <span class="w-40 shrink-0 truncate" :class="!tm.seen ? 'font-semibold' : ''">{{ senderLabel(tm) }}</span>
           <span class="min-w-0 flex-1 truncate text-[var(--ll-muted)]">{{ tm.id === reader.id ? t('mail.reader.shown_below') : (tm.snippet || '') }}</span>
           <Icon v-if="tm.has_attachment" name="attach_file" :size="14" class="shrink-0 text-[var(--ll-muted)]" />
-          <span class="shrink-0 tabular-nums text-[var(--ll-muted)]">{{ fmtDate(tm.date || tm.created_at) }}</span>
+          <!-- To the second: a conversation is read in order, and two mails in
+               the same minute are common enough that a shared label hides it. -->
+          <span class="shrink-0 tabular-nums text-[var(--ll-muted)]">{{ fmtDateTimeSeconds(tm.date || tm.created_at) }}</span>
         </button>
       </div>
 
@@ -921,7 +923,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
+import { fmtDate as libDate, fmtDateTime as libDateTime, fmtDateTimeSeconds as libDateTimeSeconds } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { decodeImapFolder } from '@spa/shared/imap-utf7';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from 'reka-ui';
@@ -1111,6 +1113,7 @@ function authTone(v: string): 'success' | 'warning' | 'error' | 'gray' {
 }
 function fmtDate(iso: string | null) { return libDate(iso); }
 function fmtDateTime(iso: string | null) { return libDateTime(iso); }
+function fmtDateTimeSeconds(iso: string | null) { return libDateTimeSeconds(iso); }
 function fmtBytes(n: number) { if (!n) return '0 B'; const u = ['B', 'KB', 'MB', 'GB']; const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024))); return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`; }
 function senderLabel(message: MailMessage): string {
   if (message.from_name?.trim()) return message.from_name.trim();
@@ -2237,14 +2240,40 @@ function lookupRecipients() {
   recipientTimer = setTimeout(async () => {
     const q = compose.to.split(/[,;\n]/).pop()?.trim() ?? '';
     if (q.length < 2) { recipientSuggestions.value = []; return; }
-    // /contacts/suggest searches server-side. The previous version fetched
-    // /contacts/data — the WHOLE address book — on every keystroke and filtered
-    // it here, so each typed letter moved the entire book over the wire.
+    // Two sources, asked in parallel: people you actually correspond with, and
+    // the address book. The address book alone left the field empty for exactly
+    // the addresses typed most often, because most correspondents are not in it.
+    //
+    // /contacts/suggest searches server-side. An earlier version fetched
+    // /contacts/data — the WHOLE address book — on every keystroke.
     try {
-      const data = await api.get<{ contacts: { fn?: string | null; emails?: string[] | null }[] }>(`/api/v1/contacts/suggest?q=${encodeURIComponent(q)}`);
-      recipientSuggestions.value = (data.contacts ?? [])
-        .flatMap((contact) => (contact.emails ?? []).map((email) => ({ name: contact.fn ?? '', email })))
-        .slice(0, 8);
+      const [known, book] = await Promise.all([
+        api.get<{ recipients: { email: string; name: string }[] }>(`/api/v1/mail/recipients?q=${encodeURIComponent(q)}`)
+          .catch(() => ({ recipients: [] })),
+        api.get<{ contacts: { fn?: string | null; emails?: string[] | null }[] }>(`/api/v1/contacts/suggest?q=${encodeURIComponent(q)}`)
+          .catch(() => ({ contacts: [] })),
+      ]);
+      // Correspondence first — it is ordered by how much mail you have from
+      // each address, which is a better guess than alphabetical. The address
+      // book fills in whoever you have not heard from yet; duplicates keep the
+      // first (and therefore better-ranked) entry.
+      const seen = new Set<string>();
+      const merged: { name: string; email: string }[] = [];
+      for (const r of known.recipients ?? []) {
+        const key = r.email.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push({ name: r.name, email: r.email });
+      }
+      for (const contact of book.contacts ?? []) {
+        for (const email of contact.emails ?? []) {
+          const key = email.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push({ name: contact.fn ?? '', email });
+        }
+      }
+      recipientSuggestions.value = merged.slice(0, 8);
     } catch { recipientSuggestions.value = []; }
   }, 180);
 }
