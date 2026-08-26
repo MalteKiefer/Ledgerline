@@ -591,6 +591,12 @@ class FinanceController extends Controller
             'name' => [$create ? 'required' : 'sometimes', 'string', 'max:300'],
             'parent_id' => ['nullable', 'integer', Rule::exists('finance_projects', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'kind' => ['sometimes', 'string', Rule::in(['business', 'private'])],
+            // Planning fields. A project remains usable with none of them set.
+            'status' => ['nullable', Rule::in(FinanceProject::STATUSES)],
+            'starts_on' => ['nullable', 'date'],
+            'due_on' => ['nullable', 'date'],
+            'budget_net' => ['nullable', 'numeric', 'min:-100000000', 'max:100000000'],
+            'partner_id' => ['nullable', 'integer', Rule::exists('finance_partners', 'id')->where('user_id', request()->user()?->id)],
             'note' => ['nullable', 'string', 'max:100000'],
             'expenses' => ['nullable', 'array', 'max:5000'],
         ];
@@ -616,6 +622,20 @@ class FinanceController extends Controller
         }
         if ($create || $request->has('expenses')) {
             $patch['expenses'] = $request->filled('expenses') ? $request->array('expenses') : null;
+        }
+        if ($create || $request->has('status')) {
+            $patch['status'] = $request->filled('status') ? $request->string('status')->value() : 'planned';
+        }
+        foreach (['starts_on', 'due_on'] as $field) {
+            if ($create || $request->has($field)) {
+                $patch[$field] = $request->filled($field) ? $request->string($field)->value() : null;
+            }
+        }
+        if ($create || $request->has('budget_net')) {
+            $patch['budget_net'] = $request->filled('budget_net') ? $request->float('budget_net') : null;
+        }
+        if ($create || $request->has('partner_id')) {
+            $patch['partner_id'] = $request->filled('partner_id') ? $request->integer('partner_id') : null;
         }
 
         return $patch;

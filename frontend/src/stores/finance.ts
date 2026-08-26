@@ -58,6 +58,10 @@ export interface PaymentMethod {
 export interface Project {
   id: number; name: string; parent_id: number | null; note: string | null; version: number;
   kind: 'business' | 'private';
+  status: 'planned' | 'active' | 'on_hold' | 'done' | 'cancelled';
+  starts_on: string | null; due_on: string | null;
+  budget_net: string | number | null;
+  partner_id: number | null; quote_id: number | null;
   // Hand-typed ledger rows (`ProjectExpense` in openapi) — free-form JSON on the
   // wire, normalised through shared/finance-projects before use.
   expenses: unknown;
@@ -154,6 +158,32 @@ export interface PartnerNote {
   body: string;
   /** When it happened — not when it was typed, which can be days later. */
   occurred_at: string;
+}
+export interface ProjectTask {
+  id: number; finance_project_id: number; title: string; description: string | null;
+  status: 'open' | 'in_progress' | 'done';
+  starts_on: string | null; due_on: string | null;
+  estimate_hours: string | number | null;
+  /** A milestone is the same row with no work in it: a date that matters. */
+  is_milestone: boolean; sort: number;
+  finance_product_id: number | null; version?: number;
+}
+export interface TimeEntry {
+  id: number; finance_project_id: number; finance_project_task_id: number | null;
+  date: string; hours: string | number; description: string | null; billable: boolean;
+  /** Frozen when logged: a later rate change must not rewrite past work. */
+  hourly_rate: string | number | null;
+  /** Set once, never cleared — the protection against billing an hour twice. */
+  invoiced_invoice_id: number | null;
+  version?: number;
+}
+export interface ProjectPlan {
+  tasks: ProjectTask[];
+  entries: TimeEntry[];
+  totals: {
+    tasks: number; tasks_done: number; estimate_hours: number;
+    worked_hours: number; unbilled_hours: number; unbilled_value: number;
+  };
 }
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
 export interface NumberGapGroup { group: string; missing: string[]; min: string; max: string; count: number }
@@ -258,6 +288,28 @@ export const useFinanceStore = defineStore('finance', () => {
   const deletePartnerNote = (partnerId: number, noteId: number) =>
     api.delete(`/api/v1/finance/partners/${partnerId}/notes/${noteId}`);
 
+  // ---- Project planning ----
+  // The chain the quote starts: a quote becomes a project, its service lines
+  // become tasks with their quoted hours, worked hours go back out as invoice
+  // lines. Every link is optional — a project needs no quote, an hour no task.
+  const projectPlan = (id: number) => api.get<ProjectPlan>(`/api/v1/finance/projects/${id}/plan`);
+  const createTask = (projectId: number, body: Record<string, unknown>) =>
+    api.post<{ task: ProjectTask }>(`/api/v1/finance/projects/${projectId}/tasks`, body);
+  const updateTask = (id: number, body: Record<string, unknown>) =>
+    api.put<{ task: ProjectTask }>(`/api/v1/finance/project-tasks/${id}`, body);
+  const deleteTask = (id: number) => api.delete(`/api/v1/finance/project-tasks/${id}`);
+  const reorderTasks = (projectId: number, ids: number[]) =>
+    api.post(`/api/v1/finance/projects/${projectId}/tasks/reorder`, { ids });
+  const logTime = (projectId: number, body: Record<string, unknown>) =>
+    api.post<{ entry: TimeEntry }>(`/api/v1/finance/projects/${projectId}/time`, body);
+  const updateTime = (id: number, body: Record<string, unknown>) =>
+    api.put<{ entry: TimeEntry }>(`/api/v1/finance/time-entries/${id}`, body);
+  const deleteTime = (id: number) => api.delete(`/api/v1/finance/time-entries/${id}`);
+  const invoiceTime = (projectId: number, until?: string | null) =>
+    api.post<{ invoice: Invoice; entries: number }>(`/api/v1/finance/projects/${projectId}/invoice-time`, until ? { until } : {});
+  const quoteToProject = (quoteId: number) =>
+    api.post<{ project: Project; already?: boolean }>(`/api/v1/finance/quotes/${quoteId}/project`, {});
+
   // ---- Reports (read-only) ----
   const reports = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports${year ? `?year=${year}` : ''}`);
   const vatAdvance = (year?: number, quarter?: number) => {
@@ -338,6 +390,8 @@ export const useFinanceStore = defineStore('finance', () => {
     archivePartner, partnerNotes, addPartnerNote, deletePartnerNote,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,
     saveProject, deleteProject, moveProject, restoreProject, forceProject,
+    projectPlan, createTask, updateTask, deleteTask, reorderTasks,
+    logTime, updateTime, deleteTime, invoiceTime, quoteToProject,
     projectAttachments, linkFileToProject, linkPhotoToProject,
   };
 });

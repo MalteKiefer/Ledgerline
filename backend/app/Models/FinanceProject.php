@@ -6,6 +6,8 @@ namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -31,10 +33,39 @@ class FinanceProject extends Model
     use OwnsUserData;
     use SoftDeletes;
 
-    protected $fillable = ['parent_id', 'name', 'kind', 'note', 'expenses'];
+    /** planned → active → done; on_hold and cancelled are neither. */
+    public const STATUSES = ['planned', 'active', 'on_hold', 'done', 'cancelled'];
+
+    protected $fillable = [
+        'parent_id', 'name', 'kind', 'note', 'expenses',
+        'status', 'starts_on', 'due_on', 'budget_net', 'partner_id',
+    ];
 
     protected $casts = [
         'expenses' => 'array',
+        'starts_on' => 'date',
+        'due_on' => 'date',
+        'budget_net' => 'decimal:2',
+        'partner_id' => 'integer',
+        'quote_id' => 'integer',
         'version' => 'integer',
     ];
+
+    /** @return BelongsTo<FinancePartner, $this> */
+    public function partner(): BelongsTo
+    {
+        return $this->belongsTo(FinancePartner::class, 'partner_id');
+    }
+
+    /** @return HasMany<FinanceProjectTask, $this> */
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(FinanceProjectTask::class, 'finance_project_id');
+    }
+
+    /** @return HasMany<FinanceTimeEntry, $this> */
+    public function timeEntries(): HasMany
+    {
+        return $this->hasMany(FinanceTimeEntry::class, 'finance_project_id');
+    }
 }
