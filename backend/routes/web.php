@@ -523,6 +523,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/gallery/dates', [GalleryController::class, 'dates'])->name('gallery.dates');
         Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('gallery.search');
         Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->middleware('throttle:60,1')->name('gallery.duplicates');
+        Route::get('/gallery/duplicates/formats', [GalleryController::class, 'formatDuplicates'])->middleware('throttle:60,1')->name('gallery.duplicates.formats');
         Route::get('/gallery/people', [GalleryPeopleController::class, 'people'])->name('gallery.people');
         Route::post('/gallery/people/merge', [GalleryPeopleController::class, 'merge'])->middleware('throttle:120,1')->name('gallery.people.merge');
         Route::get('/gallery/people/{person}', [GalleryPeopleController::class, 'person'])->whereNumber('person')->name('gallery.people.show');

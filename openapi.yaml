@@ -6627,6 +6627,42 @@ paths:
         "200": { description: "Matching photos (nearest first; empty when ML is off).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/duplicates/formats:
+    get:
+      tags: [Gallery]
+      operationId: galleryFormatDuplicates
+      summary: The same shot held in two file formats
+      description: >
+        Throttle 60/min. Owner-scoped. Exact where the CLIP scan is approximate,
+        and it answers the case that actually happens: a library exported once as
+        HEIC and again as JPEG, so every picture sits in the timeline twice. The
+        bytes differ, so the upload's sha256 check cannot see it.
+
+
+        The signal is the capture second PLUS more than one format. A burst
+        shares the second too, which is why the format is part of it — a burst is
+        always one format, so this cannot mistake one for a duplicate. One query,
+        no embeddings, no group cap (2000 capture seconds).
+
+
+        `formats` counts how many photos of each format are involved, so a client
+        can offer "keep the HEIC" instead of making the user decide group by
+        group.
+      responses:
+        "200":
+          description: Groups of one shot held in several formats.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } }
+                  formats: { type: object, additionalProperties: { type: integer } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /gallery/duplicates:
     get:
       tags: [Gallery]
@@ -6635,7 +6671,7 @@ paths:
       description: "Groups of visually near-identical photos (bursts, re-saves, crops) by CLIP-embedding cosine distance — exact byte duplicates are already blocked at upload. Requires the ML sidecar + pgvector; otherwise returns empty."
       security: [ { bearerAuth: [] } ]
       responses:
-        "200": { description: "Duplicate groups (each with ≥2 photos; the first is the suggested keep).", content: { application/json: { schema: { type: object, properties: { groups: { type: array, items: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } } } } }
+        "200": { description: "Duplicate groups (each with ≥2 photos; the first is the suggested keep). The scan runs one vector search per photo and is therefore capped; `truncated` says when the answer is partial, because silently returning 200 of 1400 groups reads as 'that was all of them'.", content: { application/json: { schema: { type: object, properties: { groups: { type: array, items: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } }, truncated: { type: boolean }, scanned: { type: integer } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /gallery/people:

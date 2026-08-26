@@ -76,6 +76,12 @@ class GalleryController extends Controller
     /** How much of a still to stage when only its header tag is wanted. */
     private const CONTENT_ID_SCAN_BYTES = 2 * 1024 * 1024;
 
+    /** How far the CLIP duplicate scan looks, and how much it returns. One
+     *  vector search per photo, so this is a time budget, not a preference. */
+    private const DUP_MAX_SCAN = 5000;
+
+    private const DUP_MAX_GROUPS = 200;
+
     /** Broad video extension set — "any format" uploads; ffprobe validates later. */
     private const VIDEO_EXT = [
         'mp4', 'm4v', 'mov', 'qt', 'webm', 'mkv', 'avi', 'wmv', 'flv', 'mpg', 'mpeg',
@@ -1167,7 +1173,7 @@ class GalleryController extends Controller
         $rows = DB::select(
             'SELECT id FROM gallery_photos
              WHERE user_id = ? AND deleted_at IS NULL AND embedding IS NOT NULL
-             ORDER BY created_at DESC, id DESC LIMIT 5000',
+              ORDER BY created_at DESC, id DESC LIMIT '.self::DUP_MAX_SCAN,
             [$uid],
         );
         $ids = array_values(array_filter(array_map(
@@ -1178,7 +1184,7 @@ class GalleryController extends Controller
         $seen = [];
         $groups = [];
         foreach ($ids as $id) {
-            if (isset($seen[$id]) || count($groups) >= 200) {
+            if (isset($seen[$id]) || count($groups) >= self::DUP_MAX_GROUPS) {
                 continue;
             }
             $nRows = DB::select(
@@ -1221,7 +1227,72 @@ class GalleryController extends Controller
             }
         }
 
-        return response()->json(['groups' => $out]);
+        return response()->json([
+            'groups' => $out,
+            // Say when the answer is partial. The scan is capped (it runs one
+            // vector search per photo), and silently returning 200 of 1400
+            // groups reads as "that was all of them".
+            'truncated' => count($groups) >= self::DUP_MAX_GROUPS || count($ids) >= self::DUP_MAX_SCAN,
+            'scanned' => count($ids),
+        ]);
+    }
+
+    /**
+     * The same photo held twice in different file formats.
+     *
+     * Exact where the CLIP scan is approximate, and it answers the case that
+     * actually happens: a library exported once as HEIC and again as JPEG, so
+     * every picture sits in the timeline twice. The bytes differ, so the upload's
+     * sha256 check cannot see it.
+     *
+     * The signal is the capture second PLUS more than one format. A burst shares
+     * the second too, which is why the format is part of it — a burst is always
+     * one format, so this cannot mistake one for a duplicate. One query, no
+     * embeddings, no cap.
+     */
+    public function formatDuplicates(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+
+        $seconds = GalleryPhoto::query()
+            ->where('user_id', $uid)
+            ->whereNull('deleted_at')
+            ->whereNotNull('taken_at')
+            ->groupBy('taken_at')
+            ->havingRaw('count(*) > 1 and count(distinct mime) > 1')
+            ->orderByDesc('taken_at')
+            ->limit(2000)
+            ->pluck('taken_at');
+
+        if ($seconds->isEmpty()) {
+            return response()->json(['groups' => [], 'formats' => []]);
+        }
+
+        $photos = GalleryPhoto::query()
+            ->where('user_id', $uid)
+            ->whereNull('deleted_at')
+            ->whereIn('taken_at', $seconds)
+            ->orderBy('taken_at')
+            ->get();
+
+        $groups = [];
+        $formats = [];
+        foreach ($photos->groupBy(fn (GalleryPhoto $p): string => (string) $p->taken_at) as $shot) {
+            if ($shot->count() < 2 || $shot->pluck('mime')->unique()->count() < 2) {
+                continue;
+            }
+            foreach ($shot as $p) {
+                $mime = (string) $p->mime;
+                $formats[$mime] = ($formats[$mime] ?? 0) + 1;
+            }
+            $groups[] = ['photos' => $shot->map(fn (GalleryPhoto $p): array => $this->row($p))->values()->all()];
+        }
+
+        // Which formats are involved and how often, so the client can offer
+        // "keep the HEIC" rather than making the user decide group by group.
+        arsort($formats);
+
+        return response()->json(['groups' => $groups, 'formats' => $formats]);
     }
 
     /**

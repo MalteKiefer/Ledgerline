@@ -427,6 +427,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/gallery/dates', [GalleryController::class, 'dates'])->name('api.gallery.dates');
             Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('api.gallery.search');
             Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->middleware('throttle:60,1')->name('api.gallery.duplicates');
+            Route::get('/gallery/duplicates/formats', [GalleryController::class, 'formatDuplicates'])->middleware('throttle:60,1')->name('api.gallery.duplicates.formats');
             Route::get('/gallery/people', [GalleryPeopleController::class, 'people'])->name('api.gallery.people');
             Route::post('/gallery/people/merge', [GalleryPeopleController::class, 'merge'])->middleware('throttle:300,1')->name('api.gallery.people.merge');
             Route::get('/gallery/people/{person}', [GalleryPeopleController::class, 'person'])->whereNumber('person')->name('api.gallery.people.show');
