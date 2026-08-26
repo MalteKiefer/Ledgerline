@@ -803,4 +803,40 @@ class GalleryFeatureTest extends TestCase
 
         $this->assertCount(0, $this->getJson(route('gallery.duplicates.formats'))->assertOk()->json('groups'));
     }
+
+    public function test_a_photo_stored_without_a_size_gets_one_when_the_job_runs_again(): void
+    {
+        // PHP's getimagesize does not understand HEIC, so those uploads stored no
+        // size at all — and the pixel-budget guard, which reads the same call,
+        // silently did not apply to them either. The size is read from the header
+        // now, and the backfill re-queues the photos that missed it.
+        Storage::fake((string) config('files.disk'));
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        // A real JPEG, but with the size deliberately unrecorded, standing in for
+        // the HEIC rows: the point is the path that fills a missing size.
+        // Held in a variable first: the fake is collected before the read
+        // otherwise, which is the pitfall this suite has hit before.
+        $base = UploadedFile::fake()->image('x.jpg', 120, 80);
+        $bytes = file_get_contents((string) $base->getRealPath());
+        $path = 'gallery/'.Str::uuid();
+        Storage::disk((string) config('files.disk'))->put($path, (string) $bytes);
+        $photo = new GalleryPhoto;
+        $photo->forceFill([
+            'user_id' => $user->id, 'storage_path' => $path, 'name' => 'x.jpg', 'mime' => 'image/jpeg',
+            'media_type' => 'image', 'status' => 'ready', 'size' => strlen((string) $bytes),
+            'width' => null, 'height' => null, 'thumb_ready' => true, 'preview_ready' => true,
+        ])->save();
+
+        // Both renditions present: the job takes the early branch, which is
+        // exactly where the backfilled photos land.
+        Storage::disk((string) config('files.disk'))->put('gallery/thumb/'.$photo->id.'-'.$photo->version.'.webp', 'x');
+        Storage::disk((string) config('files.disk'))->put('gallery/preview/'.$photo->id.'-'.$photo->version.'.webp', 'x');
+
+        app(GalleryController::class)->generateThumb($photo->fresh(), app(ImageManagerFactory::class));
+
+        $this->assertSame(120, (int) $photo->fresh()?->width);
+        $this->assertSame(80, (int) $photo->fresh()?->height);
+    }
 }
