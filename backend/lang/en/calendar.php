@@ -7,6 +7,9 @@ return [
 
     // SPA app strings
     'ui' => [
+        'photos' => 'Photos',
+        'photos_by_time' => 'Taken during this event',
+        'photos_by_time_place' => 'Taken during this event, within :radius m of its location',
         'default_calendar' => 'Calendar',
         'new_event' => 'New event',
         'edit_event' => 'Edit event',
@@ -171,9 +174,6 @@ return [
         'rolled' => 'Task moved to its next occurrence.',
         'move_up' => 'Move up',
         'move_down' => 'Move down',
-        'photos' => 'Photos',
-        'photos_by_time' => 'Taken during this event',
-        'photos_by_time_place' => 'Taken during this event, within :radius m of its location',
     ],
     'imip' => [
         'cancelled' => 'Cancelled',
