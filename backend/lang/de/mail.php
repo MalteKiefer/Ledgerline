@@ -378,6 +378,7 @@ return [
         'rule_match' => 'Wenn',
         'rule_action' => 'Dann',
         'rule_apply' => 'Auf Bestand anwenden',
+        'rule_from_message' => 'Regel aus dieser Nachricht',
         'rule_apply_all' => 'Alle jetzt anwenden',
         'rule_apply_hint' => 'Regeln laufen normalerweise beim Eintreffen. Jetzt angewandt laufen sie über die schon archivierte Mail — sie markieren als gelesen, verschieben in den Papierkorb und setzen Labels, löschen aber nie.',
         'rule_apply_confirm' => ':name auf die gesamte archivierte Mail anwenden?',

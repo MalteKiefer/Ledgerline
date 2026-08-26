@@ -423,6 +423,7 @@
             <DropdownMenuItem v-if="reader.thread_id" :class="menuItem" @select="viewThread"><Icon name="forum" :size="18" />{{ t('mail.reader.view_thread_list') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" :disabled="printing" @select="printMessage"><Icon name="print" :size="18" />{{ t('mail.reader.print') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" :disabled="pdfExporting" @select="exportPdf"><Icon name="picture_as_pdf" :size="18" />{{ t('mail.reader.export_pdf') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" @select="ruleFromMessage(reader)"><Icon name="rule" :size="18" />{{ t('mail.extras.rule_from_message') }}</DropdownMenuItem>
             <DropdownMenuItem v-if="unsubscribeTargets.length" :class="menuItem" @select="unsubscribeOpen = true"><Icon name="unsubscribe" :size="18" />{{ t('mail.reader.unsubscribe') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" @select="downloadEml"><Icon name="download" :size="18" />{{ t('mail.reader.download_eml') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" @select="readerSetSeen(!reader.seen)"><Icon :name="reader.seen ? 'mark_email_unread' : 'mark_email_read'" :size="18" />{{ reader.seen ? t('mail.actions.mark_unread') : t('mail.actions.mark_read') }}</DropdownMenuItem>
@@ -486,7 +487,7 @@
               <span class="block truncate text-sm">{{ att.filename || att.content_type || '—' }}</span>
               <span class="block text-xs text-[var(--ll-muted)]">{{ fmtBytes(att.size) }}<span v-if="att.inline"> · cid</span></span>
             </span>
-            <Btn variant="ghost" size="xs" icon="visibility" tag="a" :href="s.attachmentRawUrl(att.id)" target="_blank" rel="noopener" :title="t('mail.reader.attachment_view')" />
+            <Btn variant="ghost" size="xs" icon="visibility" :title="t('mail.reader.attachment_view')" @click="openAttachment(att)" />
             <Btn variant="ghost" size="xs" icon="download" tag="a" :href="s.attachmentRawUrl(att.id, true)" :title="t('mail.reader.attachment_download')" />
             <DropdownMenuRoot>
               <DropdownMenuTrigger class="grid h-7 w-7 place-items-center rounded-md hover:bg-black/[0.05] dark:hover:bg-white/10"><Icon name="more_vert" :size="16" /></DropdownMenuTrigger>
@@ -705,6 +706,18 @@
       <Btn variant="solid" :loading="labelsDlg.busy" @click="saveLabel">{{ labelsDlg.editing ? t('common.save') : t('mail.extras.add_label') }}</Btn>
     </div>
     <template #footer><Btn variant="ghost" @click="labelsDlg.show = false">{{ t('common.close') }}</Btn></template>
+  </Modal>
+
+  <!-- Attachment preview: the raw endpoint already serves the safe types inline,
+       so this needs no new call — only somewhere to show them. -->
+  <Modal v-model="attPreview.show" :title="attPreview.name || t('mail.reader.attachments')" width="64rem">
+    <img v-if="attPreview.kind === 'image'" :src="attPreview.url" :alt="attPreview.name" class="mx-auto max-h-[70vh] rounded-lg object-contain">
+    <iframe v-else-if="attPreview.kind === 'pdf'" :src="attPreview.url" class="h-[70vh] w-full rounded-lg border border-[var(--ll-border)] bg-white"></iframe>
+    <pre v-else-if="attPreview.kind === 'text'" class="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[var(--ll-border)] p-3 text-sm">{{ attPreview.text }}</pre>
+    <template #footer>
+      <Btn variant="ghost" @click="attPreview.show = false">{{ t('common.close') }}</Btn>
+      <a :href="attPreview.url + '&download=1'" class="inline-flex"><Btn variant="soft" icon="download">{{ t('common.download') }}</Btn></a>
+    </template>
   </Modal>
 
   <!-- Every attachment the account holds — "the mail with the PDF" without
@@ -1094,6 +1107,35 @@ async function moveCursor(delta: number) {
   const row = rows[next];
   document.getElementById(`mail-row-${row.id}`)?.scrollIntoView({ block: 'nearest' });
   if (readerOpen.value) await openReader(row);
+}
+
+// ---- Attachment preview ---------------------------------------------------
+// Which types are shown rather than downloaded. Deliberately the same short
+// list the server serves inline — offering a preview the browser would refuse
+// to render is worse than offering none.
+const attPreview = reactive<{ show: boolean; kind: 'image' | 'pdf' | 'text' | null; url: string; name: string; text: string }>({
+  show: false, kind: null, url: '', name: '', text: '',
+});
+function previewKindOf(type: string | null | undefined): 'image' | 'pdf' | 'text' | null {
+  const t0 = (type ?? '').toLowerCase();
+  if (t0.startsWith('image/')) return 'image';
+  if (t0 === 'application/pdf') return 'pdf';
+  if (t0.startsWith('text/plain')) return 'text';
+  return null;
+}
+async function openAttachment(att: { id: string; filename?: string | null; content_type?: string | null }) {
+  const kind = previewKindOf(att.content_type);
+  const url = s.attachmentRawUrl(att.id);
+  if (!kind) { window.open(url, '_blank', 'noopener,noreferrer'); return; }
+  attPreview.kind = kind;
+  attPreview.url = url;
+  attPreview.name = att.filename ?? '';
+  attPreview.text = '';
+  if (kind === 'text') {
+    try { attPreview.text = await api.text(`/api/v1/mail/attachments/${att.id}/raw`); }
+    catch { attPreview.text = ''; }
+  }
+  attPreview.show = true;
 }
 
 // ---- Row presentation ----------------------------------------------------
@@ -1867,6 +1909,25 @@ async function runRule(rule: MailRule | null) {
     await s.applyRules(rule?.id);
     success(t('mail.extras.rule_apply_started'));
   } catch { error(t('common.error')); } finally { rulesDlg.busy = false; }
+}
+
+/**
+ * Start a rule from the message on screen.
+ *
+ * Writing "always mark mail from this sender as read" meant opening the menu,
+ * finding rules, and typing the address back in. The form is prefilled and
+ * opened instead — nothing is saved until the user presses add, because a rule
+ * created by a menu click is one nobody reviewed.
+ */
+function ruleFromMessage(m: MailMessage | null) {
+  if (!m) return;
+  const sender = m.from_email || m.from_name || '';
+  Object.assign(rulesForm, {
+    name: sender || (m.subject ?? ''),
+    from: sender, to: '', subject: '', folder: '',
+    has_attachment: false, mark_read: false, trash: false, skip: false, file_receipt: false, add_label: 0,
+  });
+  rulesDlg.show = true;
 }
 
 /** What a rule does, in one line — a list of names says nothing. */

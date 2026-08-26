@@ -378,6 +378,7 @@ return [
         'rule_match' => 'When',
         'rule_action' => 'Then',
         'rule_apply' => 'Apply to existing mail',
+        'rule_from_message' => 'Create rule from this message',
         'rule_apply_all' => 'Apply all now',
         'rule_apply_hint' => 'Rules normally run when mail arrives. Applying them now runs them over mail that is already archived — it marks read, trashes and labels, but never deletes.',
         'rule_apply_confirm' => 'Apply :name to all archived mail?',
