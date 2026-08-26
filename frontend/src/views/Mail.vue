@@ -215,6 +215,14 @@
                 <div class="my-1 h-px bg-[var(--ll-border)]" />
               </template>
 
+              <template v-if="moveTargets.length">
+                <div :class="menuSection">{{ t('mail.actions.move_to') }}</div>
+                <DropdownMenuItem v-for="f in moveTargets" :key="`mv-${f}`" :class="menuItem" @select="bulkMove(f)">
+                  <Icon name="drive_file_move" :size="18" /><span class="flex-1 truncate">{{ f }}</span>
+                </DropdownMenuItem>
+                <div class="my-1 h-px bg-[var(--ll-border)]" />
+              </template>
+
               <div :class="menuSection">{{ t('mail.extras.export') }}</div>
               <DropdownMenuItem :class="menuItem" @select="doExport('mbox')"><Icon name="download" :size="18" />{{ t('mail.extras.export_mbox') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItem" @select="doExport('zip')"><Icon name="folder_zip" :size="18" />{{ t('mail.extras.export_zip') }}</DropdownMenuItem>
@@ -960,6 +968,35 @@ const logLevelItems = [
 const labelRuleItems = computed(() => [{ title: t('common.none'), value: 0 }, ...s.labels.map((l) => ({ title: l.name, value: l.id }))]);
 
 function foldersForAccount(id: number) { return s.folders.filter((f) => f.account_id === id); }
+
+/**
+ * Folders the selection can be filed into.
+ *
+ * Only the ones the archive has actually seen on that account — offering a
+ * folder that does not exist there would fail on the server after the local
+ * move had already happened. The folder the selection is already in is left
+ * out, since moving it there does nothing.
+ */
+const moveTargets = computed(() => {
+  const ids = new Set(s.messages.filter((m) => s.selected.includes(m.id)).map((m) => m.account_id));
+  const here = new Set(s.messages.filter((m) => s.selected.includes(m.id)).map((m) => m.folder));
+  const names = s.folders.filter((f) => ids.has(f.account_id)).map((f) => f.folder);
+  return [...new Set(names)].filter((f) => !(here.size === 1 && here.has(f))).sort();
+});
+
+async function bulkMove(folder: string) {
+  const ids = [...s.selected];
+  if (!ids.length) return;
+  bulkBusy.value = true;
+  try {
+    await inChunks(ids, (part) => s.move(part, folder));
+    s.selected = [];
+    await reload();
+    refreshCounts();
+    success(t('mail.actions.moved', { n: String(ids.length), folder }));
+  } catch { error(t('common.error')); }
+  finally { bulkBusy.value = false; }
+}
 function inboxFolder(id: number): string | null {
   const folders = foldersForAccount(id);
   const exact = folders.find((f) => /^inbox$/i.test(f.folder));

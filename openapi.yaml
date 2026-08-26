@@ -13536,6 +13536,38 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/move:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesMove
+      summary: Move messages into another folder
+      description: >
+        Files mail here and on the origin server (UID MOVE, or COPY + \Deleted
+        + expunge where MOVE is unavailable). Marking spam is this endpoint with
+        the junk folder as the target — there is deliberately no second way to
+        do the same thing. The server half is queued and best effort, and is
+        skipped for accounts with write_back_deletes off; the archived row is
+        never destroyed. Throttled 60/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, folder]
+              properties:
+                ids: { type: array, maxItems: 1000, items: { type: string } }
+                folder: { type: string, maxLength: 255, description: "Target folder. Control characters are refused: the name reaches an IMAP command line." }
+      responses:
+        "200":
+          description: Moved
+          content:
+            application/json:
+              schema: { type: object, properties: { updated: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /mail/messages/{message}/pushback:
     post:
       tags: [Mail]

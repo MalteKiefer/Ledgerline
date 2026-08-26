@@ -173,6 +173,8 @@ return [
     'actions' => [
         'selected_n' => ':n ausgewählt',
         'clear_selection' => 'Auswahl aufheben',
+        'move_to' => 'Verschieben nach',
+        'moved' => ':n Nachricht(en) nach :folder verschoben',
         'mark_all_read' => 'Alle als gelesen',
         'select_all_matching' => 'Alle :n auswählen',
         'whole_result_selected' => 'Alle Treffer sind ausgewählt',

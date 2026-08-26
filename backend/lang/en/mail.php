@@ -173,6 +173,8 @@ return [
     'actions' => [
         'selected_n' => ':n selected',
         'clear_selection' => 'Clear selection',
+        'move_to' => 'Move to',
+        'moved' => 'Moved :n message(s) to :folder',
         'mark_all_read' => 'Mark all as read',
         'select_all_matching' => 'Select all :n',
         'whole_result_selected' => 'Everything matching is selected',

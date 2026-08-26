@@ -386,6 +386,8 @@ export const useMailStore = defineStore('mail', () => {
     return out;
   }
   const trash = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/trash', { ids });
+  /** File mail into another folder, here and on the server. */
+  const move = (ids: string[], folder: string) => api.post<{ updated: number }>('/api/v1/mail/messages/move', { ids, folder });
   const restore = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/restore', { ids });
   const pushBack = (id: string, folder?: string | null) => api.post<{ ok: boolean }>(`/api/v1/mail/messages/${id}/pushback`, { folder: folder ?? null });
   const deleteOrigin = (id: string, folder?: string | null) => api.post<{ ok: boolean; expunged: number }>(`/api/v1/mail/messages/${id}/delete-origin`, { folder: folder ?? null });
@@ -563,7 +565,7 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
-    setSeen, setFlagged, unreadIds, matchingIds, thread, attachments, trash, restore, pushBack, deleteOrigin, setLabels,
+    setSeen, setFlagged, unreadIds, matchingIds, thread, attachments, trash, move, restore, pushBack, deleteOrigin, setLabels,
     compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, applyRules, updateRule, deleteRule,

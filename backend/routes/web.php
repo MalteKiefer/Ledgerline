@@ -41,6 +41,7 @@ use App\Http\Controllers\MailKeyController;
 use App\Http\Controllers\MailLabelController;
 use App\Http\Controllers\MailLogController;
 use App\Http\Controllers\MailMessageController;
+use App\Http\Controllers\MailMoveController;
 use App\Http\Controllers\MailPushbackController;
 use App\Http\Controllers\MailRuleController;
 use App\Http\Controllers\MailSavedSearchController;
@@ -666,6 +667,7 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/mail/messages/flag', [MailFlagController::class, 'update'])->middleware('throttle:120,1')->name('mail.messages.flag');
         Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware('throttle:60,1')->name('mail.messages.trash');
         Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('mail.messages.restore');
+        Route::post('/mail/messages/move', MailMoveController::class)->middleware('throttle:60,1')->name('mail.messages.move');
         Route::post('/mail/messages/labels', [MailLabelController::class, 'apply'])->middleware('throttle:120,1')->name('mail.messages.labels');
         Route::get('/mail/labels', [MailLabelController::class, 'index'])->name('mail.labels.index');
         Route::post('/mail/labels', [MailLabelController::class, 'store'])->middleware('throttle:60,1')->name('mail.labels.store');

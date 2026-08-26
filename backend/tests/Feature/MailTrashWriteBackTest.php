@@ -97,6 +97,44 @@ class MailTrashWriteBackTest extends TestCase
         $this->assertNotNull($message->refresh()->trashed_at);
     }
 
+    public function test_moving_files_it_here_and_queues_the_same_move_on_the_server(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create();
+        $account = $this->account($user);
+        $message = $this->message($user, $account);
+
+        $this->actingAs($user)
+            ->postJson('/mail/messages/move', ['ids' => [$message->id], 'folder' => 'Projects'])
+            ->assertOk();
+
+        // Queued while the rows still said INBOX — the job works out the source
+        // folder from them, so the local update has to come after.
+        Queue::assertPushed(WriteBackMailMove::class, fn (WriteBackMailMove $job): bool => $job->folder === 'INBOX' && $job->target === 'Projects');
+        $this->assertSame('Projects', $message->refresh()->folder);
+        // Filing is not throwing away.
+        $this->assertNull($message->trashed_at);
+    }
+
+    public function test_a_folder_name_with_a_control_character_is_refused(): void
+    {
+        // It ends up on an IMAP command line, where a newline is a second
+        // command rather than part of a name.
+        //
+        // Asserted on the effect, not the status: a validation failure on a web
+        // route is a redirect, and only its /api/v1 twin answers 422.
+        Queue::fake();
+        $user = User::factory()->create();
+        $account = $this->account($user);
+        $message = $this->message($user, $account);
+
+        $this->actingAs($user)
+            ->postJson('/mail/messages/move', ['ids' => [$message->id], 'folder' => "Sent\r\nLOGOUT"]);
+
+        $this->assertSame('INBOX', $message->refresh()->folder);
+        Queue::assertNothingPushed();
+    }
+
     public function test_a_move_without_uidplus_drops_the_handle_rather_than_keeping_a_stale_one(): void
     {
         // The message is in a different folder now and its old number names

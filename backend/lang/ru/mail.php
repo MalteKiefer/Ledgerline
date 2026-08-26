@@ -173,6 +173,8 @@ return [
     'actions' => [
         'selected_n' => 'выбрано: :n',
         'clear_selection' => 'Снять выделение',
+        'move_to' => 'Переместить в',
+        'moved' => ':n письмо(писем) перемещено в :folder',
         'mark_all_read' => 'Отметить все прочитанными',
         'select_all_matching' => 'Выбрать все :n',
         'whole_result_selected' => 'Выбраны все совпадения',
