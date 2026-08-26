@@ -18,6 +18,13 @@
         <Select v-model="tzModel" :label="t('account.pref_timezone')" :options="tzItems" @update:modelValue="onTimezone" />
         <Select v-model="p.prefs.date_format" :label="t('account.pref_date_format')" :options="dateFmtItems" @update:modelValue="savePref('date_format')" />
       </div>
+      <template v-if="auth.can('mail')">
+        <div class="my-4 border-t border-[var(--ll-border)]" />
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Select v-model="p.prefs.mail_avatars" :label="t('account.pref_mail_avatars')" :options="avatarItems" @update:modelValue="savePref('mail_avatars')" />
+        </div>
+        <p class="mt-2 text-xs text-[var(--ll-muted)]">{{ t('account.pref_mail_avatars_hint') }}</p>
+      </template>
     </template>
   </Card>
 </template>
@@ -35,6 +42,19 @@ import { timezoneList, browserTz } from '@spa/lib/datetime';
 const auth = useAuthStore();
 const p = useProfileStore();
 const { success, error } = useToast();
+
+/**
+ * Where a sender picture may come from.
+ *
+ * Ordered by what it costs you, and the default is the one that sends nothing.
+ * Gravatar and Libravatar are absent on purpose: they are keyed by a hash of
+ * the address, so asking them announces that this mailbox is being read.
+ */
+const avatarItems = computed(() => [
+  { title: t('account.mail_avatars_off'), value: 'off' },
+  { title: t('account.mail_avatars_contacts'), value: 'contacts' },
+  { title: t('account.mail_avatars_domain'), value: 'domain' },
+]);
 
 const themeItems = [
   { title: t('messages.menu.theme_light'), value: 'light' },

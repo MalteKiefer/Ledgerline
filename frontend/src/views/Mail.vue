@@ -261,7 +261,8 @@
             :class="[!m.seen ? 'font-semibold' : '', reader?.id === m.id ? 'bg-primary-500/[0.06]' : '']"
             @click="cursor = ri; openReader(m)"
           >
-            <span class="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-white" :style="{ background: avatarColour(m) }">{{ initials(m) }}</span>
+            <img v-if="avatarFor(m)" :src="avatarFor(m)" alt="" class="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-white object-contain" @error="dropAvatar(m)">
+            <span v-else class="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-white" :style="{ background: avatarColour(m) }">{{ initials(m) }}</span>
             <span class="min-w-0 flex-1">
               <span class="flex items-baseline gap-2">
                 <span class="min-w-0 flex-1 truncate text-sm">{{ senderLabel(m) }}</span>
@@ -344,7 +345,10 @@
                 <!-- from -->
                 <div v-if="col === 'from'" class="flex items-center gap-2">
                   <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-primary-500'" />
-                  <span v-if="density !== 'compact'" class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold text-white" :style="{ background: avatarColour(m) }">{{ initials(m) }}</span>
+                  <template v-if="density !== 'compact'">
+                    <img v-if="avatarFor(m)" :src="avatarFor(m)" alt="" class="h-6 w-6 shrink-0 rounded-full bg-white object-contain" @error="dropAvatar(m)">
+                    <span v-else class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold text-white" :style="{ background: avatarColour(m) }">{{ initials(m) }}</span>
+                  </template>
                   <!-- Clicking the sender filters by them: faster than typing
                        from: and it is the same search term either way. -->
                   <span class="min-w-0 flex-1 truncate hover:underline" @click.stop="filterBySender(m)">{{ senderLabel(m) }}</span>
@@ -1299,6 +1303,30 @@ function setDensity(next: 'comfortable' | 'compact') {
 }
 
 /** Initials of the sender — something to aim at when scanning a long list. */
+/**
+ * Sender pictures, looked up once per page.
+ *
+ * Kept in a plain map rather than on the message rows: the same address appears
+ * many times in a list, and a picture belongs to the address, not the mail. A
+ * miss is remembered as an empty string so the same address is not asked about
+ * again on the next page.
+ */
+const avatarMap = ref<Record<string, string>>({});
+function avatarFor(m: MailMessage): string { return avatarMap.value[(m.from_email ?? '').toLowerCase()] || ''; }
+/** An image that will not render is worse than initials, so drop it. */
+function dropAvatar(m: MailMessage) { avatarMap.value[(m.from_email ?? '').toLowerCase()] = ''; }
+async function loadAvatars() {
+  const want = [...new Set(s.messages.map((m) => (m.from_email ?? '').toLowerCase()).filter((e) => e && !(e in avatarMap.value)))];
+  if (!want.length) return;
+  // Marked as asked before the request returns, so a second render of the same
+  // page does not ask again while the first is still in flight.
+  for (const e of want) avatarMap.value[e] = '';
+  try {
+    const r = await s.avatars(want);
+    for (const [email, uri] of Object.entries(r.avatars ?? {})) avatarMap.value[email.toLowerCase()] = uri;
+  } catch { /* initials are a fine answer */ }
+}
+
 function initials(m: MailMessage): string {
   const name = (m.from_name || m.from_email || '').trim();
   if (!name) return '?';
@@ -1639,11 +1667,11 @@ async function reload() {
   if (draftListActive.value) return;
   loading.value = true;
   s.selected = [];
-  try { await s.loadMessages(1); } catch { error(t('mail.toast.load_failed')); } finally { loading.value = false; }
+  try { await s.loadMessages(1); void loadAvatars(); } catch { error(t('mail.toast.load_failed')); } finally { loading.value = false; }
 }
 async function goto(page: number) {
   loading.value = true;
-  try { await s.loadMessages(page); } catch { error(t('mail.toast.load_failed')); } finally { loading.value = false; }
+  try { await s.loadMessages(page); void loadAvatars(); } catch { error(t('mail.toast.load_failed')); } finally { loading.value = false; }
 }
 let debTimer: ReturnType<typeof setTimeout> | undefined;
 function debouncedReload() { clearTimeout(debTimer); debTimer = setTimeout(reload, 300); }

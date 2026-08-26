@@ -394,6 +394,16 @@ export const useMailStore = defineStore('mail', () => {
   }
   const trash = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/trash', { ids });
   /** File mail into another folder, here and on the server. */
+  /**
+   * Pictures for a page of senders, in one request.
+   *
+   * Fifty little images would otherwise be fifty requests. What the server may
+   * look at is the account's own setting; an address with no picture is simply
+   * absent from the answer and keeps its initials.
+   */
+  const avatars = (emails: string[]) =>
+    api.post<{ avatars: Record<string, string> }>('/api/v1/mail/avatars', { emails });
+
   const move = (ids: string[], folder: string) => api.post<{ updated: number }>('/api/v1/mail/messages/move', { ids, folder });
 
   /**
@@ -586,7 +596,7 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
-    setSeen, setFlagged, unreadIds, matchingIds, thread, attachments, trash, move, restore, serverFolders, createFolder, renameFolder, deleteFolder, pushBack, deleteOrigin, setLabels,
+    setSeen, setFlagged, unreadIds, matchingIds, thread, attachments, trash, move, restore, avatars, serverFolders, createFolder, renameFolder, deleteFolder, pushBack, deleteOrigin, setLabels,
     compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, applyRules, updateRule, deleteRule,

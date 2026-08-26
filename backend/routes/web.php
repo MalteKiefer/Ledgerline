@@ -32,6 +32,7 @@ use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\KeyServerController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
+use App\Http\Controllers\MailAvatarController;
 use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MailDeleteOriginController;
 use App\Http\Controllers\MailExportController;
@@ -671,6 +672,7 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('mail.messages.restore');
         Route::post('/mail/messages/move', MailMoveController::class)->middleware('throttle:60,1')->name('mail.messages.move');
         Route::get('/mail/recipients', MailRecipientController::class)->middleware('throttle:600,1')->name('mail.recipients');
+        Route::post('/mail/avatars', MailAvatarController::class)->middleware('throttle:600,1')->name('mail.avatars');
         Route::get('/mail/server-folders', [MailFolderAdminController::class, 'index'])->middleware('throttle:30,1')->name('mail.server-folders.index');
         Route::post('/mail/server-folders', [MailFolderAdminController::class, 'store'])->middleware('throttle:30,1')->name('mail.server-folders.store');
         Route::post('/mail/server-folders/rename', [MailFolderAdminController::class, 'rename'])->middleware('throttle:30,1')->name('mail.server-folders.rename');
