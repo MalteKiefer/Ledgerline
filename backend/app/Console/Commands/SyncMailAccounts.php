@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Jobs\Mail\PullMailFlags;
 use App\Jobs\Mail\SyncMailAccount;
 use App\Models\MailAccount;
 use Illuminate\Console\Command;
@@ -35,6 +36,12 @@ class SyncMailAccounts extends Command
                     return;
                 }
                 SyncMailAccount::dispatch($account->id);
+                // Fetching new mail and reconciling the flags of mail we
+                // already have are different questions, and only the first one
+                // mbsync can answer: the ingestor shreds the local copy it
+                // would otherwise update. Asked for on the same schedule so a
+                // message read on the phone stops being bold here.
+                PullMailFlags::queueForAccount($account);
                 $dispatched++;
             });
 
