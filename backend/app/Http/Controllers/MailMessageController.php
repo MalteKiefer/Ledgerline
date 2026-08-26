@@ -62,7 +62,7 @@ class MailMessageController extends Controller
                 'id', 'user_id', 'account_id', 'folder', 'message_id', 'thread_id',
                 'subject', 'from_name', 'from_email', 'to_json', 'cc_json', 'date', 'size',
                 'has_attachment', 'attachment_count', 'seen', 'flagged', 'answered',
-                'trashed_at', 'spam', 'spf', 'dkim', 'dmarc', 'encrypted_type',
+                'trashed_at', 'removed_from_server_at', 'spam', 'spf', 'dkim', 'dmarc', 'encrypted_type',
                 'decrypt_status', 'created_at', 'text_body',
             ])
             // Trashed = hidden. Excluded by default; ?trashed=1 returns ONLY those.
@@ -514,6 +514,10 @@ class MailMessageController extends Controller
             // One line of the body, so the list can be scanned instead of opened.
             'snippet' => $this->snippet($m),
             'trashed' => $m->trashed_at !== null,
+            // The copy on the server is gone and this is the only one left —
+            // worth saying, because it is the one state the archive cannot
+            // undo by talking to the mailbox again.
+            'removed_from_server' => $m->removed_from_server_at !== null,
             'spam' => $m->spam,
             'spf' => $m->spf,
             'dkim' => $m->dkim,

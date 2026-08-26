@@ -420,6 +420,7 @@ components:
         vat: { type: [string, "null"] }
         locked: { type: boolean, description: "A locked receipt (e.g. an auto-linked invoice) cannot be deleted." }
         trashed: { type: boolean }
+        removed_from_server: { type: boolean, description: "The origin copy has been deleted; the archived copy is the only one left." }
 
     WebDavAccess:
       type: object
@@ -2297,6 +2298,8 @@ components:
         backfill_since: { type: [string, "null"], format: date }
         delete_after_import: { type: boolean }
         write_back_flags: { type: boolean, description: "Carry read marks and stars set in the archive back to the mailbox (UID STORE). Default true; off keeps the mailbox a read-only source." }
+        write_back_deletes: { type: boolean, description: "Let deleting here delete on the server: trashing moves the message to trash_folder, restoring moves it back. Default true. Its own switch because it destroys the origin copy; the archived copy is never removed." }
+        trash_folder: { type: [string, "null"], description: "Where 'throw away' puts a message on this server (Trash, Deleted Items, INBOX.Trash …). Null falls back to Trash." }
         skip_spam: { type: boolean }
         enabled: { type: boolean }
         sync_interval_minutes: { type: [integer, "null"], description: "Per-account override; null = workspace default." }
@@ -2342,6 +2345,7 @@ components:
         attachment_count: { type: integer }
         seen: { type: boolean }
         trashed: { type: boolean }
+        removed_from_server: { type: boolean, description: "The origin copy has been deleted; the archived copy is the only one left." }
         spam: { type: boolean }
         spf: { type: [string, "null"] }
         dkim: { type: [string, "null"] }
@@ -6595,6 +6599,42 @@ paths:
         - { name: archived, in: query, required: false, schema: { type: boolean } }
       responses:
         "200": { description: "Month buckets, newest-first.", content: { application/json: { schema: { type: object, required: [months], properties: { months: { type: array, items: { type: object, required: [ym, count], properties: { ym: { type: string, example: "2026-08" }, count: { type: integer } } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /gallery/map:
+    get:
+      tags: [Gallery]
+      operationId: galleryMap
+      summary: Every located photo in the library, for the map
+      description: >
+        Coordinates for all photos that have them, not just the page of the
+        timeline that happens to be loaded. Three columns per photo, so a large
+        library is still cheap to send. Capped at 20000 points; `truncated`
+        says when the cap was reached rather than leaving the omission silent.
+      parameters:
+        - { in: query, name: album_id, schema: { type: integer } }
+        - { in: query, name: person_id, schema: { type: integer } }
+        - { in: query, name: archived, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Located photos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  points:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        lat: { type: number }
+                        lng: { type: number }
+                        thumb: { type: boolean }
+                        name: { type: [string, "null"] }
+                        ym: { type: [string, "null"], description: "YYYY-MM of the photo in the timeline." }
+                  truncated: { type: boolean }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /gallery/memories:
@@ -12852,6 +12892,8 @@ paths:
                 backfill_since: { type: [string, "null"], format: date }
                 delete_after_import: { type: [boolean, "null"] }
                 write_back_flags: { type: [boolean, "null"] }
+                write_back_deletes: { type: [boolean, "null"] }
+                trash_folder: { type: [string, "null"] }
                 skip_spam: { type: [boolean, "null"] }
                 enabled: { type: [boolean, "null"] }
                 sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
@@ -12898,6 +12940,8 @@ paths:
                 backfill_since: { type: [string, "null"], format: date }
                 delete_after_import: { type: [boolean, "null"] }
                 write_back_flags: { type: [boolean, "null"] }
+                write_back_deletes: { type: [boolean, "null"] }
+                trash_folder: { type: [string, "null"] }
                 skip_spam: { type: [boolean, "null"] }
                 enabled: { type: [boolean, "null"] }
                 sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }

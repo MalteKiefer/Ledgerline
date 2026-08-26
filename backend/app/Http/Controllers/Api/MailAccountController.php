@@ -194,6 +194,8 @@ class MailAccountController extends Controller
             'backfill_since' => ['nullable', 'date'],
             'delete_after_import' => ['nullable', 'boolean'],
             'write_back_flags' => ['nullable', 'boolean'],
+            'write_back_deletes' => ['nullable', 'boolean'],
+            'trash_folder' => ['nullable', 'string', 'max:255'],
             'skip_spam' => ['nullable', 'boolean'],
             'enabled' => ['nullable', 'boolean'],
             'sync_interval_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
@@ -235,6 +237,13 @@ class MailAccountController extends Controller
         if ($request->has('write_back_flags')) {
             $data['write_back_flags'] = $request->boolean('write_back_flags');
         }
+        if ($request->has('write_back_deletes')) {
+            $data['write_back_deletes'] = $request->boolean('write_back_deletes');
+        }
+        if ($request->has('trash_folder')) {
+            $folder = trim($request->string('trash_folder')->value());
+            $data['trash_folder'] = $folder === '' ? null : $folder;
+        }
         if ($request->has('skip_spam')) {
             $data['skip_spam'] = $request->boolean('skip_spam');
         }
@@ -272,6 +281,8 @@ class MailAccountController extends Controller
             'backfill_since' => $account->backfill_since?->toDateString(),
             'delete_after_import' => $account->delete_after_import,
             'write_back_flags' => $account->write_back_flags,
+            'write_back_deletes' => $account->write_back_deletes,
+            'trash_folder' => $account->trash_folder,
             'skip_spam' => $account->skip_spam,
             'enabled' => $account->enabled,
             'sync_interval_minutes' => $account->sync_interval_minutes,

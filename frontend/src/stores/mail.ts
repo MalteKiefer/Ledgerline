@@ -26,6 +26,8 @@ export interface MailAccount {
   backfill_since: string | null;
   delete_after_import: boolean;
   write_back_flags: boolean;
+  write_back_deletes: boolean;
+  trash_folder: string | null;
   skip_spam: boolean;
   enabled: boolean;
   sync_interval_minutes: number | null;
@@ -84,6 +86,7 @@ export interface MailMessage {
   attachment_count: number;
   seen: boolean;
   trashed: boolean;
+  removed_from_server?: boolean;
   spam: boolean;
   spf: string | null;
   dkim: string | null;
@@ -190,7 +193,7 @@ export interface PageMeta { total: number; per_page: number; current_page: numbe
 export interface AccountBody {
   name: string; host: string; port: number; username: string; password?: string | null;
   encryption: string; folders: string[] | null; backfill_since: string | null;
-  delete_after_import: boolean; write_back_flags: boolean; skip_spam: boolean; enabled: boolean; sync_interval_minutes: number | null;
+  delete_after_import: boolean; write_back_flags: boolean; write_back_deletes: boolean; trash_folder: string | null; skip_spam: boolean; enabled: boolean; sync_interval_minutes: number | null;
   // SMTP — optional; smtp_password is blank-kept on update (KeepBlankSecrets).
   smtp_host: string | null; smtp_port: number | null; smtp_username: string | null;
   smtp_password?: string | null; smtp_encryption: string; from_name: string | null; from_email: string | null;

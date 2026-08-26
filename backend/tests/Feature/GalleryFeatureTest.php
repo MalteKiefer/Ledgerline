@@ -136,6 +136,43 @@ class GalleryFeatureTest extends TestCase
         $this->assertGreaterThanOrEqual(1, count($jump->json('photos')));
     }
 
+    public function test_map_returns_the_whole_library_not_one_page(): void
+    {
+        // The map used to plot whatever page of the timeline was loaded, so a
+        // large library showed only its most recent corner and looked complete.
+        $owner = User::factory()->create();
+        for ($i = 0; $i < 3; $i++) {
+            $this->makePhoto($owner, [
+                'taken_at' => '2020-0'.($i + 1).'-01 12:00:00',
+                'lat' => 48.1 + $i,
+                'lng' => 11.5 + $i,
+                'thumb_ready' => true,
+            ]);
+        }
+        // Without coordinates there is nothing to plot.
+        $this->makePhoto($owner, ['taken_at' => '2026-01-01 12:00:00']);
+
+        $res = $this->actingAs($owner)
+            ->getJson(route('gallery.map', ['limit' => 1]))
+            ->assertOk();
+
+        $this->assertCount(3, $res->json('points'));
+        $this->assertFalse($res->json('truncated'));
+        // The month is carried so a pin can jump into the timeline it lives in.
+        $this->assertNotNull($res->json('points.0.ym'));
+    }
+
+    public function test_map_never_shows_another_users_photos(): void
+    {
+        $owner = User::factory()->create();
+        $stranger = User::factory()->create();
+        $this->makePhoto($stranger, ['lat' => 1.0, 'lng' => 2.0]);
+
+        $res = $this->actingAs($owner)->getJson(route('gallery.map'))->assertOk();
+
+        $this->assertSame([], $res->json('points'));
+    }
+
     public function test_edit_resets_readiness_until_worker_rerenders(): void
     {
         Queue::fake();

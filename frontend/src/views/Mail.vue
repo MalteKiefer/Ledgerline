@@ -678,6 +678,9 @@
       <label class="flex items-center gap-2 text-sm"><input v-model="editor.form.delete_after_import" type="checkbox" class="accent-primary-500">{{ t('mail.form.delete_after_import') }}</label>
       <label class="flex items-center gap-2 text-sm"><input v-model="editor.form.write_back_flags" type="checkbox" class="accent-primary-500">{{ t('mail.form.write_back_flags') }}</label>
       <p class="text-xs text-[var(--ll-muted)]">{{ t('mail.form.write_back_flags_hint') }}</p>
+      <label class="flex items-center gap-2 text-sm"><input v-model="editor.form.write_back_deletes" type="checkbox" class="accent-primary-500">{{ t('mail.form.write_back_deletes') }}</label>
+      <p class="text-xs text-[var(--ll-muted)]">{{ t('mail.form.write_back_deletes_hint') }}</p>
+      <TextField v-if="editor.form.write_back_deletes" v-model="editor.form.trash_folder" :label="t('mail.form.trash_folder')" :placeholder="'Trash'" />
       <p v-if="editor.form.delete_after_import" class="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">{{ t('mail.form.delete_after_import_warn') }}</p>
       <div v-if="editor.testResult" class="rounded-lg px-3 py-2 text-xs" :class="editor.testResult.ok ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'">
         {{ editor.testResult.ok ? t('mail.accounts.test_ok') : t('mail.accounts.test_failed') }}<span v-if="editor.testResult.detail"> — {{ editor.testResult.detail }}</span>
@@ -1824,7 +1827,7 @@ async function toggleReaderLabel(id: number) {
 const folderInput = ref('');
 const editor = reactive<{ show: boolean; id: number | null; step: 1 | 2; email: string; detecting: boolean; discovery: MailAutoconfig | null; saving: boolean; testing: boolean; folders: string[]; hasSmtpPassword: boolean; testResult: { ok: boolean; detail: string } | null; form: AccountBody }>({
   show: false, id: null, step: 1, email: '', detecting: false, discovery: null, saving: false, testing: false, folders: [], hasSmtpPassword: false, testResult: null,
-  form: { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, write_back_flags: true, skip_spam: true, enabled: true, sync_interval_minutes: null },
+  form: { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, write_back_flags: true, write_back_deletes: true, trash_folder: '', skip_spam: true, enabled: true, sync_interval_minutes: null },
 });
 function openAccountEditor(a: MailAccount | null) {
   editor.testResult = null; folderInput.value = '';
@@ -1832,10 +1835,10 @@ function openAccountEditor(a: MailAccount | null) {
   editor.hasSmtpPassword = a?.has_smtp_password ?? false;
   if (a) {
     editor.id = a.id; editor.folders = [...(a.folders ?? [])];
-    Object.assign(editor.form, { name: a.name, host: a.host, port: a.port, username: a.username, password: '', encryption: a.encryption, smtp_host: a.smtp_host ?? '', smtp_port: a.smtp_port, smtp_username: a.smtp_username ?? '', smtp_password: '', smtp_encryption: a.smtp_encryption ?? 'starttls', from_name: a.from_name ?? '', from_email: a.from_email ?? '', folders: a.folders, backfill_since: a.backfill_since, delete_after_import: a.delete_after_import, write_back_flags: a.write_back_flags, skip_spam: a.skip_spam, enabled: a.enabled, sync_interval_minutes: a.sync_interval_minutes });
+    Object.assign(editor.form, { name: a.name, host: a.host, port: a.port, username: a.username, password: '', encryption: a.encryption, smtp_host: a.smtp_host ?? '', smtp_port: a.smtp_port, smtp_username: a.smtp_username ?? '', smtp_password: '', smtp_encryption: a.smtp_encryption ?? 'starttls', from_name: a.from_name ?? '', from_email: a.from_email ?? '', folders: a.folders, backfill_since: a.backfill_since, delete_after_import: a.delete_after_import, write_back_flags: a.write_back_flags, write_back_deletes: a.write_back_deletes, trash_folder: a.trash_folder ?? '', skip_spam: a.skip_spam, enabled: a.enabled, sync_interval_minutes: a.sync_interval_minutes });
   } else {
     editor.id = null; editor.folders = [];
-    Object.assign(editor.form, { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, write_back_flags: true, skip_spam: true, enabled: true, sync_interval_minutes: null });
+    Object.assign(editor.form, { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, write_back_flags: true, write_back_deletes: true, trash_folder: '', skip_spam: true, enabled: true, sync_interval_minutes: null });
   }
   editor.show = true;
 }

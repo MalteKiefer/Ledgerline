@@ -194,8 +194,11 @@
 
       <!-- Map view -->
       <div v-show="!showTrash && !showDupes && !showPeople && !showMemories && viewMode === 'map'" class="p-3">
-        <div v-if="!mapPhotos.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.no_located') }}</div>
-        <div v-show="mapPhotos.length" ref="mapEl" class="h-[calc(100vh-230px)] w-full overflow-hidden rounded-lg border border-[var(--ll-border)]" />
+        <div v-if="mapLoading && !mapPoints.length" class="py-20 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
+        <div v-else-if="!mapPoints.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.no_located') }}</div>
+        <!-- Says so when the cap was reached, rather than dropping pins quietly. -->
+        <p v-if="mapTruncated" class="mb-2 text-xs text-[var(--ll-muted)]">{{ t('gallery.map_truncated') }}</p>
+        <div v-show="mapPoints.length" ref="mapEl" class="h-[calc(100vh-230px)] w-full overflow-hidden rounded-lg border border-[var(--ll-border)]" />
       </div>
 
       <!-- Grid view -->
@@ -777,7 +780,7 @@ import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon, FloatingBar } from '@spa/ui';
 import LocationField from '@spa/components/LocationField.vue';
-import { useGalleryStore, type Photo, type Album, type PhotoEdit, type Person, type Face, type ContactSuggestion, type ExifDetail, type PublicShareRow, type InternalShareRow, type SharedWithMeRow, type SharedPhoto } from '@spa/stores/gallery';
+import { useGalleryStore, type MapPoint, type Photo, type Album, type PhotoEdit, type Person, type Face, type ContactSuggestion, type ExifDetail, type PublicShareRow, type InternalShareRow, type SharedWithMeRow, type SharedPhoto } from '@spa/stores/gallery';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { ApiError } from '@spa/api/client';
@@ -1063,7 +1066,25 @@ function selectDay(day: string) {
   for (const id of ids) { if (allSel) s.delete(id); else s.add(id); }
   selected.value = s;
 }
-const mapPhotos = computed(() => g.photos.filter((p) => p.lat !== null && p.lng !== null));
+/**
+ * Located photos for the map, fetched for the whole library.
+ *
+ * Deliberately not derived from `g.photos`: that is one page of the timeline,
+ * and a map built from it silently shows the most recent couple of hundred.
+ */
+const mapPoints = ref<MapPoint[]>([]);
+const mapTruncated = ref(false);
+const mapLoading = ref(false);
+async function loadMapPoints() {
+  if (mapLoading.value) return;
+  mapLoading.value = true;
+  try {
+    const r = await g.mapPoints();
+    mapPoints.value = r.points;
+    mapTruncated.value = r.truncated;
+  } catch { /* the empty state says it better than a toast */ }
+  finally { mapLoading.value = false; }
+}
 const viewer = ref(-1);
 const viewerPhoto = computed(() => (viewer.value >= 0 ? current.value[viewer.value] ?? null : null));
 const viewerDate = computed(() => { const p = viewerPhoto.value; return p ? fullDate(p.taken_at ?? p.created_at) : ''; });
@@ -1973,7 +1994,7 @@ let map: L.Map | null = null;
 let markers: L.LayerGroup | null = null;
 function destroyMap() { if (map) { map.remove(); map = null; markers = null; } }
 function syncMap() {
-  const pts = mapPhotos.value;
+  const pts = mapPoints.value;
   if (viewMode.value !== 'map' || !pts.length || !mapEl.value) return;
   if (!map) {
     map = L.map(mapEl.value, { attributionControl: true, scrollWheelZoom: true });
@@ -1989,14 +2010,35 @@ function syncMap() {
       ? `<img src="${g.thumbUrl(p.id)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">`
       : '<div style="width:28px;height:28px;border-radius:50%;background:#6750a4;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>';
     const icon = L.divIcon({ className: 'll-gallery-pin', html: inner, iconSize: [44, 44], iconAnchor: [22, 22] });
-    const idx = g.photos.findIndex((x) => x.id === p.id);
-    L.marker(ll, { icon }).addTo(markers as L.LayerGroup).on('click', () => openViewer(idx));
+    // The photo may not be in the loaded page at all, so a click jumps by id
+    // rather than by an index into a list that mostly does not contain it.
+    L.marker(ll, { icon }).addTo(markers as L.LayerGroup).on('click', () => void openFromMap(p.id, p.ym));
   }
   if (bounds.length === 1) map.setView(bounds[0], 15);
   else map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [40, 40] });
   setTimeout(() => map?.invalidateSize(), 60);
 }
-watch(() => g.photos, () => { if (viewMode.value === 'map') void nextTick().then(syncMap); });
+watch(mapPoints, () => { if (viewMode.value === 'map') void nextTick().then(syncMap); });
+watch(viewMode, (m) => { if (m === 'map') { void loadMapPoints(); void nextTick().then(syncMap); } });
+
+/**
+ * Open a photo the map knows about but the timeline may not have loaded.
+ *
+ * If it is on the current page we open it there; otherwise we show it on its
+ * own, because paging the timeline until it appears could mean fetching
+ * thousands of rows to reach one pin.
+ */
+async function openFromMap(id: number, ym: string | null) {
+  const here = g.photos.findIndex((x) => x.id === id);
+  if (here >= 0) { openViewer(here); return; }
+  if (!ym) return;
+  // Load the month it belongs to, then open it there — the timeline around a
+  // photo is usually why you clicked its pin.
+  await g.jumpToMonth(ym);
+  await nextTick();
+  const idx = g.photos.findIndex((x) => x.id === id);
+  if (idx >= 0) { viewMode.value = 'grid'; openViewer(idx); }
+}
 </script>
 
 <style>

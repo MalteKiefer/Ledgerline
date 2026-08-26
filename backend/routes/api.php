@@ -425,6 +425,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/gallery/memories', [GalleryController::class, 'memories'])->middleware('throttle:120,1')->name('api.gallery.memories');
             Route::get('/gallery/data', [GalleryController::class, 'data'])->name('api.gallery.data');
             Route::get('/gallery/dates', [GalleryController::class, 'dates'])->name('api.gallery.dates');
+            Route::get('/gallery/map', [GalleryController::class, 'map'])->name('api.gallery.map');
             Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('api.gallery.search');
             Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->middleware('throttle:60,1')->name('api.gallery.duplicates');
             Route::get('/gallery/duplicates/formats', [GalleryController::class, 'formatDuplicates'])->middleware('throttle:60,1')->name('api.gallery.duplicates.formats');

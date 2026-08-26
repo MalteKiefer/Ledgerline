@@ -52,6 +52,15 @@ export interface PhotoEdit {
   finance_project_id?: number | null;
 }
 
+export interface MapPoint {
+  id: number;
+  lat: number;
+  lng: number;
+  thumb: boolean;
+  name: string | null;
+  ym: string | null;
+}
+
 export interface Album {
   id: number; name: string; count: number; cover_photo_id: number | null; version: number;
 }
@@ -130,6 +139,14 @@ export const useGalleryStore = defineStore('gallery', () => {
   const jumpToMonth = (ym: string) => load(pageParams.albumId, { archived: pageParams.archived, ym });
 
   // Month histogram for the scrubber (server-side GROUP BY, honours the same filter).
+  /**
+   * Coordinates for every located photo, straight from the server.
+   *
+   * Not derived from `photos`: that holds one page of the timeline, so a map
+   * built from it shows the most recent couple of hundred and looks complete.
+   */
+  const mapPoints = () => api.get<{ points: MapPoint[]; truncated: boolean }>('/api/v1/gallery/map');
+
   const dates = () => api.get<{ months: { ym: string; count: number }[] }>(timelineUrl({}).replace('/gallery/data', '/gallery/dates'))
     .then((r) => r.months ?? []);
 
@@ -290,7 +307,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const sharedRawUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/raw`);
 
   return {
-    photos, albums, nextCursor, totals, loadingMore, load, loadMore, jumpToMonth, dates, loadArchived, memories, mergeData, trash, search, duplicates, formatDuplicates, loadAlbums, upload, attachMotion, pairLivePhotos, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
+    photos, albums, nextCursor, totals, loadingMore, load, loadMore, jumpToMonth, dates, mapPoints, loadArchived, memories, mergeData, trash, search, duplicates, formatDuplicates, loadAlbums, upload, attachMotion, pairLivePhotos, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,
