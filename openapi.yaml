@@ -1011,6 +1011,12 @@ components:
         phone: { type: [string, "null"] }
         vat_id: { type: [string, "null"] }
         hourly_rate: { type: [string, "null"], description: "Default hourly rate as a decimal string (decimal:2 cast); prefills invoice line items for this partner." }
+        customer_number: { type: [string, "null"], description: "Assigned by the server on create from the `customer_number_format` template, unless the caller supplies one (migrating from another system). Only for a party we sell to — a supplier has no use for ours. Binned partners keep their number out of circulation." }
+        kind: { type: [string, "null"], enum: [customer, supplier, both, lead, null], description: "What the partner is to us. The column existed unused since the pivot and carries this meaning from v1.782.0." }
+        payment_terms_days: { type: [integer, "null"], description: "Prefills a new document's due date." }
+        discount_percent: { type: [string, "null"], description: "Standing discount; prefills a new document." }
+        delivery_address: { type: [string, "null"], description: "Where goods go, when that is not where the invoice goes." }
+        archived_at: { type: [string, "null"], format: date-time, description: "Hidden from the pickers but not gone; its documents still point at it." }
         currency: { type: [string, "null"], description: "ISO 4217 code used when invoicing this partner." }
         contacts: { type: array, items: { type: object, additionalProperties: true } }
         version: { type: integer }
@@ -1047,7 +1053,7 @@ components:
 
     FinanceProject:
       type: object
-      description: "Cost project (relational finance_projects, nestable via parent_id)."
+      description: "Cost project (relational finance_projects, nestable via parent_id) and the unit of planning: tasks and logged hours hang off it."
       properties:
         id: { type: integer }
         user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
@@ -1056,6 +1062,12 @@ components:
         kind: { type: string, enum: [business, private] }
         note: { type: [string, "null"] }
         expenses: { type: [array, "null"], items: { $ref: "#/components/schemas/ProjectExpense" }, description: "Hand-typed ledger rows (nullable). Stored verbatim as JSON — the server validates only that it is an array of at most 5000 items." }
+        status: { type: string, enum: [planned, active, on_hold, done, cancelled], description: "on_hold and cancelled are the two states that are neither progress nor completion." }
+        starts_on: { type: [string, "null"], format: date }
+        due_on: { type: [string, "null"], format: date }
+        budget_net: { type: [string, "null"], description: "What it may cost, net. Compared against the ledger; nothing is enforced — a project over budget is information, not an error." }
+        partner_id: { type: [integer, "null"], description: "Whose project it is. Also supplies the hourly rate frozen onto new time entries." }
+        quote_id: { type: [integer, "null"], description: "The quote it came from, when it came from one. Server-owned." }
         version: { type: integer }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -1085,6 +1097,18 @@ components:
         category: { type: [string, "null"], description: "Free-text expense category — matched by name against the managed finance categories (for the Sachkonto) and used as the EÜR grouping label." }
         payment_method_id: { type: [integer, "null"], description: "Which account the money moved through (informational; not validated server-side)." }
 
+    FinancePartnerNote:
+      type: object
+      description: "One entry in a partner's contact log. `occurred_at` is when it happened; `created_at` is when it was typed, which can be days later."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        finance_partner_id: { type: integer }
+        kind: { type: string, enum: [call, meeting, mail, note] }
+        body: { type: string }
+        occurred_at: { type: string, format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
     FinanceProduct:
       type: object
       description: "A sellable article. `stock_qty` is a denormalised read of the movement ledger, written only alongside a movement; treat it as reporting, not as an input."
@@ -1153,6 +1177,66 @@ components:
         vatRate: { type: [number, "null"] }
         kind: { type: [string, "null"], enum: [service, hardware, null] }
         productId: { type: [integer, "null"], description: "The catalogue article this line came from. What lets a finalised invoice move stock." }
+    FinanceProjectTask:
+      type: object
+      description: "A piece of work under a project. A milestone is the same row with `is_milestone` set — a date that matters with no work in it."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        finance_project_id: { type: integer }
+        title: { type: string }
+        description: { type: [string, "null"] }
+        status: { type: string, enum: [open, in_progress, done] }
+        starts_on: { type: [string, "null"], format: date }
+        due_on: { type: [string, "null"], format: date }
+        estimate_hours: { type: [string, "null"], description: "Hours quoted for this piece of work, decimal as string." }
+        is_milestone: { type: boolean }
+        sort: { type: integer, description: "Hand-ordered: task order is a judgement, not a date." }
+        finance_product_id: { type: [integer, "null"], description: "The catalogue article the quote line came from, when it came from one." }
+        version: { type: integer }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
+        deleted_at: { type: [string, "null"], format: date-time }
+    FinanceProjectTaskInput:
+      type: object
+      properties:
+        title: { type: string, maxLength: 300 }
+        description: { type: [string, "null"], maxLength: 20000 }
+        status: { type: [string, "null"], enum: [open, in_progress, done, null] }
+        starts_on: { type: [string, "null"], format: date }
+        due_on: { type: [string, "null"], format: date }
+        estimate_hours: { type: [number, "null"] }
+        is_milestone: { type: [boolean, "null"] }
+        sort: { type: [integer, "null"] }
+        version: { type: [integer, "null"] }
+    FinanceTimeEntry:
+      type: object
+      description: "Hours worked. `hourly_rate` is frozen here rather than read from the partner at invoicing time, so a later rate change cannot rewrite what past work was worth. `invoiced_invoice_id` is set once and never cleared — that is the protection against billing the same hour twice."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        finance_project_id: { type: integer }
+        finance_project_task_id: { type: [integer, "null"], description: "Optional: not everything worth logging was planned." }
+        date: { type: string, format: date }
+        hours: { type: string }
+        description: { type: [string, "null"] }
+        billable: { type: boolean }
+        hourly_rate: { type: [string, "null"] }
+        invoiced_invoice_id: { type: [integer, "null"] }
+        version: { type: integer }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
+        deleted_at: { type: [string, "null"], format: date-time }
+    FinanceTimeEntryInput:
+      type: object
+      properties:
+        finance_project_task_id: { type: [integer, "null"], description: "Must belong to the same project." }
+        date: { type: [string, "null"], format: date, description: "Defaults to today." }
+        hours: { type: number, minimum: -24, maximum: 24, description: "Zero is refused: it states nothing." }
+        description: { type: [string, "null"], maxLength: 20000 }
+        billable: { type: [boolean, "null"], default: true }
+        hourly_rate: { type: [number, "null"], description: "Defaults to the customer's rate at the time of logging." }
+        version: { type: [integer, "null"] }
     FinanceQuote:
       type: object
       description: "A quote (Angebot). Editable only while `status` is draft. `expired` is derived from `valid_until`, never stored — a date does not need a nightly job to become true."
@@ -6148,6 +6232,77 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/partners/{partner}/archive:
+    post:
+      tags: [Finance]
+      operationId: financePartnerArchive
+      summary: Hide a partner from the pickers without deleting it
+      description: "An old customer's documents keep pointing at their partner, so the useful state is \"do not offer this any more\", not deletion. The row stays listed by `/finance/data`; the client filters on `archived_at`. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: partner, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [archived], properties: { archived: { type: boolean } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [partner], properties: { partner: { $ref: "#/components/schemas/FinancePartner" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/partners/{partner}/notes:
+    get:
+      tags: [Finance]
+      operationId: financePartnerNotes
+      summary: A partner's contact log
+      description: "Newest first by `occurred_at`, capped at 500. `occurred_at` is separate from `created_at` because a call is logged after it ends — sorting by the typing time would put the history in the order it was remembered. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: partner, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Log., content: { application/json: { schema: { type: object, required: [notes], properties: { notes: { type: array, items: { $ref: "#/components/schemas/FinancePartnerNote" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Finance]
+      operationId: financePartnerNoteStore
+      summary: Log a contact
+      description: "`occurred_at` defaults to now but is meant to carry when it actually happened. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: partner, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                kind: { type: string, enum: [call, meeting, mail, note], default: note }
+                body: { type: string, maxLength: 20000 }
+                occurred_at: { type: [string, "null"], format: date-time }
+      responses:
+        "201": { description: Logged., content: { application/json: { schema: { type: object, required: [note], properties: { note: { $ref: "#/components/schemas/FinancePartnerNote" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/partners/{partner}/notes/{note}:
+    delete:
+      tags: [Finance]
+      operationId: financePartnerNoteDestroy
+      summary: Remove a log entry
+      description: "Scoped through the partner as well as the owner: a note id alone must not reach into another partner's log. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: partner, in: path, required: true, schema: { type: integer } }
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/payment-methods:
     post:
       tags: [Finance]
@@ -6603,6 +6758,178 @@ paths:
       parameters: [ { name: product, in: path, required: true, schema: { type: integer } } ]
       responses:
         "200": { description: Line., content: { application/json: { schema: { type: object, required: [line], properties: { line: { $ref: "#/components/schemas/FinanceDocumentLine" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/projects/{project}/plan:
+    get:
+      tags: [Finance]
+      operationId: financeProjectPlan
+      summary: A project's tasks, hours and derived figures
+      description: "Everything hanging off one project, plus the figures that only make sense together: estimated against worked, and billable hours still waiting. Progress is derived from the tasks, never stored — a stored percentage is wrong the moment a task changes. Capped at 1000 rows each. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: project, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200":
+          description: Plan.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tasks, entries, totals]
+                properties:
+                  tasks: { type: array, items: { $ref: "#/components/schemas/FinanceProjectTask" } }
+                  entries: { type: array, items: { $ref: "#/components/schemas/FinanceTimeEntry" } }
+                  totals:
+                    type: object
+                    properties:
+                      tasks: { type: integer }
+                      tasks_done: { type: integer }
+                      estimate_hours: { type: number }
+                      worked_hours: { type: number }
+                      unbilled_hours: { type: number, description: "Billable and not yet on an invoice." }
+                      unbilled_value: { type: number, description: "Those hours at their frozen rates." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/projects/{project}/tasks:
+    post:
+      tags: [Finance]
+      operationId: financeProjectTaskStore
+      summary: Add a task to a project
+      description: "Appended at the end unless `sort` is given. A milestone is the same row with `is_milestone` — a date that matters with no work in it. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: project, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FinanceProjectTaskInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, required: [task], properties: { task: { $ref: "#/components/schemas/FinanceProjectTask" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/projects/{project}/tasks/reorder:
+    post:
+      tags: [Finance]
+      operationId: financeProjectTaskReorder
+      summary: Reorder a project's tasks
+      description: "One call rather than one per task: a drag reorders many rows at once and half an applied order is worse than none. Ids from another project are ignored rather than pulled in. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: project, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, maxItems: 1000, items: { type: integer } } } } } } }
+      responses:
+        "200": { description: Reordered., content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/project-tasks/{task}:
+    put:
+      tags: [Finance]
+      operationId: financeProjectTaskUpdate
+      summary: Update a task
+      description: "Partial; optimistic via `version`. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: task, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FinanceProjectTaskInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [task], properties: { task: { $ref: "#/components/schemas/FinanceProjectTask" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Finance]
+      operationId: financeProjectTaskDestroy
+      summary: Delete a task
+      description: "The hours worked on it survive and are detached: work that was done stays logged, it simply loses the task it was filed under. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: task, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/projects/{project}/time:
+    post:
+      tags: [Finance]
+      operationId: financeTimeStore
+      summary: Log hours on a project
+      description: "The task is optional: not everything worth logging was planned. `hourly_rate` is FROZEN on the entry — taken from the customer's rate if not given — because a rate change next year must not rewrite what last year's work was worth. `billable` defaults to true, since the usual case for tracked time is that someone pays for it. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: project, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FinanceTimeEntryInput" } } } }
+      responses:
+        "201": { description: Logged., content: { application/json: { schema: { type: object, required: [entry], properties: { entry: { $ref: "#/components/schemas/FinanceTimeEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/time-entries/{entry}:
+    put:
+      tags: [Finance]
+      operationId: financeTimeUpdate
+      summary: Correct a logged hour
+      description: "Refused with 422 `time_invoiced` once the entry is on an invoice: editing the hours behind a document someone has been sent would make the two disagree. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: entry, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FinanceTimeEntryInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [entry], properties: { entry: { $ref: "#/components/schemas/FinanceTimeEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { description: "Already invoiced, or invalid.", content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [time_invoiced] } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Finance]
+      operationId: financeTimeDestroy
+      summary: Delete a logged hour
+      description: "Refused with 422 `time_invoiced` once it is on an invoice. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: entry, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Already invoiced.", content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [time_invoiced] } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/projects/{project}/invoice-time:
+    post:
+      tags: [Finance]
+      operationId: financeInvoiceTime
+      summary: Bill the hours worked on a project
+      description: "Creates a draft invoice with ONE line per rate — a customer wants \"18.5 hours at 120\", not eleven identical lines. Every entry taken is stamped with the invoice inside the same transaction, which is what stops the same hour going out twice; entries with no rate are grouped as a zero-rate line rather than dropped, because silently leaving work off an invoice is the worse failure. Optional `until` bills up to a cut-off date. Answers 422 `nothing_to_invoice` when there is nothing waiting. Throttle 120/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: project, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { until: { type: [string, "null"], format: date } } } } } }
+      responses:
+        "201": { description: Invoice created., content: { application/json: { schema: { type: object, required: [invoice, entries], properties: { invoice: { $ref: "#/components/schemas/Invoice" }, entries: { type: integer, description: "How many entries went onto it." } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Nothing waiting to be billed.", content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [nothing_to_invoice] } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{quote}/project:
+    post:
+      tags: [Finance]
+      operationId: financeQuoteToProject
+      summary: Turn a quote into a project
+      description: "Only the SERVICE lines become tasks, each carrying the hours it was quoted at — hardware is something you deliver, not something you plan a day around, and it is already accounted for on the invoice. The first line of a line's description becomes the task title, the rest its detail. Idempotent: a second call returns the project it already made (`already: true`, 200). Throttle 120/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: quote, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "201": { description: Project created., content: { application/json: { schema: { type: object, required: [project], properties: { project: { $ref: "#/components/schemas/FinanceProject" } } } } } }
+        "200": { description: "Already converted; the existing project is returned.", content: { application/json: { schema: { type: object, required: [project], properties: { project: { $ref: "#/components/schemas/FinanceProject" }, already: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }

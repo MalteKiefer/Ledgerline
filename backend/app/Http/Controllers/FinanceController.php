@@ -14,6 +14,7 @@ use App\Models\BankTransaction;
 use App\Models\FileEntry;
 use App\Models\FinanceCategory;
 use App\Models\FinancePartner;
+use App\Models\FinancePartnerNote;
 use App\Models\FinanceProduct;
 use App\Models\FinanceProject;
 use App\Models\FinanceQuote;
@@ -177,15 +178,31 @@ class FinanceController extends Controller
 
     public function storePartner(Request $request): JsonResponse
     {
-        $request->validate($this->partnerRules());
-        $partner = DB::transaction(fn (): FinancePartner => FinancePartner::create($this->partnerPatch($request, true)));
+        $request->validate($this->partnerRules(true));
+        $uid = (int) $this->requireUser($request)->id;
 
-        return response()->json(['partner' => $partner], 201);
+        $partner = DB::transaction(function () use ($request, $uid): FinancePartner {
+            $patch = $this->partnerPatch($request, true);
+            $given = $request->input('customer_number');
+            $patch['customer_number'] = is_string($given) && trim($given) !== ''
+                ? trim($given)
+                : $this->nextCustomerNumber($uid, is_string($patch['kind'] ?? null) ? $patch['kind'] : null);
+
+            $partner = new FinancePartner;
+            $partner->fill($patch);
+            // Server-owned like every other number in this module.
+            $partner->forceFill(['customer_number' => $patch['customer_number']]);
+            $partner->save();
+
+            return $partner;
+        });
+
+        return response()->json(['partner' => $partner->fresh()], 201);
     }
 
     public function updatePartner(Request $request, FinancePartner $partner): JsonResponse
     {
-        $request->validate($this->partnerRules() + ['version' => ['sometimes', 'integer', 'min:0']]);
+        $request->validate($this->partnerRules(false) + ['version' => ['sometimes', 'integer', 'min:0']]);
         $expected = $request->has('version') ? $request->integer('version') : null;
         $result = $this->optimistic(FinancePartner::class, $partner->id, $this->partnerPatch($request, false), $expected);
 
@@ -217,12 +234,21 @@ class FinanceController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function partnerRules(): array
+    private function partnerRules(bool $creating = true): array
     {
         return [
-            'name' => ['required', 'string', 'max:300'],
+            // Partial on update, like every other module here: `partnerPatch`
+            // only touches fields the request actually sent, so demanding the
+            // name on every update would contradict what the patch does.
+            'name' => [$creating ? 'required' : 'sometimes', 'string', 'max:300'],
             'category' => ['nullable', 'string', 'max:120'],
-            'kind' => ['nullable', 'string', 'max:16'],
+            // What the partner is to us. The column existed unused since the
+            // pivot; it means this now.
+            'kind' => ['nullable', Rule::in(FinancePartner::KINDS)],
+            'customer_number' => ['nullable', 'string', 'max:32'],
+            'payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'delivery_address' => ['nullable', 'string', 'max:2000'],
             'url' => ['nullable', 'string', 'max:2000'],
             // logo is a data: URI (fetched favicon/BIMI) — a few KB; the column is TEXT.
             'logo' => ['nullable', 'string', 'max:2000000'],
@@ -244,7 +270,7 @@ class FinanceController extends Controller
     private function partnerPatch(Request $request, bool $create): array
     {
         $patch = [];
-        foreach (['name', 'category', 'kind', 'url', 'logo', 'note', 'address', 'email', 'invoice_email', 'phone', 'vat_id'] as $field) {
+        foreach (['name', 'category', 'kind', 'url', 'logo', 'note', 'address', 'delivery_address', 'email', 'invoice_email', 'phone', 'vat_id'] as $field) {
             if ($create || $request->has($field)) {
                 $patch[$field] = $request->filled($field) ? $request->string($field)->value() : ($field === 'name' ? '' : null);
             }
@@ -258,8 +284,115 @@ class FinanceController extends Controller
         if ($create || $request->has('currency')) {
             $patch['currency'] = $request->filled('currency') ? $request->string('currency')->value() : null;
         }
+        if ($create || $request->has('payment_terms_days')) {
+            $patch['payment_terms_days'] = $request->filled('payment_terms_days') ? $request->integer('payment_terms_days') : null;
+        }
+        if ($create || $request->has('discount_percent')) {
+            $patch['discount_percent'] = $request->filled('discount_percent') ? $request->float('discount_percent') : null;
+        }
 
         return $patch;
+    }
+
+    /**
+     * The next customer number, from the same template machinery as the document
+     * numbers — so a configured format behaves the same everywhere.
+     *
+     * Assigned only when the caller did not supply one, and only for a party we
+     * actually sell to: a supplier rarely carries our customer number.
+     */
+    private function nextCustomerNumber(int $userId, ?string $kind): ?string
+    {
+        if ($kind !== null && ! in_array($kind, ['customer', 'both', 'lead'], true)) {
+            return null;
+        }
+        $settings = UserSetting::for($userId);
+        $fmt = is_string($settings->customer_number_format) && $settings->customer_number_format !== ''
+            ? $settings->customer_number_format
+            : 'K-NNNN';
+        $floorRaw = $settings->customer_next_number;
+        $floor = is_numeric($floorRaw) ? (int) $floorRaw : 1;
+
+        // Binned partners count: reusing a number a customer has seen on a
+        // document would make two parties share an identifier.
+        $rows = FinancePartner::withTrashed()->whereNotNull('customer_number')->get(['customer_number']);
+        $maxSeq = 0;
+        foreach ($rows as $row) {
+            $derived = is_string($row->customer_number)
+                ? DocumentNumber::sequenceFrom($fmt, $row->customer_number, null)
+                : null;
+            if ($derived !== null) {
+                $maxSeq = max($maxSeq, $derived);
+            }
+        }
+
+        return DocumentNumber::format($fmt, max($floor, $maxSeq + 1), null);
+    }
+
+    /**
+     * Hide a partner from the pickers without deleting it.
+     *
+     * Its documents keep pointing at it — that is the whole reason this is not a
+     * delete.
+     */
+    public function archivePartner(Request $request, FinancePartner $partner): JsonResponse
+    {
+        $request->validate(['archived' => ['required', 'boolean']]);
+        $partner->forceFill([
+            'archived_at' => $request->boolean('archived') ? Carbon::now() : null,
+            'version' => (int) $partner->version + 1,
+        ])->save();
+
+        return response()->json(['partner' => $partner->fresh()]);
+    }
+
+    /** A partner's contact log, newest first. */
+    public function partnerNotes(FinancePartner $partner): JsonResponse
+    {
+        return response()->json([
+            'notes' => FinancePartnerNote::query()
+                ->where('finance_partner_id', $partner->getKey())
+                ->orderByDesc('occurred_at')
+                ->orderByDesc('id')
+                ->limit(500)
+                ->get(),
+        ]);
+    }
+
+    public function storePartnerNote(Request $request, FinancePartner $partner): JsonResponse
+    {
+        $request->validate([
+            'kind' => ['nullable', Rule::in(FinancePartnerNote::KINDS)],
+            'body' => ['required', 'string', 'max:20000'],
+            // When it happened, which is not when it was typed.
+            'occurred_at' => ['nullable', 'date'],
+        ]);
+
+        $at = $request->input('occurred_at');
+        $kind = $request->input('kind');
+        $note = new FinancePartnerNote;
+        $note->fill([
+            'finance_partner_id' => (int) $partner->id,
+            'kind' => is_string($kind) && $kind !== '' ? $kind : 'note',
+            'body' => $request->string('body')->value(),
+            'occurred_at' => is_string($at) && $at !== '' ? Carbon::parse($at) : Carbon::now(),
+        ]);
+        $note->save();
+
+        return response()->json(['note' => $note->fresh()], 201);
+    }
+
+    public function destroyPartnerNote(FinancePartner $partner, int $note): JsonResponse
+    {
+        // Scoped through the partner as well as the owner: a note id alone must
+        // not reach into another partner's log.
+        FinancePartnerNote::query()
+            ->where('finance_partner_id', $partner->getKey())
+            ->whereKey($note)
+            ->firstOrFail()
+            ->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     // ---- Payment methods ----
@@ -458,6 +591,12 @@ class FinanceController extends Controller
             'name' => [$create ? 'required' : 'sometimes', 'string', 'max:300'],
             'parent_id' => ['nullable', 'integer', Rule::exists('finance_projects', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'kind' => ['sometimes', 'string', Rule::in(['business', 'private'])],
+            // Planning fields. A project remains usable with none of them set.
+            'status' => ['nullable', Rule::in(FinanceProject::STATUSES)],
+            'starts_on' => ['nullable', 'date'],
+            'due_on' => ['nullable', 'date'],
+            'budget_net' => ['nullable', 'numeric', 'min:-100000000', 'max:100000000'],
+            'partner_id' => ['nullable', 'integer', Rule::exists('finance_partners', 'id')->where('user_id', request()->user()?->id)],
             'note' => ['nullable', 'string', 'max:100000'],
             'expenses' => ['nullable', 'array', 'max:5000'],
         ];
@@ -483,6 +622,20 @@ class FinanceController extends Controller
         }
         if ($create || $request->has('expenses')) {
             $patch['expenses'] = $request->filled('expenses') ? $request->array('expenses') : null;
+        }
+        if ($create || $request->has('status')) {
+            $patch['status'] = $request->filled('status') ? $request->string('status')->value() : 'planned';
+        }
+        foreach (['starts_on', 'due_on'] as $field) {
+            if ($create || $request->has($field)) {
+                $patch[$field] = $request->filled($field) ? $request->string($field)->value() : null;
+            }
+        }
+        if ($create || $request->has('budget_net')) {
+            $patch['budget_net'] = $request->filled('budget_net') ? $request->float('budget_net') : null;
+        }
+        if ($create || $request->has('partner_id')) {
+            $patch['partner_id'] = $request->filled('partner_id') ? $request->integer('partner_id') : null;
         }
 
         return $patch;

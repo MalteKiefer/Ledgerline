@@ -22,6 +22,7 @@ use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceProductController;
+use App\Http\Controllers\FinanceProjectPlanController;
 use App\Http\Controllers\FinanceQuoteController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\GalleryCommentController;
@@ -290,6 +291,12 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/finance/partners/{id}/force', [FinanceController::class, 'forceDeletePartner'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.partners.force');
 
         // Payment methods
+        // Customer management: contact log + archive (hide from pickers without
+        // deleting, because the partner's documents keep pointing at it).
+        Route::post('/finance/partners/{partner}/archive', [FinanceController::class, 'archivePartner'])->whereNumber('partner')->middleware('throttle:600,1')->name('finance.partners.archive');
+        Route::get('/finance/partners/{partner}/notes', [FinanceController::class, 'partnerNotes'])->whereNumber('partner')->middleware('throttle:600,1')->name('finance.partners.notes');
+        Route::post('/finance/partners/{partner}/notes', [FinanceController::class, 'storePartnerNote'])->whereNumber('partner')->middleware('throttle:600,1')->name('finance.partners.notes.store');
+        Route::delete('/finance/partners/{partner}/notes/{note}', [FinanceController::class, 'destroyPartnerNote'])->whereNumber('partner')->whereNumber('note')->middleware('throttle:600,1')->name('finance.partners.notes.destroy');
         Route::post('/finance/payment-methods', [FinanceController::class, 'storePaymentMethod'])->middleware('throttle:600,1')->name('finance.payment-methods.store');
         Route::put('/finance/payment-methods/{paymentMethod}', [FinanceController::class, 'updatePaymentMethod'])->whereNumber('paymentMethod')->middleware('throttle:600,1')->name('finance.payment-methods.update');
         Route::delete('/finance/payment-methods/{paymentMethod}', [FinanceController::class, 'destroyPaymentMethod'])->whereNumber('paymentMethod')->middleware('throttle:600,1')->name('finance.payment-methods.destroy');
@@ -327,6 +334,18 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/finance/products/{id}/force', [FinanceProductController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.products.force');
         Route::post('/finance/products/{product}/stock', [FinanceProductController::class, 'stock'])->whereNumber('product')->middleware('throttle:600,1')->name('finance.products.stock');
         Route::get('/finance/products/{product}/movements', [FinanceProductController::class, 'movements'])->whereNumber('product')->middleware('throttle:600,1')->name('finance.products.movements');
+        // Project planning: tasks, hours, and the two conversions that make the
+        // chain a chain (quote → project, worked hours → invoice).
+        Route::get('/finance/projects/{project}/plan', [FinanceProjectPlanController::class, 'plan'])->whereNumber('project')->middleware('throttle:600,1')->name('finance.projects.plan');
+        Route::post('/finance/projects/{project}/tasks', [FinanceProjectPlanController::class, 'storeTask'])->whereNumber('project')->middleware('throttle:600,1')->name('finance.projects.tasks.store');
+        Route::post('/finance/projects/{project}/tasks/reorder', [FinanceProjectPlanController::class, 'reorderTasks'])->whereNumber('project')->middleware('throttle:600,1')->name('finance.projects.tasks.reorder');
+        Route::put('/finance/project-tasks/{task}', [FinanceProjectPlanController::class, 'updateTask'])->whereNumber('task')->middleware('throttle:600,1')->name('finance.project-tasks.update');
+        Route::delete('/finance/project-tasks/{task}', [FinanceProjectPlanController::class, 'destroyTask'])->whereNumber('task')->middleware('throttle:600,1')->name('finance.project-tasks.destroy');
+        Route::post('/finance/projects/{project}/time', [FinanceProjectPlanController::class, 'storeTime'])->whereNumber('project')->middleware('throttle:600,1')->name('finance.projects.time.store');
+        Route::put('/finance/time-entries/{entry}', [FinanceProjectPlanController::class, 'updateTime'])->whereNumber('entry')->middleware('throttle:600,1')->name('finance.time-entries.update');
+        Route::delete('/finance/time-entries/{entry}', [FinanceProjectPlanController::class, 'destroyTime'])->whereNumber('entry')->middleware('throttle:600,1')->name('finance.time-entries.destroy');
+        Route::post('/finance/projects/{project}/invoice-time', [FinanceProjectPlanController::class, 'invoiceTime'])->whereNumber('project')->middleware('throttle:120,1')->name('finance.projects.invoice-time');
+        Route::post('/finance/quotes/{quote}/project', [FinanceProjectPlanController::class, 'projectFromQuote'])->whereNumber('quote')->middleware('throttle:120,1')->name('finance.quotes.project');
         Route::post('/finance/categories', [FinanceController::class, 'storeCategory'])->middleware('throttle:600,1')->name('finance.categories.store');
         Route::put('/finance/categories/{category}', [FinanceController::class, 'updateCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('finance.categories.update');
         Route::delete('/finance/categories/{category}', [FinanceController::class, 'destroyCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('finance.categories.destroy');

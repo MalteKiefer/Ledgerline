@@ -399,6 +399,13 @@
               <span class="flex items-center gap-2">
                 <h2 class="min-w-0 truncate text-lg font-semibold">{{ openProjectRec.name }}</h2>
                 <Badge :tone="openProjectRec.kind === 'private' ? 'gray' : 'info'">{{ t('invoices.project_kind_' + (openProjectRec.kind || 'business')) }}</Badge>
+                <Badge :tone="projectStatusTone(openProjectRec)">{{ t('invoices.project_status_' + (openProjectRec.status || 'planned')) }}</Badge>
+              </span>
+              <span class="block truncate text-xs text-[var(--ll-muted)]">
+                <span v-if="openProjectRec.partner_id">{{ partnerName(openProjectRec.partner_id) }}</span>
+                <span v-if="openProjectRec.partner_id && (openProjectRec.starts_on || openProjectRec.due_on)"> · </span>
+                <span v-if="openProjectRec.starts_on || openProjectRec.due_on" class="tabular-nums">{{ fmtDate(openProjectRec.starts_on) }}<span v-if="openProjectRec.due_on"> – {{ fmtDate(openProjectRec.due_on) }}</span></span>
+                <span v-if="openProjectRec.budget_net"> · {{ t('invoices.project_budget') }} {{ money(Number(openProjectRec.budget_net)) }}</span>
               </span>
               <span v-if="projectParentName(openProjectRec)" class="block truncate text-xs text-[var(--ll-muted)]">{{ t('invoices.project_parent') }}: {{ projectParentName(openProjectRec) }}</span>
             </span>
@@ -428,6 +435,96 @@
             <div class="mt-1 font-mono text-xl font-bold tabular-nums text-primary-600 dark:text-primary-300">{{ money(openProjectRolled.net) }}</div>
           </Card>
         </div>
+
+        <!-- The plan: what was estimated, what has been worked, what is unbilled -->
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Card :body-class="'p-4'">
+            <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.plan_tasks') }}</div>
+            <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ plan.totals.tasks_done }} / {{ plan.totals.tasks }}</div>
+          </Card>
+          <Card :body-class="'p-4'">
+            <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.plan_estimate') }}</div>
+            <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ hrs(plan.totals.estimate_hours) }}</div>
+          </Card>
+          <Card :body-class="'p-4'">
+            <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.plan_worked') }}</div>
+            <div class="mt-1 font-mono text-xl font-bold tabular-nums" :class="overEstimate ? 'text-amber-700 dark:text-amber-400' : ''">{{ hrs(plan.totals.worked_hours) }}</div>
+          </Card>
+          <Card :body-class="'p-4'">
+            <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.plan_unbilled') }}</div>
+            <div class="mt-1 font-mono text-xl font-bold tabular-nums text-primary-600 dark:text-primary-300">{{ money(plan.totals.unbilled_value) }}</div>
+            <div class="text-xs text-[var(--ll-muted)] tabular-nums">{{ hrs(plan.totals.unbilled_hours) }}</div>
+          </Card>
+        </div>
+
+        <!-- Tasks -->
+        <Card :body-class="'p-0'">
+          <template #header><h2 class="text-sm font-semibold">{{ t('invoices.plan_task_list') }} <span class="text-[var(--ll-muted)]">({{ plan.tasks.length }})</span></h2></template>
+          <template #actions>
+            <div class="flex items-end gap-2">
+              <TextField v-model="taskForm.title" :placeholder="t('invoices.plan_task_title')" class="w-48" />
+              <TextField v-model="taskForm.estimate_hours" :placeholder="t('invoices.plan_hours_short')" inputmode="decimal" class="w-20" />
+              <TextField v-model="taskForm.due_on" type="date" class="w-40" />
+              <Btn variant="solid" size="sm" icon="add" :disabled="!taskForm.title.trim()" @click="addTask">{{ t('invoices.add_position') }}</Btn>
+            </div>
+          </template>
+          <ul class="divide-y divide-[var(--ll-border)]">
+            <li v-for="tk in plan.tasks" :key="tk.id" class="group flex items-center gap-3 px-4 py-2.5">
+              <Btn variant="ghost" size="sm" :icon="tk.status === 'done' ? 'check_circle' : tk.status === 'in_progress' ? 'pending' : 'radio_button_unchecked'"
+                   :title="t('invoices.plan_status_' + tk.status)" @click="cycleTask(tk)" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm" :class="tk.status === 'done' ? 'text-[var(--ll-muted)] line-through' : 'font-medium'">
+                  <Icon v-if="tk.is_milestone" name="flag" :size="14" class="mr-1 inline align-[-2px]" />{{ tk.title }}
+                </span>
+                <span class="block text-xs text-[var(--ll-muted)] tabular-nums">
+                  <span v-if="tk.estimate_hours">{{ hrs(Number(tk.estimate_hours)) }} {{ t('invoices.plan_estimated') }}</span>
+                  <span v-if="tk.estimate_hours && workedOn(tk.id)"> · </span>
+                  <span v-if="workedOn(tk.id)">{{ hrs(workedOn(tk.id)) }} {{ t('invoices.plan_done_hours') }}</span>
+                  <span v-if="tk.due_on"> · <span :class="taskOverdue(tk) ? 'text-amber-700 dark:text-amber-400' : ''">{{ fmtDate(tk.due_on) }}</span></span>
+                </span>
+              </span>
+              <Btn variant="ghost" size="sm" icon="timer" :title="t('invoices.plan_log_on_task')" @click="logOnTask(tk)" />
+              <Btn variant="ghost" size="sm" icon="close" class="opacity-0 group-hover:opacity-100" :title="t('common.delete')" @click="delTask(tk)" />
+            </li>
+            <li v-if="!plan.tasks.length" class="px-4 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('invoices.plan_no_tasks') }}</li>
+          </ul>
+        </Card>
+
+        <!-- Hours -->
+        <Card :body-class="'p-0'">
+          <template #header><h2 class="text-sm font-semibold">{{ t('invoices.plan_time') }} <span class="text-[var(--ll-muted)]">({{ plan.entries.length }})</span></h2></template>
+          <template #actions>
+            <Btn variant="solid" size="sm" icon="receipt_long" :disabled="!plan.totals.unbilled_hours" @click="billTime">{{ t('invoices.plan_bill') }}</Btn>
+          </template>
+          <div class="border-b border-[var(--ll-border)] p-3">
+            <div class="flex flex-wrap items-end gap-2">
+              <TextField v-model="timeForm.date" type="date" class="w-40" />
+              <TextField v-model="timeForm.hours" :placeholder="t('invoices.plan_hours_short')" inputmode="decimal" class="w-20" />
+              <Select v-model="timeForm.finance_project_task_id" :options="taskPickItems" class="w-48" />
+              <TextField v-model="timeForm.description" :placeholder="t('invoices.plan_what')" class="min-w-40 flex-1" />
+              <label class="flex items-center gap-1.5 text-sm text-[var(--ll-muted)]">
+                <input v-model="timeForm.billable" type="checkbox" class="rounded"> {{ t('invoices.plan_billable') }}
+              </label>
+              <Btn variant="solid" size="sm" icon="add" :disabled="!parseMoney(timeForm.hours)" @click="addTime">{{ t('invoices.plan_log') }}</Btn>
+            </div>
+          </div>
+          <ul class="divide-y divide-[var(--ll-border)]">
+            <li v-for="e in plan.entries" :key="e.id" class="group flex items-center gap-3 px-4 py-2.5">
+              <span class="w-16 shrink-0 text-right font-medium tabular-nums">{{ hrs(Number(e.hours)) }}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm">{{ e.description || taskTitle(e.finance_project_task_id) || '—' }}</span>
+                <span class="block text-xs text-[var(--ll-muted)] tabular-nums">
+                  {{ fmtDate(e.date) }}
+                  <span v-if="e.hourly_rate"> · {{ money(Number(e.hourly_rate)) }}/{{ t('invoices.product_unit_hour_short') }}</span>
+                  <span v-if="!e.billable"> · {{ t('invoices.plan_not_billable') }}</span>
+                </span>
+              </span>
+              <Badge v-if="e.invoiced_invoice_id" tone="success">{{ t('invoices.plan_invoiced') }}</Badge>
+              <Btn v-else variant="ghost" size="sm" icon="close" class="opacity-0 group-hover:opacity-100" :title="t('common.delete')" @click="delTime(e)" />
+            </li>
+            <li v-if="!plan.entries.length" class="px-4 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('invoices.plan_no_time') }}</li>
+          </ul>
+        </Card>
 
         <!-- Hand-typed ledger -->
         <Card :body-class="'p-0'">
@@ -604,7 +701,14 @@
                   <div class="flex items-center gap-3">
                     <img v-if="logoSrc(p.logo)" :src="logoSrc(p.logo)" alt="" class="h-8 w-8 shrink-0 rounded-lg border border-[var(--ll-border)] bg-white object-contain">
                     <span v-else class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10"><Icon name="groups" :size="18" /></span>
-                    <span class="font-medium">{{ p.name }}</span>
+                    <span class="min-w-0">
+                      <span class="block truncate font-medium">{{ p.name }}<span v-if="p.archived_at" class="ml-1.5 text-xs font-normal text-[var(--ll-muted)]">· {{ t('invoices.partner_archived') }}</span></span>
+                      <span class="block text-xs text-[var(--ll-muted)]">
+                        <span v-if="p.customer_number" class="tabular-nums">{{ p.customer_number }}</span>
+                        <span v-if="p.customer_number && p.kind"> · </span>
+                        <span v-if="p.kind">{{ t('invoices.partner_kind_' + p.kind) }}</span>
+                      </span>
+                    </span>
                   </div>
                 </td>
                 <td class="hidden px-4 py-2.5 text-[var(--ll-muted)] md:table-cell">{{ partnerContactName(p) || '—' }}</td>
@@ -631,6 +735,7 @@
           </div>
           <div class="flex items-center gap-2">
             <Btn variant="soft" size="sm" icon="edit" @click="editPartner(openPartnerRec)">{{ t('common.edit') }}</Btn>
+            <Btn variant="ghost" size="sm" :icon="openPartnerRec.archived_at ? 'unarchive' : 'archive'" @click="toggleArchive(openPartnerRec)">{{ openPartnerRec.archived_at ? t('invoices.partner_unarchive') : t('invoices.partner_archive') }}</Btn>
             <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delPartner(openPartnerRec)" />
           </div>
         </div>
@@ -639,6 +744,10 @@
           <!-- Info -->
           <Card class="lg:col-span-1" :title="t('invoices.partner_info')">
             <dl class="space-y-2.5 text-sm">
+              <div v-if="openPartnerRec.customer_number"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_customer_number') }}</dt><dd class="tabular-nums">{{ openPartnerRec.customer_number }}</dd></div>
+              <div v-if="openPartnerRec.kind"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_kind') }}</dt><dd><Badge tone="gray">{{ t('invoices.partner_kind_' + openPartnerRec.kind) }}</Badge></dd></div>
+              <div v-if="openPartnerRec.payment_terms_days != null"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_payment_terms') }}</dt><dd class="tabular-nums">{{ openPartnerRec.payment_terms_days }} {{ t('invoices.partner_days') }}</dd></div>
+              <div v-if="partnerDiscount(openPartnerRec)"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_discount') }}</dt><dd class="tabular-nums">{{ partnerDiscount(openPartnerRec) }}</dd></div>
               <div v-if="openPartnerRec.vat_id"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_vat') }}</dt><dd class="tabular-nums">{{ openPartnerRec.vat_id }}</dd></div>
               <div v-if="openPartnerRec.email"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_email') }}</dt><dd><a :href="'mailto:' + openPartnerRec.email" class="text-primary-600 hover:underline dark:text-primary-300">{{ openPartnerRec.email }}</a></dd></div>
               <div v-if="openPartnerRec.invoice_email"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_invoice_email') }}</dt><dd><a :href="'mailto:' + openPartnerRec.invoice_email" class="text-primary-600 hover:underline dark:text-primary-300">{{ openPartnerRec.invoice_email }}</a></dd></div>
@@ -647,6 +756,7 @@
               <div v-if="openPartnerRec.phone"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_phone') }}</dt><dd class="tabular-nums">{{ openPartnerRec.phone }}</dd></div>
               <div v-if="openPartnerRec.url"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_url') }}</dt><dd><a :href="safeHref(openPartnerRec.url)" target="_blank" rel="noopener noreferrer" class="break-all text-primary-600 hover:underline dark:text-primary-300">{{ openPartnerRec.url }}</a></dd></div>
               <div v-if="openPartnerRec.address"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_address') }}</dt><dd class="whitespace-pre-line">{{ openPartnerRec.address }}</dd></div>
+              <div v-if="openPartnerRec.delivery_address"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_delivery_address') }}</dt><dd class="whitespace-pre-line">{{ openPartnerRec.delivery_address }}</dd></div>
               <div v-if="openPartnerRec.category"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.receipt_category') }}</dt><dd class="mt-0.5"><Badge tone="gray">{{ openPartnerRec.category }}</Badge></dd></div>
               <div v-if="openPartnerRec.note"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.receipt_note') }}</dt><dd class="whitespace-pre-line">{{ openPartnerRec.note }}</dd></div>
             </dl>
@@ -675,6 +785,43 @@
                 <p v-if="!invoicesForPartner(openPartnerRec.id).length" class="px-4 py-3 text-sm text-[var(--ll-muted)]">—</p>
               </div>
             </Card>
+            <Card :body-class="'p-0'">
+              <template #header><h2 class="text-sm font-semibold">{{ t('invoices.partner_linked_quotes') }} <span class="text-[var(--ll-muted)]">({{ quotesForPartner(openPartnerRec.id).length }})</span></h2></template>
+              <div class="divide-y divide-[var(--ll-border)]">
+                <button v-for="q in quotesForPartner(openPartnerRec.id)" :key="q.id" type="button" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openQuote(q)">
+                  <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="request_quote" :size="18" /></span>
+                  <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium tabular-nums">{{ q.number || t('invoices.quote_status_draft') }}</span><span class="block text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(q.issue_date) }}</span></span>
+                  <Badge :tone="quoteTone(q)">{{ quoteStatusLabel(q) }}</Badge>
+                  <span class="shrink-0 text-sm tabular-nums">{{ money(Number(q.gross ?? 0)) }}</span>
+                </button>
+                <p v-if="!quotesForPartner(openPartnerRec.id).length" class="px-4 py-3 text-sm text-[var(--ll-muted)]">—</p>
+              </div>
+            </Card>
+
+            <!-- Contact log: what was said, in the order it happened -->
+            <Card :body-class="'p-0'">
+              <template #header><h2 class="text-sm font-semibold">{{ t('invoices.partner_log') }} <span class="text-[var(--ll-muted)]">({{ partnerLog.length }})</span></h2></template>
+              <div class="border-b border-[var(--ll-border)] p-3">
+                <div class="flex flex-wrap items-end gap-2">
+                  <Select v-model="noteForm.kind" :options="noteKindItems" class="w-36" />
+                  <TextField v-model="noteForm.occurred_at" type="date" class="w-40" />
+                  <TextField v-model="noteForm.body" :placeholder="t('invoices.partner_log_placeholder')" class="min-w-40 flex-1" />
+                  <Btn variant="solid" size="sm" icon="add" :disabled="!noteForm.body.trim()" @click="addNote">{{ t('invoices.partner_log_add') }}</Btn>
+                </div>
+              </div>
+              <ul class="divide-y divide-[var(--ll-border)]">
+                <li v-for="n in partnerLog" :key="n.id" class="group flex items-start gap-3 px-4 py-2.5">
+                  <span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10"><Icon :name="noteIcon(n.kind)" :size="16" /></span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block whitespace-pre-line text-sm">{{ n.body }}</span>
+                    <span class="block text-xs text-[var(--ll-muted)] tabular-nums">{{ t('invoices.partner_log_kind_' + n.kind) }} · {{ fmtDate(n.occurred_at) }}</span>
+                  </span>
+                  <Btn variant="ghost" size="sm" icon="close" class="opacity-0 group-hover:opacity-100" :title="t('common.delete')" @click="delNote(n)" />
+                </li>
+                <li v-if="!partnerLog.length" class="px-4 py-3 text-sm text-[var(--ll-muted)]">{{ t('invoices.partner_log_empty') }}</li>
+              </ul>
+            </Card>
+
             <Card :body-class="'p-0'">
               <template #header><h2 class="text-sm font-semibold">{{ t('invoices.partner_linked_receipts') }} <span class="text-[var(--ll-muted)]">({{ receiptsForPartner(openPartnerRec.id).length }})</span></h2></template>
               <div class="divide-y divide-[var(--ll-border)]">
@@ -818,6 +965,7 @@
         <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="soft" size="sm" icon="content_copy" @click="dupQuote">{{ t('invoices.quote_duplicate') }}</Btn>
         <Btn v-if="qForm.id && qCanDecide" variant="soft" size="sm" icon="thumb_down" @click="decide('declined')">{{ t('invoices.quote_decline') }}</Btn>
         <Btn v-if="qForm.id && qCanDecide" variant="soft" size="sm" icon="thumb_up" @click="decide('accepted')">{{ t('invoices.quote_accept') }}</Btn>
+        <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="soft" size="sm" icon="account_tree" @click="quoteToProject">{{ t('invoices.quote_to_project') }}</Btn>
         <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="solid" size="sm" icon="receipt_long" @click="convertQuote">{{ t('invoices.quote_to_invoice') }}</Btn>
         <Btn v-if="qForm.id && qForm.status === 'draft'" variant="solid" size="sm" icon="send" @click="sendQuote">{{ t('invoices.quote_send') }}</Btn>
         <Btn variant="ghost" @click="qDialog = false">{{ qLocked ? t('common.close') : t('common.cancel') }}</Btn>
@@ -1254,6 +1402,14 @@
           />
         </label>
 
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.partner_delivery_address') }}</span>
+          <textarea
+            v-model="partnerForm.delivery_address" rows="2" :placeholder="t('invoices.partner_delivery_address_hint')"
+            class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+          />
+        </label>
+
         <!-- Contact persons (Ansprechpartner) — multiple -->
         <div>
           <div class="mb-1.5 flex items-center justify-between">
@@ -1625,6 +1781,13 @@
           :label="t('invoices.project_kind')"
           :options="[{ title: t('invoices.project_kind_business'), value: 'business' }, { title: t('invoices.project_kind_private'), value: 'private' }]"
         />
+        <Select v-model="prjForm.status" :label="t('invoices.status')" :options="projectStatusItems" />
+        <Select v-model="prjForm.partner_id" :label="t('invoices.customer')" :options="customerItems" />
+        <TextField v-model="prjForm.budget_net" :label="t('invoices.project_budget')" inputmode="decimal" />
+        <div class="grid grid-cols-2 gap-3">
+          <TextField v-model="prjForm.starts_on" :label="t('invoices.project_starts')" type="date" />
+          <TextField v-model="prjForm.due_on" :label="t('invoices.project_due')" type="date" />
+        </div>
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.project_note') }}</span>
           <textarea
@@ -2118,7 +2281,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pag
 import type { AlignedData, Options } from 'uplot';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge, type FinanceProduct, type StockMovement, type FinanceQuote, type QuoteLine } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge, type FinanceProduct, type StockMovement, type FinanceQuote, type QuoteLine, type PartnerNote, type ProjectTask, type TimeEntry } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, ApiError, VersionConflict } from '@spa/api/client';
@@ -2201,6 +2364,202 @@ const financeNavGroups = computed(() => [{
   items: sections.map((id) => ({ id, icon: secIcon[id], label: t('invoices.tab_' + id) })),
 }]);
 function isFinanceSectionActive(item: SectionNavItem): boolean { return tab.value === item.id; }
+
+// ---- Project planning ----
+// The chain: a quote becomes a project, its service lines become tasks with the
+// hours they were quoted at, worked hours go back out as invoice lines.
+const plan = ref<{ tasks: ProjectTask[]; entries: TimeEntry[]; totals: { tasks: number; tasks_done: number; estimate_hours: number; worked_hours: number; unbilled_hours: number; unbilled_value: number } }>({
+  tasks: [], entries: [],
+  totals: { tasks: 0, tasks_done: 0, estimate_hours: 0, worked_hours: 0, unbilled_hours: 0, unbilled_value: 0 },
+});
+const taskForm = reactive({ title: '', estimate_hours: '', due_on: '' });
+const timeForm = reactive({ date: todayYmd(), hours: '', finance_project_task_id: 0, description: '', billable: true });
+
+const projectStatusItems = computed(() => (['planned', 'active', 'on_hold', 'done', 'cancelled'] as const)
+  .map((v) => ({ title: t('invoices.project_status_' + v), value: v })));
+const taskPickItems = computed(() => [
+  { title: t('invoices.plan_no_task'), value: 0 },
+  ...plan.value.tasks.map((tk) => ({ title: tk.title, value: tk.id })),
+]);
+
+/** Hours as a short label: 3, not 3.00 — trailing zeros say nothing about time. */
+function hrs(v: number): string {
+  const n = Number(v) || 0;
+  return `${Number.isInteger(n) ? n : n.toFixed(2).replace(/0+$/, '').replace(/[.,]$/, '')} ${t('invoices.product_unit_hour_short')}`;
+}
+function projectStatusTone(p: Project): 'gray' | 'info' | 'success' | 'warning' {
+  if (p.status === 'done') return 'success';
+  if (p.status === 'on_hold') return 'warning';
+  if (p.status === 'active') return 'info';
+  return 'gray';
+}
+function taskOverdue(tk: ProjectTask): boolean {
+  // A done task is never overdue, however old its date: red on delivered work
+  // is noise, and noise is what makes a warning ignorable.
+  if (tk.status === 'done' || !tk.due_on) return false;
+  return new Date(tk.due_on + 'T23:59:59') < new Date();
+}
+function workedOn(taskId: number): number {
+  return plan.value.entries
+    .filter((e) => e.finance_project_task_id === taskId)
+    .reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+}
+function taskTitle(id: number | null): string {
+  return id ? (plan.value.tasks.find((tk) => tk.id === id)?.title ?? '') : '';
+}
+const overEstimate = computed(() =>
+  plan.value.totals.estimate_hours > 0 && plan.value.totals.worked_hours > plan.value.totals.estimate_hours);
+
+async function loadPlan(id: number) {
+  try {
+    plan.value = await f.projectPlan(id);
+  } catch { /* the plan is one panel; the rest of the detail must still show */ }
+}
+async function addTask() {
+  const p = openProjectRec.value;
+  if (!p || !taskForm.title.trim()) return;
+  try {
+    await f.createTask(p.id, {
+      title: taskForm.title.trim(),
+      estimate_hours: parseMoney(taskForm.estimate_hours),
+      due_on: taskForm.due_on || null,
+    });
+    taskForm.title = ''; taskForm.estimate_hours = ''; taskForm.due_on = '';
+    await loadPlan(p.id);
+  } catch { error(t('invoices.save_failed')); }
+}
+async function cycleTask(tk: ProjectTask) {
+  // open → in progress → done → open. One control, because a task has exactly
+  // one state and a select for three values is more clicks than a tap.
+  const next = tk.status === 'open' ? 'in_progress' : tk.status === 'in_progress' ? 'done' : 'open';
+  try {
+    await f.updateTask(tk.id, { status: next, version: tk.version });
+    const p = openProjectRec.value;
+    if (p) await loadPlan(p.id);
+  } catch (e) { error(e instanceof VersionConflict ? t('invoices.version_conflict') : t('invoices.save_failed')); }
+}
+async function delTask(tk: ProjectTask) {
+  if (!await confirmAsk(t('invoices.plan_task_delete_confirm'))) return;
+  try {
+    await f.deleteTask(tk.id);
+    const p = openProjectRec.value;
+    if (p) await loadPlan(p.id);
+  } catch { error(t('invoices.save_failed')); }
+}
+function logOnTask(tk: ProjectTask) {
+  // Prefill the hours form with this task and whatever is left of its estimate.
+  timeForm.finance_project_task_id = tk.id;
+  const left = (Number(tk.estimate_hours) || 0) - workedOn(tk.id);
+  timeForm.hours = left > 0 ? String(left) : '';
+}
+async function addTime() {
+  const p = openProjectRec.value;
+  const hours = parseMoney(timeForm.hours);
+  if (!p || !hours) return;
+  try {
+    await f.logTime(p.id, {
+      date: timeForm.date || null,
+      hours,
+      finance_project_task_id: timeForm.finance_project_task_id || null,
+      description: timeForm.description.trim() || null,
+      billable: timeForm.billable,
+    });
+    timeForm.hours = ''; timeForm.description = '';
+    await loadPlan(p.id);
+  } catch { error(t('invoices.save_failed')); }
+}
+async function delTime(e: TimeEntry) {
+  try {
+    await f.deleteTime(e.id);
+    const p = openProjectRec.value;
+    if (p) await loadPlan(p.id);
+  } catch { error(t('invoices.plan_invoiced_locked')); }
+}
+async function billTime() {
+  const p = openProjectRec.value;
+  if (!p) return;
+  if (!await confirmAsk(t('invoices.plan_bill_confirm'))) return;
+  try {
+    const res = await f.invoiceTime(p.id);
+    await f.load();
+    await loadPlan(p.id);
+    const inv = f.invoices.find((i) => i.id === res.invoice.id);
+    // Land in the invoice: the next thing anyone wants is to check and finalise it.
+    if (inv) { go('documents'); editInvoice(inv); }
+  } catch { error(t('invoices.save_failed')); }
+}
+async function quoteToProject() {
+  if (!qForm.id) return;
+  try {
+    const res = await f.quoteToProject(qForm.id);
+    await f.load();
+    qDialog.value = false;
+    if (res.already) success(t('invoices.quote_already_project'));
+    go('projects');
+    const p = f.projects.find((x) => x.id === res.project.id);
+    if (p) openProject(p);
+  } catch { error(t('invoices.save_failed')); }
+}
+
+// ---- Customer management ----
+const partnerLog = ref<PartnerNote[]>([]);
+const noteForm = reactive({ kind: 'call' as PartnerNote['kind'], body: '', occurred_at: todayYmd() });
+
+const partnerKindItems = computed(() => [
+  { title: t('invoices.partner_kind_customer'), value: 'customer' },
+  { title: t('invoices.partner_kind_supplier'), value: 'supplier' },
+  { title: t('invoices.partner_kind_both'), value: 'both' },
+  { title: t('invoices.partner_kind_lead'), value: 'lead' },
+]);
+const noteKindItems = computed(() => (['call', 'meeting', 'mail', 'note'] as const)
+  .map((k) => ({ title: t('invoices.partner_log_kind_' + k), value: k })));
+
+function noteIcon(kind: PartnerNote['kind']): string {
+  return kind === 'call' ? 'call' : kind === 'meeting' ? 'groups' : kind === 'mail' ? 'mail' : 'sticky_note_2';
+}
+function partnerDiscount(p: Partner): string {
+  const v = p.discount_percent;
+  if (v == null || v === '') return '';
+  const n = Number(v);
+  return n ? `${n}%` : '';
+}
+function quotesForPartner(id: number) {
+  return f.quotes.filter((q) => q.partner_id === id);
+}
+
+async function loadPartnerLog(id: number) {
+  partnerLog.value = [];
+  try {
+    partnerLog.value = (await f.partnerNotes(id)).notes;
+  } catch { /* the log is context; the rest of the detail must still show */ }
+}
+async function addNote() {
+  const p = openPartnerRec.value;
+  if (!p || !noteForm.body.trim()) return;
+  try {
+    await f.addPartnerNote(p.id, {
+      kind: noteForm.kind,
+      body: noteForm.body.trim(),
+      occurred_at: noteForm.occurred_at || null,
+    });
+    noteForm.body = '';
+    await loadPartnerLog(p.id);
+  } catch { error(t('invoices.save_failed')); }
+}
+async function delNote(n: PartnerNote) {
+  const p = openPartnerRec.value;
+  if (!p) return;
+  try {
+    await f.deletePartnerNote(p.id, n.id);
+    await loadPartnerLog(p.id);
+  } catch { error(t('invoices.save_failed')); }
+}
+async function toggleArchive(p: Partner) {
+  try {
+    await f.archivePartner(p.id, !p.archived_at);
+    await f.load();
+  } catch { error(t('invoices.save_failed')); }
+}
 
 // ---- Quotes (Angebote) ----
 // A draft is editable; anything sent is not. The customer is holding a document
@@ -2696,8 +3055,14 @@ function unassignSplitTx() { rForm.linked_transaction_ids = null; }
 
 // Project form
 const prjDialog = ref(false);
-interface PrjForm { id?: number; version?: number; name: string; parent_id: number | null; kind: 'business' | 'private'; note: string }
-const prjForm = reactive<PrjForm>({ name: '', parent_id: null, kind: 'business', note: '' });
+interface PrjForm {
+  id?: number; version?: number; name: string; parent_id: number | null;
+  kind: 'business' | 'private'; note: string;
+  // Planning fields. A project stays usable with none of them set.
+  status: 'planned' | 'active' | 'on_hold' | 'done' | 'cancelled';
+  partner_id: number; budget_net: string; starts_on: string; due_on: string;
+}
+const prjForm = reactive<PrjForm>({ name: '', parent_id: null, kind: 'business', note: '', status: 'planned', partner_id: 0, budget_net: '', starts_on: '', due_on: '' });
 
 onMounted(async () => { await f.load(); await loadReports(); void loadPrintCompany(); });
 
@@ -3377,10 +3742,17 @@ interface PartnerForm {
   id?: number; version?: number;
   name: string; url: string; logo: string; email: string; invoice_email: string;
   phone: string; hourly_rate: string; currency: string; vat_id: string;
-  address: string; category: string; note: string; contacts: PContact[];
+  address: string; delivery_address: string; category: string; note: string; contacts: PContact[];
+  kind: '' | 'customer' | 'supplier' | 'both' | 'lead';
+  customer_number: string; payment_terms_days: string; discount_percent: string;
 }
 function blankPartnerForm(): PartnerForm {
-  return { name: '', url: '', logo: '', email: '', invoice_email: '', phone: '', hourly_rate: '', currency: '', vat_id: '', address: '', category: '', note: '', contacts: [] };
+  return {
+    name: '', url: '', logo: '', email: '', invoice_email: '', phone: '', hourly_rate: '', currency: '',
+    vat_id: '', address: '', delivery_address: '', category: '', note: '', contacts: [],
+    // Most partners are customers; a supplier is the deliberate choice.
+    kind: 'customer', customer_number: '', payment_terms_days: '', discount_percent: '',
+  };
 }
 const partnerForm = reactive<PartnerForm>(blankPartnerForm());
 
@@ -3429,7 +3801,11 @@ function fmtRate(p: Partner): string {
   return fmtMoney(n, cur);
 }
 
-function openPartner(p: Partner) { openPartnerId.value = p.id; partnersView.value = 'detail'; }
+function openPartner(p: Partner) {
+  openPartnerId.value = p.id;
+  partnersView.value = 'detail';
+  void loadPartnerLog(p.id);
+}
 function backToPartners() { partnersView.value = 'list'; openPartnerId.value = null; }
 
 function newPartner() { Object.assign(partnerForm, blankPartnerForm()); pDlg.value = true; }
@@ -3438,7 +3814,11 @@ function editPartner(p: Partner) {
     id: p.id, version: p.version, name: p.name ?? '', url: p.url ?? '', logo: p.logo ?? '',
     email: p.email ?? '', invoice_email: p.invoice_email ?? '', phone: p.phone ?? '',
     hourly_rate: moneyInput(p.hourly_rate), currency: p.currency ?? '',
-    vat_id: p.vat_id ?? '', address: p.address ?? '', category: p.category ?? '', note: p.note ?? '',
+    vat_id: p.vat_id ?? '', address: p.address ?? '', delivery_address: p.delivery_address ?? '',
+    category: p.category ?? '', note: p.note ?? '',
+    kind: p.kind ?? '', customer_number: p.customer_number ?? '',
+    payment_terms_days: p.payment_terms_days == null ? '' : String(p.payment_terms_days),
+    discount_percent: p.discount_percent == null ? '' : String(p.discount_percent),
     contacts: Array.isArray(p.contacts)
       ? p.contacts.map((c) => ({ id: c.id ?? uid(), name: c.name ?? '', email: c.email ?? '', phone: c.phone ?? '', role: c.role ?? '' }))
       : [],
@@ -3502,7 +3882,14 @@ async function savePartnerForm() {
     email: partnerForm.email || null, invoice_email: partnerForm.invoice_email || null,
     phone: partnerForm.phone || null, vat_id: partnerForm.vat_id || null,
     currency: partnerForm.currency || null, address: partnerForm.address || null,
+    delivery_address: partnerForm.delivery_address || null,
     category: partnerForm.category || null, note: partnerForm.note || null,
+    kind: partnerForm.kind || null,
+    // Left blank on create the server assigns one; a typed value is kept as
+    // given, which is how numbers from another system survive a migration.
+    customer_number: partnerForm.customer_number.trim() || null,
+    payment_terms_days: partnerForm.payment_terms_days === '' ? null : Number(partnerForm.payment_terms_days),
+    discount_percent: parseMoney(partnerForm.discount_percent),
     hourly_rate: parseMoney(partnerForm.hourly_rate),
     contacts: partnerForm.contacts
       .filter((c) => `${c.name}${c.email}${c.phone}${c.role}`.trim() !== '')
@@ -4134,7 +4521,12 @@ const projectsView = ref<'list' | 'detail'>('list');
 const openProjectId = ref<number | null>(null);
 const openProjectRec = computed<Project | null>(() => f.projects.find((p) => p.id === openProjectId.value) ?? null);
 
-function openProject(p: Project) { openProjectId.value = p.id; projectsView.value = 'detail'; expPage.value = 1; }
+function openProject(p: Project) {
+  openProjectId.value = p.id;
+  projectsView.value = 'detail';
+  expPage.value = 1;
+  void loadPlan(p.id);
+}
 function backToProjects() { projectsView.value = 'list'; openProjectId.value = null; }
 
 // Newest entry first by default: the date the owner typed on the row, not the
@@ -4176,17 +4568,24 @@ const projectReceipts = computed(() => f.standaloneReceipts
   .filter((r) => r.finance_project_id === openProjectId.value)
   .sort((a, b) => String(b.date ?? b.created_at ?? '').localeCompare(String(a.date ?? a.created_at ?? ''))));
 
-function newProject() { Object.assign(prjForm, { id: undefined, version: undefined, name: '', parent_id: null, kind: 'business', note: '' }); prjDialog.value = true; }
+function newProject() { Object.assign(prjForm, { id: undefined, version: undefined, name: '', parent_id: null, kind: 'business', note: '', status: 'planned', partner_id: 0, budget_net: '', starts_on: '', due_on: '' }); prjDialog.value = true; }
 function newSubProject() {
   Object.assign(prjForm, {
     id: undefined, version: undefined, name: '', parent_id: openProjectId.value,
     // A subproject inherits its parent's business/private nature by default.
     kind: openProjectRec.value?.kind ?? 'business', note: '',
+    status: 'planned', partner_id: 0, budget_net: '', starts_on: '', due_on: '',
   });
   prjDialog.value = true;
 }
 function editProject(p: Project) {
-  Object.assign(prjForm, { id: p.id, version: p.version, name: p.name, parent_id: p.parent_id, kind: p.kind ?? 'business', note: p.note ?? '' });
+  Object.assign(prjForm, {
+    id: p.id, version: p.version, name: p.name, parent_id: p.parent_id,
+    kind: p.kind ?? 'business', note: p.note ?? '',
+    status: p.status ?? 'planned', partner_id: p.partner_id ?? 0,
+    budget_net: p.budget_net == null ? '' : moneyInput(p.budget_net),
+    starts_on: (p.starts_on ?? '').slice(0, 10), due_on: (p.due_on ?? '').slice(0, 10),
+  });
   prjDialog.value = true;
 }
 async function saveProject() {
@@ -4194,7 +4593,12 @@ async function saveProject() {
   try {
     const stored = prjForm.id ? f.projects.find((p) => p.id === prjForm.id) : null;
     const parentChanged = !!stored && (stored.parent_id ?? null) !== (prjForm.parent_id ?? null);
-    const body: Record<string, unknown> = { name: prjForm.name, kind: prjForm.kind, note: prjForm.note || null };
+    const body: Record<string, unknown> = {
+      name: prjForm.name, kind: prjForm.kind, note: prjForm.note || null,
+      status: prjForm.status, partner_id: prjForm.partner_id || null,
+      budget_net: parseMoney(prjForm.budget_net),
+      starts_on: prjForm.starts_on || null, due_on: prjForm.due_on || null,
+    };
     if (prjForm.id) {
       // Reparent through the cycle-guarded move endpoint; a plain update would
       // happily write a parent that loops back into this project's own subtree.

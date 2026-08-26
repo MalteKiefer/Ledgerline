@@ -17,7 +17,11 @@ export interface Invoice {
 export interface PartnerContact { id?: string; name?: string; email?: string; phone?: string; role?: string }
 export interface Partner {
   id: number; name: string;
-  category: string | null; kind: string | null; url: string | null; logo: string | null;
+  category: string | null; kind: 'customer' | 'supplier' | 'both' | 'lead' | null;
+  customer_number: string | null;
+  payment_terms_days: number | null; discount_percent: string | number | null;
+  delivery_address: string | null; archived_at: string | null;
+  url: string | null; logo: string | null;
   note: string | null; address: string | null; email: string | null; invoice_email: string | null;
   phone: string | null; vat_id: string | null; hourly_rate: string | number | null; currency: string | null;
   contacts: PartnerContact[] | null; version: number;
@@ -54,6 +58,10 @@ export interface PaymentMethod {
 export interface Project {
   id: number; name: string; parent_id: number | null; note: string | null; version: number;
   kind: 'business' | 'private';
+  status: 'planned' | 'active' | 'on_hold' | 'done' | 'cancelled';
+  starts_on: string | null; due_on: string | null;
+  budget_net: string | number | null;
+  partner_id: number | null; quote_id: number | null;
   // Hand-typed ledger rows (`ProjectExpense` in openapi) — free-form JSON on the
   // wire, normalised through shared/finance-projects before use.
   expenses: unknown;
@@ -143,6 +151,39 @@ export interface FinanceQuote {
   sent_at: string | null; accepted_at: string | null; declined_at: string | null;
   converted_invoice_id: number | null; converted_project_id: number | null;
   version?: number;
+}
+export interface PartnerNote {
+  id: number; finance_partner_id: number;
+  kind: 'call' | 'meeting' | 'mail' | 'note';
+  body: string;
+  /** When it happened — not when it was typed, which can be days later. */
+  occurred_at: string;
+}
+export interface ProjectTask {
+  id: number; finance_project_id: number; title: string; description: string | null;
+  status: 'open' | 'in_progress' | 'done';
+  starts_on: string | null; due_on: string | null;
+  estimate_hours: string | number | null;
+  /** A milestone is the same row with no work in it: a date that matters. */
+  is_milestone: boolean; sort: number;
+  finance_product_id: number | null; version?: number;
+}
+export interface TimeEntry {
+  id: number; finance_project_id: number; finance_project_task_id: number | null;
+  date: string; hours: string | number; description: string | null; billable: boolean;
+  /** Frozen when logged: a later rate change must not rewrite past work. */
+  hourly_rate: string | number | null;
+  /** Set once, never cleared — the protection against billing an hour twice. */
+  invoiced_invoice_id: number | null;
+  version?: number;
+}
+export interface ProjectPlan {
+  tasks: ProjectTask[];
+  entries: TimeEntry[];
+  totals: {
+    tasks: number; tasks_done: number; estimate_hours: number;
+    worked_hours: number; unbilled_hours: number; unbilled_value: number;
+  };
 }
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
 export interface NumberGapGroup { group: string; missing: string[]; min: string; max: string; count: number }
@@ -236,6 +277,39 @@ export const useFinanceStore = defineStore('finance', () => {
   // future import cannot disagree about the shape.
   const productLine = (productId: number) => api.get<{ line: QuoteLine }>(`/api/v1/finance/products/${productId}/line`);
 
+  // ---- Customer management ----
+  // Archiving hides a partner from the pickers without deleting it: its
+  // documents keep pointing at it, so removal is not the useful state.
+  const archivePartner = (id: number, archived: boolean) =>
+    api.post<{ partner: Partner }>(`/api/v1/finance/partners/${id}/archive`, { archived });
+  const partnerNotes = (id: number) => api.get<{ notes: PartnerNote[] }>(`/api/v1/finance/partners/${id}/notes`);
+  const addPartnerNote = (id: number, body: Record<string, unknown>) =>
+    api.post<{ note: PartnerNote }>(`/api/v1/finance/partners/${id}/notes`, body);
+  const deletePartnerNote = (partnerId: number, noteId: number) =>
+    api.delete(`/api/v1/finance/partners/${partnerId}/notes/${noteId}`);
+
+  // ---- Project planning ----
+  // The chain the quote starts: a quote becomes a project, its service lines
+  // become tasks with their quoted hours, worked hours go back out as invoice
+  // lines. Every link is optional — a project needs no quote, an hour no task.
+  const projectPlan = (id: number) => api.get<ProjectPlan>(`/api/v1/finance/projects/${id}/plan`);
+  const createTask = (projectId: number, body: Record<string, unknown>) =>
+    api.post<{ task: ProjectTask }>(`/api/v1/finance/projects/${projectId}/tasks`, body);
+  const updateTask = (id: number, body: Record<string, unknown>) =>
+    api.put<{ task: ProjectTask }>(`/api/v1/finance/project-tasks/${id}`, body);
+  const deleteTask = (id: number) => api.delete(`/api/v1/finance/project-tasks/${id}`);
+  const reorderTasks = (projectId: number, ids: number[]) =>
+    api.post(`/api/v1/finance/projects/${projectId}/tasks/reorder`, { ids });
+  const logTime = (projectId: number, body: Record<string, unknown>) =>
+    api.post<{ entry: TimeEntry }>(`/api/v1/finance/projects/${projectId}/time`, body);
+  const updateTime = (id: number, body: Record<string, unknown>) =>
+    api.put<{ entry: TimeEntry }>(`/api/v1/finance/time-entries/${id}`, body);
+  const deleteTime = (id: number) => api.delete(`/api/v1/finance/time-entries/${id}`);
+  const invoiceTime = (projectId: number, until?: string | null) =>
+    api.post<{ invoice: Invoice; entries: number }>(`/api/v1/finance/projects/${projectId}/invoice-time`, until ? { until } : {});
+  const quoteToProject = (quoteId: number) =>
+    api.post<{ project: Project; already?: boolean }>(`/api/v1/finance/quotes/${quoteId}/project`, {});
+
   // ---- Reports (read-only) ----
   const reports = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports${year ? `?year=${year}` : ''}`);
   const vatAdvance = (year?: number, quarter?: number) => {
@@ -313,8 +387,11 @@ export const useFinanceStore = defineStore('finance', () => {
     quotes, createQuote, updateQuote, sendQuote, decideQuote, convertQuote, duplicateQuote, deleteQuote, restoreQuote, forceQuote, productLine,
     createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl, uploadInvoicePdf,
     savePartner, deletePartner, savePayment, deletePayment,
+    archivePartner, partnerNotes, addPartnerNote, deletePartnerNote,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,
     saveProject, deleteProject, moveProject, restoreProject, forceProject,
+    projectPlan, createTask, updateTask, deleteTask, reorderTasks,
+    logTime, updateTime, deleteTime, invoiceTime, quoteToProject,
     projectAttachments, linkFileToProject, linkPhotoToProject,
   };
 });
