@@ -275,6 +275,11 @@ export const useFinanceStore = defineStore('finance', () => {
   const forceQuote = (id: number) => api.delete(`/api/v1/finance/quotes/${id}/force`);
   // The server decides how an article becomes a line, so the picker and any
   // future import cannot disagree about the shape.
+  const quotePdfUrl = (id: number) => api.streamUrl(`/api/v1/finance/quotes/${id}/pdf`);
+  const uploadQuotePdf = (id: number, form: FormData) =>
+    api.upload<{ quote: FinanceQuote }>(`/api/v1/finance/quotes/${id}/pdf`, form);
+  const emailQuote = (id: number, to?: string | null) =>
+    api.post<{ ok: boolean; sent_at: string }>(`/api/v1/finance/quotes/${id}/email`, to ? { to } : {});
   const productLine = (productId: number) => api.get<{ line: QuoteLine }>(`/api/v1/finance/products/${productId}/line`);
 
   // ---- Customer management ----
@@ -384,7 +389,7 @@ export const useFinanceStore = defineStore('finance', () => {
     attachTxReceipt, deleteTxReceipt, txReceiptUrl,
     createCategory, updateCategory, deleteCategory,
     products, createProduct, updateProduct, deleteProduct, restoreProduct, forceProduct, adjustStock, stockMovements,
-    quotes, createQuote, updateQuote, sendQuote, decideQuote, convertQuote, duplicateQuote, deleteQuote, restoreQuote, forceQuote, productLine,
+    quotes, createQuote, updateQuote, sendQuote, decideQuote, convertQuote, duplicateQuote, deleteQuote, restoreQuote, forceQuote, productLine, quotePdfUrl, uploadQuotePdf, emailQuote,
     createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl, uploadInvoicePdf,
     savePartner, deletePartner, savePayment, deletePayment,
     archivePartner, partnerNotes, addPartnerNote, deletePartnerNote,

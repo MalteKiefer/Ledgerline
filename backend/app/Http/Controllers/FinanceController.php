@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Console\Commands\FetchExchangeRates;
+use App\Http\Controllers\Concerns\HandlesFinanceBlobs;
 use App\Http\Controllers\Concerns\OptimisticUpdates;
 use App\Mail\InvoiceMail;
 use App\Mail\InvoiceReminderMail;
+use App\Mail\QuoteMail;
 use App\Models\AppSettings;
 use App\Models\AuditLog;
 use App\Models\BankTransaction;
@@ -61,37 +63,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class FinanceController extends Controller
 {
+    use HandlesFinanceBlobs;
     use OptimisticUpdates;
 
     // ---- Storage helpers ----
 
-    private function disk(): string
-    {
-        $d = config('files.disk');
-
-        return is_string($d) ? $d : 'files';
-    }
-
-    private function fs(): Filesystem
-    {
-        return Storage::disk($this->disk());
-    }
-
-    private function maxUploadKb(): int
-    {
-        $mb = config('files.max_upload_mb', 2048);
-
-        return (is_numeric($mb) ? (int) $mb : 2048) * 1024;
-    }
-
     /** Filesystem-safe download filename (strips path separators + control chars). */
-    private function safeName(string $name): string
-    {
-        $clean = preg_replace('/[\x00-\x1F\x7F"\\\\\/]+/', '_', $name);
-        $clean = is_string($clean) ? trim($clean) : '';
-
-        return $clean === '' ? 'file' : $clean;
-    }
 
     // ---- Page / snapshot ----
 
@@ -1118,6 +1095,56 @@ class FinanceController extends Controller
      * NOT bump the optimistic `version`. 422 codes mirror emailInvoice
      * (not_overdue / no_pdf / no_recipient / no_smtp). Writes a secret-free audit row.
      */
+    /**
+     * Mail a quote to the customer.
+     *
+     * Lives here rather than in the quote controller because the runtime company
+     * mailer and its teardown live here: a second copy of that plumbing is the
+     * kind of thing that drifts, and under Octane a mailer left configured leaks
+     * one user's SMTP password into the next request.
+     */
+    public function emailQuote(Request $request, FinanceQuote $quote): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate(['to' => ['nullable', 'email:rfc']]);
+
+        if (! is_string($quote->number) || $quote->number === '') {
+            // Nothing has been issued, so there is nothing to send.
+            return response()->json(['error' => 'quote_not_sent'], 422);
+        }
+
+        $path = $this->safeBlobPath($quote->pdf_path);
+        if ($path === null || ! $this->fs()->exists($path)) {
+            return response()->json(['error' => 'no_pdf'], 422);
+        }
+
+        $customer = is_array($quote->customer) ? $quote->customer : [];
+        $to = $request->filled('to')
+            ? $request->string('to')->value()
+            : (is_string($customer['email'] ?? null) && $customer['email'] !== '' ? $customer['email'] : null);
+        if ($to === null || $to === '') {
+            return response()->json(['error' => 'no_recipient'], 422);
+        }
+
+        $mailer = $this->companyMailer($uid);
+        if ($mailer === null) {
+            return response()->json(['error' => 'no_smtp'], 422);
+        }
+
+        try {
+            Mail::mailer($mailer)->to($to)->send(new QuoteMail($quote));
+        } finally {
+            $this->forgetCompanyMailer();
+        }
+
+        $sentAt = Carbon::now();
+        $quote->forceFill(['sent_at' => $sentAt])->saveQuietly();
+        // Secret-free: the recipient domain only, never the full address.
+        AuditLog::record('quote.emailed', $quote, ['to_domain' => Str::after($to, '@')]);
+
+        return response()->json(['ok' => true, 'sent_at' => $sentAt->toIso8601String()]);
+    }
+
     public function dunInvoice(Request $request, Invoice $invoice): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
@@ -1864,19 +1891,6 @@ class FinanceController extends Controller
     }
 
     /** Guard: a stored receipt/PDF path must live under the finance blob prefix. */
-    private function safeBlobPath(mixed $path): ?string
-    {
-        // Confine to the invoices/ prefix; reject traversal, NUL bytes and any
-        // absolute path. All real blob paths are server-generated (invoices/{uuid})
-        // and client-supplied paths are already dropped upstream — this is a
-        // defence-in-depth guard on every stream/delete site.
-        return is_string($path)
-            && str_starts_with($path, 'invoices/')
-            && ! str_contains($path, '..')
-            && ! str_contains($path, "\0")
-            ? $path
-            : null;
-    }
 
     // ---- Receipts (files embedded in a transaction's receipts[] json) ----
 

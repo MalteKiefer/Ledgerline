@@ -6722,6 +6722,61 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{quote}/pdf:
+    post:
+      tags: [Finance]
+      operationId: financeQuotePdfStore
+      summary: Store the rendered quote PDF
+      description: "The sheet is rasterised in the browser from the same print templates the invoice uses, then kept here so it can be reopened and mailed without re-rendering. The path is server-generated (`invoices/{uuid}`) — a client cannot point this at a file it does not own; a previous PDF is deleted after the new one is stored. Throttle 120/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: quote, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: "PDF only." }
+      responses:
+        "200": { description: Stored., content: { application/json: { schema: { type: object, required: [quote], properties: { quote: { $ref: "#/components/schemas/FinanceQuote" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    get:
+      tags: [Finance]
+      operationId: financeQuotePdf
+      summary: Stream the quote PDF
+      description: "Inline for a preview, `?download=1` as an attachment. Served with `nosniff` and a `default-src 'none'; sandbox` CSP like every other blob this app serves. 404 while no PDF has been rendered. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: integer } }
+        - { name: download, in: query, required: false, schema: { type: boolean }, description: "Force an attachment instead of inline." }
+      responses:
+        "200": { description: The PDF., content: { application/pdf: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{quote}/email:
+    post:
+      tags: [Finance]
+      operationId: financeQuoteEmail
+      summary: Mail the quote to the customer
+      description: "Goes out over the user's OWN company SMTP, deliberately independent of the workspace notification mailer. Requires an issued quote (422 `quote_not_sent`) and a stored PDF (422 `no_pdf`) — a mail that arrives without its quote is worse than one that fails to send. Falls back to the customer's address when `to` is omitted (422 `no_recipient` if there is none), and 422 `no_smtp` when no company mailer is configured. Audited with the recipient DOMAIN only, never the address. Throttle 10/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: quote, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { to: { type: [string, "null"], format: email } } } } } }
+      responses:
+        "200": { description: Sent., content: { application/json: { schema: { type: object, required: [ok, sent_at], properties: { ok: { type: boolean }, sent_at: { type: string, format: date-time } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Not issued, no PDF, no recipient, or no company mailer.", content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [quote_not_sent, no_pdf, no_recipient, no_smtp] } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/quotes/{id}/restore:
     post:
       tags: [Finance]
