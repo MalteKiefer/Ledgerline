@@ -381,6 +381,14 @@ return [
         'presence_published' => 'Key published.',
         'presence_publish_failed' => 'Could not publish the key.',
     ],
+    'folders' => [
+        'manage' => 'Manage folders',
+        'new' => 'New folder',
+        'rename_prompt' => 'Rename folder',
+        'delete_confirm' => 'Delete “:folder”? Only works while it is empty — the server removes the messages with it.',
+        'delete_hint' => 'A folder can only be removed while it is empty: deleting it on the server takes its messages with it, and that cannot be undone.',
+    ],
+
     'extras' => [
         'labels' => 'Labels',
         'label_name' => 'Name',

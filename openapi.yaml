@@ -13568,6 +13568,104 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/server-folders:
+    get:
+      tags: [Mail]
+      operationId: mailServerFoldersIndex
+      summary: The folders that exist on the mailbox
+      description: >
+        Asks the origin server, unlike /mail/folders which lists the folders the
+        ARCHIVE holds mail in — an empty folder does not appear there, and a new
+        one cannot be filed into until something is already in it. Runs inline
+        with the short interactive timeouts, like the connection test.
+        Throttled 30/min. `no-store`.
+      parameters:
+        - { in: query, name: account_id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Folders on the server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        delimiter: { type: [string, "null"], description: "Hierarchy separator the server uses." }
+                        selectable: { type: boolean, description: "False for \\Noselect: holds folders, not mail." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "502": { description: "The mailbox refused or could not be reached; detail carries the server's own words." }
+    post:
+      tags: [Mail]
+      operationId: mailServerFoldersStore
+      summary: Create a folder on the mailbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, name]
+              properties:
+                account_id: { type: integer }
+                name: { type: string, maxLength: 255, description: "Control characters refused: the name reaches an IMAP command line." }
+      responses:
+        "200": { description: Created }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "502": { description: Server refused }
+  /mail/server-folders/rename:
+    post:
+      tags: [Mail]
+      operationId: mailServerFoldersRename
+      summary: Rename a folder on the mailbox
+      description: Archive rows in that folder are repointed, so they do not name a folder the server no longer has.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, from, to]
+              properties:
+                account_id: { type: integer }
+                from: { type: string, maxLength: 255 }
+                to: { type: string, maxLength: 255 }
+      responses:
+        "200": { description: Renamed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "502": { description: Server refused }
+  /mail/server-folders/delete:
+    post:
+      tags: [Mail]
+      operationId: mailServerFoldersDestroy
+      summary: Remove an empty folder from the mailbox
+      description: >
+        Refused while the folder still holds mail: IMAP's DELETE takes the
+        messages with it and there is no undo on the server. The count comes
+        from the server, because mail that was never fetched is still mail.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, name]
+              properties:
+                account_id: { type: integer }
+                name: { type: string, maxLength: 255 }
+      responses:
+        "200": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "502": { description: "Server refused, or the folder still holds mail." }
   /mail/messages/{message}/pushback:
     post:
       tags: [Mail]

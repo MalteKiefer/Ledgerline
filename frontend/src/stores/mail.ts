@@ -58,6 +58,13 @@ export interface MailAttachment {
 export interface MailSignature { id: number; name: string; html: string | null; account_ids: number[]; default_account_ids: number[] }
 export interface VirusTotalResult { known: boolean; sha256: string; stats?: { malicious: number; suspicious: number; harmless: number; undetected: number } }
 
+export interface ServerFolder {
+  name: string;
+  delimiter: string | null;
+  /** False for \\Noselect: it holds folders, not mail. */
+  selectable: boolean;
+}
+
 export interface MailLabel { id: number; name: string; color: string; message_count?: number }
 
 export interface MailMessage {
@@ -388,6 +395,20 @@ export const useMailStore = defineStore('mail', () => {
   const trash = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/trash', { ids });
   /** File mail into another folder, here and on the server. */
   const move = (ids: string[], folder: string) => api.post<{ updated: number }>('/api/v1/mail/messages/move', { ids, folder });
+
+  /**
+   * The folders that exist on the mailbox — not the ones the archive holds mail
+   * in. An empty folder is invisible in the latter, and a folder cannot be
+   * filed into until something is already in it.
+   */
+  const serverFolders = (accountId: number) =>
+    api.get<{ folders: ServerFolder[] }>(`/api/v1/mail/server-folders?account_id=${accountId}`);
+  const createFolder = (accountId: number, name: string) =>
+    api.post<{ ok: boolean }>('/api/v1/mail/server-folders', { account_id: accountId, name });
+  const renameFolder = (accountId: number, from: string, to: string) =>
+    api.post<{ ok: boolean }>('/api/v1/mail/server-folders/rename', { account_id: accountId, from, to });
+  const deleteFolder = (accountId: number, name: string) =>
+    api.post<{ ok: boolean }>('/api/v1/mail/server-folders/delete', { account_id: accountId, name });
   const restore = (ids: string[]) => api.post<{ updated: number }>('/api/v1/mail/messages/restore', { ids });
   const pushBack = (id: string, folder?: string | null) => api.post<{ ok: boolean }>(`/api/v1/mail/messages/${id}/pushback`, { folder: folder ?? null });
   const deleteOrigin = (id: string, folder?: string | null) => api.post<{ ok: boolean; expunged: number }>(`/api/v1/mail/messages/${id}/delete-origin`, { folder: folder ?? null });
@@ -565,7 +586,7 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
-    setSeen, setFlagged, unreadIds, matchingIds, thread, attachments, trash, move, restore, pushBack, deleteOrigin, setLabels,
+    setSeen, setFlagged, unreadIds, matchingIds, thread, attachments, trash, move, restore, serverFolders, createFolder, renameFolder, deleteFolder, pushBack, deleteOrigin, setLabels,
     compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, applyRules, updateRule, deleteRule,

@@ -59,6 +59,11 @@
               <span class="min-w-0 flex-1 truncate text-left">{{ f.folder }}</span>
               <span v-if="f.unread" class="text-[10px] font-semibold">{{ f.unread }}</span>
             </button>
+            <!-- The folders on the server, not only the ones we hold mail in:
+                 an empty folder is invisible in the list above. -->
+            <button class="flex w-full items-center gap-2 rounded-lg py-1.5 pl-3 pr-2 text-xs text-[var(--ll-muted)] hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openFolderManager(a.id)">
+              <Icon name="create_new_folder" :size="16" />{{ t('mail.folders.manage') }}
+            </button>
           </div>
         </div>
         <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" :class="draftListActive ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''" @click="pickDrafts">
@@ -886,6 +891,31 @@
     </div>
     <template #footer><Btn variant="ghost" @click="assetPicker.show = false">{{ t('common.close') }}</Btn></template>
   </Modal>
+  <!-- Folders on the mailbox -->
+  <Modal v-model="fm.open" :title="t('mail.folders.manage')" width="520px">
+    <div v-if="fm.loading" class="py-10 text-center"><Icon name="progress_activity" :size="26" class="animate-spin text-[var(--ll-muted)]" /></div>
+    <div v-else class="space-y-3">
+      <p v-if="fm.error" class="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">{{ fm.error }}</p>
+
+      <div class="flex gap-2">
+        <TextField v-model="fm.newName" class="flex-1" :label="t('mail.folders.new')" />
+        <Btn class="self-end" :disabled="!fm.newName.trim() || fm.busy" @click="doCreateFolder">{{ t('common.add') }}</Btn>
+      </div>
+
+      <div class="max-h-80 divide-y divide-[var(--ll-border)] overflow-y-auto rounded-lg border border-[var(--ll-border)]">
+        <div v-for="f in fm.folders" :key="f.name" class="flex items-center gap-2 px-3 py-2 text-sm">
+          <Icon :name="f.selectable ? 'folder' : 'folder_open'" :size="16" class="text-[var(--ll-muted)]" />
+          <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
+          <!-- Not selectable means it only holds other folders; nothing can be
+               filed into it and renaming it would move its children. -->
+          <Btn v-if="f.selectable" variant="ghost" size="xs" icon="edit" :title="t('common.rename')" :disabled="fm.busy" @click="doRenameFolder(f.name)" />
+          <Btn v-if="f.selectable" variant="ghost" size="xs" icon="delete" class="text-red-600" :title="t('common.delete')" :disabled="fm.busy" @click="doDeleteFolder(f.name)" />
+        </div>
+        <p v-if="!fm.folders.length" class="px-3 py-6 text-center text-xs text-[var(--ll-muted)]">{{ t('mail.list.empty') }}</p>
+      </div>
+      <p class="text-xs text-[var(--ll-muted)]">{{ t('mail.folders.delete_hint') }}</p>
+    </div>
+  </Modal>
 </template>
 
 <script setup lang="ts">
@@ -895,7 +925,7 @@ import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetim
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal, SortLabel, Pager, FloatingBar } from '@spa/ui';
-import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft, type MailAttachmentRow } from '@spa/stores/mail';
+import { useMailStore, type ServerFolder, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft, type MailAttachmentRow } from '@spa/stores/mail';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
 import { useCryptoStore } from '@spa/stores/crypto';
@@ -968,6 +998,51 @@ const logLevelItems = [
 const labelRuleItems = computed(() => [{ title: t('common.none'), value: 0 }, ...s.labels.map((l) => ({ title: l.name, value: l.id }))]);
 
 function foldersForAccount(id: number) { return s.folders.filter((f) => f.account_id === id); }
+
+/**
+ * Managing the folders that exist on the mailbox.
+ *
+ * Separate from the rail, which lists the folders the archive holds mail in —
+ * a folder has to exist on the server before anything can be filed into it.
+ */
+const fm = reactive({ open: false, accountId: 0, loading: false, busy: false, error: '', newName: '', folders: [] as ServerFolder[] });
+
+async function openFolderManager(accountId: number) {
+  fm.open = true; fm.accountId = accountId; fm.error = ''; fm.newName = '';
+  await refreshServerFolders();
+}
+async function refreshServerFolders() {
+  fm.loading = true;
+  try { fm.folders = (await s.serverFolders(fm.accountId)).folders ?? []; fm.error = ''; }
+  catch (e: unknown) { fm.error = detailOf(e); }
+  finally { fm.loading = false; }
+}
+/** The server's own words say why far better than a generic failure does. */
+function detailOf(e: unknown): string {
+  const d = (e as { body?: { detail?: string } })?.body?.detail;
+  return typeof d === 'string' && d !== '' ? d : t('common.error');
+}
+async function doCreateFolder() {
+  fm.busy = true;
+  try { await s.createFolder(fm.accountId, fm.newName.trim()); fm.newName = ''; await refreshServerFolders(); }
+  catch (e: unknown) { fm.error = detailOf(e); }
+  finally { fm.busy = false; }
+}
+async function doRenameFolder(from: string) {
+  const to = window.prompt(t('mail.folders.rename_prompt'), from);
+  if (!to || to === from) return;
+  fm.busy = true;
+  try { await s.renameFolder(fm.accountId, from, to); await refreshServerFolders(); await refreshCounts(); }
+  catch (e: unknown) { fm.error = detailOf(e); }
+  finally { fm.busy = false; }
+}
+async function doDeleteFolder(name: string) {
+  if (!window.confirm(t('mail.folders.delete_confirm', { folder: name }))) return;
+  fm.busy = true;
+  try { await s.deleteFolder(fm.accountId, name); await refreshServerFolders(); await refreshCounts(); }
+  catch (e: unknown) { fm.error = detailOf(e); }
+  finally { fm.busy = false; }
+}
 
 /**
  * Folders the selection can be filed into.

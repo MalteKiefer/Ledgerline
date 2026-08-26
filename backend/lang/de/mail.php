@@ -381,6 +381,14 @@ return [
         'presence_published' => 'Schlüssel veröffentlicht.',
         'presence_publish_failed' => 'Schlüssel konnte nicht veröffentlicht werden.',
     ],
+    'folders' => [
+        'manage' => 'Ordner verwalten',
+        'new' => 'Neuer Ordner',
+        'rename_prompt' => 'Ordner umbenennen',
+        'delete_confirm' => '„:folder“ löschen? Geht nur, solange er leer ist — der Server löscht die Nachrichten mit.',
+        'delete_hint' => 'Ein Ordner lässt sich nur löschen, solange er leer ist: auf dem Server verschwinden seine Nachrichten mit ihm, und das lässt sich nicht rückgängig machen.',
+    ],
+
     'extras' => [
         'labels' => 'Labels',
         'label_name' => 'Name',

@@ -65,6 +65,7 @@ use App\Http\Controllers\MailDeleteOriginController;
 use App\Http\Controllers\MailDraftController;
 use App\Http\Controllers\MailExportController;
 use App\Http\Controllers\MailFlagController;
+use App\Http\Controllers\MailFolderAdminController;
 use App\Http\Controllers\MailFolderController;
 use App\Http\Controllers\MailKeyController;
 use App\Http\Controllers\MailLabelController;
@@ -655,6 +656,10 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware('throttle:60,1')->name('api.mail.messages.trash');
             Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('api.mail.messages.restore');
             Route::post('/mail/messages/move', MailMoveController::class)->middleware('throttle:60,1')->name('api.mail.messages.move');
+            Route::get('/mail/server-folders', [MailFolderAdminController::class, 'index'])->middleware('throttle:30,1')->name('api.mail.server-folders.index');
+            Route::post('/mail/server-folders', [MailFolderAdminController::class, 'store'])->middleware('throttle:30,1')->name('api.mail.server-folders.store');
+            Route::post('/mail/server-folders/rename', [MailFolderAdminController::class, 'rename'])->middleware('throttle:30,1')->name('api.mail.server-folders.rename');
+            Route::post('/mail/server-folders/delete', [MailFolderAdminController::class, 'destroy'])->middleware('throttle:30,1')->name('api.mail.server-folders.destroy');
             Route::post('/mail/messages/labels', [MailLabelController::class, 'apply'])->middleware('throttle:120,1')->name('api.mail.messages.labels');
             Route::get('/mail/labels', [MailLabelController::class, 'index'])->name('api.mail.labels.index');
             Route::post('/mail/labels', [MailLabelController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.labels.store');
