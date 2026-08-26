@@ -16,11 +16,14 @@ use App\Models\FinanceCategory;
 use App\Models\FinancePartner;
 use App\Models\FinanceProduct;
 use App\Models\FinanceProject;
+use App\Models\FinanceQuote;
 use App\Models\FinanceReceipt;
 use App\Models\GalleryPhoto;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\UserSetting;
+use App\Services\Finance\StockLedger;
+use App\Support\DocumentNumber;
 use App\Support\FinanceScope;
 use App\Support\OutboundUrl;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -122,6 +125,7 @@ class FinanceController extends Controller
             'projects' => FinanceProject::query()->orderBy('name')->get(),
             'financeCategories' => FinanceCategory::query()->orderBy('name')->get(),
             'products' => FinanceProduct::query()->orderBy('name')->get(),
+            'quotes' => FinanceQuote::query()->orderByDesc('issue_date')->orderByDesc('id')->get(),
             // effective_scope travels with the row so no client has to re-derive
             // the inheritance rule (booking -> account) and drift from it.
             'transactions' => BankTransaction::query()->with('paymentMethod')->orderByDesc('date')->orderByDesc('id')->get()
@@ -164,6 +168,7 @@ class FinanceController extends Controller
             'paymentMethods' => PaymentMethod::onlyTrashed()->orderByDesc('deleted_at')->get(),
             'projects' => FinanceProject::onlyTrashed()->orderByDesc('deleted_at')->get(),
             'products' => FinanceProduct::onlyTrashed()->orderByDesc('deleted_at')->get(),
+            'quotes' => FinanceQuote::onlyTrashed()->orderByDesc('deleted_at')->get(),
             'transactions' => BankTransaction::onlyTrashed()->orderByDesc('deleted_at')->get(),
         ]);
     }
@@ -653,34 +658,93 @@ class FinanceController extends Controller
         $fmt = is_string($settings->invoice_number_format) ? $settings->invoice_number_format : null;
         $floor = max(1, (int) $settings->invoice_next_number);
 
-        $fresh = $this->withNumberRetry(fn (): Invoice => DB::transaction(function () use ($invoice, $fmt, $floor): Invoice {
-            $current = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
-            if (is_string($current->number) && $current->number !== '') {
-                return $current; // already numbered → idempotent
-            }
+        // Whether THIS call is the one that issues the invoice. Only then do
+        // goods leave the shelf; a second finalise must not book stock twice.
+        $issuedNow = false;
 
-            $year = $current->year ?? ($current->issue_date instanceof Carbon ? (int) $current->issue_date->format('Y') : (int) Carbon::now()->format('Y'));
-            $seq = $this->nextSeqForYear($year, $floor, $fmt);
+        $fresh = $this->withNumberRetry(function () use ($invoice, $fmt, $floor, &$issuedNow): Invoice {
+            $issuedNow = false;
 
-            $current->forceFill([
-                'number' => $this->formatNumber($fmt, $seq, $current->issue_date),
-                'seq' => $seq,
-                'year' => $year,
-                // Finalising ISSUES the invoice (number, immutable, counts as revenue) →
-                // status 'final' (Open). It does NOT mean "sent"; only an actual send does.
-                'status' => $current->status === 'draft' ? 'final' : $current->status,
-            ]);
-            $current->version = $current->version + 1;
-            $current->save();
+            return DB::transaction(function () use ($invoice, $fmt, $floor, &$issuedNow): Invoice {
+                $current = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+                if (is_string($current->number) && $current->number !== '') {
+                    return $current; // already numbered → idempotent
+                }
+                $issuedNow = true;
 
-            return $current;
-        }));
+                $year = $current->year ?? ($current->issue_date instanceof Carbon ? (int) $current->issue_date->format('Y') : (int) Carbon::now()->format('Y'));
+                $seq = $this->nextSeqForYear($year, $floor, $fmt);
+
+                $current->forceFill([
+                    'number' => $this->formatNumber($fmt, $seq, $current->issue_date),
+                    'seq' => $seq,
+                    'year' => $year,
+                    // Finalising ISSUES the invoice (number, immutable, counts as revenue) →
+                    // status 'final' (Open). It does NOT mean "sent"; only an actual send does.
+                    'status' => $current->status === 'draft' ? 'final' : $current->status,
+                ]);
+                $current->version = $current->version + 1;
+                $current->save();
+
+                return $current;
+            });
+        });
 
         if ($fresh === false) {
             return response()->json(['error' => 'number_conflict'], 409);
         }
 
+        if ($issuedNow) {
+            $this->bookGoodsOut($fresh);
+        }
+
         return response()->json(['invoice' => $fresh]);
+    }
+
+    /**
+     * Record that the hardware on an invoice left the shelf.
+     *
+     * Issuing the invoice is the moment goods go out, not the moment a customer
+     * accepts a price — so this hangs off finalise, once, on the call that
+     * actually assigned the number.
+     *
+     * It never refuses. Selling something the shelf does not have is real
+     * information, and blocking an invoice over a stock figure would be worse
+     * than recording a negative one: we record that goods left, we do not police
+     * whether they were there. Best-effort by the same reasoning — a stock
+     * hiccup must not undo a numbered invoice.
+     */
+    private function bookGoodsOut(Invoice $invoice): void
+    {
+        $lines = is_array($invoice->lines) ? $invoice->lines : [];
+        foreach ($lines as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $productId = $line['productId'] ?? null;
+            $qty = $line['qty'] ?? null;
+            if (! is_numeric($productId) || ! is_numeric($qty) || (float) $qty === 0.0) {
+                continue;
+            }
+            $product = FinanceProduct::query()->find((int) $productId);
+            // Services have no shelf, and an article nobody counts has no figure
+            // to carry — StockLedger still records the movement for the latter.
+            if (! $product instanceof FinanceProduct || $product->kind !== 'hardware') {
+                continue;
+            }
+            try {
+                StockLedger::move(
+                    $product,
+                    -1 * (float) $qty,
+                    'sale',
+                    'invoice',
+                    (string) $invoice->id,
+                    is_string($invoice->number) ? $invoice->number : null,
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
     }
 
     /**
@@ -1060,41 +1124,13 @@ class FinanceController extends Controller
     /** Derive a sequence from a number generated by the active format (padding is optional for legacy imports). */
     private function sequenceFromNumber(?string $fmt, string $number, ?Carbon $issueDate): ?int
     {
-        $date = $issueDate ?? Carbon::now();
-        $template = ($fmt !== null && $fmt !== '') ? $fmt : 'YYYY-NNNN';
-        $token = '__LEDGERLINE_SEQUENCE__';
-        $template = preg_replace('/N+/', $token, $template, 1);
-        if (! is_string($template) || ! str_contains($template, $token)) {
-            return null;
-        }
-        $template = str_replace(
-            ['YYYY', 'YY', 'MM', 'DD'],
-            [$date->format('Y'), $date->format('y'), $date->format('m'), $date->format('d')],
-            $template,
-        );
-        $pattern = '/^'.str_replace(preg_quote($token, '/'), '(\\d+)', preg_quote($template, '/')).'$/D';
-        if (preg_match($pattern, $number, $matches) !== 1 || ! ctype_digit($matches[1])) {
-            return null;
-        }
-
-        $seq = (int) $matches[1];
-
-        return $seq > 0 ? $seq : null;
+        return DocumentNumber::sequenceFrom($fmt, $number, $issueDate);
     }
 
     /** Render a number template (YYYY/YY/MM/DD + a run of N's → zero-padded seq). */
     private function formatNumber(?string $fmt, int $seq, ?Carbon $issueDate): string
     {
-        $d = $issueDate ?? Carbon::now();
-        $out = ($fmt !== null && $fmt !== '') ? $fmt : 'YYYY-NNNN';
-        $out = str_replace(
-            ['YYYY', 'YY', 'MM', 'DD'],
-            [$d->format('Y'), $d->format('y'), $d->format('m'), $d->format('d')],
-            $out,
-        );
-        $out = preg_replace_callback('/N+/', static fn (array $m): string => str_pad((string) $seq, strlen((string) $m[0]), '0', STR_PAD_LEFT), $out);
-
-        return is_string($out) && $out !== '' ? $out : (string) $seq;
+        return DocumentNumber::format($fmt, $seq, $issueDate);
     }
 
     public function destroyInvoice(Invoice $invoice): JsonResponse

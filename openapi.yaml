@@ -1142,6 +1142,72 @@ components:
         note: { type: [string, "null"] }
         occurred_at: { type: string, format: date-time }
         created_at: { type: [string, "null"], format: date-time }
+    FinanceDocumentLine:
+      type: object
+      description: "One line of a quote or invoice. The SAME shape on both, which is what makes converting a quote a copy rather than a translation, and lets the cent-exact totals mathematics stay one implementation."
+      properties:
+        desc: { type: string }
+        qty: { type: number }
+        unit: { type: [string, "null"] }
+        unitPrice: { type: number }
+        vatRate: { type: [number, "null"] }
+        kind: { type: [string, "null"], enum: [service, hardware, null] }
+        productId: { type: [integer, "null"], description: "The catalogue article this line came from. What lets a finalised invoice move stock." }
+    FinanceQuote:
+      type: object
+      description: "A quote (Angebot). Editable only while `status` is draft. `expired` is derived from `valid_until`, never stored — a date does not need a nightly job to become true."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        number: { type: [string, "null"], description: "Assigned by the server on send. Never settable by a client." }
+        seq: { type: [integer, "null"] }
+        year: { type: [integer, "null"] }
+        status: { type: string, enum: [draft, sent, accepted, declined] }
+        partner_id: { type: [integer, "null"] }
+        customer: { type: [object, "null"], additionalProperties: true, description: "Snapshot of the addressee, kept alongside partner_id so editing the partner cannot rewrite a quote already sent." }
+        title: { type: [string, "null"] }
+        issue_date: { type: [string, "null"], format: date }
+        valid_until: { type: [string, "null"], format: date }
+        currency: { type: string }
+        lines: { type: [array, "null"], items: { $ref: "#/components/schemas/FinanceDocumentLine" } }
+        discount_type: { type: [string, "null"], enum: [percent, amount, null] }
+        discount_value: { type: [string, "null"] }
+        net: { type: [string, "null"] }
+        vat: { type: [string, "null"] }
+        gross: { type: [string, "null"] }
+        intro_text: { type: [string, "null"] }
+        outro_text: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        sent_at: { type: [string, "null"], format: date-time }
+        accepted_at: { type: [string, "null"], format: date-time }
+        declined_at: { type: [string, "null"], format: date-time }
+        converted_invoice_id: { type: [integer, "null"] }
+        converted_project_id: { type: [integer, "null"] }
+        pdf_path: { type: [string, "null"] }
+        version: { type: integer }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
+        deleted_at: { type: [string, "null"], format: date-time }
+    FinanceQuoteInput:
+      type: object
+      description: "Create/update body. `number`/`seq`/`year`/`status` are absent on purpose: the server owns them, so a client cannot mint or reuse a number."
+      properties:
+        title: { type: [string, "null"], maxLength: 300 }
+        partner_id: { type: [integer, "null"], description: "Must be one of the caller's own partners." }
+        customer: { type: [object, "null"], additionalProperties: true }
+        issue_date: { type: [string, "null"], format: date }
+        valid_until: { type: [string, "null"], format: date }
+        currency: { type: [string, "null"], maxLength: 8 }
+        lines: { type: [array, "null"], maxItems: 200, items: { $ref: "#/components/schemas/FinanceDocumentLine" } }
+        discount_type: { type: [string, "null"], enum: [percent, amount, null] }
+        discount_value: { type: [number, "null"] }
+        net: { type: [number, "null"] }
+        vat: { type: [number, "null"] }
+        gross: { type: [number, "null"] }
+        intro_text: { type: [string, "null"], maxLength: 5000 }
+        outro_text: { type: [string, "null"], maxLength: 5000 }
+        note: { type: [string, "null"], maxLength: 5000 }
+        version: { type: [integer, "null"] }
     FinanceCategory:
       type: object
       description: "Receipt category (relational finance_categories, unique per user; no soft deletes)."
@@ -6392,6 +6458,151 @@ paths:
       parameters: [ { name: product, in: path, required: true, schema: { type: integer } } ]
       responses:
         "200": { description: History., content: { application/json: { schema: { type: object, required: [movements], properties: { movements: { type: array, items: { $ref: "#/components/schemas/FinanceStockMovement" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes:
+    post:
+      tags: [Finance]
+      operationId: financeQuoteStore
+      summary: Create a quote (Angebot)
+      description: "Starts as a draft with no number. `lines` share the invoice line shape plus `productId` + `kind`, which is what makes accepting a quote a copy rather than a translation and keeps one totals implementation. `valid_until` defaults from the company profile. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FinanceQuoteInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, required: [quote], properties: { quote: { $ref: "#/components/schemas/FinanceQuote" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{quote}:
+    put:
+      tags: [Finance]
+      operationId: financeQuoteUpdate
+      summary: Update a draft quote
+      description: "Only a draft is editable. A sent quote answers 422 `quote_locked`: the customer holds a document with that number on it, and changing what it says under the same number would make the two disagree — use duplicate instead. Optimistic via `version`. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: quote, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FinanceQuoteInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [quote], properties: { quote: { $ref: "#/components/schemas/FinanceQuote" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { description: "Locked (`{error: quote_locked}`) or invalid.", content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [quote_locked] } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Finance]
+      operationId: financeQuoteDestroy
+      summary: Move a quote to the bin
+      description: "Soft delete. Its number stays out of circulation: a customer holding AN-2026-0007 must never receive a different one. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: quote, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{quote}/send:
+    post:
+      tags: [Finance]
+      operationId: financeQuoteSend
+      summary: Give the quote its number and mark it as out
+      description: "Assigns the next number from the `quote_number_format` template (same machinery as an invoice number, so a configured format behaves identically) and sets the status to `sent`. Idempotent: a second call does not mint a second number. Not a GoBD-gapless sequence — but binned rows still count, so a number that has been seen is never reused. Answers 409 `number_taken` if the number raced; simply send again. Throttle 120/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: quote, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Sent., content: { application/json: { schema: { type: object, required: [quote], properties: { quote: { $ref: "#/components/schemas/FinanceQuote" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "Number raced; retriable.", content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [number_taken] } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{quote}/decide:
+    post:
+      tags: [Finance]
+      operationId: financeQuoteDecide
+      summary: Record the customer's answer
+      description: "Sets `accepted` or `declined` with its timestamp. Requires a sent quote (422 `quote_not_sent`): nothing was sent, so there is nothing to answer. Throttle 120/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: quote, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [accepted, declined] } } } } } }
+      responses:
+        "200": { description: Recorded., content: { application/json: { schema: { type: object, required: [quote], properties: { quote: { $ref: "#/components/schemas/FinanceQuote" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Not sent, or invalid decision.", content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [quote_not_sent] } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{quote}/convert:
+    post:
+      tags: [Finance]
+      operationId: financeQuoteConvert
+      summary: Turn a quote into a draft invoice
+      description: "Copies customer, lines (including `productId`), discount and currency into a NEW draft invoice, and marks the quote accepted. The invoice takes its own number when finalised — a quote number is not an invoice number. Idempotent: a second call returns the invoice it already made (`already: true`, 200) instead of billing the work twice. Hardware does NOT move stock here; goods leave when the invoice is finalised, not when someone accepts a price. Throttle 120/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: quote, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "201": { description: Invoice created., content: { application/json: { schema: { type: object, required: [invoice, quote], properties: { invoice: { $ref: "#/components/schemas/Invoice" }, quote: { $ref: "#/components/schemas/FinanceQuote" } } } } } }
+        "200": { description: "Already converted; the existing invoice is returned.", content: { application/json: { schema: { type: object, required: [invoice, quote], properties: { invoice: { $ref: "#/components/schemas/Invoice" }, quote: { $ref: "#/components/schemas/FinanceQuote" }, already: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Not sent yet.", content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [quote_not_sent] } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{quote}/duplicate:
+    post:
+      tags: [Finance]
+      operationId: financeQuoteDuplicate
+      summary: Copy a quote into a fresh draft
+      description: "The way to change a sent quote: the original stays as it was sent, the copy is editable and takes its own number when it goes out. Throttle 120/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: quote, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "201": { description: Copied., content: { application/json: { schema: { type: object, required: [quote], properties: { quote: { $ref: "#/components/schemas/FinanceQuote" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{id}/restore:
+    post:
+      tags: [Finance]
+      operationId: financeQuoteRestore
+      summary: Restore a quote from the bin
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, required: [quote], properties: { quote: { $ref: "#/components/schemas/FinanceQuote" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/quotes/{id}/force:
+    delete:
+      tags: [Finance]
+      operationId: financeQuoteForceDelete
+      summary: Delete a quote for good
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/products/{product}/line:
+    get:
+      tags: [Finance]
+      operationId: financeProductLine
+      summary: The catalogue article as a document line
+      description: "One place decides how an article becomes a line, so a line added by the picker and one added by a future import cannot differ in shape. `vatRate` is null when the article follows the company default. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: product, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Line., content: { application/json: { schema: { type: object, required: [line], properties: { line: { $ref: "#/components/schemas/FinanceDocumentLine" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }

@@ -691,6 +691,140 @@
       </div>
     </div>
 
+    <!-- QUOTES (Angebote) -->
+    <div v-show="tab === 'quotes'">
+      <Card :body-class="'p-0'">
+        <template #header>
+          <div class="flex flex-wrap items-center gap-2">
+            <TextField v-model="qSearch" :placeholder="t('invoices.quote_search')" icon="search" class="w-full sm:w-64" />
+            <Select v-model="qStatus" :options="qStatusFilterItems" class="w-full sm:w-44" />
+          </div>
+        </template>
+        <template #actions><Btn variant="solid" size="sm" icon="add" @click="newQuote">{{ t('invoices.quote_add') }}</Btn></template>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+              <tr class="border-b border-[var(--ll-border)]">
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="qSortBy('issue_date')"><SortLabel :label="t('common.date')" active-key="issue_date" :sort="qSort" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="qSortBy('number')"><SortLabel :label="t('invoices.quote_number')" active-key="number" :sort="qSort" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="qSortBy('customer')"><SortLabel :label="t('invoices.customer')" active-key="customer" :sort="qSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium md:table-cell" @click="qSortBy('valid_until')"><SortLabel :label="t('invoices.quote_valid_until')" active-key="valid_until" :sort="qSort" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="qSortBy('gross')"><SortLabel :label="t('invoices.gross')" active-key="gross" :sort="qSort" justify="end" /></th>
+                <th class="px-4 py-2.5 font-medium">{{ t('invoices.status') }}</th>
+                <th class="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="q in filteredQuotes" :key="q.id" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openQuote(q)">
+                <td class="px-4 py-2.5 tabular-nums">{{ fmtDate(q.issue_date) }}</td>
+                <td class="px-4 py-2.5 font-medium tabular-nums">{{ q.number || '—' }}</td>
+                <td class="px-4 py-2.5">{{ q.customer?.name || partnerName(q.partner_id) || '—' }}<span v-if="q.title" class="block text-xs text-[var(--ll-muted)]">{{ q.title }}</span></td>
+                <td class="hidden px-4 py-2.5 tabular-nums md:table-cell" :class="quoteExpired(q) ? 'text-amber-700 dark:text-amber-400' : 'text-[var(--ll-muted)]'">{{ fmtDate(q.valid_until) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ money(Number(q.gross ?? 0)) }}</td>
+                <td class="px-4 py-2.5"><Badge :tone="quoteTone(q)">{{ quoteStatusLabel(q) }}</Badge></td>
+                <td class="px-4 py-2.5 text-right"><Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" /></td>
+              </tr>
+              <tr v-if="!filteredQuotes.length"><td colspan="7" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.quotes_empty') }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+
+    <!-- Quote editor -->
+    <Modal v-model="qDialog" :title="qForm.number || t('invoices.quote_add')" width="860px">
+      <div v-if="qLocked" class="mb-3 rounded-xl border border-[var(--ll-border)] bg-black/[0.02] px-3 py-2 text-sm text-[var(--ll-muted)] dark:bg-white/5">
+        {{ t('invoices.quote_locked_hint') }}
+      </div>
+      <fieldset :disabled="qLocked" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div class="sm:col-span-2"><TextField v-model="qForm.title" :label="t('invoices.quote_title')" /></div>
+        <Select v-model="qForm.partner_id" :label="t('invoices.partner')" :options="customerItems" @update:modelValue="applyQuotePartner" />
+        <TextField v-model="qForm.customer_name" :label="t('invoices.customer')" />
+        <TextField v-model="qForm.customer_attn" :label="t('invoices.cust_attn')" />
+        <TextField v-model="qForm.customer_email" :label="t('common.email')" />
+        <div class="sm:col-span-2">
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.cust_address') }}</label>
+          <textarea v-model="qForm.customer_address" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+        <TextField v-model="qForm.issue_date" :label="t('common.date')" type="date" />
+        <TextField v-model="qForm.valid_until" :label="t('invoices.quote_valid_until')" type="date" />
+      </fieldset>
+
+      <!-- Lines: services and hardware side by side, picked from the catalogue -->
+      <div class="mt-4">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.positions') }}</h3>
+          <div v-if="!qLocked" class="flex items-center gap-2">
+            <Select v-model="qPickProduct" :options="productPickItems" class="w-56" @update:modelValue="addQuoteLineFromProduct" />
+            <Btn variant="soft" size="sm" icon="add" @click="addQuoteLine">{{ t('invoices.add_position') }}</Btn>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+              <tr class="border-b border-[var(--ll-border)]">
+                <th class="py-1.5 pr-2 font-medium">{{ t('invoices.description') }}</th>
+                <th class="w-20 py-1.5 pr-2 text-right font-medium">{{ t('invoices.qty') }}</th>
+                <th class="w-24 py-1.5 pr-2 font-medium">{{ t('invoices.product_unit') }}</th>
+                <th class="w-28 py-1.5 pr-2 text-right font-medium">{{ t('invoices.unit_price') }}</th>
+                <th class="w-20 py-1.5 pr-2 text-right font-medium">{{ t('invoices.vat') }}</th>
+                <th class="w-28 py-1.5 pr-2 text-right font-medium">{{ t('invoices.amount') }}</th>
+                <th class="w-8 py-1.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(l, i) in qForm.lines" :key="i" class="border-b border-[var(--ll-border)] last:border-0">
+                <td class="py-1.5 pr-2">
+                  <textarea v-model="l.desc" rows="1" :disabled="qLocked" class="w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2 py-1 text-sm"></textarea>
+                  <span v-if="l.kind" class="mt-0.5 inline-block text-xs text-[var(--ll-muted)]">{{ t('invoices.product_kind_' + l.kind) }}</span>
+                </td>
+                <td class="py-1.5 pr-2"><TextField inputmode="decimal" :disabled="qLocked" :model-value="moneyInput(l.qty)" @update:model-value="l.qty = parseMoney($event) ?? 0" /></td>
+                <td class="py-1.5 pr-2"><TextField :disabled="qLocked" :model-value="l.unit ?? ''" @update:model-value="l.unit = $event || null" /></td>
+                <td class="py-1.5 pr-2"><TextField inputmode="decimal" :disabled="qLocked" :model-value="moneyInput(l.unitPrice)" @update:model-value="l.unitPrice = parseMoney($event) ?? 0" /></td>
+                <td class="py-1.5 pr-2"><TextField inputmode="decimal" :disabled="qLocked" :model-value="l.vatRate == null ? '' : String(l.vatRate)" @update:model-value="l.vatRate = parseMoney($event)" /></td>
+                <td class="py-1.5 pr-2 text-right tabular-nums">{{ money(l.qty * l.unitPrice) }}</td>
+                <td class="py-1.5 text-right"><Btn v-if="!qLocked" variant="ghost" size="sm" icon="close" :title="t('common.delete')" @click="qForm.lines.splice(i, 1)" /></td>
+              </tr>
+              <tr v-if="!qForm.lines.length"><td colspan="7" class="py-4 text-center text-[var(--ll-muted)]">{{ t('invoices.no_positions') }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3 flex flex-wrap items-end justify-between gap-3">
+          <fieldset :disabled="qLocked" class="flex items-end gap-2">
+            <Select v-model="qForm.discount_type" :label="t('invoices.discount')" :options="qDiscountItems" class="w-36" />
+            <TextField v-if="qForm.discount_type" inputmode="decimal" :label="t('invoices.discount_value')" :model-value="moneyInput(qForm.discount_value)" @update:model-value="qForm.discount_value = parseMoney($event)" class="w-28" />
+          </fieldset>
+          <dl class="text-right text-sm tabular-nums">
+            <div class="flex justify-between gap-6"><dt class="text-[var(--ll-muted)]">{{ t('invoices.net') }}</dt><dd>{{ money(qTotals.net) }}</dd></div>
+            <div class="flex justify-between gap-6"><dt class="text-[var(--ll-muted)]">{{ t('invoices.vat') }}</dt><dd>{{ money(qTotals.vat) }}</dd></div>
+            <div class="flex justify-between gap-6 font-semibold"><dt>{{ t('invoices.gross') }}</dt><dd>{{ money(qTotals.gross) }}</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <fieldset :disabled="qLocked" class="mt-4 grid grid-cols-1 gap-3">
+        <div>
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.quote_intro') }}</label>
+          <textarea v-model="qForm.intro_text" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.quote_outro') }}</label>
+          <textarea v-model="qForm.outro_text" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+      </fieldset>
+
+      <template #footer>
+        <Btn v-if="qForm.id" variant="ghost" size="sm" icon="delete" class="mr-auto text-red-600 dark:text-red-400" @click="delQuote">{{ t('common.delete') }}</Btn>
+        <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="soft" size="sm" icon="content_copy" @click="dupQuote">{{ t('invoices.quote_duplicate') }}</Btn>
+        <Btn v-if="qForm.id && qCanDecide" variant="soft" size="sm" icon="thumb_down" @click="decide('declined')">{{ t('invoices.quote_decline') }}</Btn>
+        <Btn v-if="qForm.id && qCanDecide" variant="soft" size="sm" icon="thumb_up" @click="decide('accepted')">{{ t('invoices.quote_accept') }}</Btn>
+        <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="solid" size="sm" icon="receipt_long" @click="convertQuote">{{ t('invoices.quote_to_invoice') }}</Btn>
+        <Btn v-if="qForm.id && qForm.status === 'draft'" variant="solid" size="sm" icon="send" @click="sendQuote">{{ t('invoices.quote_send') }}</Btn>
+        <Btn variant="ghost" @click="qDialog = false">{{ qLocked ? t('common.close') : t('common.cancel') }}</Btn>
+        <Btn v-if="!qLocked" variant="solid" @click="saveQuote">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
     <!-- ARTICLE CATALOGUE (Warenverwaltung) -->
     <div v-show="tab === 'products'">
       <Card :body-class="'p-0'">
@@ -1984,7 +2118,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pag
 import type { AlignedData, Options } from 'uplot';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge, type FinanceProduct, type StockMovement } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge, type FinanceProduct, type StockMovement, type FinanceQuote, type QuoteLine } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, ApiError, VersionConflict } from '@spa/api/client';
@@ -2042,7 +2176,7 @@ const gal = useGalleryStore();
 const { success, error } = useToast();
 const route = useRoute();
 const router = useRouter();
-const VALID = ['dashboard', 'documents', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'products', 'stats'];
+const VALID = ['dashboard', 'documents', 'invoices', 'quotes', 'payments', 'bank', 'receipts', 'projects', 'partners', 'products', 'stats'];
 const requestedSection = computed(() => String(route.params.section || 'dashboard'));
 const tab = computed(() => {
   const s = requestedSection.value;
@@ -2057,16 +2191,242 @@ const tab = computed(() => {
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
 
 // In-page left submenu sections (mirrors the Profile/Settings hub layout).
-const sections = ['dashboard', 'documents', 'payments', 'bank', 'products', 'projects', 'partners'] as const;
+const sections = ['dashboard', 'quotes', 'documents', 'payments', 'bank', 'products', 'projects', 'partners'] as const;
 const secIcon: Record<string, string> = {
   dashboard: 'space_dashboard', documents: 'inbox', invoices: 'receipt_long', payments: 'account_balance_wallet',
-  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups', products: 'inventory_2',
+  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups', products: 'inventory_2', quotes: 'request_quote',
 };
 const financeNavGroups = computed(() => [{
   id: 'finance',
   items: sections.map((id) => ({ id, icon: secIcon[id], label: t('invoices.tab_' + id) })),
 }]);
 function isFinanceSectionActive(item: SectionNavItem): boolean { return tab.value === item.id; }
+
+// ---- Quotes (Angebote) ----
+// A draft is editable; anything sent is not. The customer is holding a document
+// with that number on it, so a changed price is a new quote (duplicate), not an
+// edit of the old one.
+const qSearch = ref('');
+const qStatus = ref<'' | 'draft' | 'sent' | 'accepted' | 'declined'>('');
+const qSort = ref<{ key: string; dir: 'asc' | 'desc' }>({ key: 'issue_date', dir: 'desc' });
+const qDialog = ref(false);
+const qPickProduct = ref<number>(0);
+
+const qStatusFilterItems = computed(() => [
+  { title: t('invoices.quote_status_all'), value: '' },
+  { title: t('invoices.quote_status_draft'), value: 'draft' },
+  { title: t('invoices.quote_status_sent'), value: 'sent' },
+  { title: t('invoices.quote_status_accepted'), value: 'accepted' },
+  { title: t('invoices.quote_status_declined'), value: 'declined' },
+]);
+const qDiscountItems = computed(() => [
+  { title: '—', value: '' },
+  { title: '%', value: 'percent' },
+  { title: t('invoices.discount_amount'), value: 'amount' },
+]);
+const customerItems = computed(() => [{ title: '—', value: 0 }, ...f.partners.map((p) => ({ title: p.name, value: p.id }))]);
+const productPickItems = computed(() => [
+  { title: t('invoices.quote_pick_product'), value: 0 },
+  ...f.products.filter((p) => p.active).map((p) => ({ title: `${p.name} · ${money(Number(p.price_net) || 0)}`, value: p.id })),
+]);
+
+const qForm = reactive({
+  id: 0, number: '' as string | null, status: 'draft' as FinanceQuote['status'],
+  title: '', partner_id: 0, customer_name: '', customer_attn: '', customer_email: '', customer_address: '',
+  issue_date: todayYmd(), valid_until: '',
+  lines: [] as QuoteLine[],
+  discount_type: '' as '' | 'percent' | 'amount', discount_value: null as number | null,
+  intro_text: '', outro_text: '', version: 0,
+});
+
+const qLocked = computed(() => qForm.id !== 0 && qForm.status !== 'draft');
+const qCanDecide = computed(() => qForm.status === 'sent');
+
+function partnerName(id: number | null): string {
+  return id ? (f.partners.find((p) => p.id === id)?.name ?? '') : '';
+}
+function quoteExpired(q: FinanceQuote): boolean {
+  // Derived, never stored: a date does not need a nightly job to become true.
+  if (q.status !== 'sent' || !q.valid_until) return false;
+  return new Date(q.valid_until + 'T23:59:59') < new Date();
+}
+function quoteStatusLabel(q: FinanceQuote): string {
+  if (quoteExpired(q)) return t('invoices.quote_status_expired');
+  return t('invoices.quote_status_' + q.status);
+}
+function quoteTone(q: FinanceQuote): 'gray' | 'info' | 'success' | 'warning' | 'error' {
+  if (quoteExpired(q)) return 'warning';
+  if (q.status === 'accepted') return 'success';
+  if (q.status === 'declined') return 'error';
+  if (q.status === 'sent') return 'info';
+  return 'gray';
+}
+
+// The same cent-exact rule the invoice uses, over the same line shape — which is
+// the whole reason the two shapes match. The printer's totals function takes a
+// print-invoice, so the quote is handed to it as one; that keeps ONE rounding
+// implementation instead of a second that would drift by a cent.
+const qTotals = computed(() => printComputeTotals({
+  number: qForm.number, status: qForm.status, type: 'invoice',
+  issueDate: qForm.issue_date, dueDate: '', currency: 'EUR', lang: 'de',
+  customer: { name: '', attn: '', address: '', email: '', vatId: '' },
+  lines: qForm.lines.map((l) => ({
+    desc: l.desc, qty: l.qty, unit: l.unit ?? '', unitPrice: l.unitPrice, vatRate: l.vatRate ?? 0,
+  })),
+  note: '', footer: '', imported: false, gross: null, vatRate: null,
+  discountType: qForm.discount_type || null, discountValue: qForm.discount_value ?? null,
+  skontoPercent: null, skontoDays: null,
+}));
+
+const filteredQuotes = computed(() => {
+  const needle = qSearch.value.trim().toLowerCase();
+  let rows = f.quotes.filter((q) => {
+    if (qStatus.value && q.status !== qStatus.value) return false;
+    if (!needle) return true;
+    return [q.number, q.title, q.customer?.name, partnerName(q.partner_id)].some((v) => (v || '').toLowerCase().includes(needle))
+      || amountMatches(Number(q.gross ?? 0), needle);
+  });
+  const { key, dir } = qSort.value;
+  const sign = dir === 'asc' ? 1 : -1;
+  rows = [...rows].sort((a, b) => {
+    if (key === 'gross') return sign * (Number(a.gross ?? 0) - Number(b.gross ?? 0));
+    if (key === 'customer') return sign * String(a.customer?.name ?? '').localeCompare(String(b.customer?.name ?? ''), moneyLocale());
+    const av = String((a as unknown as Record<string, unknown>)[key] ?? '');
+    const bv = String((b as unknown as Record<string, unknown>)[key] ?? '');
+    return sign * av.localeCompare(bv);
+  });
+  return rows;
+});
+function qSortBy(key: string) {
+  if (qSort.value.key === key) qSort.value = { key, dir: qSort.value.dir === 'asc' ? 'desc' : 'asc' };
+  else qSort.value = { key, dir: key === 'number' || key === 'customer' ? 'asc' : 'desc' };
+}
+
+function newQuote() {
+  Object.assign(qForm, {
+    id: 0, number: null, status: 'draft', title: '', partner_id: 0,
+    customer_name: '', customer_attn: '', customer_email: '', customer_address: '',
+    issue_date: todayYmd(), valid_until: '', lines: [], discount_type: '', discount_value: null,
+    intro_text: '', outro_text: '', version: 0,
+  });
+  qPickProduct.value = 0;
+  qDialog.value = true;
+}
+function openQuote(q: FinanceQuote) {
+  Object.assign(qForm, {
+    id: q.id, number: q.number, status: q.status, title: q.title ?? '', partner_id: q.partner_id ?? 0,
+    customer_name: q.customer?.name ?? '', customer_attn: q.customer?.attn ?? '',
+    customer_email: q.customer?.email ?? '', customer_address: q.customer?.address ?? '',
+    issue_date: (q.issue_date ?? '').slice(0, 10), valid_until: (q.valid_until ?? '').slice(0, 10),
+    // A copy, so editing the form does not mutate the store row before saving.
+    lines: (q.lines ?? []).map((l) => ({ ...l })),
+    discount_type: q.discount_type ?? '', discount_value: q.discount_value == null ? null : Number(q.discount_value),
+    intro_text: q.intro_text ?? '', outro_text: q.outro_text ?? '', version: q.version ?? 0,
+  });
+  qPickProduct.value = 0;
+  qDialog.value = true;
+}
+function applyQuotePartner(v: unknown) {
+  const p = f.partners.find((x) => x.id === Number(v));
+  if (!p) return;
+  // Prefill only what is empty: a typed address must not be overwritten by
+  // picking the partner it belongs to.
+  if (!qForm.customer_name) qForm.customer_name = p.name;
+  if (!qForm.customer_email) qForm.customer_email = p.invoice_email || p.email || '';
+  if (!qForm.customer_address) qForm.customer_address = p.address || '';
+}
+function addQuoteLine() {
+  qForm.lines.push({ desc: '', qty: 1, unit: null, unitPrice: 0, vatRate: null, kind: null, productId: null });
+}
+async function addQuoteLineFromProduct(v: unknown) {
+  const id = Number(v);
+  qPickProduct.value = 0;
+  if (!id) return;
+  try {
+    // The server owns the article→line mapping, so the picker and any future
+    // import cannot disagree about the shape.
+    const { line } = await f.productLine(id);
+    qForm.lines.push({ ...line });
+  } catch { error(t('invoices.save_failed')); }
+}
+
+function quoteBody(): Record<string, unknown> {
+  return {
+    title: qForm.title.trim() || null,
+    partner_id: qForm.partner_id || null,
+    customer: {
+      name: qForm.customer_name.trim(), attn: qForm.customer_attn.trim(),
+      email: qForm.customer_email.trim(), address: qForm.customer_address.trim(),
+    },
+    issue_date: qForm.issue_date || null,
+    valid_until: qForm.valid_until || null,
+    lines: qForm.lines,
+    discount_type: qForm.discount_type || null,
+    discount_value: qForm.discount_value,
+    net: qTotals.value.net, vat: qTotals.value.vat, gross: qTotals.value.gross,
+    intro_text: qForm.intro_text.trim() || null,
+    outro_text: qForm.outro_text.trim() || null,
+  };
+}
+async function saveQuote() {
+  try {
+    if (qForm.id) await f.updateQuote(qForm.id, { ...quoteBody(), version: qForm.version });
+    else await f.createQuote(quoteBody());
+    await f.load();
+    qDialog.value = false;
+  } catch (e) {
+    error(e instanceof VersionConflict ? t('invoices.version_conflict') : t('invoices.save_failed'));
+  }
+}
+async function sendQuote() {
+  if (!qForm.id) return;
+  // Save first: the number is stamped on whatever is stored, not on what is on
+  // screen, so an unsaved edit would go out unrecorded.
+  await saveQuote();
+  try {
+    const { quote } = await f.sendQuote(qForm.id);
+    await f.load();
+    openQuote(quote);
+    success(t('invoices.quote_sent', { number: String(quote.number) }));
+  } catch { error(t('invoices.save_failed')); }
+}
+async function decide(decision: 'accepted' | 'declined') {
+  if (!qForm.id) return;
+  try {
+    const { quote } = await f.decideQuote(qForm.id, decision);
+    await f.load();
+    openQuote(quote);
+  } catch { error(t('invoices.save_failed')); }
+}
+async function convertQuote() {
+  if (!qForm.id) return;
+  if (!await confirmAsk(t('invoices.quote_to_invoice_confirm'))) return;
+  try {
+    const res = await f.convertQuote(qForm.id);
+    await f.load();
+    qDialog.value = false;
+    if (res.already) success(t('invoices.quote_already_converted'));
+    const inv = f.invoices.find((i) => i.id === res.invoice.id);
+    // Land in the invoice it produced: the next thing anyone wants is to check
+    // and finalise it.
+    if (inv) { go('documents'); editInvoice(inv); }
+  } catch { error(t('invoices.save_failed')); }
+}
+async function dupQuote() {
+  if (!qForm.id) return;
+  try {
+    const { quote } = await f.duplicateQuote(qForm.id);
+    await f.load();
+    openQuote(quote);
+  } catch { error(t('invoices.save_failed')); }
+}
+async function delQuote() {
+  if (!qForm.id) return;
+  if (!await confirmAsk(t('invoices.quote_delete_confirm'))) return;
+  await f.deleteQuote(qForm.id);
+  await f.load();
+  qDialog.value = false;
+}
 
 // ---- Article catalogue (Warenverwaltung) ----
 // Two kinds in one list: a quote line does not care whether it sells an hour or

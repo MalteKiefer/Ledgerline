@@ -51,6 +51,7 @@ use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceProductController;
+use App\Http\Controllers\FinanceQuoteController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\GalleryCommentController;
 use App\Http\Controllers\GalleryController;
@@ -243,6 +244,18 @@ Route::prefix('v1')->group(function (): void {
 
             // Article catalogue (Warenverwaltung). Stock never moves through the
             // update path — only through the stock endpoint, which writes a movement.
+            // Quotes (Angebote). Editable only while a draft; `send` gives it its
+            // number, `convert` copies it into a draft invoice.
+            Route::post('/finance/quotes', [FinanceQuoteController::class, 'store'])->middleware('throttle:600,1')->name('api.finance.quotes.store');
+            Route::put('/finance/quotes/{quote}', [FinanceQuoteController::class, 'update'])->whereNumber('quote')->middleware('throttle:600,1')->name('api.finance.quotes.update');
+            Route::post('/finance/quotes/{quote}/send', [FinanceQuoteController::class, 'send'])->whereNumber('quote')->middleware('throttle:120,1')->name('api.finance.quotes.send');
+            Route::post('/finance/quotes/{quote}/decide', [FinanceQuoteController::class, 'decide'])->whereNumber('quote')->middleware('throttle:120,1')->name('api.finance.quotes.decide');
+            Route::post('/finance/quotes/{quote}/convert', [FinanceQuoteController::class, 'convertToInvoice'])->whereNumber('quote')->middleware('throttle:120,1')->name('api.finance.quotes.convert');
+            Route::post('/finance/quotes/{quote}/duplicate', [FinanceQuoteController::class, 'duplicate'])->whereNumber('quote')->middleware('throttle:120,1')->name('api.finance.quotes.duplicate');
+            Route::delete('/finance/quotes/{quote}', [FinanceQuoteController::class, 'destroy'])->whereNumber('quote')->middleware('throttle:600,1')->name('api.finance.quotes.destroy');
+            Route::post('/finance/quotes/{id}/restore', [FinanceQuoteController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.quotes.restore');
+            Route::delete('/finance/quotes/{id}/force', [FinanceQuoteController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.quotes.force');
+            Route::get('/finance/products/{product}/line', [FinanceQuoteController::class, 'lineFromProduct'])->whereNumber('product')->middleware('throttle:600,1')->name('api.finance.products.line');
             Route::post('/finance/products', [FinanceProductController::class, 'store'])->middleware('throttle:600,1')->name('api.finance.products.store');
             Route::put('/finance/products/{product}', [FinanceProductController::class, 'update'])->whereNumber('product')->middleware('throttle:600,1')->name('api.finance.products.update');
             Route::delete('/finance/products/{product}', [FinanceProductController::class, 'destroy'])->whereNumber('product')->middleware('throttle:600,1')->name('api.finance.products.destroy');
