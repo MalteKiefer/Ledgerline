@@ -56,7 +56,7 @@
               @click="pickFolder(f.folder)"
             >
               <Icon :name="folderIcon(f.folder)" :size="16" />
-              <span class="min-w-0 flex-1 truncate text-left">{{ f.folder }}</span>
+              <span class="min-w-0 flex-1 truncate text-left">{{ folderLabel(f.folder) }}</span>
               <span v-if="f.unread" class="text-[10px] font-semibold">{{ f.unread }}</span>
             </button>
             <!-- The folders on the server, not only the ones we hold mail in:
@@ -223,7 +223,7 @@
               <template v-if="moveTargets.length">
                 <div :class="menuSection">{{ t('mail.actions.move_to') }}</div>
                 <DropdownMenuItem v-for="f in moveTargets" :key="`mv-${f}`" :class="menuItem" @select="bulkMove(f)">
-                  <Icon name="drive_file_move" :size="18" /><span class="flex-1 truncate">{{ f }}</span>
+                  <Icon name="drive_file_move" :size="18" /><span class="flex-1 truncate">{{ folderLabel(f) }}</span>
                 </DropdownMenuItem>
                 <div class="my-1 h-px bg-[var(--ll-border)]" />
               </template>
@@ -368,7 +368,7 @@
                 <div v-else-if="col === 'labels'" class="flex items-center gap-1">
                   <span v-for="l in (m.labels || [])" :key="l.id" class="shrink-0 truncate rounded px-1.5 py-0.5 text-[0.6rem] font-medium" :style="{ background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }">{{ l.name }}</span>
                 </div>
-                <span v-else-if="col === 'folder'" class="block truncate text-xs font-normal text-[var(--ll-muted)]">{{ m.folder }}</span>
+                <span v-else-if="col === 'folder'" class="block truncate text-xs font-normal text-[var(--ll-muted)]">{{ folderLabel(m.folder) }}</span>
                 <span v-else-if="col === 'account'" class="block truncate text-xs font-normal text-[var(--ll-muted)]">{{ accountName(m.account_id) }}</span>
                 <Icon v-else-if="col === 'attachment' && m.has_attachment" name="attach_file" :size="15" class="text-[var(--ll-muted)]" :title="t('mail.list.attachment')" />
                 <Icon v-else-if="col === 'security' && m.encrypted_type" name="lock" :size="15" class="text-[var(--ll-muted)]" :title="t('mail.reader.encrypted')" />
@@ -857,7 +857,7 @@
       </div>
       <div class="divide-y divide-[var(--ll-border)]">
         <div v-for="(pf, i) in statsDlg.data.per_folder" :key="i" class="flex items-center justify-between py-1.5 text-sm">
-          <span class="min-w-0 truncate">{{ accountName(pf.account_id) }} · {{ pf.folder }}</span>
+          <span class="min-w-0 truncate">{{ accountName(pf.account_id) }} · {{ folderLabel(pf.folder) }}</span>
           <span class="ml-2 shrink-0 text-xs text-[var(--ll-muted)]">{{ pf.count }} · {{ fmtBytes(pf.bytes) }}</span>
         </div>
       </div>
@@ -905,7 +905,7 @@
       <div class="max-h-80 divide-y divide-[var(--ll-border)] overflow-y-auto rounded-lg border border-[var(--ll-border)]">
         <div v-for="f in fm.folders" :key="f.name" class="flex items-center gap-2 px-3 py-2 text-sm">
           <Icon :name="f.selectable ? 'folder' : 'folder_open'" :size="16" class="text-[var(--ll-muted)]" />
-          <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
+          <span class="min-w-0 flex-1 truncate">{{ folderLabel(f.name) }}</span>
           <!-- Not selectable means it only holds other folders; nothing can be
                filed into it and renaming it would move its children. -->
           <Btn v-if="f.selectable" variant="ghost" size="xs" icon="edit" :title="t('common.rename')" :disabled="fm.busy" @click="doRenameFolder(f.name)" />
@@ -923,6 +923,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } 
 import { useRoute, useRouter } from 'vue-router';
 import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
+import { decodeImapFolder } from '@spa/shared/imap-utf7';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal, SortLabel, Pager, FloatingBar } from '@spa/ui';
 import { useMailStore, type ServerFolder, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft, type MailAttachmentRow } from '@spa/stores/mail';
@@ -996,6 +997,15 @@ const logLevelItems = [
   { title: t('mail.logs.level_error'), value: 'error' },
 ];
 const labelRuleItems = computed(() => [{ title: t('common.none'), value: 0 }, ...s.labels.map((l) => ({ title: l.name, value: l.id }))]);
+
+/**
+ * A folder name as a person should read it.
+ *
+ * IMAP names folders in its own flavour of UTF-7, so "Entwürfe" arrives as
+ * `Entw&APw-rfe`. Only the label is decoded — every value that travels back to
+ * the server keeps the wire form the server itself gave us.
+ */
+function folderLabel(name: string): string { return decodeImapFolder(name); }
 
 function foldersForAccount(id: number) { return s.folders.filter((f) => f.account_id === id); }
 
