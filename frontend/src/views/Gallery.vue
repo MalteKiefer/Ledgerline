@@ -128,10 +128,7 @@
       <!-- The selection is made by scrolling, so the actions float rather than
            sitting at the top of a list that has long since scrolled past. -->
       <FloatingBar :show="!showTrash && !showDupes && !peopleGrid && viewMode === 'grid' && selected.size > 0" :label="`${selected.size} ${t('gallery.selected')}`">
-        <div class="relative">
-          <!-- Catches the next click anywhere so the menu closes; behind the
-               menu, above the page, only present while the menu is open. -->
-          <div v-if="albumMenu" class="fixed inset-0 z-10" @click="albumMenu = false"></div>
+        <div class="relative" data-album-menu>
           <Btn variant="ghost" size="sm" icon="library_add" @click="albumMenu = !albumMenu">{{ t('gallery.add_to_album') }}</Btn>
           <!-- Opens upward: the bar sits at the bottom edge. -->
           <div v-if="albumMenu" class="absolute bottom-full right-0 z-20 mb-1 max-h-72 w-52 overflow-y-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] py-1 shadow-lg">
@@ -820,6 +817,26 @@ const trashPhotos = ref<Photo[]>([]);
 const trashBusy = ref(false);
 const albumId = ref<number | null>(null);
 const albumMenu = ref(false);
+
+/**
+ * Close the album menu on the next click outside it.
+ *
+ * A click-catching overlay would be the usual trick, but the menu now lives in
+ * the floating bar and an overlay there either sits under the bar's own buttons
+ * or has to fight it for stacking order. A document listener has neither
+ * problem: the menu marks its own subtree and anything outside closes it.
+ */
+function onAlbumMenuOutside(e: MouseEvent) {
+  const el = e.target as HTMLElement | null;
+  if (el?.closest('[data-album-menu]')) return;
+  albumMenu.value = false;
+}
+watch(albumMenu, (open) => {
+  // Registered on the next frame: the click that opened the menu is still
+  // travelling and would otherwise close it again immediately.
+  if (open) setTimeout(() => document.addEventListener('click', onAlbumMenuOutside), 0);
+  else document.removeEventListener('click', onAlbumMenuOutside);
+});
 const menuOpen = ref(false);
 /**
  * The counts in the header.
@@ -1141,6 +1158,7 @@ onMounted(() => {
   }, 4000);
 });
 onUnmounted(() => {
+  document.removeEventListener('click', onAlbumMenuOutside);
   window.removeEventListener('keydown', onKey); window.removeEventListener('focus', onFocus);
   window.removeEventListener('scroll', syncScrubber);
   window.removeEventListener('resize', onScrubResize);

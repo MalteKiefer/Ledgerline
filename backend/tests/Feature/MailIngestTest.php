@@ -102,6 +102,37 @@ class MailIngestTest extends TestCase
         $this->assertFileDoesNotExist($path);
     }
 
+    public function test_origin_uid_and_uidvalidity_are_recorded_together(): void
+    {
+        // The archive can only carry a change back to the mailbox if it knows
+        // which message it is: a UID, and the generation of the folder that UID
+        // belongs to. mbsync puts the first in the filename, the second in a
+        // dotfile beside cur/.
+        file_put_contents($this->maildir.'/.uidvalidity', "1690000000\n5\n");
+        $account = $this->account();
+
+        (new MaildirIngestor)->ingestFile($account, 'INBOX', $this->drop($this->sampleEml()));
+
+        $message = MailMessage::query()->where('user_id', $account->user_id)->firstOrFail();
+        $this->assertSame(42, $message->uid);
+        $this->assertSame(1690000000, $message->uidvalidity);
+    }
+
+    public function test_a_message_without_a_folder_generation_records_no_uid_at_all(): void
+    {
+        // A UID on its own points at nothing: the server hands out fresh ones
+        // whenever it renumbers a folder. Half a reference would aim a
+        // write-back at whatever message now happens to hold that number, so
+        // neither half is kept.
+        $account = $this->account();
+
+        (new MaildirIngestor)->ingestFile($account, 'INBOX', $this->drop($this->sampleEml()));
+
+        $message = MailMessage::query()->where('user_id', $account->user_id)->firstOrFail();
+        $this->assertNull($message->uidvalidity);
+        $this->assertNull($message->uid);
+    }
+
     public function test_duplicate_is_not_stored_twice(): void
     {
         $account = $this->account();

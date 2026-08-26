@@ -90,6 +90,15 @@ class MaildirIngestor
      */
     public function ingestFile(MailAccount $account, string $folder, string $path): IngestResult
     {
+        // mbsync stamps each Maildir filename with the origin IMAP UID as
+        // `,U=<uid>`, and keeps the folder's UIDVALIDITY in a dotfile beside
+        // cur/ and new/. Read both here, before anything is written: a UID is
+        // only meaningful within one generation of a folder, so a message
+        // carries both or neither. Absent → the row records nothing, and every
+        // write-back skips it rather than aiming at a guessed message.
+        $uid = preg_match('/,U=(\d+)/', basename($path), $m) === 1 ? $m[1] : null;
+        $uidvalidity = $this->uidValidityOf($path);
+
         // OOM guard: check the file SIZE before reading it into memory. An
         // oversized message is quarantined (moved aside), NOT read and NOT thrown
         // — a throw would leave it for a retry that re-triggers the same OOM.
@@ -239,7 +248,7 @@ class MaildirIngestor
         // forces seen; a trash rule stores the message soft-hidden.
         $seen = $this->maildirSeen($path) || $rule['mark_read'];
 
-        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $blobId, $seen, $spam, $parsed, $textBody, $htmlSanitized, $searchText, $attachmentBlobs, $attachmentCount, $decrypt, $threadId, $rule): void {
+        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $blobId, $seen, $spam, $parsed, $textBody, $htmlSanitized, $searchText, $attachmentBlobs, $attachmentCount, $decrypt, $threadId, $rule, $uid, $uidvalidity): void {
             // Hour-snapped archived-at (mirrors every other module's created_at).
             $now = now()->startOfHour();
 
@@ -257,6 +266,11 @@ class MaildirIngestor
                 'user_id' => $account->user_id,
                 'account_id' => $account->id,
                 'folder' => $folder,
+                // Which message on the origin server this is. Both halves or
+                // neither: a UID without its generation would point a
+                // write-back at whatever message holds that number today.
+                'uid' => $uid === null || $uidvalidity === null ? null : (int) $uid,
+                'uidvalidity' => $uid === null ? null : $uidvalidity,
                 'content_hash' => $hash,
                 'size' => $rawSize,
                 'message_id' => $this->cap($parsed->messageId, 255),
@@ -361,11 +375,6 @@ class MaildirIngestor
         // Ledger row committed → the Maildir plaintext is redundant. Shred it.
         @unlink($path);
 
-        // mbsync stamps each Maildir filename with the origin IMAP UID as
-        // `,U=<uid>` — extract it so a future "delete after import" (Phase 4) can
-        // remove exactly this message. Absent → null (delete step skips it).
-        $uid = preg_match('/,U=(\d+)/', basename($path), $m) === 1 ? $m[1] : null;
-
         return IngestResult::stored($hash, $uid);
     }
 
@@ -414,6 +423,37 @@ class MaildirIngestor
         }
 
         return $summary;
+    }
+
+    /**
+     * The folder's UIDVALIDITY, as isync recorded it.
+     *
+     * isync keeps a `.uidvalidity` file in the Maildir folder whose first line
+     * is the number the server gave for this generation of the folder. When the
+     * server renumbers a folder it hands out a new one, and every UID we stored
+     * before that stops referring to anything — which is exactly why a UID is
+     * never stored without it.
+     *
+     * The message file lives in `<folder>/cur` or `<folder>/new`, so the
+     * dotfile is one directory up. Unreadable or not a number → null, and the
+     * message is then stored without an origin reference at all.
+     */
+    private function uidValidityOf(string $messagePath): ?int
+    {
+        $folderDir = dirname($messagePath, 2);
+        $file = $folderDir.'/.uidvalidity';
+        if (! is_file($file)) {
+            return null;
+        }
+
+        $first = @file_get_contents($file, false, null, 0, 64);
+        if ($first === false) {
+            return null;
+        }
+
+        $line = trim(strtok($first, "\n") ?: '');
+
+        return ctype_digit($line) && $line !== '' ? (int) $line : null;
     }
 
     /**

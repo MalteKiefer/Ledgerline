@@ -30,6 +30,8 @@ use Illuminate\Support\Carbon;
  * @property int $user_id
  * @property ?int $account_id
  * @property string $folder
+ * @property ?int $uid Origin IMAP UID, null when the message did not come from a sync.
+ * @property ?int $uidvalidity Generation the UID belongs to; a UID without it is meaningless.
  * @property string $content_hash
  * @property int $size
  * @property ?string $message_id
@@ -90,6 +92,8 @@ class MailMessage extends Model
             'spam' => 'boolean',
             'has_attachment' => 'boolean',
             'attachment_count' => 'integer',
+            'uid' => 'integer',
+            'uidvalidity' => 'integer',
             'size' => 'integer',
             'to_json' => 'array',
             'cc_json' => 'array',

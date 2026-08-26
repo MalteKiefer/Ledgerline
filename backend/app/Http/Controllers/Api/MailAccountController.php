@@ -193,6 +193,7 @@ class MailAccountController extends Controller
             'folders.*' => ['string', 'max:255'],
             'backfill_since' => ['nullable', 'date'],
             'delete_after_import' => ['nullable', 'boolean'],
+            'write_back_flags' => ['nullable', 'boolean'],
             'skip_spam' => ['nullable', 'boolean'],
             'enabled' => ['nullable', 'boolean'],
             'sync_interval_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
@@ -231,6 +232,9 @@ class MailAccountController extends Controller
         if ($request->has('delete_after_import')) {
             $data['delete_after_import'] = $request->boolean('delete_after_import');
         }
+        if ($request->has('write_back_flags')) {
+            $data['write_back_flags'] = $request->boolean('write_back_flags');
+        }
         if ($request->has('skip_spam')) {
             $data['skip_spam'] = $request->boolean('skip_spam');
         }
@@ -267,6 +271,7 @@ class MailAccountController extends Controller
             'folders' => $account->folders,
             'backfill_since' => $account->backfill_since?->toDateString(),
             'delete_after_import' => $account->delete_after_import,
+            'write_back_flags' => $account->write_back_flags,
             'skip_spam' => $account->skip_spam,
             'enabled' => $account->enabled,
             'sync_interval_minutes' => $account->sync_interval_minutes,
