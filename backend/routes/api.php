@@ -73,6 +73,7 @@ use App\Http\Controllers\MailLogController;
 use App\Http\Controllers\MailMessageController;
 use App\Http\Controllers\MailMoveController;
 use App\Http\Controllers\MailPushbackController;
+use App\Http\Controllers\MailRecipientController;
 use App\Http\Controllers\MailRuleController;
 use App\Http\Controllers\MailSavedSearchController;
 use App\Http\Controllers\MailSeenController;
@@ -656,6 +657,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware('throttle:60,1')->name('api.mail.messages.trash');
             Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('api.mail.messages.restore');
             Route::post('/mail/messages/move', MailMoveController::class)->middleware('throttle:60,1')->name('api.mail.messages.move');
+            Route::get('/mail/recipients', MailRecipientController::class)->middleware('throttle:600,1')->name('api.mail.recipients');
             Route::get('/mail/server-folders', [MailFolderAdminController::class, 'index'])->middleware('throttle:30,1')->name('api.mail.server-folders.index');
             Route::post('/mail/server-folders', [MailFolderAdminController::class, 'store'])->middleware('throttle:30,1')->name('api.mail.server-folders.store');
             Route::post('/mail/server-folders/rename', [MailFolderAdminController::class, 'rename'])->middleware('throttle:30,1')->name('api.mail.server-folders.rename');
