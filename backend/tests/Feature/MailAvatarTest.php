@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Models\AddressBook;
 use App\Models\Contact;
+use App\Models\MailMessage;
 use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -127,6 +128,44 @@ class MailAvatarTest extends TestCase
         $avatars = $res->json('avatars');
         $this->assertIsArray($avatars);
         $this->assertStringStartsWith('data:image/png;base64,', (string) ($avatars['someone@quantco.com'] ?? ''));
+    }
+
+    public function test_an_alias_service_does_not_get_credit_for_the_real_sender(): void
+    {
+        // Mail forwarded by SimpleLogin arrives from
+        // …_at_twitch_tv_xxxx@simplelogin.co, so the address' own domain would
+        // return SimpleLogin's mark. The real sender is in the display name,
+        // which the service fills in deliberately as a readable address.
+        $user = User::factory()->create();
+        UserSetting::for((int) $user->id)->forceFill(['mail_avatars' => 'domain'])->save();
+
+        (new MailMessage)->forceFill([
+            'id' => (string) Str::uuid(),
+            'user_id' => $user->id,
+            'folder' => 'INBOX',
+            'from_email' => 'purchase-noreply_at_twitch_tv_xkdb@simplelogin.co',
+            'from_name' => 'purchase-noreply@twitch.tv',
+            'content_hash' => hash('sha256', 'alias'),
+            'size' => 1,
+            'created_at' => now(),
+        ])->save();
+
+        $asked = [];
+        Http::fake(function ($request) use (&$asked) {
+            $asked[] = (string) $request->url();
+
+            return Http::response(self::PNG, 200, ['Content-Type' => 'image/png']);
+        });
+
+        $this->actingAs($user)
+            ->postJson('/mail/avatars', ['emails' => ['purchase-noreply_at_twitch_tv_xkdb@simplelogin.co']])
+            ->assertOk();
+
+        // twitch.tv is asked; simplelogin.co is not reached at all, because the
+        // first rung already answered.
+        $this->assertNotEmpty($asked);
+        $this->assertStringContainsString('twitch.tv', implode(' ', $asked));
+        $this->assertStringNotContainsString('simplelogin.co', implode(' ', $asked));
     }
 
     public function test_it_never_reads_another_users_address_book(): void
