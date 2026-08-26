@@ -174,8 +174,9 @@
         </div>
       </div>
 
-      <!-- Selection bar -->
-      <div v-if="s.selected.length" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2">
+      <!-- Floats above the page: on a phone the whole page scrolls, so a bar
+           in the flow is out of sight by the time a selection is made. -->
+      <FloatingBar :show="s.selected.length > 0">
         <label class="inline-flex items-center gap-2 text-xs font-medium">
           <input type="checkbox" class="accent-primary-500" :checked="allSelected" @change="toggleSelectAll">
           {{ t('mail.actions.selected_n', { n: String(s.selected.length) }) }}
@@ -189,7 +190,7 @@
         >{{ t('mail.actions.select_all_matching', { n: String(s.meta.total) }) }}</button>
         <span v-else-if="selectionIsWholeResult" class="text-xs text-[var(--ll-muted)]">{{ t('mail.actions.whole_result_selected') }}</span>
 
-        <div class="ml-auto flex flex-wrap items-center gap-1">
+        <div class="flex items-center gap-1">
           <Btn variant="ghost" size="xs" icon="mark_email_read" :loading="bulkBusy" @click="bulkSeen(true)">{{ t('mail.actions.mark_read') }}</Btn>
           <Btn variant="ghost" size="xs" icon="mark_email_unread" :loading="bulkBusy" @click="bulkSeen(false)">{{ t('mail.actions.mark_unread') }}</Btn>
           <Btn variant="ghost" size="xs" icon="star" :loading="bulkBusy" :title="t('mail.actions.flag')" @click="bulkFlag(true)" />
@@ -223,7 +224,7 @@
             </DropdownMenuContent></DropdownMenuPortal>
           </DropdownMenuRoot>
         </div>
-      </div>
+      </FloatingBar>
 
       <!-- Table -->
       <div v-if="threadView && !draftListActive" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2 text-xs">
@@ -880,7 +881,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from 'reka-ui';
-import { Icon, Btn, Card, TextField, Select, Badge, Modal, SortLabel, Pager } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal, SortLabel, Pager, FloatingBar } from '@spa/ui';
 import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft, type MailAttachmentRow } from '@spa/stores/mail';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
