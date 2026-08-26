@@ -111,7 +111,7 @@ class PreferencesController extends Controller
             $update['mail_signature'] = is_string($sig) && trim($sig) !== '' ? $sig : null;
         }
         if ($request->has('mail_avatars')) {
-            $data['mail_avatars'] = $request->string('mail_avatars')->value();
+            $update['mail_avatars'] = $request->string('mail_avatars')->value();
         }
 
         $setting = UserSetting::for($this->requireUser($request)->id);

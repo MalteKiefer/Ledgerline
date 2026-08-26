@@ -130,6 +130,46 @@ class PreferencesTest extends TestCase
         $this->assertSame('mmoll', $prefs['glucose']);
     }
 
+    /**
+     * Every preference the endpoint accepts is actually stored.
+     *
+     * `mail_avatars` was validated, echoed back in the response and never
+     * written: its branch assigned to a variable nothing persists, so the client
+     * was told "saved" and got the old value back on the next load. A 200 with
+     * the preferences in it is not evidence that a column moved — only reading
+     * it back is. A new preference without a persist branch fails here.
+     */
+    public function test_every_settable_preference_survives_a_write(): void
+    {
+        $user = $this->signIn();
+
+        /** @var list<array{payload: array<string, mixed>, key: string, stored: mixed}> $cases */
+        $cases = [
+            ['payload' => ['distance' => 'mi'], 'key' => 'distance', 'stored' => 'mi'],
+            ['payload' => ['elevation' => 'ft'], 'key' => 'elevation', 'stored' => 'ft'],
+            ['payload' => ['weight' => 'lb'], 'key' => 'weight', 'stored' => 'lb'],
+            ['payload' => ['temp' => 'f'], 'key' => 'temp', 'stored' => 'f'],
+            ['payload' => ['glucose' => 'mmoll'], 'key' => 'glucose', 'stored' => 'mmoll'],
+            ['payload' => ['time_format' => '12h'], 'key' => 'time_format', 'stored' => '12h'],
+            ['payload' => ['timezone' => 'Europe/Berlin'], 'key' => 'timezone', 'stored' => 'Europe/Berlin'],
+            ['payload' => ['date_format' => 'ymd'], 'key' => 'date_format', 'stored' => 'ymd'],
+            ['payload' => ['mail_load_remote' => true], 'key' => 'mail_load_remote', 'stored' => true],
+            ['payload' => ['mail_signature' => 'Gruss'], 'key' => 'mail_signature', 'stored' => 'Gruss'],
+            ['payload' => ['mail_avatars' => 'domain'], 'key' => 'mail_avatars', 'stored' => 'domain'],
+            ['payload' => ['mail_columns' => ['date', 'from']], 'key' => 'mail_columns', 'stored' => ['date', 'from']],
+        ];
+
+        foreach ($cases as $case) {
+            $this->post(route('preferences.update'), $case['payload'])->assertRedirect();
+
+            $this->assertSame(
+                $case['stored'],
+                UserSetting::for($user->id)->displayPrefs()[$case['key']],
+                "Preference '{$case['key']}' was accepted but not stored.",
+            );
+        }
+    }
+
     public function test_mail_columns_keep_their_order_and_reject_the_unknown(): void
     {
         $user = User::factory()->create();

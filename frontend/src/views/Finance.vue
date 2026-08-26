@@ -691,6 +691,268 @@
       </div>
     </div>
 
+    <!-- QUOTES (Angebote) -->
+    <div v-show="tab === 'quotes'">
+      <Card :body-class="'p-0'">
+        <template #header>
+          <div class="flex flex-wrap items-center gap-2">
+            <TextField v-model="qSearch" :placeholder="t('invoices.quote_search')" icon="search" class="w-full sm:w-64" />
+            <Select v-model="qStatus" :options="qStatusFilterItems" class="w-full sm:w-44" />
+          </div>
+        </template>
+        <template #actions><Btn variant="solid" size="sm" icon="add" @click="newQuote">{{ t('invoices.quote_add') }}</Btn></template>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+              <tr class="border-b border-[var(--ll-border)]">
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="qSortBy('issue_date')"><SortLabel :label="t('common.date')" active-key="issue_date" :sort="qSort" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="qSortBy('number')"><SortLabel :label="t('invoices.quote_number')" active-key="number" :sort="qSort" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="qSortBy('customer')"><SortLabel :label="t('invoices.customer')" active-key="customer" :sort="qSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium md:table-cell" @click="qSortBy('valid_until')"><SortLabel :label="t('invoices.quote_valid_until')" active-key="valid_until" :sort="qSort" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="qSortBy('gross')"><SortLabel :label="t('invoices.gross')" active-key="gross" :sort="qSort" justify="end" /></th>
+                <th class="px-4 py-2.5 font-medium">{{ t('invoices.status') }}</th>
+                <th class="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="q in filteredQuotes" :key="q.id" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openQuote(q)">
+                <td class="px-4 py-2.5 tabular-nums">{{ fmtDate(q.issue_date) }}</td>
+                <td class="px-4 py-2.5 font-medium tabular-nums">{{ q.number || '—' }}</td>
+                <td class="px-4 py-2.5">{{ q.customer?.name || partnerName(q.partner_id) || '—' }}<span v-if="q.title" class="block text-xs text-[var(--ll-muted)]">{{ q.title }}</span></td>
+                <td class="hidden px-4 py-2.5 tabular-nums md:table-cell" :class="quoteExpired(q) ? 'text-amber-700 dark:text-amber-400' : 'text-[var(--ll-muted)]'">{{ fmtDate(q.valid_until) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ money(Number(q.gross ?? 0)) }}</td>
+                <td class="px-4 py-2.5"><Badge :tone="quoteTone(q)">{{ quoteStatusLabel(q) }}</Badge></td>
+                <td class="px-4 py-2.5 text-right"><Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" /></td>
+              </tr>
+              <tr v-if="!filteredQuotes.length"><td colspan="7" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.quotes_empty') }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+
+    <!-- Quote editor -->
+    <Modal v-model="qDialog" :title="qForm.number || t('invoices.quote_add')" width="860px">
+      <div v-if="qLocked" class="mb-3 rounded-xl border border-[var(--ll-border)] bg-black/[0.02] px-3 py-2 text-sm text-[var(--ll-muted)] dark:bg-white/5">
+        {{ t('invoices.quote_locked_hint') }}
+      </div>
+      <fieldset :disabled="qLocked" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div class="sm:col-span-2"><TextField v-model="qForm.title" :label="t('invoices.quote_title')" /></div>
+        <Select v-model="qForm.partner_id" :label="t('invoices.partner')" :options="customerItems" @update:modelValue="applyQuotePartner" />
+        <TextField v-model="qForm.customer_name" :label="t('invoices.customer')" />
+        <TextField v-model="qForm.customer_attn" :label="t('invoices.cust_attn')" />
+        <TextField v-model="qForm.customer_email" :label="t('common.email')" />
+        <div class="sm:col-span-2">
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.cust_address') }}</label>
+          <textarea v-model="qForm.customer_address" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+        <TextField v-model="qForm.issue_date" :label="t('common.date')" type="date" />
+        <TextField v-model="qForm.valid_until" :label="t('invoices.quote_valid_until')" type="date" />
+      </fieldset>
+
+      <!-- Lines: services and hardware side by side, picked from the catalogue -->
+      <div class="mt-4">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.positions') }}</h3>
+          <div v-if="!qLocked" class="flex items-center gap-2">
+            <Select v-model="qPickProduct" :options="productPickItems" class="w-56" @update:modelValue="addQuoteLineFromProduct" />
+            <Btn variant="soft" size="sm" icon="add" @click="addQuoteLine">{{ t('invoices.add_position') }}</Btn>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+              <tr class="border-b border-[var(--ll-border)]">
+                <th class="py-1.5 pr-2 font-medium">{{ t('invoices.description') }}</th>
+                <th class="w-20 py-1.5 pr-2 text-right font-medium">{{ t('invoices.qty') }}</th>
+                <th class="w-24 py-1.5 pr-2 font-medium">{{ t('invoices.product_unit') }}</th>
+                <th class="w-28 py-1.5 pr-2 text-right font-medium">{{ t('invoices.unit_price') }}</th>
+                <th class="w-20 py-1.5 pr-2 text-right font-medium">{{ t('invoices.vat') }}</th>
+                <th class="w-28 py-1.5 pr-2 text-right font-medium">{{ t('invoices.amount') }}</th>
+                <th class="w-8 py-1.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(l, i) in qForm.lines" :key="i" class="border-b border-[var(--ll-border)] last:border-0">
+                <td class="py-1.5 pr-2">
+                  <textarea v-model="l.desc" rows="1" :disabled="qLocked" class="w-full resize-y rounded-lg border border-[var(--ll-border)] bg-transparent px-2 py-1 text-sm"></textarea>
+                  <span v-if="l.kind" class="mt-0.5 inline-block text-xs text-[var(--ll-muted)]">{{ t('invoices.product_kind_' + l.kind) }}</span>
+                </td>
+                <td class="py-1.5 pr-2"><TextField inputmode="decimal" :disabled="qLocked" :model-value="moneyInput(l.qty)" @update:model-value="l.qty = parseMoney($event) ?? 0" /></td>
+                <td class="py-1.5 pr-2"><TextField :disabled="qLocked" :model-value="l.unit ?? ''" @update:model-value="l.unit = $event || null" /></td>
+                <td class="py-1.5 pr-2"><TextField inputmode="decimal" :disabled="qLocked" :model-value="moneyInput(l.unitPrice)" @update:model-value="l.unitPrice = parseMoney($event) ?? 0" /></td>
+                <td class="py-1.5 pr-2"><TextField inputmode="decimal" :disabled="qLocked" :model-value="l.vatRate == null ? '' : String(l.vatRate)" @update:model-value="l.vatRate = parseMoney($event)" /></td>
+                <td class="py-1.5 pr-2 text-right tabular-nums">{{ money(l.qty * l.unitPrice) }}</td>
+                <td class="py-1.5 text-right"><Btn v-if="!qLocked" variant="ghost" size="sm" icon="close" :title="t('common.delete')" @click="qForm.lines.splice(i, 1)" /></td>
+              </tr>
+              <tr v-if="!qForm.lines.length"><td colspan="7" class="py-4 text-center text-[var(--ll-muted)]">{{ t('invoices.no_positions') }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3 flex flex-wrap items-end justify-between gap-3">
+          <fieldset :disabled="qLocked" class="flex items-end gap-2">
+            <Select v-model="qForm.discount_type" :label="t('invoices.discount')" :options="qDiscountItems" class="w-36" />
+            <TextField v-if="qForm.discount_type" inputmode="decimal" :label="t('invoices.discount_value')" :model-value="moneyInput(qForm.discount_value)" @update:model-value="qForm.discount_value = parseMoney($event)" class="w-28" />
+          </fieldset>
+          <dl class="text-right text-sm tabular-nums">
+            <div class="flex justify-between gap-6"><dt class="text-[var(--ll-muted)]">{{ t('invoices.net') }}</dt><dd>{{ money(qTotals.net) }}</dd></div>
+            <div class="flex justify-between gap-6"><dt class="text-[var(--ll-muted)]">{{ t('invoices.vat') }}</dt><dd>{{ money(qTotals.vat) }}</dd></div>
+            <div class="flex justify-between gap-6 font-semibold"><dt>{{ t('invoices.gross') }}</dt><dd>{{ money(qTotals.gross) }}</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <fieldset :disabled="qLocked" class="mt-4 grid grid-cols-1 gap-3">
+        <div>
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.quote_intro') }}</label>
+          <textarea v-model="qForm.intro_text" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.quote_outro') }}</label>
+          <textarea v-model="qForm.outro_text" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+      </fieldset>
+
+      <template #footer>
+        <Btn v-if="qForm.id" variant="ghost" size="sm" icon="delete" class="mr-auto text-red-600 dark:text-red-400" @click="delQuote">{{ t('common.delete') }}</Btn>
+        <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="soft" size="sm" icon="content_copy" @click="dupQuote">{{ t('invoices.quote_duplicate') }}</Btn>
+        <Btn v-if="qForm.id && qCanDecide" variant="soft" size="sm" icon="thumb_down" @click="decide('declined')">{{ t('invoices.quote_decline') }}</Btn>
+        <Btn v-if="qForm.id && qCanDecide" variant="soft" size="sm" icon="thumb_up" @click="decide('accepted')">{{ t('invoices.quote_accept') }}</Btn>
+        <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="solid" size="sm" icon="receipt_long" @click="convertQuote">{{ t('invoices.quote_to_invoice') }}</Btn>
+        <Btn v-if="qForm.id && qForm.status === 'draft'" variant="solid" size="sm" icon="send" @click="sendQuote">{{ t('invoices.quote_send') }}</Btn>
+        <Btn variant="ghost" @click="qDialog = false">{{ qLocked ? t('common.close') : t('common.cancel') }}</Btn>
+        <Btn v-if="!qLocked" variant="solid" @click="saveQuote">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- ARTICLE CATALOGUE (Warenverwaltung) -->
+    <div v-show="tab === 'products'">
+      <Card :body-class="'p-0'">
+        <template #header>
+          <div class="flex flex-wrap items-center gap-2">
+            <TextField v-model="prodSearch" :placeholder="t('invoices.product_search')" icon="search" class="w-full sm:w-64" />
+            <Select v-model="prodKind" :options="prodKindItems" class="w-full sm:w-44" />
+            <label class="flex items-center gap-1.5 text-sm text-[var(--ll-muted)]">
+              <input v-model="prodLowOnly" type="checkbox" class="rounded"> {{ t('invoices.product_low_only') }}
+            </label>
+          </div>
+        </template>
+        <template #actions><Btn variant="solid" size="sm" icon="add" @click="newProduct">{{ t('invoices.product_add') }}</Btn></template>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+              <tr class="border-b border-[var(--ll-border)]">
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="prodSortBy('name')"><SortLabel :label="t('invoices.product_name')" active-key="name" :sort="prodSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium md:table-cell" @click="prodSortBy('sku')"><SortLabel :label="t('invoices.product_sku')" active-key="sku" :sort="prodSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium lg:table-cell" @click="prodSortBy('category')"><SortLabel :label="t('invoices.receipt_category')" active-key="category" :sort="prodSort" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="prodSortBy('price')"><SortLabel :label="t('invoices.product_price')" active-key="price" :sort="prodSort" justify="end" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="prodSortBy('stock')"><SortLabel :label="t('invoices.product_stock')" active-key="stock" :sort="prodSort" justify="end" /></th>
+                <th class="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in filteredProducts" :key="p.id" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="editProduct(p)">
+                <td class="px-4 py-2.5">
+                  <div class="flex items-center gap-3">
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10">
+                      <Icon :name="p.kind === 'service' ? 'schedule' : 'memory'" :size="18" />
+                    </span>
+                    <span class="min-w-0">
+                      <span class="block truncate font-medium">{{ p.name }}<span v-if="!p.active" class="ml-1.5 text-xs font-normal text-[var(--ll-muted)]">· {{ t('invoices.product_inactive') }}</span></span>
+                      <span class="block text-xs text-[var(--ll-muted)]">{{ t('invoices.product_kind_' + p.kind) }}<span v-if="p.unit"> · {{ p.unit }}</span></span>
+                    </span>
+                  </div>
+                </td>
+                <td class="hidden px-4 py-2.5 text-[var(--ll-muted)] tabular-nums md:table-cell">{{ p.sku || '—' }}</td>
+                <td class="hidden px-4 py-2.5 lg:table-cell"><Badge v-if="p.category" tone="gray">{{ p.category }}</Badge><span v-else class="text-[var(--ll-muted)]">—</span></td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ money(Number(p.price_net) || 0) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">
+                  <span v-if="!p.track_stock" class="text-[var(--ll-muted)]">—</span>
+                  <Badge v-else :tone="isLow(p) ? 'warning' : 'gray'">{{ stockLabel(p.stock_qty) }}<span v-if="p.unit" class="ml-0.5 font-normal">{{ p.unit }}</span></Badge>
+                </td>
+                <td class="px-4 py-2.5 text-right">
+                  <div class="flex items-center justify-end gap-1">
+                    <Btn v-if="p.track_stock" variant="ghost" size="sm" icon="swap_vert" :title="t('invoices.stock_book')" @click.stop="openStock(p)" />
+                    <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="!filteredProducts.length"><td colspan="6" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.products_empty') }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+
+    <!-- Article editor -->
+    <Modal v-model="prodDialog" :title="prodForm.id ? prodForm.name : t('invoices.product_add')" width="680px">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Select v-model="prodForm.kind" :label="t('invoices.product_kind')" :options="prodKindOnlyItems" />
+        <TextField v-model="prodForm.sku" :label="t('invoices.product_sku')" />
+        <div class="sm:col-span-2"><TextField v-model="prodForm.name" :label="t('invoices.product_name')" /></div>
+        <div class="sm:col-span-2">
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.product_description') }}</label>
+          <textarea v-model="prodForm.description" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+        <TextField v-model="prodForm.unit" :label="t('invoices.product_unit')" :placeholder="prodForm.kind === 'service' ? t('invoices.product_unit_hour') : t('invoices.product_unit_piece')" />
+        <TextField v-model="prodForm.price_net" :label="t('invoices.product_price')" inputmode="decimal" />
+        <TextField v-model="prodForm.purchase_price" :label="t('invoices.product_purchase_price')" inputmode="decimal" />
+        <TextField v-model="prodForm.vat_rate" :label="t('invoices.product_vat_rate')" inputmode="decimal" :placeholder="t('invoices.product_vat_default')" />
+        <TextField v-model="prodForm.category" :label="t('invoices.receipt_category')" list="fin-cats" />
+        <Select v-model="prodForm.supplier_id" :label="t('invoices.product_supplier')" :options="supplierItems" />
+        <p v-if="marginText" class="text-xs text-[var(--ll-muted)] sm:col-span-2">{{ marginText }}</p>
+        <div class="flex flex-wrap items-center gap-4 sm:col-span-2">
+          <label class="flex items-center gap-1.5 text-sm"><input v-model="prodForm.active" type="checkbox" class="rounded"> {{ t('invoices.product_active') }}</label>
+          <label class="flex items-center gap-1.5 text-sm"><input v-model="prodForm.track_stock" type="checkbox" class="rounded"> {{ t('invoices.product_track_stock') }}</label>
+        </div>
+        <p v-if="prodForm.track_stock && prodForm.id" class="text-xs text-[var(--ll-muted)] sm:col-span-2">{{ t('invoices.product_stock_hint') }}</p>
+        <div class="sm:col-span-2">
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_note') }}</label>
+          <textarea v-model="prodForm.note" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <Btn v-if="prodForm.id" variant="ghost" size="sm" icon="delete" class="mr-auto text-red-600 dark:text-red-400" @click="delProduct">{{ t('common.delete') }}</Btn>
+        <Btn variant="ghost" @click="prodDialog = false">{{ t('common.cancel') }}</Btn>
+        <Btn variant="solid" :disabled="!prodForm.name.trim()" @click="saveProduct">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Stock movement + history -->
+    <Modal v-model="stockDialog" :title="stockFor ? stockFor.name : t('invoices.stock_book')" width="620px">
+      <div v-if="stockFor">
+        <div class="mb-3 flex items-baseline gap-2">
+          <span class="text-2xl font-semibold tabular-nums">{{ stockLabel(stockFor.stock_qty) }}</span>
+          <span class="text-sm text-[var(--ll-muted)]">{{ stockFor.unit || '' }} {{ t('invoices.stock_on_hand') }}</span>
+        </div>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <TextField v-model="stockForm.qty" :label="t('invoices.stock_qty')" inputmode="decimal" :placeholder="t('invoices.stock_qty_hint')" />
+          <Select v-model="stockForm.reason" :label="t('invoices.stock_reason')" :options="stockReasonItems" />
+          <TextField v-model="stockForm.occurred_at" :label="t('common.date')" type="date" />
+          <div class="sm:col-span-3"><TextField v-model="stockForm.note" :label="t('invoices.receipt_note')" /></div>
+          <div class="sm:col-span-3"><TextField v-model="stockForm.stock_min" :label="t('invoices.product_stock_min')" inputmode="decimal" :placeholder="t('invoices.product_stock_min_hint')" /></div>
+        </div>
+        <p class="mt-2 text-xs text-[var(--ll-muted)]">{{ t('invoices.stock_signed_hint') }}</p>
+
+        <div v-if="movements.length" class="mt-4 border-t border-[var(--ll-border)] pt-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.stock_history') }}</h3>
+          <ul class="mt-2 max-h-56 divide-y divide-[var(--ll-border)] overflow-y-auto text-sm">
+            <li v-for="m in movements" :key="m.id" class="flex items-center gap-3 py-1.5">
+              <span class="w-20 shrink-0 text-right font-medium tabular-nums" :class="Number(m.qty) < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'">{{ Number(m.qty) > 0 ? '+' : '' }}{{ stockLabel(m.qty) }}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-xs">{{ t('invoices.stock_reason_' + m.reason) }}<span v-if="m.note"> · {{ m.note }}</span></span>
+                <span class="block text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(m.occurred_at) }}<span v-if="m.ref_type && m.ref_type !== 'manual'"> · {{ m.ref_type }} {{ m.ref_id }}</span></span>
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="stockDialog = false">{{ t('common.close') }}</Btn>
+        <Btn variant="solid" :disabled="!parseMoney(stockForm.qty)" @click="bookStock">{{ t('invoices.stock_book') }}</Btn>
+      </template>
+    </Modal>
+
     <!-- Invoice editor -->
     <Modal v-model="invDialog" :title="draft?.id ? (draft?.number || t('invoices.new')) : t('invoices.new')" width="820px">
       <div v-if="draft">
@@ -1856,7 +2118,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pag
 import type { AlignedData, Options } from 'uplot';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge, type FinanceProduct, type StockMovement, type FinanceQuote, type QuoteLine } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, ApiError, VersionConflict } from '@spa/api/client';
@@ -1914,7 +2176,7 @@ const gal = useGalleryStore();
 const { success, error } = useToast();
 const route = useRoute();
 const router = useRouter();
-const VALID = ['dashboard', 'documents', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'];
+const VALID = ['dashboard', 'documents', 'invoices', 'quotes', 'payments', 'bank', 'receipts', 'projects', 'partners', 'products', 'stats'];
 const requestedSection = computed(() => String(route.params.section || 'dashboard'));
 const tab = computed(() => {
   const s = requestedSection.value;
@@ -1929,16 +2191,392 @@ const tab = computed(() => {
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
 
 // In-page left submenu sections (mirrors the Profile/Settings hub layout).
-const sections = ['dashboard', 'documents', 'payments', 'bank', 'projects', 'partners'] as const;
+const sections = ['dashboard', 'quotes', 'documents', 'payments', 'bank', 'products', 'projects', 'partners'] as const;
 const secIcon: Record<string, string> = {
   dashboard: 'space_dashboard', documents: 'inbox', invoices: 'receipt_long', payments: 'account_balance_wallet',
-  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups',
+  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups', products: 'inventory_2', quotes: 'request_quote',
 };
 const financeNavGroups = computed(() => [{
   id: 'finance',
   items: sections.map((id) => ({ id, icon: secIcon[id], label: t('invoices.tab_' + id) })),
 }]);
 function isFinanceSectionActive(item: SectionNavItem): boolean { return tab.value === item.id; }
+
+// ---- Quotes (Angebote) ----
+// A draft is editable; anything sent is not. The customer is holding a document
+// with that number on it, so a changed price is a new quote (duplicate), not an
+// edit of the old one.
+const qSearch = ref('');
+const qStatus = ref<'' | 'draft' | 'sent' | 'accepted' | 'declined'>('');
+const qSort = ref<{ key: string; dir: 'asc' | 'desc' }>({ key: 'issue_date', dir: 'desc' });
+const qDialog = ref(false);
+const qPickProduct = ref<number>(0);
+
+const qStatusFilterItems = computed(() => [
+  { title: t('invoices.quote_status_all'), value: '' },
+  { title: t('invoices.quote_status_draft'), value: 'draft' },
+  { title: t('invoices.quote_status_sent'), value: 'sent' },
+  { title: t('invoices.quote_status_accepted'), value: 'accepted' },
+  { title: t('invoices.quote_status_declined'), value: 'declined' },
+]);
+const qDiscountItems = computed(() => [
+  { title: '—', value: '' },
+  { title: '%', value: 'percent' },
+  { title: t('invoices.discount_amount'), value: 'amount' },
+]);
+const customerItems = computed(() => [{ title: '—', value: 0 }, ...f.partners.map((p) => ({ title: p.name, value: p.id }))]);
+const productPickItems = computed(() => [
+  { title: t('invoices.quote_pick_product'), value: 0 },
+  ...f.products.filter((p) => p.active).map((p) => ({ title: `${p.name} · ${money(Number(p.price_net) || 0)}`, value: p.id })),
+]);
+
+const qForm = reactive({
+  id: 0, number: '' as string | null, status: 'draft' as FinanceQuote['status'],
+  title: '', partner_id: 0, customer_name: '', customer_attn: '', customer_email: '', customer_address: '',
+  issue_date: todayYmd(), valid_until: '',
+  lines: [] as QuoteLine[],
+  discount_type: '' as '' | 'percent' | 'amount', discount_value: null as number | null,
+  intro_text: '', outro_text: '', version: 0,
+});
+
+const qLocked = computed(() => qForm.id !== 0 && qForm.status !== 'draft');
+const qCanDecide = computed(() => qForm.status === 'sent');
+
+function partnerName(id: number | null): string {
+  return id ? (f.partners.find((p) => p.id === id)?.name ?? '') : '';
+}
+function quoteExpired(q: FinanceQuote): boolean {
+  // Derived, never stored: a date does not need a nightly job to become true.
+  if (q.status !== 'sent' || !q.valid_until) return false;
+  return new Date(q.valid_until + 'T23:59:59') < new Date();
+}
+function quoteStatusLabel(q: FinanceQuote): string {
+  if (quoteExpired(q)) return t('invoices.quote_status_expired');
+  return t('invoices.quote_status_' + q.status);
+}
+function quoteTone(q: FinanceQuote): 'gray' | 'info' | 'success' | 'warning' | 'error' {
+  if (quoteExpired(q)) return 'warning';
+  if (q.status === 'accepted') return 'success';
+  if (q.status === 'declined') return 'error';
+  if (q.status === 'sent') return 'info';
+  return 'gray';
+}
+
+// The same cent-exact rule the invoice uses, over the same line shape — which is
+// the whole reason the two shapes match. The printer's totals function takes a
+// print-invoice, so the quote is handed to it as one; that keeps ONE rounding
+// implementation instead of a second that would drift by a cent.
+const qTotals = computed(() => printComputeTotals({
+  number: qForm.number, status: qForm.status, type: 'invoice',
+  issueDate: qForm.issue_date, dueDate: '', currency: 'EUR', lang: 'de',
+  customer: { name: '', attn: '', address: '', email: '', vatId: '' },
+  lines: qForm.lines.map((l) => ({
+    desc: l.desc, qty: l.qty, unit: l.unit ?? '', unitPrice: l.unitPrice, vatRate: l.vatRate ?? 0,
+  })),
+  note: '', footer: '', imported: false, gross: null, vatRate: null,
+  discountType: qForm.discount_type || null, discountValue: qForm.discount_value ?? null,
+  skontoPercent: null, skontoDays: null,
+}));
+
+const filteredQuotes = computed(() => {
+  const needle = qSearch.value.trim().toLowerCase();
+  let rows = f.quotes.filter((q) => {
+    if (qStatus.value && q.status !== qStatus.value) return false;
+    if (!needle) return true;
+    return [q.number, q.title, q.customer?.name, partnerName(q.partner_id)].some((v) => (v || '').toLowerCase().includes(needle))
+      || amountMatches(Number(q.gross ?? 0), needle);
+  });
+  const { key, dir } = qSort.value;
+  const sign = dir === 'asc' ? 1 : -1;
+  rows = [...rows].sort((a, b) => {
+    if (key === 'gross') return sign * (Number(a.gross ?? 0) - Number(b.gross ?? 0));
+    if (key === 'customer') return sign * String(a.customer?.name ?? '').localeCompare(String(b.customer?.name ?? ''), moneyLocale());
+    const av = String((a as unknown as Record<string, unknown>)[key] ?? '');
+    const bv = String((b as unknown as Record<string, unknown>)[key] ?? '');
+    return sign * av.localeCompare(bv);
+  });
+  return rows;
+});
+function qSortBy(key: string) {
+  if (qSort.value.key === key) qSort.value = { key, dir: qSort.value.dir === 'asc' ? 'desc' : 'asc' };
+  else qSort.value = { key, dir: key === 'number' || key === 'customer' ? 'asc' : 'desc' };
+}
+
+function newQuote() {
+  Object.assign(qForm, {
+    id: 0, number: null, status: 'draft', title: '', partner_id: 0,
+    customer_name: '', customer_attn: '', customer_email: '', customer_address: '',
+    issue_date: todayYmd(), valid_until: '', lines: [], discount_type: '', discount_value: null,
+    intro_text: '', outro_text: '', version: 0,
+  });
+  qPickProduct.value = 0;
+  qDialog.value = true;
+}
+function openQuote(q: FinanceQuote) {
+  Object.assign(qForm, {
+    id: q.id, number: q.number, status: q.status, title: q.title ?? '', partner_id: q.partner_id ?? 0,
+    customer_name: q.customer?.name ?? '', customer_attn: q.customer?.attn ?? '',
+    customer_email: q.customer?.email ?? '', customer_address: q.customer?.address ?? '',
+    issue_date: (q.issue_date ?? '').slice(0, 10), valid_until: (q.valid_until ?? '').slice(0, 10),
+    // A copy, so editing the form does not mutate the store row before saving.
+    lines: (q.lines ?? []).map((l) => ({ ...l })),
+    discount_type: q.discount_type ?? '', discount_value: q.discount_value == null ? null : Number(q.discount_value),
+    intro_text: q.intro_text ?? '', outro_text: q.outro_text ?? '', version: q.version ?? 0,
+  });
+  qPickProduct.value = 0;
+  qDialog.value = true;
+}
+function applyQuotePartner(v: unknown) {
+  const p = f.partners.find((x) => x.id === Number(v));
+  if (!p) return;
+  // Prefill only what is empty: a typed address must not be overwritten by
+  // picking the partner it belongs to.
+  if (!qForm.customer_name) qForm.customer_name = p.name;
+  if (!qForm.customer_email) qForm.customer_email = p.invoice_email || p.email || '';
+  if (!qForm.customer_address) qForm.customer_address = p.address || '';
+}
+function addQuoteLine() {
+  qForm.lines.push({ desc: '', qty: 1, unit: null, unitPrice: 0, vatRate: null, kind: null, productId: null });
+}
+async function addQuoteLineFromProduct(v: unknown) {
+  const id = Number(v);
+  qPickProduct.value = 0;
+  if (!id) return;
+  try {
+    // The server owns the article→line mapping, so the picker and any future
+    // import cannot disagree about the shape.
+    const { line } = await f.productLine(id);
+    qForm.lines.push({ ...line });
+  } catch { error(t('invoices.save_failed')); }
+}
+
+function quoteBody(): Record<string, unknown> {
+  return {
+    title: qForm.title.trim() || null,
+    partner_id: qForm.partner_id || null,
+    customer: {
+      name: qForm.customer_name.trim(), attn: qForm.customer_attn.trim(),
+      email: qForm.customer_email.trim(), address: qForm.customer_address.trim(),
+    },
+    issue_date: qForm.issue_date || null,
+    valid_until: qForm.valid_until || null,
+    lines: qForm.lines,
+    discount_type: qForm.discount_type || null,
+    discount_value: qForm.discount_value,
+    net: qTotals.value.net, vat: qTotals.value.vat, gross: qTotals.value.gross,
+    intro_text: qForm.intro_text.trim() || null,
+    outro_text: qForm.outro_text.trim() || null,
+  };
+}
+async function saveQuote() {
+  try {
+    if (qForm.id) await f.updateQuote(qForm.id, { ...quoteBody(), version: qForm.version });
+    else await f.createQuote(quoteBody());
+    await f.load();
+    qDialog.value = false;
+  } catch (e) {
+    error(e instanceof VersionConflict ? t('invoices.version_conflict') : t('invoices.save_failed'));
+  }
+}
+async function sendQuote() {
+  if (!qForm.id) return;
+  // Save first: the number is stamped on whatever is stored, not on what is on
+  // screen, so an unsaved edit would go out unrecorded.
+  await saveQuote();
+  try {
+    const { quote } = await f.sendQuote(qForm.id);
+    await f.load();
+    openQuote(quote);
+    success(t('invoices.quote_sent', { number: String(quote.number) }));
+  } catch { error(t('invoices.save_failed')); }
+}
+async function decide(decision: 'accepted' | 'declined') {
+  if (!qForm.id) return;
+  try {
+    const { quote } = await f.decideQuote(qForm.id, decision);
+    await f.load();
+    openQuote(quote);
+  } catch { error(t('invoices.save_failed')); }
+}
+async function convertQuote() {
+  if (!qForm.id) return;
+  if (!await confirmAsk(t('invoices.quote_to_invoice_confirm'))) return;
+  try {
+    const res = await f.convertQuote(qForm.id);
+    await f.load();
+    qDialog.value = false;
+    if (res.already) success(t('invoices.quote_already_converted'));
+    const inv = f.invoices.find((i) => i.id === res.invoice.id);
+    // Land in the invoice it produced: the next thing anyone wants is to check
+    // and finalise it.
+    if (inv) { go('documents'); editInvoice(inv); }
+  } catch { error(t('invoices.save_failed')); }
+}
+async function dupQuote() {
+  if (!qForm.id) return;
+  try {
+    const { quote } = await f.duplicateQuote(qForm.id);
+    await f.load();
+    openQuote(quote);
+  } catch { error(t('invoices.save_failed')); }
+}
+async function delQuote() {
+  if (!qForm.id) return;
+  if (!await confirmAsk(t('invoices.quote_delete_confirm'))) return;
+  await f.deleteQuote(qForm.id);
+  await f.load();
+  qDialog.value = false;
+}
+
+// ---- Article catalogue (Warenverwaltung) ----
+// Two kinds in one list: a quote line does not care whether it sells an hour or
+// a switch, so splitting them would mean two of every filter and picker.
+const prodSearch = ref('');
+const prodKind = ref<'' | 'service' | 'hardware'>('');
+const prodLowOnly = ref(false);
+const prodSort = ref<{ key: string; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' });
+const prodDialog = ref(false);
+const stockDialog = ref(false);
+const stockFor = ref<FinanceProduct | null>(null);
+const movements = ref<StockMovement[]>([]);
+
+const prodKindItems = computed(() => [
+  { title: t('invoices.product_kind_all'), value: '' },
+  { title: t('invoices.product_kind_service'), value: 'service' },
+  { title: t('invoices.product_kind_hardware'), value: 'hardware' },
+]);
+const prodKindOnlyItems = computed(() => prodKindItems.value.slice(1));
+const stockReasonItems = computed(() => (['purchase', 'sale', 'correction', 'return', 'initial'] as const)
+  .map((r) => ({ title: t('invoices.stock_reason_' + r), value: r })));
+// 0 means "no supplier": the Select contract is string|number, and a sentinel
+// beats widening it to null for every other select in the app.
+const supplierItems = computed(() => [
+  { title: '—', value: 0 },
+  ...f.partners.map((p) => ({ title: p.name, value: p.id })),
+]);
+
+const prodForm = reactive({
+  id: 0, kind: 'service' as 'service' | 'hardware', sku: '', name: '', description: '',
+  unit: '', price_net: '', purchase_price: '', vat_rate: '', category: '',
+  supplier_id: 0, active: true, track_stock: false, note: '', version: 0,
+});
+const stockForm = reactive({ qty: '', reason: 'purchase' as StockMovement['reason'], note: '', occurred_at: todayYmd(), stock_min: '' });
+
+function isLow(p: FinanceProduct): boolean {
+  // Only meaningful for something we count: an article nobody stocks is not
+  // "low", it simply has no figure.
+  if (!p.track_stock || p.stock_min == null || p.stock_min === '') return false;
+  return Number(p.stock_qty) <= Number(p.stock_min);
+}
+function stockLabel(v: string | number | null): string {
+  const n = Number(v ?? 0);
+  // Trailing zeros carry no information for a count: 3, not 3.000.
+  return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/0+$/, '').replace(/[.,]$/, '');
+}
+
+const marginText = computed(() => {
+  const sell = parseMoney(prodForm.price_net);
+  const buy = parseMoney(prodForm.purchase_price);
+  if (sell == null || buy == null || buy === 0) return '';
+  const pct = ((sell - buy) / buy) * 100;
+  return `${t('invoices.product_margin')}: ${money(sell - buy)} (${pct.toFixed(1)}%)`;
+});
+
+const filteredProducts = computed(() => {
+  const q = prodSearch.value.trim().toLowerCase();
+  let rows = f.products.filter((p) => {
+    if (prodKind.value && p.kind !== prodKind.value) return false;
+    if (prodLowOnly.value && !isLow(p)) return false;
+    if (!q) return true;
+    return [p.name, p.sku, p.category, p.description, p.unit].some((v) => (v || '').toLowerCase().includes(q));
+  });
+  const { key, dir } = prodSort.value;
+  const sign = dir === 'asc' ? 1 : -1;
+  rows = [...rows].sort((a, b) => {
+    if (key === 'price') return sign * (Number(a.price_net) - Number(b.price_net));
+    if (key === 'stock') return sign * (Number(a.stock_qty) - Number(b.stock_qty));
+    const av = String((a as unknown as Record<string, unknown>)[key] ?? '');
+    const bv = String((b as unknown as Record<string, unknown>)[key] ?? '');
+    return sign * av.localeCompare(bv, moneyLocale());
+  });
+  return rows;
+});
+function prodSortBy(key: string) {
+  // A fresh column starts in the direction that puts the interesting end first.
+  if (prodSort.value.key === key) prodSort.value = { key, dir: prodSort.value.dir === 'asc' ? 'desc' : 'asc' };
+  else prodSort.value = { key, dir: key === 'price' || key === 'stock' ? 'desc' : 'asc' };
+}
+
+function newProduct() {
+  Object.assign(prodForm, {
+    id: 0, kind: 'service', sku: '', name: '', description: '', unit: '', price_net: '', purchase_price: '',
+    vat_rate: '', category: '', supplier_id: 0, active: true, track_stock: false, note: '', version: 0,
+  });
+  prodDialog.value = true;
+}
+function editProduct(p: FinanceProduct) {
+  Object.assign(prodForm, {
+    id: p.id, kind: p.kind, sku: p.sku ?? '', name: p.name, description: p.description ?? '',
+    unit: p.unit ?? '', price_net: moneyInput(p.price_net), purchase_price: moneyInput(p.purchase_price),
+    vat_rate: p.vat_rate == null ? '' : String(p.vat_rate), category: p.category ?? '',
+    supplier_id: p.supplier_id ?? 0, active: p.active, track_stock: p.track_stock, note: p.note ?? '',
+    version: p.version ?? 0,
+  });
+  prodDialog.value = true;
+}
+async function saveProduct() {
+  // Stock is deliberately absent from this body — it moves through a movement.
+  const body: Record<string, unknown> = {
+    kind: prodForm.kind, sku: prodForm.sku.trim() || null, name: prodForm.name.trim(),
+    description: prodForm.description.trim() || null, unit: prodForm.unit.trim() || null,
+    price_net: parseMoney(prodForm.price_net) ?? 0, purchase_price: parseMoney(prodForm.purchase_price),
+    vat_rate: parseMoney(prodForm.vat_rate), category: prodForm.category.trim() || null,
+    supplier_id: prodForm.supplier_id || null, active: prodForm.active, track_stock: prodForm.track_stock,
+    note: prodForm.note.trim() || null,
+  };
+  try {
+    if (prodForm.id) await f.updateProduct(prodForm.id, { ...body, version: prodForm.version });
+    else await f.createProduct(body);
+    await f.load();
+    prodDialog.value = false;
+  } catch (e) {
+    error(e instanceof VersionConflict ? t('invoices.version_conflict') : t('invoices.save_failed'));
+  }
+}
+async function delProduct() {
+  if (!prodForm.id) return;
+  if (!await confirmAsk(t('invoices.product_delete_confirm'))) return;
+  await f.deleteProduct(prodForm.id);
+  await f.load();
+  prodDialog.value = false;
+}
+
+async function openStock(p: FinanceProduct) {
+  stockFor.value = p;
+  Object.assign(stockForm, { qty: '', reason: 'purchase', note: '', occurred_at: todayYmd(), stock_min: p.stock_min == null ? '' : String(p.stock_min) });
+  movements.value = [];
+  stockDialog.value = true;
+  try {
+    movements.value = (await f.stockMovements(p.id)).movements;
+  } catch { /* history is nice to have; booking must still work without it */ }
+}
+async function bookStock() {
+  const p = stockFor.value;
+  const qty = parseMoney(stockForm.qty);
+  if (!p || qty == null || qty === 0) return;
+  try {
+    const res = await f.adjustStock(p.id, {
+      qty, reason: stockForm.reason,
+      note: stockForm.note.trim() || null,
+      occurred_at: stockForm.occurred_at || null,
+    });
+    stockFor.value = res.product;
+    movements.value = [res.movement, ...movements.value];
+    stockForm.qty = '';
+    stockForm.note = '';
+    await f.load();
+  } catch { error(t('invoices.save_failed')); }
+}
 
 const kpis = ref<{ year: number; net: number; count: number; growthPct: number | null } | null>(null);
 const openGross = ref(0);

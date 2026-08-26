@@ -110,6 +110,40 @@ export interface ProjectPhoto {
   taken_at: string | null; media_type: string | null; version: number; created_at?: string | null;
 }
 export interface FinanceCategory { id: number; name: string; color: string | null; icon: string | null; account_no: string | null; version?: number }
+export interface FinanceProduct {
+  id: number; kind: 'service' | 'hardware'; sku: string | null; name: string; description: string | null;
+  unit: string | null; price_net: string | number; purchase_price: string | number | null;
+  vat_rate: string | number | null; supplier_id: number | null; category: string | null;
+  active: boolean; track_stock: boolean;
+  /** Denormalised read of the movement ledger — reporting, never an input. */
+  stock_qty: string | number; stock_min: string | number | null;
+  note: string | null; version?: number;
+}
+export interface StockMovement {
+  id: number; finance_product_id: number; qty: string | number;
+  reason: 'purchase' | 'sale' | 'correction' | 'return' | 'initial';
+  ref_type: string | null; ref_id: string | null; note: string | null; occurred_at: string;
+}
+export interface QuoteLine {
+  desc: string; qty: number; unit: string | null; unitPrice: number; vatRate: number | null;
+  kind: 'service' | 'hardware' | null;
+  /** Which catalogue article this line came from — what lets a finalised invoice move stock. */
+  productId: number | null;
+}
+export interface FinanceQuote {
+  id: number; number: string | null; seq: number | null; year: number | null;
+  status: 'draft' | 'sent' | 'accepted' | 'declined';
+  partner_id: number | null;
+  customer: { name?: string; attn?: string; address?: string; email?: string; vatId?: string } | null;
+  title: string | null; issue_date: string | null; valid_until: string | null; currency: string;
+  lines: QuoteLine[] | null;
+  discount_type: 'percent' | 'amount' | null; discount_value: string | number | null;
+  net: string | number | null; vat: string | number | null; gross: string | number | null;
+  intro_text: string | null; outro_text: string | null; note: string | null;
+  sent_at: string | null; accepted_at: string | null; declined_at: string | null;
+  converted_invoice_id: number | null; converted_project_id: number | null;
+  version?: number;
+}
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
 export interface NumberGapGroup { group: string; missing: string[]; min: string; max: string; count: number }
 export interface ReceiptMatchGroup { transaction_id: number; receipt_ids: number[]; reason: 'order_ref' | 'exact' | 'sum'; total: number }
@@ -125,6 +159,8 @@ export const useFinanceStore = defineStore('finance', () => {
   const standaloneReceipts = ref<Receipt[]>([]);
   const transactions = ref<BankTransaction[]>([]);
   const financeCategories = ref<FinanceCategory[]>([]);
+  const products = ref<FinanceProduct[]>([]);
+  const quotes = ref<FinanceQuote[]>([]);
   // X -> EUR, refreshed daily server-side (finance:fetch-fx). Used to match a
   // foreign-currency receipt against euro bookings.
   const fxRates = ref<Record<string, number>>({ EUR: 1 });
@@ -134,6 +170,7 @@ export const useFinanceStore = defineStore('finance', () => {
       invoices: Invoice[]; partners: Partner[]; paymentMethods: PaymentMethod[];
       projects: Project[]; standaloneReceipts: Receipt[];
       transactions?: BankTransaction[]; financeCategories?: FinanceCategory[];
+      products?: FinanceProduct[]; quotes?: FinanceQuote[];
       fxRates?: Record<string, number>;
     }>('/api/v1/finance/data');
     invoices.value = r.invoices; partners.value = r.partners; paymentMethods.value = r.paymentMethods;
@@ -144,6 +181,8 @@ export const useFinanceStore = defineStore('finance', () => {
     // every consumer — sorting, the matchers, the formatter — on real numbers.
     transactions.value = (r.transactions ?? []).map((t) => ({ ...t, amount: Number(t.amount) || 0 }));
     financeCategories.value = r.financeCategories ?? [];
+    products.value = r.products ?? [];
+    quotes.value = r.quotes ?? [];
     if (r.fxRates && Object.keys(r.fxRates).length) fxRates.value = r.fxRates;
   }
 
@@ -165,6 +204,37 @@ export const useFinanceStore = defineStore('finance', () => {
   const createCategory = (body: Record<string, unknown>) => api.post<{ category: FinanceCategory }>('/api/v1/finance/categories', body);
   const updateCategory = (id: number, body: Record<string, unknown>) => api.put<{ category: FinanceCategory }>(`/api/v1/finance/categories/${id}`, body);
   const deleteCategory = (id: number) => api.delete(`/api/v1/finance/categories/${id}`);
+
+  // ---- Article catalogue + stock ----
+  // Stock is not part of the update body on purpose: it moves through
+  // adjustStock, which writes a ledger movement, so the figure always has a
+  // history that explains it.
+  const createProduct = (body: Record<string, unknown>) => api.post<{ product: FinanceProduct }>('/api/v1/finance/products', body);
+  const updateProduct = (id: number, body: Record<string, unknown>) => api.put<{ product: FinanceProduct }>(`/api/v1/finance/products/${id}`, body);
+  const deleteProduct = (id: number) => api.delete(`/api/v1/finance/products/${id}`);
+  const restoreProduct = (id: number) => api.post<{ product: FinanceProduct }>(`/api/v1/finance/products/${id}/restore`, {});
+  const forceProduct = (id: number) => api.delete(`/api/v1/finance/products/${id}/force`);
+  const adjustStock = (id: number, body: Record<string, unknown>) =>
+    api.post<{ movement: StockMovement; product: FinanceProduct }>(`/api/v1/finance/products/${id}/stock`, body);
+  const stockMovements = (id: number) => api.get<{ movements: StockMovement[] }>(`/api/v1/finance/products/${id}/movements`);
+
+  // ---- Quotes (Angebote) ----
+  // A quote is editable only while it is a draft: once sent, the customer holds
+  // a document with that number on it, so a change is a new quote (duplicate).
+  const createQuote = (body: Record<string, unknown>) => api.post<{ quote: FinanceQuote }>('/api/v1/finance/quotes', body);
+  const updateQuote = (id: number, body: Record<string, unknown>) => api.put<{ quote: FinanceQuote }>(`/api/v1/finance/quotes/${id}`, body);
+  const sendQuote = (id: number) => api.post<{ quote: FinanceQuote }>(`/api/v1/finance/quotes/${id}/send`, {});
+  const decideQuote = (id: number, decision: 'accepted' | 'declined') =>
+    api.post<{ quote: FinanceQuote }>(`/api/v1/finance/quotes/${id}/decide`, { decision });
+  const convertQuote = (id: number) =>
+    api.post<{ invoice: Invoice; quote: FinanceQuote; already?: boolean }>(`/api/v1/finance/quotes/${id}/convert`, {});
+  const duplicateQuote = (id: number) => api.post<{ quote: FinanceQuote }>(`/api/v1/finance/quotes/${id}/duplicate`, {});
+  const deleteQuote = (id: number) => api.delete(`/api/v1/finance/quotes/${id}`);
+  const restoreQuote = (id: number) => api.post<{ quote: FinanceQuote }>(`/api/v1/finance/quotes/${id}/restore`, {});
+  const forceQuote = (id: number) => api.delete(`/api/v1/finance/quotes/${id}/force`);
+  // The server decides how an article becomes a line, so the picker and any
+  // future import cannot disagree about the shape.
+  const productLine = (productId: number) => api.get<{ line: QuoteLine }>(`/api/v1/finance/products/${productId}/line`);
 
   // ---- Reports (read-only) ----
   const reports = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports${year ? `?year=${year}` : ''}`);
@@ -239,6 +309,8 @@ export const useFinanceStore = defineStore('finance', () => {
     createTransaction, updateTransaction, deleteTransaction, restoreTransaction, forceTransaction, bulkTransactions, loadTrash,
     attachTxReceipt, deleteTxReceipt, txReceiptUrl,
     createCategory, updateCategory, deleteCategory,
+    products, createProduct, updateProduct, deleteProduct, restoreProduct, forceProduct, adjustStock, stockMovements,
+    quotes, createQuote, updateQuote, sendQuote, decideQuote, convertQuote, duplicateQuote, deleteQuote, restoreQuote, forceQuote, productLine,
     createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl, uploadInvoicePdf,
     savePartner, deletePartner, savePayment, deletePayment,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,
