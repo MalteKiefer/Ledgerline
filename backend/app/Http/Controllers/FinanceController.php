@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Console\Commands\FetchExchangeRates;
+use App\Http\Controllers\Concerns\OptimisticUpdates;
 use App\Mail\InvoiceMail;
 use App\Mail\InvoiceReminderMail;
 use App\Models\AppSettings;
@@ -13,6 +14,7 @@ use App\Models\BankTransaction;
 use App\Models\FileEntry;
 use App\Models\FinanceCategory;
 use App\Models\FinancePartner;
+use App\Models\FinanceProduct;
 use App\Models\FinanceProject;
 use App\Models\FinanceReceipt;
 use App\Models\GalleryPhoto;
@@ -55,6 +57,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class FinanceController extends Controller
 {
+    use OptimisticUpdates;
+
     // ---- Storage helpers ----
 
     private function disk(): string
@@ -117,6 +121,7 @@ class FinanceController extends Controller
             'paymentMethods' => PaymentMethod::query()->orderBy('name')->get(),
             'projects' => FinanceProject::query()->orderBy('name')->get(),
             'financeCategories' => FinanceCategory::query()->orderBy('name')->get(),
+            'products' => FinanceProduct::query()->orderBy('name')->get(),
             // effective_scope travels with the row so no client has to re-derive
             // the inheritance rule (booking -> account) and drift from it.
             'transactions' => BankTransaction::query()->with('paymentMethod')->orderByDesc('date')->orderByDesc('id')->get()
@@ -158,57 +163,9 @@ class FinanceController extends Controller
             'partners' => FinancePartner::onlyTrashed()->orderByDesc('deleted_at')->get(),
             'paymentMethods' => PaymentMethod::onlyTrashed()->orderByDesc('deleted_at')->get(),
             'projects' => FinanceProject::onlyTrashed()->orderByDesc('deleted_at')->get(),
+            'products' => FinanceProduct::onlyTrashed()->orderByDesc('deleted_at')->get(),
             'transactions' => BankTransaction::onlyTrashed()->orderByDesc('deleted_at')->get(),
         ]);
-    }
-
-    // ---- Generic optimistic per-row update ----
-
-    /**
-     * Optimistic per-row update inside a transaction. Returns the fresh model,
-     * false on version conflict, or null when the row is gone.
-     *
-     * @param  class-string<Model>  $modelClass
-     * @param  array<string, mixed>  $patch
-     */
-    private function optimistic(string $modelClass, int $id, array $patch, ?int $expected): Model|false|null
-    {
-        return DB::transaction(function () use ($modelClass, $id, $patch, $expected): Model|false|null {
-            $fresh = $modelClass::query()->lockForUpdate()->find($id);
-            if (! $fresh instanceof Model) {
-                return null;
-            }
-            $raw = $fresh->getAttribute('version');
-            $ver = is_int($raw) ? $raw : 0;
-            if ($expected !== null && $ver !== $expected) {
-                return false;
-            }
-            $fresh->fill($patch);
-            $fresh->setAttribute('version', $ver + 1);
-            $fresh->save();
-
-            return $fresh;
-        });
-    }
-
-    /**
-     * Turn an {@see optimistic()} result into a JSON response (404 / 409 / 200).
-     *
-     * @param  class-string<Model>  $modelClass
-     */
-    private function optimisticJson(Model|false|null $result, string $modelClass, int $id, string $key): JsonResponse
-    {
-        if ($result === null) {
-            abort(404);
-        }
-        if ($result === false) {
-            $current = $modelClass::query()->find($id);
-            $v = $current instanceof Model ? $current->getAttribute('version') : null;
-
-            return response()->json(['error' => 'version_conflict', 'version' => is_int($v) ? $v : 0], 409);
-        }
-
-        return response()->json([$key => $result]);
     }
 
     // ---- Partners ----

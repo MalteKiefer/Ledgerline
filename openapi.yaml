@@ -1085,6 +1085,63 @@ components:
         category: { type: [string, "null"], description: "Free-text expense category — matched by name against the managed finance categories (for the Sachkonto) and used as the EÜR grouping label." }
         payment_method_id: { type: [integer, "null"], description: "Which account the money moved through (informational; not validated server-side)." }
 
+    FinanceProduct:
+      type: object
+      description: "A sellable article. `stock_qty` is a denormalised read of the movement ledger, written only alongside a movement; treat it as reporting, not as an input."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        kind: { type: string, enum: [service, hardware] }
+        sku: { type: [string, "null"], description: "Article number. Unique among an owner's live articles; a binned one frees it." }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        unit: { type: [string, "null"], description: "Free text — hour, piece, day, flat rate. Every trade names its units differently." }
+        price_net: { type: string, description: "Decimal as string (decimal:2 cast)." }
+        purchase_price: { type: [string, "null"], description: "What it cost us. Used to show a margin; never printed on a document that leaves the house." }
+        vat_rate: { type: [string, "null"], description: "null = fall back to the company default rate." }
+        supplier_id: { type: [integer, "null"] }
+        category: { type: [string, "null"] }
+        active: { type: boolean }
+        track_stock: { type: boolean }
+        stock_qty: { type: string, description: "Decimal as string (decimal:3). Fractional on purpose: 2.5 hours, 0.5 metres." }
+        stock_min: { type: [string, "null"], description: "Reorder level. null = never warn." }
+        note: { type: [string, "null"] }
+        version: { type: integer }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
+        deleted_at: { type: [string, "null"], format: date-time }
+    FinanceProductInput:
+      type: object
+      description: "Create/update body. Stock fields are absent on purpose — see the stock endpoint."
+      properties:
+        kind: { type: string, enum: [service, hardware] }
+        sku: { type: [string, "null"], maxLength: 64 }
+        name: { type: string, maxLength: 300 }
+        description: { type: [string, "null"], maxLength: 5000 }
+        unit: { type: [string, "null"], maxLength: 32 }
+        price_net: { type: [number, "null"] }
+        purchase_price: { type: [number, "null"] }
+        vat_rate: { type: [number, "null"], minimum: 0, maximum: 100 }
+        supplier_id: { type: [integer, "null"], description: "Must be one of the caller's own partners." }
+        category: { type: [string, "null"], maxLength: 160 }
+        active: { type: [boolean, "null"] }
+        track_stock: { type: [boolean, "null"] }
+        note: { type: [string, "null"], maxLength: 5000 }
+        version: { type: [integer, "null"], description: "Send it to get a 409 instead of a blind overwrite." }
+    FinanceStockMovement:
+      type: object
+      description: "One movement of goods. Append-only: no update, no delete, no soft delete — a stock figure is only trustworthy if the steps behind it cannot be rewritten."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        finance_product_id: { type: integer }
+        qty: { type: string, description: "Signed decimal as string. In positive, out negative." }
+        reason: { type: string, enum: [purchase, sale, correction, return, initial] }
+        ref_type: { type: [string, "null"], enum: [invoice, quote, manual, null], description: "What caused it. A loose reference, not a foreign key, so deleting a document cannot erase the fact that goods moved." }
+        ref_id: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        occurred_at: { type: string, format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
     FinanceCategory:
       type: object
       description: "Receipt category (relational finance_categories, unique per user; no soft deletes)."
@@ -6226,6 +6283,118 @@ paths:
                   - allOf:
                       - $ref: "#/components/schemas/FinanceError"
                       - properties: { error: { enum: [cycle] } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/products:
+    post:
+      tags: [Finance]
+      operationId: financeProductStore
+      summary: Create a catalogue article (service or hardware)
+      description: "One catalogue holds both kinds: a quote line does not care whether it sells an hour or a switch. `stock_qty`/`stock_min` are NOT settable here — stock only moves through `/finance/products/{product}/stock`, which writes a ledger movement, so the figure always has a history that explains it. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FinanceProductInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, required: [product], properties: { product: { $ref: "#/components/schemas/FinanceProduct" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/products/{product}:
+    put:
+      tags: [Finance]
+      operationId: financeProductUpdate
+      summary: Update an article
+      description: "Partial: a field the request omits keeps its stored value. Optimistic — send `version` to be refused with 409 instead of overwriting a concurrent change. A `stock_qty`/`stock_min` in the body is ignored by design. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: product, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FinanceProductInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [product], properties: { product: { $ref: "#/components/schemas/FinanceProduct" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Finance]
+      operationId: financeProductDestroy
+      summary: Move an article to the bin
+      description: "Soft delete. Its article number is free again while it sits in the bin. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: product, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/products/{id}/restore:
+    post:
+      tags: [Finance]
+      operationId: financeProductRestore
+      summary: Restore an article from the bin
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, required: [product], properties: { product: { $ref: "#/components/schemas/FinanceProduct" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/products/{id}/force:
+    delete:
+      tags: [Finance]
+      operationId: financeProductForceDelete
+      summary: Delete an article for good
+      description: "Removes the article and its stock movements. This is the one case where stock history disappears, and it takes the article it described with it. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/products/{product}/stock:
+    post:
+      tags: [Finance]
+      operationId: financeProductStock
+      summary: Book a stock movement
+      description: "The only way stock changes. `qty` is signed by the caller — positive is goods in, negative is goods out — because a correction can go either way and deriving the direction from the reason would be wrong exactly when it matters. The article's figure is carried in the same transaction, so ledger and figure cannot drift. An article with `track_stock=false` still records the movement (switching tracking on later then has a history) but keeps its figure at zero. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: product, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qty]
+              properties:
+                qty: { type: number, description: "Signed. In positive, out negative. Zero is refused: it states nothing." }
+                reason: { type: string, enum: [purchase, sale, correction, return, initial], default: correction }
+                note: { type: [string, "null"], maxLength: 1000 }
+                occurred_at: { type: [string, "null"], format: date-time, description: "Defaults to now." }
+      responses:
+        "201": { description: Booked., content: { application/json: { schema: { type: object, required: [movement, product], properties: { movement: { $ref: "#/components/schemas/FinanceStockMovement" }, product: { $ref: "#/components/schemas/FinanceProduct" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/products/{product}/movements:
+    get:
+      tags: [Finance]
+      operationId: financeProductMovements
+      summary: Stock movement history of one article
+      description: "Newest first, capped at 500. Append-only: there is no update or delete for a movement — a mistake is corrected by booking the opposite one, which leaves both visible. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: product, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: History., content: { application/json: { schema: { type: object, required: [movements], properties: { movements: { type: array, items: { $ref: "#/components/schemas/FinanceStockMovement" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /finance/categories:
     post:

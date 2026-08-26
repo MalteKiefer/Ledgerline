@@ -50,6 +50,7 @@ use App\Http\Controllers\FilesChangesController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
+use App\Http\Controllers\FinanceProductController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\GalleryCommentController;
 use App\Http\Controllers\GalleryController;
@@ -240,6 +241,15 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/finance/projects/{id}/restore', [FinanceController::class, 'restoreProject'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.projects.restore');
             Route::delete('/finance/projects/{id}/force', [FinanceController::class, 'forceDeleteProject'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.projects.force');
 
+            // Article catalogue (Warenverwaltung). Stock never moves through the
+            // update path — only through the stock endpoint, which writes a movement.
+            Route::post('/finance/products', [FinanceProductController::class, 'store'])->middleware('throttle:600,1')->name('api.finance.products.store');
+            Route::put('/finance/products/{product}', [FinanceProductController::class, 'update'])->whereNumber('product')->middleware('throttle:600,1')->name('api.finance.products.update');
+            Route::delete('/finance/products/{product}', [FinanceProductController::class, 'destroy'])->whereNumber('product')->middleware('throttle:600,1')->name('api.finance.products.destroy');
+            Route::post('/finance/products/{id}/restore', [FinanceProductController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.products.restore');
+            Route::delete('/finance/products/{id}/force', [FinanceProductController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.products.force');
+            Route::post('/finance/products/{product}/stock', [FinanceProductController::class, 'stock'])->whereNumber('product')->middleware('throttle:600,1')->name('api.finance.products.stock');
+            Route::get('/finance/products/{product}/movements', [FinanceProductController::class, 'movements'])->whereNumber('product')->middleware('throttle:600,1')->name('api.finance.products.movements');
             Route::post('/finance/categories', [FinanceController::class, 'storeCategory'])->middleware('throttle:600,1')->name('api.finance.categories.store');
             Route::put('/finance/categories/{category}', [FinanceController::class, 'updateCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('api.finance.categories.update');
             Route::delete('/finance/categories/{category}', [FinanceController::class, 'destroyCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('api.finance.categories.destroy');

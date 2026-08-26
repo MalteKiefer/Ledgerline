@@ -691,6 +691,134 @@
       </div>
     </div>
 
+    <!-- ARTICLE CATALOGUE (Warenverwaltung) -->
+    <div v-show="tab === 'products'">
+      <Card :body-class="'p-0'">
+        <template #header>
+          <div class="flex flex-wrap items-center gap-2">
+            <TextField v-model="prodSearch" :placeholder="t('invoices.product_search')" icon="search" class="w-full sm:w-64" />
+            <Select v-model="prodKind" :options="prodKindItems" class="w-full sm:w-44" />
+            <label class="flex items-center gap-1.5 text-sm text-[var(--ll-muted)]">
+              <input v-model="prodLowOnly" type="checkbox" class="rounded"> {{ t('invoices.product_low_only') }}
+            </label>
+          </div>
+        </template>
+        <template #actions><Btn variant="solid" size="sm" icon="add" @click="newProduct">{{ t('invoices.product_add') }}</Btn></template>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+              <tr class="border-b border-[var(--ll-border)]">
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="prodSortBy('name')"><SortLabel :label="t('invoices.product_name')" active-key="name" :sort="prodSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium md:table-cell" @click="prodSortBy('sku')"><SortLabel :label="t('invoices.product_sku')" active-key="sku" :sort="prodSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium lg:table-cell" @click="prodSortBy('category')"><SortLabel :label="t('invoices.receipt_category')" active-key="category" :sort="prodSort" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="prodSortBy('price')"><SortLabel :label="t('invoices.product_price')" active-key="price" :sort="prodSort" justify="end" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="prodSortBy('stock')"><SortLabel :label="t('invoices.product_stock')" active-key="stock" :sort="prodSort" justify="end" /></th>
+                <th class="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in filteredProducts" :key="p.id" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="editProduct(p)">
+                <td class="px-4 py-2.5">
+                  <div class="flex items-center gap-3">
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10">
+                      <Icon :name="p.kind === 'service' ? 'schedule' : 'memory'" :size="18" />
+                    </span>
+                    <span class="min-w-0">
+                      <span class="block truncate font-medium">{{ p.name }}<span v-if="!p.active" class="ml-1.5 text-xs font-normal text-[var(--ll-muted)]">· {{ t('invoices.product_inactive') }}</span></span>
+                      <span class="block text-xs text-[var(--ll-muted)]">{{ t('invoices.product_kind_' + p.kind) }}<span v-if="p.unit"> · {{ p.unit }}</span></span>
+                    </span>
+                  </div>
+                </td>
+                <td class="hidden px-4 py-2.5 text-[var(--ll-muted)] tabular-nums md:table-cell">{{ p.sku || '—' }}</td>
+                <td class="hidden px-4 py-2.5 lg:table-cell"><Badge v-if="p.category" tone="gray">{{ p.category }}</Badge><span v-else class="text-[var(--ll-muted)]">—</span></td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ money(Number(p.price_net) || 0) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">
+                  <span v-if="!p.track_stock" class="text-[var(--ll-muted)]">—</span>
+                  <Badge v-else :tone="isLow(p) ? 'warning' : 'gray'">{{ stockLabel(p.stock_qty) }}<span v-if="p.unit" class="ml-0.5 font-normal">{{ p.unit }}</span></Badge>
+                </td>
+                <td class="px-4 py-2.5 text-right">
+                  <div class="flex items-center justify-end gap-1">
+                    <Btn v-if="p.track_stock" variant="ghost" size="sm" icon="swap_vert" :title="t('invoices.stock_book')" @click.stop="openStock(p)" />
+                    <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="!filteredProducts.length"><td colspan="6" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.products_empty') }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+
+    <!-- Article editor -->
+    <Modal v-model="prodDialog" :title="prodForm.id ? prodForm.name : t('invoices.product_add')" width="680px">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Select v-model="prodForm.kind" :label="t('invoices.product_kind')" :options="prodKindOnlyItems" />
+        <TextField v-model="prodForm.sku" :label="t('invoices.product_sku')" />
+        <div class="sm:col-span-2"><TextField v-model="prodForm.name" :label="t('invoices.product_name')" /></div>
+        <div class="sm:col-span-2">
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.product_description') }}</label>
+          <textarea v-model="prodForm.description" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+        <TextField v-model="prodForm.unit" :label="t('invoices.product_unit')" :placeholder="prodForm.kind === 'service' ? t('invoices.product_unit_hour') : t('invoices.product_unit_piece')" />
+        <TextField v-model="prodForm.price_net" :label="t('invoices.product_price')" inputmode="decimal" />
+        <TextField v-model="prodForm.purchase_price" :label="t('invoices.product_purchase_price')" inputmode="decimal" />
+        <TextField v-model="prodForm.vat_rate" :label="t('invoices.product_vat_rate')" inputmode="decimal" :placeholder="t('invoices.product_vat_default')" />
+        <TextField v-model="prodForm.category" :label="t('invoices.receipt_category')" list="fin-cats" />
+        <Select v-model="prodForm.supplier_id" :label="t('invoices.product_supplier')" :options="supplierItems" />
+        <p v-if="marginText" class="text-xs text-[var(--ll-muted)] sm:col-span-2">{{ marginText }}</p>
+        <div class="flex flex-wrap items-center gap-4 sm:col-span-2">
+          <label class="flex items-center gap-1.5 text-sm"><input v-model="prodForm.active" type="checkbox" class="rounded"> {{ t('invoices.product_active') }}</label>
+          <label class="flex items-center gap-1.5 text-sm"><input v-model="prodForm.track_stock" type="checkbox" class="rounded"> {{ t('invoices.product_track_stock') }}</label>
+        </div>
+        <p v-if="prodForm.track_stock && prodForm.id" class="text-xs text-[var(--ll-muted)] sm:col-span-2">{{ t('invoices.product_stock_hint') }}</p>
+        <div class="sm:col-span-2">
+          <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_note') }}</label>
+          <textarea v-model="prodForm.note" rows="2" class="w-full resize-y rounded-xl border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <Btn v-if="prodForm.id" variant="ghost" size="sm" icon="delete" class="mr-auto text-red-600 dark:text-red-400" @click="delProduct">{{ t('common.delete') }}</Btn>
+        <Btn variant="ghost" @click="prodDialog = false">{{ t('common.cancel') }}</Btn>
+        <Btn variant="solid" :disabled="!prodForm.name.trim()" @click="saveProduct">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Stock movement + history -->
+    <Modal v-model="stockDialog" :title="stockFor ? stockFor.name : t('invoices.stock_book')" width="620px">
+      <div v-if="stockFor">
+        <div class="mb-3 flex items-baseline gap-2">
+          <span class="text-2xl font-semibold tabular-nums">{{ stockLabel(stockFor.stock_qty) }}</span>
+          <span class="text-sm text-[var(--ll-muted)]">{{ stockFor.unit || '' }} {{ t('invoices.stock_on_hand') }}</span>
+        </div>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <TextField v-model="stockForm.qty" :label="t('invoices.stock_qty')" inputmode="decimal" :placeholder="t('invoices.stock_qty_hint')" />
+          <Select v-model="stockForm.reason" :label="t('invoices.stock_reason')" :options="stockReasonItems" />
+          <TextField v-model="stockForm.occurred_at" :label="t('common.date')" type="date" />
+          <div class="sm:col-span-3"><TextField v-model="stockForm.note" :label="t('invoices.receipt_note')" /></div>
+          <div class="sm:col-span-3"><TextField v-model="stockForm.stock_min" :label="t('invoices.product_stock_min')" inputmode="decimal" :placeholder="t('invoices.product_stock_min_hint')" /></div>
+        </div>
+        <p class="mt-2 text-xs text-[var(--ll-muted)]">{{ t('invoices.stock_signed_hint') }}</p>
+
+        <div v-if="movements.length" class="mt-4 border-t border-[var(--ll-border)] pt-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.stock_history') }}</h3>
+          <ul class="mt-2 max-h-56 divide-y divide-[var(--ll-border)] overflow-y-auto text-sm">
+            <li v-for="m in movements" :key="m.id" class="flex items-center gap-3 py-1.5">
+              <span class="w-20 shrink-0 text-right font-medium tabular-nums" :class="Number(m.qty) < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'">{{ Number(m.qty) > 0 ? '+' : '' }}{{ stockLabel(m.qty) }}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-xs">{{ t('invoices.stock_reason_' + m.reason) }}<span v-if="m.note"> · {{ m.note }}</span></span>
+                <span class="block text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(m.occurred_at) }}<span v-if="m.ref_type && m.ref_type !== 'manual'"> · {{ m.ref_type }} {{ m.ref_id }}</span></span>
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="stockDialog = false">{{ t('common.close') }}</Btn>
+        <Btn variant="solid" :disabled="!parseMoney(stockForm.qty)" @click="bookStock">{{ t('invoices.stock_book') }}</Btn>
+      </template>
+    </Modal>
+
     <!-- Invoice editor -->
     <Modal v-model="invDialog" :title="draft?.id ? (draft?.number || t('invoices.new')) : t('invoices.new')" width="820px">
       <div v-if="draft">
@@ -1856,7 +1984,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pag
 import type { AlignedData, Options } from 'uplot';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge, type FinanceProduct, type StockMovement } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, ApiError, VersionConflict } from '@spa/api/client';
@@ -1914,7 +2042,7 @@ const gal = useGalleryStore();
 const { success, error } = useToast();
 const route = useRoute();
 const router = useRouter();
-const VALID = ['dashboard', 'documents', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'];
+const VALID = ['dashboard', 'documents', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'products', 'stats'];
 const requestedSection = computed(() => String(route.params.section || 'dashboard'));
 const tab = computed(() => {
   const s = requestedSection.value;
@@ -1929,16 +2057,166 @@ const tab = computed(() => {
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
 
 // In-page left submenu sections (mirrors the Profile/Settings hub layout).
-const sections = ['dashboard', 'documents', 'payments', 'bank', 'projects', 'partners'] as const;
+const sections = ['dashboard', 'documents', 'payments', 'bank', 'products', 'projects', 'partners'] as const;
 const secIcon: Record<string, string> = {
   dashboard: 'space_dashboard', documents: 'inbox', invoices: 'receipt_long', payments: 'account_balance_wallet',
-  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups',
+  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups', products: 'inventory_2',
 };
 const financeNavGroups = computed(() => [{
   id: 'finance',
   items: sections.map((id) => ({ id, icon: secIcon[id], label: t('invoices.tab_' + id) })),
 }]);
 function isFinanceSectionActive(item: SectionNavItem): boolean { return tab.value === item.id; }
+
+// ---- Article catalogue (Warenverwaltung) ----
+// Two kinds in one list: a quote line does not care whether it sells an hour or
+// a switch, so splitting them would mean two of every filter and picker.
+const prodSearch = ref('');
+const prodKind = ref<'' | 'service' | 'hardware'>('');
+const prodLowOnly = ref(false);
+const prodSort = ref<{ key: string; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' });
+const prodDialog = ref(false);
+const stockDialog = ref(false);
+const stockFor = ref<FinanceProduct | null>(null);
+const movements = ref<StockMovement[]>([]);
+
+const prodKindItems = computed(() => [
+  { title: t('invoices.product_kind_all'), value: '' },
+  { title: t('invoices.product_kind_service'), value: 'service' },
+  { title: t('invoices.product_kind_hardware'), value: 'hardware' },
+]);
+const prodKindOnlyItems = computed(() => prodKindItems.value.slice(1));
+const stockReasonItems = computed(() => (['purchase', 'sale', 'correction', 'return', 'initial'] as const)
+  .map((r) => ({ title: t('invoices.stock_reason_' + r), value: r })));
+// 0 means "no supplier": the Select contract is string|number, and a sentinel
+// beats widening it to null for every other select in the app.
+const supplierItems = computed(() => [
+  { title: '—', value: 0 },
+  ...f.partners.map((p) => ({ title: p.name, value: p.id })),
+]);
+
+const prodForm = reactive({
+  id: 0, kind: 'service' as 'service' | 'hardware', sku: '', name: '', description: '',
+  unit: '', price_net: '', purchase_price: '', vat_rate: '', category: '',
+  supplier_id: 0, active: true, track_stock: false, note: '', version: 0,
+});
+const stockForm = reactive({ qty: '', reason: 'purchase' as StockMovement['reason'], note: '', occurred_at: todayYmd(), stock_min: '' });
+
+function isLow(p: FinanceProduct): boolean {
+  // Only meaningful for something we count: an article nobody stocks is not
+  // "low", it simply has no figure.
+  if (!p.track_stock || p.stock_min == null || p.stock_min === '') return false;
+  return Number(p.stock_qty) <= Number(p.stock_min);
+}
+function stockLabel(v: string | number | null): string {
+  const n = Number(v ?? 0);
+  // Trailing zeros carry no information for a count: 3, not 3.000.
+  return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/0+$/, '').replace(/[.,]$/, '');
+}
+
+const marginText = computed(() => {
+  const sell = parseMoney(prodForm.price_net);
+  const buy = parseMoney(prodForm.purchase_price);
+  if (sell == null || buy == null || buy === 0) return '';
+  const pct = ((sell - buy) / buy) * 100;
+  return `${t('invoices.product_margin')}: ${money(sell - buy)} (${pct.toFixed(1)}%)`;
+});
+
+const filteredProducts = computed(() => {
+  const q = prodSearch.value.trim().toLowerCase();
+  let rows = f.products.filter((p) => {
+    if (prodKind.value && p.kind !== prodKind.value) return false;
+    if (prodLowOnly.value && !isLow(p)) return false;
+    if (!q) return true;
+    return [p.name, p.sku, p.category, p.description, p.unit].some((v) => (v || '').toLowerCase().includes(q));
+  });
+  const { key, dir } = prodSort.value;
+  const sign = dir === 'asc' ? 1 : -1;
+  rows = [...rows].sort((a, b) => {
+    if (key === 'price') return sign * (Number(a.price_net) - Number(b.price_net));
+    if (key === 'stock') return sign * (Number(a.stock_qty) - Number(b.stock_qty));
+    const av = String((a as unknown as Record<string, unknown>)[key] ?? '');
+    const bv = String((b as unknown as Record<string, unknown>)[key] ?? '');
+    return sign * av.localeCompare(bv, moneyLocale());
+  });
+  return rows;
+});
+function prodSortBy(key: string) {
+  // A fresh column starts in the direction that puts the interesting end first.
+  if (prodSort.value.key === key) prodSort.value = { key, dir: prodSort.value.dir === 'asc' ? 'desc' : 'asc' };
+  else prodSort.value = { key, dir: key === 'price' || key === 'stock' ? 'desc' : 'asc' };
+}
+
+function newProduct() {
+  Object.assign(prodForm, {
+    id: 0, kind: 'service', sku: '', name: '', description: '', unit: '', price_net: '', purchase_price: '',
+    vat_rate: '', category: '', supplier_id: 0, active: true, track_stock: false, note: '', version: 0,
+  });
+  prodDialog.value = true;
+}
+function editProduct(p: FinanceProduct) {
+  Object.assign(prodForm, {
+    id: p.id, kind: p.kind, sku: p.sku ?? '', name: p.name, description: p.description ?? '',
+    unit: p.unit ?? '', price_net: moneyInput(p.price_net), purchase_price: moneyInput(p.purchase_price),
+    vat_rate: p.vat_rate == null ? '' : String(p.vat_rate), category: p.category ?? '',
+    supplier_id: p.supplier_id ?? 0, active: p.active, track_stock: p.track_stock, note: p.note ?? '',
+    version: p.version ?? 0,
+  });
+  prodDialog.value = true;
+}
+async function saveProduct() {
+  // Stock is deliberately absent from this body — it moves through a movement.
+  const body: Record<string, unknown> = {
+    kind: prodForm.kind, sku: prodForm.sku.trim() || null, name: prodForm.name.trim(),
+    description: prodForm.description.trim() || null, unit: prodForm.unit.trim() || null,
+    price_net: parseMoney(prodForm.price_net) ?? 0, purchase_price: parseMoney(prodForm.purchase_price),
+    vat_rate: parseMoney(prodForm.vat_rate), category: prodForm.category.trim() || null,
+    supplier_id: prodForm.supplier_id || null, active: prodForm.active, track_stock: prodForm.track_stock,
+    note: prodForm.note.trim() || null,
+  };
+  try {
+    if (prodForm.id) await f.updateProduct(prodForm.id, { ...body, version: prodForm.version });
+    else await f.createProduct(body);
+    await f.load();
+    prodDialog.value = false;
+  } catch (e) {
+    error(e instanceof VersionConflict ? t('invoices.version_conflict') : t('invoices.save_failed'));
+  }
+}
+async function delProduct() {
+  if (!prodForm.id) return;
+  if (!await confirmAsk(t('invoices.product_delete_confirm'))) return;
+  await f.deleteProduct(prodForm.id);
+  await f.load();
+  prodDialog.value = false;
+}
+
+async function openStock(p: FinanceProduct) {
+  stockFor.value = p;
+  Object.assign(stockForm, { qty: '', reason: 'purchase', note: '', occurred_at: todayYmd(), stock_min: p.stock_min == null ? '' : String(p.stock_min) });
+  movements.value = [];
+  stockDialog.value = true;
+  try {
+    movements.value = (await f.stockMovements(p.id)).movements;
+  } catch { /* history is nice to have; booking must still work without it */ }
+}
+async function bookStock() {
+  const p = stockFor.value;
+  const qty = parseMoney(stockForm.qty);
+  if (!p || qty == null || qty === 0) return;
+  try {
+    const res = await f.adjustStock(p.id, {
+      qty, reason: stockForm.reason,
+      note: stockForm.note.trim() || null,
+      occurred_at: stockForm.occurred_at || null,
+    });
+    stockFor.value = res.product;
+    movements.value = [res.movement, ...movements.value];
+    stockForm.qty = '';
+    stockForm.note = '';
+    await f.load();
+  } catch { error(t('invoices.save_failed')); }
+}
 
 const kpis = ref<{ year: number; net: number; count: number; growthPct: number | null } | null>(null);
 const openGross = ref(0);
