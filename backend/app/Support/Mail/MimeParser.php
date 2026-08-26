@@ -37,7 +37,13 @@ final class MimeParser
         if ($dateHeader instanceof DateHeader) {
             $dt = $dateHeader->getDateTimeImmutable();
             if ($dt !== null) {
-                $date = Carbon::instance($dt);
+                // ->utc() is not cosmetic. A Date header carries its own offset
+                // ("09:13:15 +0200"), and Eloquent writes a datetime as the wall
+                // clock of ITS OWN timezone — so storing the Carbon as parsed
+                // saves 09:13:15 and loses the +0200. Read back as UTC and shown
+                // in Berlin, that mail arrives two hours after it was sent, and
+                // a reply then sorts before the message it answers.
+                $date = Carbon::instance($dt)->utc();
             }
         }
 
