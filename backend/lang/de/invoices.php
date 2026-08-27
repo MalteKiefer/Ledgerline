@@ -472,4 +472,18 @@ return [
     'plan_bill_confirm' => 'Aus den offenen, abrechenbaren Stunden eine Rechnung im Entwurf erstellen? Je Stundensatz entsteht eine Position; die erfassten Stunden gelten danach als abgerechnet.',
     'quote_to_project' => 'Projekt daraus',
     'quote_already_project' => 'Für dieses Angebot gibt es bereits ein Projekt — es wird geöffnet.',
+    'quote_mail_subject' => 'Angebot :number',
+    'quote_mail_body' => 'Sehr geehrte Damen und Herren,
+
+anbei erhalten Sie unser Angebot :number. Es ist gültig bis :valid.
+
+Mit freundlichen Grüßen
+:company',
+    'quote_pdf' => 'PDF',
+    'quote_mail' => 'Per Mail',
+    'quote_mail_to' => 'An welche Adresse soll das Angebot gehen?',
+    'quote_mail_sent' => 'Angebot versendet.',
+    'quote_mail_failed' => 'Versand fehlgeschlagen — Firmen-SMTP und Empfänger prüfen.',
+    'print_title_quote' => 'Angebot',
+    'valid_until' => 'Gültig bis',
 ];

@@ -869,7 +869,12 @@
                 <td class="hidden px-4 py-2.5 tabular-nums md:table-cell" :class="quoteExpired(q) ? 'text-amber-700 dark:text-amber-400' : 'text-[var(--ll-muted)]'">{{ fmtDate(q.valid_until) }}</td>
                 <td class="px-4 py-2.5 text-right tabular-nums">{{ money(Number(q.gross ?? 0)) }}</td>
                 <td class="px-4 py-2.5"><Badge :tone="quoteTone(q)">{{ quoteStatusLabel(q) }}</Badge></td>
-                <td class="px-4 py-2.5 text-right"><Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" /></td>
+                <td class="px-4 py-2.5 text-right">
+                  <div class="flex items-center justify-end gap-1">
+                    <Btn variant="ghost" size="sm" icon="picture_as_pdf" :loading="pdfBusy" :title="t('invoices.quote_pdf')" @click.stop="quotePdf(q)" />
+                    <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
+                  </div>
+                </td>
               </tr>
               <tr v-if="!filteredQuotes.length"><td colspan="7" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.quotes_empty') }}</td></tr>
             </tbody>
@@ -965,6 +970,8 @@
         <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="soft" size="sm" icon="content_copy" @click="dupQuote">{{ t('invoices.quote_duplicate') }}</Btn>
         <Btn v-if="qForm.id && qCanDecide" variant="soft" size="sm" icon="thumb_down" @click="decide('declined')">{{ t('invoices.quote_decline') }}</Btn>
         <Btn v-if="qForm.id && qCanDecide" variant="soft" size="sm" icon="thumb_up" @click="decide('accepted')">{{ t('invoices.quote_accept') }}</Btn>
+        <Btn v-if="qForm.id" variant="soft" size="sm" icon="picture_as_pdf" :loading="pdfBusy" @click="previewQuotePdf">{{ t('invoices.quote_pdf') }}</Btn>
+        <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="soft" size="sm" icon="mail" @click="mailQuote">{{ t('invoices.quote_mail') }}</Btn>
         <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="soft" size="sm" icon="account_tree" @click="quoteToProject">{{ t('invoices.quote_to_project') }}</Btn>
         <Btn v-if="qForm.id && qForm.status !== 'draft'" variant="solid" size="sm" icon="receipt_long" @click="convertQuote">{{ t('invoices.quote_to_invoice') }}</Btn>
         <Btn v-if="qForm.id && qForm.status === 'draft'" variant="solid" size="sm" icon="send" @click="sendQuote">{{ t('invoices.quote_send') }}</Btn>
@@ -2007,7 +2014,7 @@
             </div>
             <div style="width:200px; background:#f5f6fb; border-radius:12px; padding:12px 14px;">
               <div style="display:flex; justify-content:space-between; padding:2px 0;"><span :style="'color:' + printCompany.heading">{{ pl('invoice_date') }}</span><span class="tabular-nums" style="font-weight:600;">{{ printInv.issueDate }}</span></div>
-              <div style="display:flex; justify-content:space-between; padding:2px 0;"><span :style="'color:' + printCompany.heading">{{ pl('due') }}</span><span class="tabular-nums" style="font-weight:600;">{{ printInv.dueDate }}</span></div>
+              <div style="display:flex; justify-content:space-between; padding:2px 0;"><span :style="'color:' + printCompany.heading">{{ docDateLabel(printInv) }}</span><span class="tabular-nums" style="font-weight:600;">{{ printInv.dueDate }}</span></div>
               <div v-show="printCompany.vat_id" style="display:flex; justify-content:space-between; padding:2px 0;"><span :style="'color:' + printCompany.heading">{{ pl('vat_id_label') }}</span><span class="tabular-nums">{{ printCompany.vat_id }}</span></div>
             </div>
           </div>
@@ -2070,7 +2077,7 @@
           <table style="font-size:10px; border-collapse:collapse; height:fit-content;">
             <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ pl('invoice_number') }}</td><td style="text-align:right; font-weight:700;" class="tabular-nums">{{ printInv.number || '—' }}</td></tr>
             <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ pl('invoice_date') }}</td><td style="text-align:right;" class="tabular-nums">{{ printInv.issueDate }}</td></tr>
-            <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ pl('due') }}</td><td style="text-align:right;" class="tabular-nums">{{ printInv.dueDate }}</td></tr>
+            <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ docDateLabel(printInv) }}</td><td style="text-align:right;" class="tabular-nums">{{ printInv.dueDate }}</td></tr>
           </table>
         </div>
         <table style="width:100%; margin-top:28px; border-collapse:collapse;">
@@ -2118,7 +2125,7 @@
           </div>
           <div class="ie-meta-grid">
             <div class="ie-meta-cell"><div class="ie-m-lbl">{{ pl('invoice_date') }}</div><div class="ie-m-val num">{{ printInv.issueDate }}</div></div>
-            <div class="ie-meta-cell"><div class="ie-m-lbl">{{ pl('due') }}</div><div class="ie-m-val num">{{ printInv.dueDate }}</div></div>
+            <div class="ie-meta-cell"><div class="ie-m-lbl">{{ docDateLabel(printInv) }}</div><div class="ie-m-val num">{{ printInv.dueDate }}</div></div>
             <div class="ie-meta-cell"><div class="ie-m-lbl">{{ pl('status_label') }}</div><div class="ie-m-val"><span class="ie-pill" :class="'ie-' + printInv.status">{{ statusLabelP(printInv.status) }}</span></div></div>
           </div>
           <div class="ie-parties">
@@ -2199,7 +2206,7 @@
                 <tr><td style="padding:1px 0; color:#333;">{{ pl('invoice_number') + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.number || '—' }}</td></tr>
                 <tr v-show="printInv.customer?.vatId"><td style="padding:1px 0; color:#333;">{{ pl('vat_id_label') + ':' }}</td><td style="padding:1px 0; text-align:right;">{{ printInv.customer?.vatId }}</td></tr>
                 <tr><td style="padding:1px 0; color:#333;">{{ pl('invoice_date') + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.issueDate }}</td></tr>
-                <tr><td style="padding:1px 0; color:#333;">{{ pl('due') + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.dueDate }}</td></tr>
+                <tr><td style="padding:1px 0; color:#333;">{{ docDateLabel(printInv) + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.dueDate }}</td></tr>
               </table>
             </div>
           </div>
@@ -2283,7 +2290,7 @@ import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type ProjectFile, type ProjectPhoto, type TxReceipt, type FinanceScope, type RecurringCharge, type FinanceProduct, type StockMovement, type FinanceQuote, type QuoteLine, type PartnerNote, type ProjectTask, type TimeEntry } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
-import { confirmAsk } from '@spa/composables/useConfirm';
+import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { api, ApiError, VersionConflict } from '@spa/api/client';
 import {
   projectTree, descendantIds, normaliseLedger, ledgerTotals, ownTotals, rolledTotals,
@@ -2364,6 +2371,108 @@ const financeNavGroups = computed(() => [{
   items: sections.map((id) => ({ id, icon: secIcon[id], label: t('invoices.tab_' + id) })),
 }]);
 function isFinanceSectionActive(item: SectionNavItem): boolean { return tab.value === item.id; }
+
+// ---- Quote PDF ----
+/**
+ * A quote handed to the invoice print templates.
+ *
+ * `type: 'quote'` is what switches the heading and the second date's label; the
+ * rest lines up because the two documents share their line shape. `dueDate`
+ * carries the validity date — the same slot, a different promise.
+ */
+function buildPrintQuote(q: FinanceQuote, lineRows: QuoteLine[], customer?: Record<string, string>): PrintInvoice {
+  return {
+    number: q.number ?? null,
+    status: q.status,
+    type: 'quote',
+    issueDate: String(q.issue_date ?? '').slice(0, 10),
+    dueDate: String(q.valid_until ?? '').slice(0, 10),
+    currency: q.currency || 'EUR',
+    lang: printLang(),
+    customer: {
+      name: customer?.name ?? q.customer?.name ?? '',
+      attn: customer?.attn ?? q.customer?.attn ?? '',
+      address: customer?.address ?? q.customer?.address ?? '',
+      email: customer?.email ?? q.customer?.email ?? '',
+      vatId: customer?.vatId ?? q.customer?.vatId ?? '',
+    },
+    lines: lineRows.map((l) => ({
+      desc: String(l.desc ?? ''), qty: Number(l.qty) || 0,
+      unit: l.unit ? String(l.unit) : '', unitPrice: Number(l.unitPrice) || 0,
+      vatRate: Number(l.vatRate) || 0,
+    })),
+    // The opening and closing texts belong on the sheet, not just in the record:
+    // they are the part of a quote a person actually reads.
+    note: [q.intro_text, q.note, q.outro_text].filter(Boolean).join('\n\n'),
+    footer: '',
+    imported: false,
+    gross: null,
+    vatRate: null,
+    discountType: q.discount_type ?? null,
+    discountValue: q.discount_value == null ? null : Number(q.discount_value),
+    skontoPercent: null, skontoDays: null,
+  };
+}
+
+async function renderQuotePdf(snap: PrintInvoice, id: number, opts: { preview: boolean }) {
+  pdfBusy.value = true;
+  try {
+    await ensureInvoiceFonts();
+    // No payment QR on a quote: there is nothing to pay yet, and a scannable
+    // transfer on an offer invites paying for something not yet agreed.
+    printQr.value = '';
+    printInv.value = snap;
+    await nextTick();
+    await new Promise((r) => setTimeout(r, 80));
+    const node = document.getElementById('spa-invoice-print');
+    if (!node) { printInv.value = null; return; }
+    const blob = await renderInvoicePdfBlob(node);
+    printInv.value = null;
+    const fd = new FormData();
+    fd.append('file', new File([blob], `${snap.number || 'quote'}.pdf`, { type: 'application/pdf' }));
+    await f.uploadQuotePdf(id, fd);
+    await f.load();
+    if (opts.preview) openPreview(f.quotePdfUrl(id), `${snap.number || 'quote'}.pdf`, 'application/pdf');
+  } catch { printInv.value = null; error(t('invoices.save_failed')); }
+  finally { pdfBusy.value = false; }
+}
+
+/** Render the quote in the editor (using the on-screen edits) and show it. */
+async function previewQuotePdf() {
+  if (!qForm.id) return;
+  // Save first: the sheet must show what is stored, or a preview would show one
+  // thing and the stored document another.
+  if (!qLocked.value) await saveQuote(false);
+  const stored = f.quotes.find((q) => q.id === qForm.id);
+  if (!stored) return;
+  await renderQuotePdf(
+    buildPrintQuote(stored, qForm.lines, {
+      name: qForm.customer_name, attn: qForm.customer_attn,
+      address: qForm.customer_address, email: qForm.customer_email, vatId: '',
+    }),
+    qForm.id,
+    { preview: true },
+  );
+}
+
+/** Render + open the PDF of a quote from the list. */
+async function quotePdf(q: FinanceQuote) {
+  await renderQuotePdf(buildPrintQuote(q, q.lines ?? []), q.id, { preview: true });
+}
+
+async function mailQuote() {
+  if (!qForm.id) return;
+  const to = await promptAsk(t('invoices.quote_mail_to'), { value: qForm.customer_email || '' });
+  if (to === null) return;
+  try {
+    // The PDF has to exist before it can be attached, so render it first.
+    const stored = f.quotes.find((q) => q.id === qForm.id);
+    if (stored) await renderQuotePdf(buildPrintQuote(stored, qForm.lines), qForm.id, { preview: false });
+    await f.emailQuote(qForm.id, to.trim() || null);
+    await f.load();
+    success(t('invoices.quote_mail_sent'));
+  } catch { error(t('invoices.quote_mail_failed')); }
+}
 
 // ---- Project planning ----
 // The chain: a quote becomes a project, its service lines become tasks with the
@@ -2727,12 +2836,14 @@ function quoteBody(): Record<string, unknown> {
     outro_text: qForm.outro_text.trim() || null,
   };
 }
-async function saveQuote() {
+async function saveQuote(closeDialog = true) {
   try {
     if (qForm.id) await f.updateQuote(qForm.id, { ...quoteBody(), version: qForm.version });
     else await f.createQuote(quoteBody());
     await f.load();
-    qDialog.value = false;
+    // Rendering or sending saves first and then keeps working in the editor, so
+    // closing is the caller's choice rather than a side effect of saving.
+    if (closeDialog) qDialog.value = false;
   } catch (e) {
     error(e instanceof VersionConflict ? t('invoices.version_conflict') : t('invoices.save_failed'));
   }
@@ -2741,7 +2852,7 @@ async function sendQuote() {
   if (!qForm.id) return;
   // Save first: the number is stamped on whatever is stored, not on what is on
   // screen, so an unsaved edit would go out unrecorded.
-  await saveQuote();
+  await saveQuote(false);
   try {
     const { quote } = await f.sendQuote(qForm.id);
     await f.load();
@@ -4918,7 +5029,18 @@ function pl(key: string): string {
   if (s && s !== full && s !== key) return s;
   return PL_FALLBACK[printLang()][key] ?? key;
 }
-function docTitle(inv: PrintInvoice | null): string { return pl(inv?.type === 'credit_note' ? 'print_title_credit' : 'print_title'); }
+function docTitle(inv: PrintInvoice | null): string {
+  if (inv?.type === 'quote') return pl('print_title_quote');
+  return pl(inv?.type === 'credit_note' ? 'print_title_credit' : 'print_title');
+}
+/**
+ * The label for the second date. An invoice says when to pay; a quote says how
+ * long the price stands, and printing "due" on a quote would promise something
+ * nobody agreed to yet.
+ */
+function docDateLabel(inv: PrintInvoice | null): string {
+  return inv?.type === 'quote' ? pl('valid_until') : pl('due');
+}
 function statusLabelP(s: string): string { return t('invoices.status_' + s); }
 
 function readCustomer(c: Record<string, unknown> | null | undefined) {

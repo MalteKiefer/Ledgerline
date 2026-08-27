@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\HandlesFinanceBlobs;
 use App\Http\Controllers\Concerns\OptimisticUpdates;
 use App\Models\FinanceProduct;
 use App\Models\FinanceQuote;
@@ -13,9 +14,12 @@ use App\Support\DocumentNumber;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Quotes (Angebote): what a job would cost, before it is a job.
@@ -28,6 +32,7 @@ use Illuminate\Validation\Rule;
  */
 class FinanceQuoteController extends Controller
 {
+    use HandlesFinanceBlobs;
     use OptimisticUpdates;
 
     /**
@@ -387,6 +392,65 @@ class FinanceQuoteController extends Controller
         return response()->json(['quote' => $copy->fresh()], 201);
     }
 
+    /**
+     * Store the rendered quote PDF.
+     *
+     * The document is rasterised in the browser from the same print templates the
+     * invoice uses, then kept here so it can be re-opened and mailed without
+     * re-rendering — and so what the customer received stays retrievable even
+     * after the quote is edited into a new version.
+     */
+    public function uploadPdf(Request $request, FinanceQuote $quote): JsonResponse
+    {
+        $request->validate([
+            // Always a PDF. The extension allowlist is defence in depth on top of
+            // the sandbox CSP applied when the blob is served.
+            'file' => ['required', 'file', 'mimes:pdf', 'max:'.$this->maxUploadKb()],
+        ]);
+        $upload = $request->file('file');
+        if (! $upload instanceof UploadedFile) {
+            abort(422);
+        }
+
+        $path = 'invoices/'.Str::uuid()->toString();
+        $this->fs()->putFileAs('invoices', $upload, basename($path));
+
+        $fresh = DB::transaction(function () use ($quote, $path): FinanceQuote {
+            $current = FinanceQuote::query()->lockForUpdate()->find($quote->getKey());
+            if (! $current instanceof FinanceQuote) {
+                abort(404);
+            }
+            $old = $this->safeBlobPath($current->pdf_path);
+            // Server-owned path, so the client can never point this at a file it
+            // does not own.
+            $current->forceFill(['pdf_path' => $path])->save();
+            if ($old !== null && $old !== $path) {
+                $this->fs()->delete($old);
+            }
+
+            return $current;
+        });
+
+        return response()->json(['quote' => $fresh->fresh()]);
+    }
+
+    /** Stream the stored PDF: inline for a preview, attachment with `?download=1`. */
+    public function pdf(Request $request, FinanceQuote $quote): StreamedResponse
+    {
+        $path = $this->safeBlobPath($quote->pdf_path);
+        if ($path === null || ! $this->fs()->exists($path)) {
+            abort(404);
+        }
+
+        return $this->fs()->response($path, $this->safeName(($quote->number ?? 'quote').'.pdf'), [
+            'Content-Type' => 'application/pdf',
+            'X-Content-Type-Options' => 'nosniff',
+            // Same sandbox as every other blob this app serves.
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, max-age=3600',
+        ], $request->boolean('download') ? 'attachment' : 'inline');
+    }
+
     public function destroy(FinanceQuote $quote): JsonResponse
     {
         $quote->delete();
@@ -405,7 +469,13 @@ class FinanceQuoteController extends Controller
     public function forceDelete(int $id): JsonResponse
     {
         $quote = FinanceQuote::onlyTrashed()->findOrFail($id);
+        // Take the document with it: a blob nothing references is a file nobody
+        // can find and nobody can delete.
+        $path = $this->safeBlobPath($quote->pdf_path);
         $quote->forceDelete();
+        if ($path !== null) {
+            $this->fs()->delete($path);
+        }
 
         return response()->json(['ok' => true]);
     }

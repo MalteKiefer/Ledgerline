@@ -261,6 +261,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/finance/quotes/{quote}/duplicate', [FinanceQuoteController::class, 'duplicate'])->whereNumber('quote')->middleware('throttle:120,1')->name('api.finance.quotes.duplicate');
             Route::delete('/finance/quotes/{quote}', [FinanceQuoteController::class, 'destroy'])->whereNumber('quote')->middleware('throttle:600,1')->name('api.finance.quotes.destroy');
             Route::post('/finance/quotes/{id}/restore', [FinanceQuoteController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.quotes.restore');
+            Route::post('/finance/quotes/{quote}/pdf', [FinanceQuoteController::class, 'uploadPdf'])->whereNumber('quote')->middleware('throttle:120,1')->name('api.finance.quotes.pdf.store');
+            Route::get('/finance/quotes/{quote}/pdf', [FinanceQuoteController::class, 'pdf'])->whereNumber('quote')->middleware('throttle:600,1')->name('api.finance.quotes.pdf');
+            Route::post('/finance/quotes/{quote}/email', [FinanceController::class, 'emailQuote'])->whereNumber('quote')->middleware('throttle:10,1')->name('api.finance.quotes.email');
             Route::delete('/finance/quotes/{id}/force', [FinanceQuoteController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.quotes.force');
             Route::get('/finance/products/{product}/line', [FinanceQuoteController::class, 'lineFromProduct'])->whereNumber('product')->middleware('throttle:600,1')->name('api.finance.products.line');
             Route::post('/finance/products', [FinanceProductController::class, 'store'])->middleware('throttle:600,1')->name('api.finance.products.store');

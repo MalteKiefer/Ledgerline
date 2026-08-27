@@ -472,4 +472,18 @@ return [
     'plan_bill_confirm' => 'Create a draft invoice from the billable hours still waiting? One line per rate; the hours count as billed afterwards.',
     'quote_to_project' => 'Make a project',
     'quote_already_project' => 'This quote already has a project — opening it.',
+    'quote_mail_subject' => 'Quote :number',
+    'quote_mail_body' => 'Dear Sir or Madam,
+
+please find our quote :number attached. It is valid until :valid.
+
+Kind regards
+:company',
+    'quote_pdf' => 'PDF',
+    'quote_mail' => 'Send by mail',
+    'quote_mail_to' => 'Which address should the quote go to?',
+    'quote_mail_sent' => 'Quote sent.',
+    'quote_mail_failed' => 'Could not send — check the company SMTP and the recipient.',
+    'print_title_quote' => 'Quote',
+    'valid_until' => 'Valid until',
 ];

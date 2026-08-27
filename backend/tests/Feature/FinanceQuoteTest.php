@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Mail\QuoteMail;
 use App\Models\FinanceProduct;
 use App\Models\FinanceQuote;
 use App\Models\FinanceStockMovement;
@@ -11,6 +12,9 @@ use App\Models\Invoice;
 use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class FinanceQuoteTest extends TestCase
@@ -252,6 +256,137 @@ class FinanceQuoteTest extends TestCase
 
         // The stored status still says what happened; only the reading changes.
         $this->assertSame('sent', (string) $quote->fresh()?->status);
+    }
+
+    public function test_a_rendered_pdf_is_stored_served_and_replaced(): void
+    {
+        Storage::fake((string) config('files.disk'));
+        $this->signIn();
+        $quote = $this->quote([]);
+        $this->postJson(route('api.finance.quotes.send', $quote))->assertOk();
+
+        // No PDF yet: there is nothing to preview.
+        $this->get(route('api.finance.quotes.pdf', $quote))->assertNotFound();
+
+        $this->post(route('api.finance.quotes.pdf.store', $quote), [
+            'file' => UploadedFile::fake()->create('quote.pdf', 12, 'application/pdf'),
+        ])->assertOk();
+
+        $first = $quote->fresh()?->pdf_path;
+        $this->assertIsString($first);
+        // Server-generated path: a client never gets to choose where it lands.
+        $this->assertStringStartsWith('invoices/', (string) $first);
+
+        $res = $this->get(route('api.finance.quotes.pdf', $quote))->assertOk();
+        $this->assertSame('application/pdf', $res->headers->get('Content-Type'));
+        $this->assertSame('nosniff', $res->headers->get('X-Content-Type-Options'));
+        $this->assertStringContainsString('sandbox', (string) $res->headers->get('Content-Security-Policy'));
+        $this->assertStringContainsString('inline', (string) $res->headers->get('Content-Disposition'));
+
+        // ?download=1 is the same bytes as an attachment.
+        $this->assertStringContainsString(
+            'attachment',
+            (string) $this->get(route('api.finance.quotes.pdf', [$quote, 'download' => 1]))->assertOk()->headers->get('Content-Disposition'),
+        );
+
+        // Re-rendering replaces the old document instead of leaving it behind.
+        $this->post(route('api.finance.quotes.pdf.store', $quote), [
+            'file' => UploadedFile::fake()->create('quote.pdf', 12, 'application/pdf'),
+        ])->assertOk();
+        $second = $quote->fresh()?->pdf_path;
+        $this->assertNotSame($first, $second);
+        Storage::disk((string) config('files.disk'))->assertMissing((string) $first);
+        Storage::disk((string) config('files.disk'))->assertExists((string) $second);
+    }
+
+    public function test_only_a_pdf_is_accepted(): void
+    {
+        // Defence in depth on top of the serve-time sandbox: an svg or html
+        // document served inline is the classic stored-XSS route.
+        Storage::fake((string) config('files.disk'));
+        $this->signIn();
+        $quote = $this->quote([]);
+
+        $this->post(route('api.finance.quotes.pdf.store', $quote), [
+            'file' => UploadedFile::fake()->create('evil.svg', 4, 'image/svg+xml'),
+        ])->assertStatus(422);
+    }
+
+    public function test_another_owner_cannot_read_or_replace_the_pdf(): void
+    {
+        Storage::fake((string) config('files.disk'));
+        $this->signIn();
+        $quote = $this->quote([]);
+        $this->post(route('api.finance.quotes.pdf.store', $quote), [
+            'file' => UploadedFile::fake()->create('quote.pdf', 12, 'application/pdf'),
+        ])->assertOk();
+
+        app('auth')->forgetGuards();
+        $this->signIn(User::factory()->create());
+
+        $this->get(route('api.finance.quotes.pdf', $quote))->assertNotFound();
+        $this->post(route('api.finance.quotes.pdf.store', $quote), [
+            'file' => UploadedFile::fake()->create('other.pdf', 12, 'application/pdf'),
+        ])->assertNotFound();
+    }
+
+    public function test_deleting_a_quote_for_good_takes_its_pdf_with_it(): void
+    {
+        Storage::fake((string) config('files.disk'));
+        $this->signIn();
+        $quote = $this->quote([]);
+        $this->post(route('api.finance.quotes.pdf.store', $quote), [
+            'file' => UploadedFile::fake()->create('quote.pdf', 12, 'application/pdf'),
+        ])->assertOk();
+        $path = (string) $quote->fresh()?->pdf_path;
+
+        $this->deleteJson(route('api.finance.quotes.destroy', $quote))->assertOk();
+        // Still in the bin: the document is still reachable.
+        Storage::disk((string) config('files.disk'))->assertExists($path);
+
+        $this->deleteJson(route('api.finance.quotes.force', $quote->id))->assertOk();
+        Storage::disk((string) config('files.disk'))->assertMissing($path);
+    }
+
+    public function test_mailing_needs_an_issued_quote_a_pdf_and_a_mailer(): void
+    {
+        Storage::fake((string) config('files.disk'));
+        Mail::fake();
+        $user = $this->signIn();
+        $quote = $this->quote(['customer' => ['name' => 'Kunde', 'email' => 'kunde@example.com']]);
+
+        // Nothing issued yet.
+        $this->postJson(route('api.finance.quotes.email', $quote))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'quote_not_sent');
+
+        $this->postJson(route('api.finance.quotes.send', $quote))->assertOk();
+
+        // Issued but never rendered: a mail without its quote would be worse
+        // than no mail.
+        $this->postJson(route('api.finance.quotes.email', $quote))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'no_pdf');
+
+        $this->post(route('api.finance.quotes.pdf.store', $quote), [
+            'file' => UploadedFile::fake()->create('quote.pdf', 12, 'application/pdf'),
+        ])->assertOk();
+
+        // No company mailer configured.
+        $this->postJson(route('api.finance.quotes.email', $quote))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'no_smtp');
+
+        UserSetting::for($user->id)->forceFill([
+            'company_smtp_enabled' => true,
+            'company_smtp_host' => 'smtp.example.com',
+            'company_smtp_port' => 587,
+            'company_smtp_from_address' => 'buero@example.com',
+        ])->save();
+
+        $this->postJson(route('api.finance.quotes.email', $quote))->assertOk()->assertJsonPath('ok', true);
+        Mail::assertSent(QuoteMail::class);
+        $this->assertNotNull($quote->fresh()?->sent_at);
     }
 
     /** @param array<string, mixed> $attrs */
