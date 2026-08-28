@@ -239,7 +239,7 @@ final class DocumentCoreSchemaTest extends TestCase
         $this->assertSame(1, DB::table('finance_document_notes')->count());
     }
 
-    public function test_series_deletion_cascades_the_complete_document_aggregate(): void
+    public function test_series_deletion_is_restricted_while_revisions_exist(): void
     {
         $owner = User::factory()->create();
         $seriesId = $this->insertSeries((int) $owner->id, '018f4ca3-224d-7d8d-9f00-444444444444');
@@ -248,11 +248,13 @@ final class DocumentCoreSchemaTest extends TestCase
         $this->insertActivity((int) $owner->id, $seriesId, $secondRevisionId);
         $this->insertNote((int) $owner->id, $seriesId, $secondRevisionId);
 
-        DB::table('finance_document_series')->where('id', $seriesId)->delete();
+        $this->expectQueryException(function () use ($seriesId): void {
+            DB::table('finance_document_series')->where('id', $seriesId)->delete();
+        });
 
-        $this->assertSame(0, DB::table('finance_document_revisions')->where('document_series_id', $seriesId)->count());
-        $this->assertSame(0, DB::table('finance_document_activities')->where('document_series_id', $seriesId)->count());
-        $this->assertSame(0, DB::table('finance_document_notes')->where('document_series_id', $seriesId)->count());
+        $this->assertSame(2, DB::table('finance_document_revisions')->where('document_series_id', $seriesId)->count());
+        $this->assertSame(1, DB::table('finance_document_activities')->where('document_series_id', $seriesId)->count());
+        $this->assertSame(1, DB::table('finance_document_notes')->where('document_series_id', $seriesId)->count());
     }
 
     public function test_owner_deletion_cascades_the_complete_document_aggregate(): void
@@ -272,7 +274,7 @@ final class DocumentCoreSchemaTest extends TestCase
         $this->assertSame(0, DB::table('finance_document_notes')->where('document_series_id', $seriesId)->count());
     }
 
-    public function test_postgresql_ddl_uses_one_owner_cascade_root_and_deferred_revision_guards(): void
+    public function test_postgresql_ddl_defers_integrity_guards_around_parallel_owner_cascades(): void
     {
         $defaultConnection = DB::getDefaultConnection();
         $postgresConnection = 'pgsql_document_core_ddl';
@@ -298,16 +300,19 @@ final class DocumentCoreSchemaTest extends TestCase
 
         $ddl = strtolower(implode("\n", array_column($queries, 'query')));
 
-        $this->assertMatchesRegularExpression(
-            '/finance_document_series_user_id_foreign.*on delete cascade/',
-            $ddl,
-        );
-        $this->assertStringNotContainsString('finance_document_revisions_user_id_foreign', $ddl);
-        $this->assertStringNotContainsString('finance_document_activities_user_id_foreign', $ddl);
-        $this->assertStringNotContainsString('finance_document_notes_user_id_foreign', $ddl);
+        foreach ([
+            'finance_document_series_user_id_foreign',
+            'finance_document_revisions_user_id_foreign',
+            'finance_document_activities_user_id_foreign',
+            'finance_document_notes_user_id_foreign',
+        ] as $constraint) {
+            $this->assertMatchesRegularExpression(
+                "/{$constraint}.*on delete cascade/",
+                $ddl,
+            );
+        }
 
         foreach ([
-            'finance_document_revisions_owner_series_foreign',
             'finance_document_activities_owner_series_foreign',
             'finance_document_notes_owner_series_foreign',
         ] as $constraint) {
@@ -318,6 +323,7 @@ final class DocumentCoreSchemaTest extends TestCase
         }
 
         foreach ([
+            'finance_document_revisions_owner_series_foreign',
             'finance_document_revisions_previous_foreign',
             'finance_document_activities_owner_series_revision_foreign',
             'finance_document_notes_owner_series_revision_foreign',
