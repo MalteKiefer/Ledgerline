@@ -9,6 +9,7 @@ use App\Modules\Finance\Application\Ports\DocumentRenderer;
 use App\Modules\Finance\Application\Ports\DocumentRevisionRepository;
 use App\Modules\Finance\Application\Ports\DocumentStorage;
 use App\Modules\Finance\Application\Ports\Projects\ProjectFinancialSource;
+use App\Modules\Finance\Application\Ports\Projects\ProjectFromQuoteTarget;
 use App\Modules\Finance\Application\Ports\Projects\ProjectOperationRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectRateSource;
 use App\Modules\Finance\Application\Ports\Projects\ProjectReferenceResolver;
@@ -25,6 +26,7 @@ use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftFromTimeA
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectFinancialSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectRateSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectReferenceResolver;
+use App\Modules\Finance\Infrastructure\Integrations\Quotes\FinanceQuoteProjectTarget;
 use App\Modules\Finance\Infrastructure\Mail\CompanyMailTransport;
 use App\Modules\Finance\Infrastructure\Mail\LaravelCompanyMailTransport;
 use App\Modules\Finance\Infrastructure\Mail\LaravelQuoteMailer;
@@ -127,6 +129,7 @@ final class FinanceServiceProvider extends ServiceProvider
         $this->app->bind(ProjectRateSource::class, LegacyProjectRateSource::class);
         $this->app->bind(ProjectFinancialSource::class, LegacyProjectFinancialSource::class);
         $this->app->bind(ProjectToInvoicePort::class, LegacyInvoiceDraftFromTimeAdapter::class);
+        $this->app->bind(ProjectFromQuoteTarget::class, FinanceQuoteProjectTarget::class);
     }
 
     public function boot(): void
