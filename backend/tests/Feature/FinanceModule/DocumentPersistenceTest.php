@@ -10,8 +10,11 @@ use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentNoteRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class DocumentPersistenceTest extends TestCase
@@ -164,6 +167,136 @@ final class DocumentPersistenceTest extends TestCase
         $revision->save();
     }
 
+    public function test_save_quietly_cannot_create_an_already_published_revision(): void
+    {
+        $series = $this->createOwnedAggregate()[0];
+        $revision = new DocumentRevisionRecord;
+        $revision->forceFill([
+            ...$this->draftRevisionInsertValues($series),
+            'status' => 'published',
+            'snapshot' => ['lines' => []],
+            'pdf_path' => 'finance/revisions/quiet-create-bypass.pdf',
+            'pdf_sha256' => str_repeat('c', 64),
+            'published_at' => now(),
+        ]);
+
+        try {
+            $revision->saveQuietly();
+            $this->fail('A quiet save inserted a published revision.');
+        } catch (PublishedRevisionMutation) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->assertFalse(
+            DB::table('finance_document_revisions')
+                ->where('document_series_id', $series->id)
+                ->where('revision_number', 2)
+                ->exists(),
+        );
+    }
+
+    public function test_save_or_ignore_without_events_cannot_create_a_published_revision(): void
+    {
+        $series = $this->createOwnedAggregate()[0];
+        $revision = new DocumentRevisionRecord;
+        $revision->forceFill([
+            ...$this->draftRevisionInsertValues($series),
+            'status' => 'published',
+            'snapshot' => ['lines' => []],
+            'pdf_path' => 'finance/revisions/ignored-create-bypass.pdf',
+            'pdf_sha256' => str_repeat('f', 64),
+            'published_at' => now(),
+        ]);
+
+        try {
+            DocumentRevisionRecord::withoutEvents(
+                static fn (): bool => $revision->saveOrIgnore(),
+            );
+            $this->fail('saveOrIgnore inserted a published revision without events.');
+        } catch (PublishedRevisionMutation) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->assertFalse(
+            DB::table('finance_document_revisions')
+                ->where('document_series_id', $series->id)
+                ->where('revision_number', 2)
+                ->exists(),
+        );
+    }
+
+    #[DataProvider('publishedInsertOperations')]
+    public function test_builder_insert_paths_cannot_insert_a_published_revision(string $operation): void
+    {
+        $series = $this->createOwnedAggregate()[0];
+        $values = [
+            ...$this->draftRevisionInsertValues($series),
+            'status' => 'published',
+            'pdf_path' => 'finance/revisions/builder-create-bypass.pdf',
+            'pdf_sha256' => str_repeat('d', 64),
+            'published_at' => now(),
+        ];
+
+        try {
+            match ($operation) {
+                'insert' => DocumentRevisionRecord::query()->insert($values),
+                'insertOrIgnore' => DocumentRevisionRecord::query()->insertOrIgnore($values),
+                'insertOrIgnoreReturning' => DocumentRevisionRecord::query()->insertOrIgnoreReturning($values),
+                'insertGetId' => DocumentRevisionRecord::query()->insertGetId($values),
+                'insertUsing' => DocumentRevisionRecord::query()->insertUsing(
+                    array_keys($values),
+                    $this->insertSource($values),
+                ),
+                'insertOrIgnoreUsing' => DocumentRevisionRecord::query()->insertOrIgnoreUsing(
+                    array_keys($values),
+                    $this->insertSource($values),
+                ),
+                'upsert' => DocumentRevisionRecord::query()->upsert(
+                    [$values],
+                    ['document_series_id', 'revision_number'],
+                ),
+            };
+            $this->fail("{$operation} inserted a published revision.");
+        } catch (PublishedRevisionMutation) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->assertFalse(
+            DB::table('finance_document_revisions')
+                ->where('document_series_id', $series->id)
+                ->where('revision_number', 2)
+                ->exists(),
+        );
+    }
+
+    /** @return array<string, array{string}> */
+    public static function publishedInsertOperations(): array
+    {
+        return [
+            'insert' => ['insert'],
+            'insert or ignore' => ['insertOrIgnore'],
+            'insert or ignore and return row' => ['insertOrIgnoreReturning'],
+            'insert and return id' => ['insertGetId'],
+            'insert using query' => ['insertUsing'],
+            'insert or ignore using query' => ['insertOrIgnoreUsing'],
+            'upsert' => ['upsert'],
+        ];
+    }
+
+    public function test_builder_insert_still_allows_a_legitimate_draft_revision(): void
+    {
+        $series = $this->createOwnedAggregate()[0];
+
+        $this->assertTrue(DocumentRevisionRecord::query()->insert(
+            $this->draftRevisionInsertValues($series),
+        ));
+
+        $inserted = $series->revisions()->where('revision_number', 2)->firstOrFail();
+        $this->assertSame('draft', $inserted->status);
+        $this->assertSame('Additional draft', $inserted->change_reason);
+        $this->assertNull($inserted->published_at);
+    }
+
     public function test_normal_update_cannot_publish_a_draft_revision(): void
     {
         $revision = $this->createOwnedAggregate()[1];
@@ -275,6 +408,57 @@ final class DocumentPersistenceTest extends TestCase
             $this->assertNull($revision->pdf_path);
             $this->assertNull($revision->published_at);
         }
+    }
+
+    public function test_touch_cannot_set_published_at_on_a_draft_revision(): void
+    {
+        $revision = $this->createOwnedAggregate()[1];
+
+        try {
+            DocumentRevisionRecord::query()->whereKey($revision->id)->touch('published_at');
+            $this->fail('Touch set published_at on a draft revision.');
+        } catch (PublishedRevisionMutation) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->assertNull($revision->refresh()->published_at);
+    }
+
+    public function test_an_interleaved_publication_after_the_guard_read_cannot_be_mutated(): void
+    {
+        $revision = $this->createOwnedAggregate()[1];
+        $guardReadObserved = false;
+
+        // SQLite has no row-level FOR UPDATE behavior. Interleave a write after
+        // the guard read to verify that the UPDATE predicate is independently safe.
+        DB::listen(function (QueryExecuted $query) use ($revision, &$guardReadObserved): void {
+            if ($guardReadObserved
+                || ! str_starts_with(strtolower($query->sql), 'select')
+                || ! str_contains($query->sql, 'finance_document_revisions')) {
+                return;
+            }
+
+            $guardReadObserved = true;
+            DB::table('finance_document_revisions')
+                ->where('id', $revision->id)
+                ->update([
+                    'status' => 'published',
+                    'pdf_path' => 'finance/revisions/concurrent-publication.pdf',
+                    'pdf_sha256' => str_repeat('e', 64),
+                    'published_at' => now(),
+                ]);
+        });
+
+        $updated = DocumentRevisionRecord::query()
+            ->whereKey($revision->id)
+            ->update(['change_reason' => 'Mutation after publication']);
+
+        $revision->refresh();
+        $this->assertTrue($guardReadObserved);
+        $this->assertSame(0, $updated);
+        $this->assertSame('published', $revision->status);
+        $this->assertSame('Initial revision', $revision->change_reason);
+        $this->assertNotNull($revision->published_at);
     }
 
     public function test_a_published_revision_cannot_be_updated(): void
@@ -495,5 +679,34 @@ final class DocumentPersistenceTest extends TestCase
             ]);
 
         return $revision->refresh();
+    }
+
+    /** @return array<string, mixed> */
+    private function draftRevisionInsertValues(DocumentSeriesRecord $series): array
+    {
+        return [
+            'user_id' => auth()->id(),
+            'document_series_id' => $series->id,
+            'revision_number' => 2,
+            'previous_revision_id' => null,
+            'status' => 'draft',
+            'snapshot' => json_encode(['lines' => []], JSON_THROW_ON_ERROR),
+            'net_minor' => 10000,
+            'vat_minor' => 1900,
+            'gross_minor' => 11900,
+            'currency' => 'EUR',
+            'change_reason' => 'Additional draft',
+            'created_by' => auth()->id(),
+            'created_at' => now(),
+        ];
+    }
+
+    /** @param array<string, mixed> $values */
+    private function insertSource(array $values): Builder
+    {
+        return DB::query()->selectRaw(
+            implode(', ', array_fill(0, count($values), '?')),
+            array_values($values),
+        );
     }
 }

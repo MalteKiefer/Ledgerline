@@ -8,6 +8,7 @@ use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Collection;
 
 /**
  * Prevents Eloquent bulk helpers from silently skipping a record's model-event
@@ -42,9 +43,76 @@ final class GuardedMutationBuilder extends Builder
 
     public function update(array $values)
     {
-        $this->guard('update', $values);
+        return $this->guardedMutation(
+            'update',
+            $values,
+            fn () => parent::update($values),
+        );
+    }
 
-        return parent::update($values);
+    /** @param array<int|string, mixed> $values */
+    public function insert(array $values): bool
+    {
+        $this->guard('insert', $values);
+
+        return $this->toBase()->insert($values);
+    }
+
+    /**
+     * @param  array<int|string, mixed>  $values
+     * @return int<0, max>
+     */
+    public function insertOrIgnore(array $values): int
+    {
+        $this->guard('insertOrIgnore', $values);
+
+        return $this->toBase()->insertOrIgnore($values);
+    }
+
+    /**
+     * @param  array<int|string, mixed>  $values
+     * @param  non-empty-array<non-empty-string>  $returning
+     * @param  non-empty-string|non-empty-array<non-empty-string>|null  $uniqueBy
+     * @return Collection<int, object>
+     */
+    public function insertOrIgnoreReturning(
+        array $values,
+        array $returning = ['*'],
+        array|string|null $uniqueBy = null,
+    ): Collection {
+        $this->guard('insertOrIgnoreReturning', $values);
+
+        return $this->toBase()->insertOrIgnoreReturning($values, $returning, $uniqueBy);
+    }
+
+    /** @param array<string, mixed> $values */
+    public function insertGetId(array $values, ?string $sequence = null): int
+    {
+        $this->guard('insertGetId', $values);
+
+        return $this->toBase()->insertGetId($values, $sequence);
+    }
+
+    /**
+     * @param  array<int, string>  $columns
+     * @param  Closure|QueryBuilder|Builder<*>|string  $query
+     */
+    public function insertUsing(array $columns, $query): int
+    {
+        $this->guard('insertUsing', array_fill_keys($columns, true));
+
+        return $this->toBase()->insertUsing($columns, $query);
+    }
+
+    /**
+     * @param  array<int, string>  $columns
+     * @param  Closure|QueryBuilder|Builder<*>|string  $query
+     */
+    public function insertOrIgnoreUsing(array $columns, $query): int
+    {
+        $this->guard('insertOrIgnoreUsing', array_fill_keys($columns, true));
+
+        return $this->toBase()->insertOrIgnoreUsing($columns, $query);
     }
 
     /**
@@ -54,7 +122,7 @@ final class GuardedMutationBuilder extends Builder
      */
     public function upsert(array $values, $uniqueBy, $update = null)
     {
-        $this->guard('upsert');
+        $this->guard('upsert', $values);
 
         return parent::upsert($values, $uniqueBy, $update);
     }
@@ -62,51 +130,57 @@ final class GuardedMutationBuilder extends Builder
     /** @param array<int, string>|string|null $column */
     public function touch($column = null)
     {
-        $this->guard('touch');
-
-        return parent::touch($column);
+        return $this->guardedMutation(
+            'touch',
+            $this->touchValues($column),
+            fn () => parent::touch($column),
+        );
     }
 
     public function increment($column, $amount = 1, array $extra = [])
     {
-        $this->guard('increment', $this->incrementValues($column, $amount, $extra));
-
-        return parent::increment($column, $amount, $extra);
+        return $this->guardedMutation(
+            'increment',
+            $this->incrementValues($column, $amount, $extra),
+            fn () => parent::increment($column, $amount, $extra),
+        );
     }
 
     public function decrement($column, $amount = 1, array $extra = [])
     {
-        $this->guard('decrement', $this->incrementValues($column, $amount, $extra));
-
-        return parent::decrement($column, $amount, $extra);
+        return $this->guardedMutation(
+            'decrement',
+            $this->incrementValues($column, $amount, $extra),
+            fn () => parent::decrement($column, $amount, $extra),
+        );
     }
 
     public function incrementEach(array $columns, array $extra = [])
     {
-        $this->guard('incrementEach', [...$columns, ...$extra]);
-
-        return parent::incrementEach($columns, $extra);
+        return $this->guardedMutation(
+            'incrementEach',
+            [...$columns, ...$extra],
+            fn () => parent::incrementEach($columns, $extra),
+        );
     }
 
     public function decrementEach(array $columns, array $extra = [])
     {
-        $this->guard('decrementEach', [...$columns, ...$extra]);
-
-        return parent::decrementEach($columns, $extra);
+        return $this->guardedMutation(
+            'decrementEach',
+            [...$columns, ...$extra],
+            fn () => parent::decrementEach($columns, $extra),
+        );
     }
 
     public function delete()
     {
-        $this->guard('delete');
-
-        return parent::delete();
+        return $this->guardedMutation('delete', [], fn () => parent::delete());
     }
 
     public function forceDelete()
     {
-        $this->guard('forceDelete');
-
-        return parent::delete();
+        return $this->guardedMutation('forceDelete', [], fn () => parent::delete());
     }
 
     /**
@@ -123,9 +197,11 @@ final class GuardedMutationBuilder extends Builder
     /** @param array<string, mixed> $values */
     public function updateFrom(array $values): int
     {
-        $this->guard('updateFrom', $values);
-
-        return $this->toBase()->updateFrom($values);
+        return $this->guardedMutation(
+            'updateFrom',
+            $values,
+            fn (): int => $this->toBase()->updateFrom($values),
+        );
     }
 
     public function truncate(): void
@@ -139,6 +215,37 @@ final class GuardedMutationBuilder extends Builder
     private function guard(string $operation, array $values = []): void
     {
         ($this->guard)($this, $operation, $values);
+    }
+
+    /**
+     * @template TResult
+     *
+     * @param  array<int|string, mixed>  $values
+     * @param  Closure(): TResult  $mutation
+     * @return TResult
+     */
+    private function guardedMutation(string $operation, array $values, Closure $mutation): mixed
+    {
+        return $this->getConnection()->transaction(function () use ($operation, $values, $mutation): mixed {
+            $this->guard($operation, $values);
+
+            return $mutation();
+        });
+    }
+
+    /**
+     * @param  array<int, string>|string|null  $column
+     * @return array<string, true>
+     */
+    private function touchValues(array|string|null $column): array
+    {
+        $values = [];
+
+        foreach ((array) $column as $name) {
+            $values[$name] = true;
+        }
+
+        return $values;
     }
 
     /**

@@ -53,7 +53,15 @@ final class DocumentActivityRecord extends Model
         return GuardedMutationBuilder::forModel(
             $query,
             self::class,
-            static function (GuardedMutationBuilder $builder, string $operation, array $values): void {
+            static function (GuardedMutationBuilder $builder, string $operation): void {
+                if (in_array(
+                    $operation,
+                    ['insert', 'insertOrIgnore', 'insertOrIgnoreReturning', 'insertGetId'],
+                    true,
+                )) {
+                    return;
+                }
+
                 throw PublishedRevisionMutation::activity();
             },
         );

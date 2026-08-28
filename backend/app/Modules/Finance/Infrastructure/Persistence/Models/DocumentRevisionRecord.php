@@ -7,6 +7,7 @@ namespace App\Modules\Finance\Infrastructure\Persistence\Models;
 use App\Models\Concerns\OwnsUserData;
 use App\Models\User;
 use App\Modules\Finance\Infrastructure\Persistence\Exception\PublishedRevisionMutation;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -75,7 +76,21 @@ final class DocumentRevisionRecord extends Model
             $query,
             self::class,
             static function (GuardedMutationBuilder $builder, string $operation, array $values): void {
-                if (in_array($operation, ['upsert', 'updateOrInsert', 'truncate'], true)) {
+                if (in_array(
+                    $operation,
+                    ['insert', 'insertOrIgnore', 'insertOrIgnoreReturning', 'insertGetId'],
+                    true,
+                )) {
+                    self::assertDraftInsertValues($values);
+
+                    return;
+                }
+
+                if (in_array(
+                    $operation,
+                    ['insertUsing', 'insertOrIgnoreUsing', 'upsert', 'updateOrInsert', 'truncate'],
+                    true,
+                )) {
                     throw PublishedRevisionMutation::revision();
                 }
 
@@ -84,12 +99,53 @@ final class DocumentRevisionRecord extends Model
                 }
 
                 $published = clone $builder;
+                $matched = $published->lockForUpdate()->get(['published_at']);
 
-                if ($published->whereNotNull('published_at')->exists()) {
+                if ($matched->contains(
+                    static fn (self $revision): bool => $revision->getRawOriginal('published_at') !== null,
+                )) {
                     throw PublishedRevisionMutation::revision();
                 }
+
+                $builder->whereNull($builder->getModel()->qualifyColumn('published_at'));
             },
         );
+    }
+
+    /** @param Builder<self> $query */
+    protected function performInsert($query): bool
+    {
+        $this->assertDraftCreation();
+
+        return parent::performInsert($query);
+    }
+
+    /**
+     * @param  Builder<self>  $query
+     * @param  array<int, string>|string|null  $uniqueBy
+     */
+    protected function performInsertOrIgnore($query, array|string|null $uniqueBy): bool
+    {
+        $this->assertDraftCreation();
+
+        return parent::performInsertOrIgnore($query, $uniqueBy);
+    }
+
+    /** @param array<int|string, mixed> $values */
+    private static function assertDraftInsertValues(array $values): void
+    {
+        $first = reset($values);
+        $rows = is_array($first) ? $values : [$values];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)
+                || ($row['status'] ?? null) !== 'draft'
+                || ($row['pdf_path'] ?? null) !== null
+                || ($row['pdf_sha256'] ?? null) !== null
+                || ($row['published_at'] ?? null) !== null) {
+                throw PublishedRevisionMutation::revision();
+            }
+        }
     }
 
     private function assertMutable(): void
