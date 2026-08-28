@@ -11,11 +11,43 @@ use App\Models\Invoice;
 use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class LegacyFinanceBaselineTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_legacy_project_document_and_time_routes_remain_available_during_the_shadow_cutover(): void
+    {
+        $contracts = [
+            'api.finance.data' => ['GET', 'api/v1/finance/data'],
+            'api.finance.projects.store' => ['POST', 'api/v1/finance/projects'],
+            'api.finance.projects.update' => ['PUT', 'api/v1/finance/projects/{project}'],
+            'api.finance.projects.move' => ['POST', 'api/v1/finance/projects/{project}/move'],
+            'api.finance.projects.attachments' => ['GET', 'api/v1/finance/projects/{project}/attachments'],
+            'api.finance.projects.destroy' => ['DELETE', 'api/v1/finance/projects/{project}'],
+            'api.finance.projects.restore' => ['POST', 'api/v1/finance/projects/{id}/restore'],
+            'api.finance.projects.force' => ['DELETE', 'api/v1/finance/projects/{id}/force'],
+            'api.finance.projects.plan' => ['GET', 'api/v1/finance/projects/{project}/plan'],
+            'api.finance.projects.tasks.store' => ['POST', 'api/v1/finance/projects/{project}/tasks'],
+            'api.finance.project-tasks.update' => ['PUT', 'api/v1/finance/project-tasks/{task}'],
+            'api.finance.project-tasks.destroy' => ['DELETE', 'api/v1/finance/project-tasks/{task}'],
+            'api.finance.projects.time.store' => ['POST', 'api/v1/finance/projects/{project}/time'],
+            'api.finance.time-entries.update' => ['PUT', 'api/v1/finance/time-entries/{entry}'],
+            'api.finance.time-entries.destroy' => ['DELETE', 'api/v1/finance/time-entries/{entry}'],
+            'api.finance.projects.invoice-time' => ['POST', 'api/v1/finance/projects/{project}/invoice-time'],
+            'api.finance.quotes.project' => ['POST', 'api/v1/finance/quotes/{quote}/project'],
+        ];
+
+        foreach ($contracts as $name => [$method, $uri]) {
+            $route = Route::getRoutes()->getByName($name);
+
+            $this->assertNotNull($route, $name);
+            $this->assertSame($uri, $route->uri(), $name);
+            $this->assertContains($method, $route->methods(), $name);
+        }
+    }
 
     public function test_finance_tests_have_a_deterministic_application_key(): void
     {

@@ -75,4 +75,66 @@ final class FinanceModuleBootstrapTest extends TestCase
 
         $this->assertSame([], $violations);
     }
+
+    public function test_project_domain_and_application_sources_do_not_depend_on_legacy_or_framework_layers(): void
+    {
+        $roots = [
+            app_path('Modules/Finance/Domain/Projects'),
+            app_path('Modules/Finance/Application/Commands/Projects'),
+            app_path('Modules/Finance/Application/Queries/Projects'),
+            app_path('Modules/Finance/Application/DTOs/Projects'),
+            app_path('Modules/Finance/Application/Ports/Projects'),
+            app_path('Modules/Finance/Application/Services/Projects'),
+        ];
+        $forbidden = [
+            'App\\Http\\Controllers',
+            'App\\Models\\FinanceProject',
+            'App\\Models\\FinanceProjectTask',
+            'App\\Models\\FinanceTimeEntry',
+            'App\\Models\\FinanceQuote',
+            'App\\Models\\Invoice',
+            'App\\Models\\FileEntry',
+            'App\\Models\\GalleryPhoto',
+            'Illuminate\\Http',
+            'Illuminate\\Database\\Eloquent',
+            'Illuminate\\Support\\Facades',
+        ];
+        $namespacePrefixes = [
+            'App\\Http\\Controllers',
+            'Illuminate\\Http',
+            'Illuminate\\Database\\Eloquent',
+            'Illuminate\\Support\\Facades',
+        ];
+        $violations = [];
+
+        $this->assertDirectoryExists($roots[0]);
+        foreach ($roots as $root) {
+            if (! is_dir($root)) {
+                continue;
+            }
+
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $file) {
+                if (! $file->isFile() || $file->getExtension() !== 'php') {
+                    continue;
+                }
+
+                $source = file_get_contents($file->getPathname());
+                if (! is_string($source)) {
+                    continue;
+                }
+
+                foreach ($forbidden as $symbol) {
+                    $suffix = in_array($symbol, $namespacePrefixes, true)
+                        ? '(?=\\\\|[^A-Za-z0-9_\\\\]|$)'
+                        : '(?![A-Za-z0-9_\\\\])';
+                    $pattern = '/(?<![A-Za-z0-9_\\\\])'.preg_quote($symbol, '/').$suffix.'/';
+                    if (preg_match($pattern, $source) === 1) {
+                        $violations[] = $file->getPathname().': '.$symbol;
+                    }
+                }
+            }
+        }
+
+        $this->assertSame([], $violations);
+    }
 }
