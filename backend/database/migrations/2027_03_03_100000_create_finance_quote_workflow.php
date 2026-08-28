@@ -11,9 +11,23 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::table('finance_document_series', function (Blueprint $table): void {
+            $table->unique(
+                ['user_id', 'id', 'document_type'],
+                'finance_document_series_owner_id_type_unique',
+            );
+        });
+        Schema::table('finance_partners', function (Blueprint $table): void {
+            $table->unique(['user_id', 'id'], 'finance_partners_owner_id_unique');
+        });
+        Schema::table('invoices', function (Blueprint $table): void {
+            $table->unique(['user_id', 'id'], 'invoices_owner_id_unique');
+        });
+
         Schema::create('finance_quote_series', function (Blueprint $table): void {
             $table->unsignedBigInteger('document_series_id')->primary();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->enum('document_type', ['quote'])->default('quote');
             $table->foreignId('partner_id')->nullable();
             $table->foreignId('current_revision_id')->nullable();
             $table->string('number', 64)->nullable();
@@ -32,10 +46,10 @@ return new class extends Migration
                 'finance_quote_series_owner_document_unique',
             );
             $table->foreign(
-                ['user_id', 'document_series_id'],
-                'finance_quote_series_owner_document_foreign',
+                ['user_id', 'document_series_id', 'document_type'],
+                'finance_quote_series_owner_document_type_foreign',
             )
-                ->references(['user_id', 'id'])
+                ->references(['user_id', 'id', 'document_type'])
                 ->on('finance_document_series')
                 ->noActionOnDelete()
                 ->deferrable()
@@ -53,9 +67,22 @@ return new class extends Migration
                 ->references('id')
                 ->on('finance_partners')
                 ->nullOnDelete();
+            $table->foreign(
+                ['user_id', 'partner_id'],
+                'finance_quote_series_owner_partner_foreign',
+            )
+                ->references(['user_id', 'id'])
+                ->on('finance_partners')
+                ->noActionOnDelete()
+                ->deferrable()
+                ->initiallyImmediate(false);
             $table->unique(
                 ['user_id', 'sequence_year', 'sequence_number'],
                 'finance_quote_series_owner_sequence_unique',
+            );
+            $table->unique(
+                ['user_id', 'number'],
+                'finance_quote_series_owner_number_unique',
             );
             $table->index(
                 ['user_id', 'published_at'],
@@ -211,6 +238,15 @@ return new class extends Migration
                 ->references('id')
                 ->on('invoices')
                 ->nullOnDelete();
+            $table->foreign(
+                ['user_id', 'target_id'],
+                'finance_quote_conversions_owner_target_foreign',
+            )
+                ->references(['user_id', 'id'])
+                ->on('invoices')
+                ->noActionOnDelete()
+                ->deferrable()
+                ->initiallyImmediate(false);
             $table->unique(
                 ['user_id', 'source_revision_id', 'target_type'],
                 'finance_quote_conversions_owner_source_type_unique',
@@ -222,36 +258,25 @@ return new class extends Migration
         });
 
         $this->addCheckConstraints();
-        $this->addOwnerGuards();
     }
 
     public function down(): void
     {
-        if (DB::getDriverName() === 'pgsql') {
-            DB::statement('DROP TRIGGER IF EXISTS finance_quote_document_series_type_guard ON finance_document_series');
-            DB::statement('DROP TRIGGER IF EXISTS finance_quote_partner_owner_update_guard ON finance_partners');
-            DB::statement('DROP TRIGGER IF EXISTS finance_quote_invoice_owner_update_guard ON invoices');
-        } elseif (DB::getDriverName() === 'sqlite') {
-            DB::statement('DROP TRIGGER IF EXISTS finance_quote_document_series_type_guard');
-            DB::statement('DROP TRIGGER IF EXISTS finance_quote_partner_owner_update_guard');
-            DB::statement('DROP TRIGGER IF EXISTS finance_quote_invoice_owner_update_guard');
-        }
-
         Schema::dropIfExists('finance_quote_conversions');
         Schema::dropIfExists('finance_quote_deliveries');
         Schema::dropIfExists('finance_quote_operations');
         Schema::dropIfExists('finance_quote_number_sequences');
         Schema::dropIfExists('finance_quote_drafts');
         Schema::dropIfExists('finance_quote_series');
-
-        if (DB::getDriverName() === 'pgsql') {
-            DB::statement('DROP FUNCTION IF EXISTS finance_quote_conversions_target_owner_guard()');
-            DB::statement('DROP FUNCTION IF EXISTS finance_quote_series_partner_owner_guard()');
-            DB::statement('DROP FUNCTION IF EXISTS finance_quote_series_document_type_guard()');
-            DB::statement('DROP FUNCTION IF EXISTS finance_quote_document_series_type_guard()');
-            DB::statement('DROP FUNCTION IF EXISTS finance_quote_partner_owner_update_guard()');
-            DB::statement('DROP FUNCTION IF EXISTS finance_quote_invoice_owner_update_guard()');
-        }
+        Schema::table('invoices', function (Blueprint $table): void {
+            $table->dropUnique('invoices_owner_id_unique');
+        });
+        Schema::table('finance_partners', function (Blueprint $table): void {
+            $table->dropUnique('finance_partners_owner_id_unique');
+        });
+        Schema::table('finance_document_series', function (Blueprint $table): void {
+            $table->dropUnique('finance_document_series_owner_id_type_unique');
+        });
     }
 
     private function addCheckConstraints(): void
@@ -285,8 +310,8 @@ return new class extends Migration
         ]);
         $this->addChecks('finance_quote_operations', [
             'finance_quote_operations_request_hash_check' => [
-                'length(request_sha256) = 64',
-                'length(NEW.request_sha256) <> 64',
+                "request_sha256 ~ '^[0-9a-f]{64}$'",
+                "length(NEW.request_sha256) <> 64 OR NEW.request_sha256 GLOB '*[^0-9a-f]*'",
             ],
         ]);
         $this->addChecks('finance_quote_deliveries', [
@@ -329,238 +354,6 @@ return new class extends Migration
                     END
                     SQL);
             }
-        }
-    }
-
-    private function addOwnerGuards(): void
-    {
-        $driver = DB::getDriverName();
-
-        if ($driver === 'pgsql') {
-            DB::statement(<<<'SQL'
-                CREATE OR REPLACE FUNCTION finance_quote_series_document_type_guard()
-                RETURNS trigger
-                LANGUAGE plpgsql
-                AS $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM finance_document_series
-                        WHERE id = NEW.document_series_id
-                            AND user_id = NEW.user_id
-                            AND document_type = 'quote'
-                    ) THEN
-                        RAISE EXCEPTION USING
-                            ERRCODE = '23514',
-                            MESSAGE = 'finance_quote_series_document_type_check',
-                            CONSTRAINT = 'finance_quote_series_document_type_check';
-                    END IF;
-                    RETURN NEW;
-                END
-                $$
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE TRIGGER finance_quote_series_document_type_guard
-                BEFORE INSERT OR UPDATE OF user_id, document_series_id ON finance_quote_series
-                FOR EACH ROW EXECUTE FUNCTION finance_quote_series_document_type_guard()
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE OR REPLACE FUNCTION finance_quote_document_series_type_guard()
-                RETURNS trigger
-                LANGUAGE plpgsql
-                AS $$
-                BEGIN
-                    IF NEW.document_type <> 'quote' AND EXISTS (
-                        SELECT 1 FROM finance_quote_series
-                        WHERE document_series_id = NEW.id
-                    ) THEN
-                        RAISE EXCEPTION USING
-                            ERRCODE = '23514',
-                            MESSAGE = 'finance_quote_series_document_type_check',
-                            CONSTRAINT = 'finance_quote_series_document_type_check';
-                    END IF;
-                    RETURN NEW;
-                END
-                $$
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE TRIGGER finance_quote_document_series_type_guard
-                BEFORE UPDATE OF document_type ON finance_document_series
-                FOR EACH ROW EXECUTE FUNCTION finance_quote_document_series_type_guard()
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE OR REPLACE FUNCTION finance_quote_series_partner_owner_guard()
-                RETURNS trigger
-                LANGUAGE plpgsql
-                AS $$
-                BEGIN
-                    IF NEW.partner_id IS NOT NULL AND NOT EXISTS (
-                        SELECT 1 FROM finance_partners
-                        WHERE id = NEW.partner_id AND user_id = NEW.user_id
-                    ) THEN
-                        RAISE EXCEPTION USING
-                            ERRCODE = '23503',
-                            MESSAGE = 'finance_quote_series_partner_owner_foreign',
-                            CONSTRAINT = 'finance_quote_series_partner_owner_foreign';
-                    END IF;
-                    RETURN NEW;
-                END
-                $$
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE TRIGGER finance_quote_series_partner_owner_guard
-                BEFORE INSERT OR UPDATE OF user_id, partner_id ON finance_quote_series
-                FOR EACH ROW EXECUTE FUNCTION finance_quote_series_partner_owner_guard()
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE OR REPLACE FUNCTION finance_quote_partner_owner_update_guard()
-                RETURNS trigger
-                LANGUAGE plpgsql
-                AS $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM finance_quote_series
-                        WHERE partner_id = NEW.id AND user_id <> NEW.user_id
-                    ) THEN
-                        RAISE EXCEPTION USING
-                            ERRCODE = '23503',
-                            MESSAGE = 'finance_quote_series_partner_owner_foreign',
-                            CONSTRAINT = 'finance_quote_series_partner_owner_foreign';
-                    END IF;
-                    RETURN NEW;
-                END
-                $$
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE TRIGGER finance_quote_partner_owner_update_guard
-                BEFORE UPDATE OF user_id ON finance_partners
-                FOR EACH ROW EXECUTE FUNCTION finance_quote_partner_owner_update_guard()
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE OR REPLACE FUNCTION finance_quote_conversions_target_owner_guard()
-                RETURNS trigger
-                LANGUAGE plpgsql
-                AS $$
-                BEGIN
-                    IF NEW.target_id IS NOT NULL AND NOT EXISTS (
-                        SELECT 1 FROM invoices
-                        WHERE id = NEW.target_id AND user_id = NEW.user_id
-                    ) THEN
-                        RAISE EXCEPTION USING
-                            ERRCODE = '23503',
-                            MESSAGE = 'finance_quote_conversions_target_owner_foreign',
-                            CONSTRAINT = 'finance_quote_conversions_target_owner_foreign';
-                    END IF;
-                    RETURN NEW;
-                END
-                $$
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE TRIGGER finance_quote_conversions_target_owner_guard
-                BEFORE INSERT OR UPDATE OF user_id, target_id ON finance_quote_conversions
-                FOR EACH ROW EXECUTE FUNCTION finance_quote_conversions_target_owner_guard()
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE OR REPLACE FUNCTION finance_quote_invoice_owner_update_guard()
-                RETURNS trigger
-                LANGUAGE plpgsql
-                AS $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM finance_quote_conversions
-                        WHERE target_id = NEW.id AND user_id <> NEW.user_id
-                    ) THEN
-                        RAISE EXCEPTION USING
-                            ERRCODE = '23503',
-                            MESSAGE = 'finance_quote_conversions_target_owner_foreign',
-                            CONSTRAINT = 'finance_quote_conversions_target_owner_foreign';
-                    END IF;
-                    RETURN NEW;
-                END
-                $$
-                SQL);
-            DB::statement(<<<'SQL'
-                CREATE TRIGGER finance_quote_invoice_owner_update_guard
-                BEFORE UPDATE OF user_id ON invoices
-                FOR EACH ROW EXECUTE FUNCTION finance_quote_invoice_owner_update_guard()
-                SQL);
-
-            return;
-        }
-
-        if ($driver !== 'sqlite') {
-            throw new LogicException("Unsupported database driver: {$driver}");
-        }
-
-        DB::unprepared(<<<'SQL'
-            CREATE TRIGGER finance_quote_document_series_type_guard
-            BEFORE UPDATE OF document_type ON finance_document_series
-            WHEN NEW.document_type <> 'quote' AND EXISTS (
-                SELECT 1 FROM finance_quote_series
-                WHERE document_series_id = NEW.id
-            )
-            BEGIN
-                SELECT RAISE(ABORT, 'finance_quote_series_document_type_check');
-            END
-            SQL);
-        DB::unprepared(<<<'SQL'
-            CREATE TRIGGER finance_quote_partner_owner_update_guard
-            BEFORE UPDATE OF user_id ON finance_partners
-            WHEN EXISTS (
-                SELECT 1 FROM finance_quote_series
-                WHERE partner_id = NEW.id AND user_id <> NEW.user_id
-            )
-            BEGIN
-                SELECT RAISE(ABORT, 'finance_quote_series_partner_owner_foreign');
-            END
-            SQL);
-        DB::unprepared(<<<'SQL'
-            CREATE TRIGGER finance_quote_invoice_owner_update_guard
-            BEFORE UPDATE OF user_id ON invoices
-            WHEN EXISTS (
-                SELECT 1 FROM finance_quote_conversions
-                WHERE target_id = NEW.id AND user_id <> NEW.user_id
-            )
-            BEGIN
-                SELECT RAISE(ABORT, 'finance_quote_conversions_target_owner_foreign');
-            END
-            SQL);
-
-        foreach (['insert', 'update'] as $operation) {
-            DB::unprepared(<<<SQL
-                CREATE TRIGGER finance_quote_series_document_type_guard_{$operation}
-                BEFORE {$operation} ON finance_quote_series
-                WHEN NOT EXISTS (
-                    SELECT 1 FROM finance_document_series
-                    WHERE id = NEW.document_series_id
-                        AND user_id = NEW.user_id
-                        AND document_type = 'quote'
-                )
-                BEGIN
-                    SELECT RAISE(ABORT, 'finance_quote_series_document_type_check');
-                END
-                SQL);
-            DB::unprepared(<<<SQL
-                CREATE TRIGGER finance_quote_series_partner_owner_guard_{$operation}
-                BEFORE {$operation} ON finance_quote_series
-                WHEN NEW.partner_id IS NOT NULL AND NOT EXISTS (
-                    SELECT 1 FROM finance_partners
-                    WHERE id = NEW.partner_id AND user_id = NEW.user_id
-                )
-                BEGIN
-                    SELECT RAISE(ABORT, 'finance_quote_series_partner_owner_foreign');
-                END
-                SQL);
-            DB::unprepared(<<<SQL
-                CREATE TRIGGER finance_quote_conversions_target_owner_guard_{$operation}
-                BEFORE {$operation} ON finance_quote_conversions
-                WHEN NEW.target_id IS NOT NULL AND NOT EXISTS (
-                    SELECT 1 FROM invoices
-                    WHERE id = NEW.target_id AND user_id = NEW.user_id
-                )
-                BEGIN
-                    SELECT RAISE(ABORT, 'finance_quote_conversions_target_owner_foreign');
-                END
-                SQL);
         }
     }
 };

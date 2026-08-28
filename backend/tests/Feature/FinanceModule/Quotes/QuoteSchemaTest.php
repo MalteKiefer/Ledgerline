@@ -20,7 +20,7 @@ final class QuoteSchemaTest extends TestCase
     {
         $requiredColumns = [
             'finance_quote_series' => [
-                'document_series_id', 'user_id', 'partner_id', 'current_revision_id',
+                'document_series_id', 'user_id', 'document_type', 'partner_id', 'current_revision_id',
                 'number', 'sequence_year', 'sequence_number', 'version', 'published_at',
                 'accepted_at', 'declined_at', 'converted_at', 'deleted_at', 'created_at',
                 'updated_at',
@@ -68,6 +68,26 @@ final class QuoteSchemaTest extends TestCase
         $this->assertTrue(Schema::hasIndex(
             'finance_quote_series',
             ['user_id', 'sequence_year', 'sequence_number'],
+            'unique',
+        ));
+        $this->assertTrue(Schema::hasIndex(
+            'finance_quote_series',
+            ['user_id', 'number'],
+            'unique',
+        ));
+        $this->assertTrue(Schema::hasIndex(
+            'finance_document_series',
+            ['user_id', 'id', 'document_type'],
+            'unique',
+        ));
+        $this->assertTrue(Schema::hasIndex(
+            'finance_partners',
+            ['user_id', 'id'],
+            'unique',
+        ));
+        $this->assertTrue(Schema::hasIndex(
+            'invoices',
+            ['user_id', 'id'],
             'unique',
         ));
         $this->assertTrue(Schema::hasIndex(
@@ -151,6 +171,10 @@ final class QuoteSchemaTest extends TestCase
         $quoteSeriesId = $this->insertDocumentSeries((int) $owner->id);
         $this->insertQuoteSeries((int) $owner->id, $quoteSeriesId);
         $this->expectConstraintViolation(function () use ($quoteSeriesId): void {
+            DB::table('finance_quote_series')->where('document_series_id', $quoteSeriesId)
+                ->update(['document_type' => 'invoice']);
+        });
+        $this->expectConstraintViolation(function () use ($quoteSeriesId): void {
             DB::table('finance_document_series')->where('id', $quoteSeriesId)
                 ->update(['document_type' => 'invoice']);
         });
@@ -177,6 +201,21 @@ final class QuoteSchemaTest extends TestCase
                 'sequence_number' => 7,
             ]);
         });
+        $this->expectConstraintViolation(function () use ($owner): void {
+            $duplicateNumberSeriesId = $this->insertDocumentSeries((int) $owner->id);
+            $this->insertQuoteSeries((int) $owner->id, $duplicateNumberSeriesId, [
+                'number' => 'AN-2026-0007',
+                'sequence_year' => 2027,
+                'sequence_number' => 7007,
+            ]);
+        });
+        $otherOwner = User::factory()->create();
+        $otherOwnerSeriesId = $this->insertDocumentSeries((int) $otherOwner->id);
+        $this->insertQuoteSeries((int) $otherOwner->id, $otherOwnerSeriesId, [
+            'number' => 'AN-2026-0007',
+            'sequence_year' => 2027,
+            'sequence_number' => 7007,
+        ]);
         $this->expectConstraintViolation(function () use ($owner): void {
             $partialSeriesId = $this->insertDocumentSeries((int) $owner->id);
             $this->insertQuoteSeries((int) $owner->id, $partialSeriesId, ['number' => 'AN-2026-0008']);
@@ -262,6 +301,12 @@ final class QuoteSchemaTest extends TestCase
         );
         $this->expectConstraintViolation(
             fn () => $this->insertOperation((int) $owner->id, null, 'publish', 'invalid-hash', ['request_sha256' => 'short']),
+        );
+        $this->expectConstraintViolation(
+            fn () => $this->insertOperation((int) $owner->id, null, 'publish', 'uppercase-hash', ['request_sha256' => str_repeat('A', 64)]),
+        );
+        $this->expectConstraintViolation(
+            fn () => $this->insertOperation((int) $owner->id, null, 'publish', 'non-hex-hash', ['request_sha256' => str_repeat('g', 64)]),
         );
     }
 
@@ -417,7 +462,8 @@ final class QuoteSchemaTest extends TestCase
         }
 
         foreach ([
-            'finance_quote_series_owner_document_foreign',
+            'finance_quote_series_owner_document_type_foreign',
+            'finance_quote_series_owner_partner_foreign',
             'finance_quote_series_current_revision_foreign',
             'finance_quote_drafts_based_revision_foreign',
             'finance_quote_operations_owner_series_foreign',
@@ -425,6 +471,7 @@ final class QuoteSchemaTest extends TestCase
             'finance_quote_deliveries_owner_series_revision_foreign',
             'finance_quote_conversions_owner_series_foreign',
             'finance_quote_conversions_owner_series_revision_foreign',
+            'finance_quote_conversions_owner_target_foreign',
         ] as $constraint) {
             $this->assertMatchesRegularExpression(
                 "/{$constraint}.*on delete no action deferrable initially deferred/",
@@ -438,12 +485,9 @@ final class QuoteSchemaTest extends TestCase
         $this->assertStringContainsString('finance_quote_series_number_tuple_check', $ddl);
         $this->assertStringContainsString('finance_quote_number_sequences_positive_check', $ddl);
         $this->assertStringContainsString('finance_quote_operations_request_hash_check', $ddl);
-        $this->assertStringContainsString('finance_quote_document_series_type_guard', $ddl);
-        $this->assertStringContainsString('finance_quote_partner_owner_update_guard', $ddl);
-        $this->assertStringContainsString('finance_quote_invoice_owner_update_guard', $ddl);
-        $this->assertStringContainsString('finance_quote_series_document_type_guard', $ddl);
-        $this->assertStringContainsString('finance_quote_series_partner_owner_guard', $ddl);
-        $this->assertStringContainsString('finance_quote_conversions_target_owner_guard', $ddl);
+        $this->assertStringContainsString("request_sha256 ~ '^[0-9a-f]{64}$'", $ddl);
+        $this->assertStringNotContainsString('create trigger', $ddl);
+        $this->assertStringNotContainsString('create or replace function', $ddl);
     }
 
     public function test_migration_can_be_rolled_back_and_reapplied(): void
@@ -463,12 +507,26 @@ final class QuoteSchemaTest extends TestCase
             ] as $table) {
                 $this->assertFalse(Schema::hasTable($table), "Rollback left {$table} behind");
             }
+            $this->assertFalse(Schema::hasIndex(
+                'finance_document_series',
+                ['user_id', 'id', 'document_type'],
+                'unique',
+            ));
+            $this->assertFalse(Schema::hasIndex('finance_partners', ['user_id', 'id'], 'unique'));
+            $this->assertFalse(Schema::hasIndex('invoices', ['user_id', 'id'], 'unique'));
         } finally {
             $migration->up();
         }
 
         $this->assertTrue(Schema::hasTable('finance_quote_series'));
         $this->assertTrue(Schema::hasTable('finance_quote_conversions'));
+        $this->assertTrue(Schema::hasIndex(
+            'finance_document_series',
+            ['user_id', 'id', 'document_type'],
+            'unique',
+        ));
+        $this->assertTrue(Schema::hasIndex('finance_partners', ['user_id', 'id'], 'unique'));
+        $this->assertTrue(Schema::hasIndex('invoices', ['user_id', 'id'], 'unique'));
     }
 
     /** @param array<string, mixed> $overrides */
