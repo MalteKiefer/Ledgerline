@@ -33,6 +33,19 @@ final readonly class QuoteWorkflow
         }
     }
 
+    public function assertDraftMayBePublished(QuoteStatus $status, bool $isLaterVersion): void
+    {
+        if ($isLaterVersion) {
+            if ($status === QuoteStatus::Sent) {
+                return;
+            }
+
+            throw new InvalidQuoteAction('invalid_transition');
+        }
+
+        $this->assertTransition($status, QuoteStatus::Sent);
+    }
+
     public function assertDraftEditable(QuoteStatus $status, bool $hasPendingDraft): void
     {
         if ($status === QuoteStatus::Draft || ($status === QuoteStatus::Sent && $hasPendingDraft)) {
@@ -118,12 +131,12 @@ final readonly class QuoteWorkflow
             throw new InvalidQuoteAction('quote_draft_pending');
         }
 
-        if ($expectedRevisionId !== $currentRevisionId) {
-            throw new InvalidQuoteAction('quote_revision_stale');
-        }
-
         if ($revisionState === QuoteRevisionState::Replaced) {
             throw new InvalidQuoteAction('quote_revision_replaced');
+        }
+
+        if ($expectedRevisionId !== $currentRevisionId) {
+            throw new InvalidQuoteAction('quote_revision_stale');
         }
 
         if ($now > $validUntil->setTime(23, 59, 59, 999999)) {

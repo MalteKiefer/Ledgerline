@@ -23,15 +23,49 @@ final class QuoteWorkflowTest extends TestCase
         $this->workflow = new QuoteWorkflow;
     }
 
-    public function test_first_publication_and_later_version_drafts_are_allowed(): void
+    public function test_initial_and_later_version_drafts_are_editable(): void
     {
         $this->workflow->assertDraftEditable(QuoteStatus::Draft, hasPendingDraft: true);
-        $this->workflow->assertTransition(QuoteStatus::Draft, QuoteStatus::Sent);
-
         $this->workflow->assertVersionMayStart(QuoteStatus::Sent, hasPendingDraft: false);
         $this->workflow->assertDraftEditable(QuoteStatus::Sent, hasPendingDraft: true);
 
-        $this->addToAssertionCount(4);
+        $this->addToAssertionCount(3);
+    }
+
+    public function test_initial_draft_publication_performs_draft_to_sent(): void
+    {
+        $this->workflow->assertDraftMayBePublished(QuoteStatus::Draft, isLaterVersion: false);
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_later_version_publication_explicitly_keeps_the_series_sent(): void
+    {
+        $this->workflow->assertDraftMayBePublished(QuoteStatus::Sent, isLaterVersion: true);
+
+        $this->assertInvalidQuoteAction('invalid_transition', function (): void {
+            $this->workflow->assertTransition(QuoteStatus::Sent, QuoteStatus::Sent);
+        });
+    }
+
+    #[DataProvider('invalidPublicationContexts')]
+    public function test_publication_rejects_a_status_that_does_not_match_the_draft_kind(
+        QuoteStatus $status,
+        bool $isLaterVersion,
+    ): void {
+        $this->assertInvalidQuoteAction('invalid_transition', function () use ($status, $isLaterVersion): void {
+            $this->workflow->assertDraftMayBePublished($status, $isLaterVersion);
+        });
+    }
+
+    /** @return iterable<string, array{QuoteStatus, bool}> */
+    public static function invalidPublicationContexts(): iterable
+    {
+        yield 'initial publication requires draft series' => [QuoteStatus::Sent, false];
+        yield 'later publication requires sent series' => [QuoteStatus::Draft, true];
+        yield 'accepted is locked' => [QuoteStatus::Accepted, true];
+        yield 'declined is locked' => [QuoteStatus::Declined, true];
+        yield 'converted is locked' => [QuoteStatus::Converted, true];
     }
 
     public function test_sent_quotes_may_be_accepted_or_declined(): void
@@ -151,11 +185,13 @@ final class QuoteWorkflowTest extends TestCase
         );
     }
 
-    public function test_a_replaced_revision_cannot_be_decided_or_converted(): void
+    public function test_replaced_revision_takes_precedence_over_a_stale_expected_revision(): void
     {
         $this->assertDecisionAndConversionFail(
             'quote_revision_replaced',
             QuoteStatus::Accepted,
+            expectedRevisionId: 40,
+            currentRevisionId: 41,
             revisionState: QuoteRevisionState::Replaced,
         );
     }
