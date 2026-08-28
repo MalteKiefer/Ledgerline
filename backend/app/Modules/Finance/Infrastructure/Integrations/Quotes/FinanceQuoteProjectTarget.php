@@ -28,7 +28,15 @@ final readonly class FinanceQuoteProjectTarget implements ProjectFromQuoteTarget
             throw new InvalidArgumentException('project_quote_request_invalid');
         }
 
-        $requestHash = hash('sha256', json_encode(['series_uuid' => $source->seriesUuid, 'revision_id' => $source->revisionId, 'snapshot_sha256' => $source->snapshotSha256, 'number' => $source->number, 'label' => $source->label], JSON_THROW_ON_ERROR));
+        $source->assertSnapshotIntegrity();
+        $requestHash = hash('sha256', json_encode([
+            'series_uuid' => $source->seriesUuid,
+            'revision_id' => $source->revisionId,
+            'snapshot_sha256' => $source->canonicalSnapshotSha256(),
+            'snapshot' => $source->snapshot,
+            'number' => $source->number,
+            'label' => $source->label,
+        ], JSON_THROW_ON_ERROR));
         $operation = $this->operations->reserve($ownerId, 'project.from_quote', $idempotencyKey, $requestHash, null);
         if ($operation->status === 'replay') {
             $uuid = $operation->result['project_uuid'] ?? null;
@@ -63,12 +71,11 @@ final readonly class FinanceQuoteProjectTarget implements ProjectFromQuoteTarget
                     throw new InvalidArgumentException('project_quote_snapshot_mismatch');
                 }
                 $expectedNumber = is_string($quoteSeries->number) ? $quoteSeries->number : null;
-                $expectedLabel = $expectedNumber !== null ? 'Quote '.$expectedNumber : $source->title;
                 $storedPartnerId = $quoteSeries->partner_id;
                 if ($storedPartnerId !== null && ! is_int($storedPartnerId)) {
                     throw new InvalidArgumentException('project_quote_snapshot_mismatch');
                 }
-                if ($source->number !== $expectedNumber || $source->label !== $expectedLabel || $source->partnerId !== $storedPartnerId || (int) $revision->net_minor !== $source->netMinor || (int) $revision->vat_minor !== $source->vatMinor || (int) $revision->gross_minor !== $source->grossMinor || (string) $revision->currency !== $source->currency || ($snapshot['lines'] ?? null) !== $source->lines) {
+                if ($source->number !== $expectedNumber || $source->partnerId !== $storedPartnerId || (int) $revision->revision_number !== $source->revisionNumber || (int) $revision->net_minor !== $source->netMinor || (int) $revision->vat_minor !== $source->vatMinor || (int) $revision->gross_minor !== $source->grossMinor || (string) $revision->currency !== $source->currency || ($snapshot['revision_label'] ?? null) !== $source->label || ($snapshot['lines'] ?? null) !== $source->lines) {
                     throw new InvalidArgumentException('project_quote_snapshot_mismatch');
                 }
                 $this->references->assertOwnedPartnerReference($ownerId, $source->partnerReference);
