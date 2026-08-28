@@ -13,6 +13,7 @@ use App\Modules\Finance\Application\Commands\Quotes\PublishQuote;
 use App\Modules\Finance\Application\Commands\Quotes\StartQuoteVersion;
 use App\Modules\Finance\Application\Commands\Quotes\UpdateQuoteDraft;
 use App\Modules\Finance\Application\DTOs\CreateRevisionData;
+use App\Modules\Finance\Application\DTOs\DocumentStorageWrite;
 use App\Modules\Finance\Application\DTOs\Quotes\OperationReservation;
 use App\Modules\Finance\Application\DTOs\Quotes\PublishQuoteData;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteDraftData;
@@ -1370,15 +1371,18 @@ final class QuotePublicationStorage implements DocumentStorage
     /** @var array<string, string> */
     public array $documents = [];
 
-    /** @var array<string, string> */
-    private array $tokens = [];
+    /** @var array<string, DocumentStorageWrite> */
+    private array $writes = [];
 
-    public function putPdf(string $seriesUuid, string $bytes, string $ownershipToken): StoredDocument
-    {
+    public function putPdf(
+        string $seriesUuid,
+        string $bytes,
+        DocumentStorageWrite $write,
+    ): StoredDocument {
         $this->puts++;
         $path = "finance/revisions/{$seriesUuid}/{$this->puts}.pdf";
         $this->documents[$path] = $bytes;
-        $this->tokens[$ownershipToken] = $path;
+        $this->writes[$path] = $write;
 
         if ($this->failureAfterWrite !== null) {
             throw $this->failureAfterWrite;
@@ -1387,14 +1391,22 @@ final class QuotePublicationStorage implements DocumentStorage
         return new StoredDocument($path, hash('sha256', $bytes));
     }
 
-    public function delete(string $ownershipToken): void
+    public function delete(DocumentStorageWrite $write): void
     {
-        $path = $this->tokens[$ownershipToken] ?? null;
+        $path = null;
+        foreach ($this->writes as $candidatePath => $candidate) {
+            if ($candidate->ownershipToken === $write->ownershipToken
+                && $candidate->cleanupProof === $write->cleanupProof
+                && $candidate->sha256 === $write->sha256) {
+                $path = $candidatePath;
+                break;
+            }
+        }
         if ($path === null) {
             return;
         }
 
         $this->deletes++;
-        unset($this->documents[$path], $this->tokens[$ownershipToken]);
+        unset($this->documents[$path], $this->writes[$path]);
     }
 }

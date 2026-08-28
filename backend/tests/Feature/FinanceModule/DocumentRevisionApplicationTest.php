@@ -9,6 +9,7 @@ use App\Modules\Finance\Application\Commands\CreateDocumentRevision;
 use App\Modules\Finance\Application\Commands\PublishDocumentRevision;
 use App\Modules\Finance\Application\DTOs\CreateRevisionData;
 use App\Modules\Finance\Application\DTOs\DocumentRevisionId;
+use App\Modules\Finance\Application\DTOs\DocumentStorageWrite;
 use App\Modules\Finance\Application\DTOs\StoredDocument;
 use App\Modules\Finance\Application\Ports\DocumentRenderer;
 use App\Modules\Finance\Application\Ports\DocumentRevisionRepository;
@@ -532,7 +533,7 @@ final class DocumentRevisionApplicationTest extends TestCase
         $this->assertSame(['%PDF-foreign'], array_values($this->storage->documents));
     }
 
-    public function test_a_storage_write_that_throws_after_persisting_is_cleaned_up_by_ownership_token(): void
+    public function test_a_storage_write_that_throws_after_persisting_is_cleaned_up_by_its_write_proof(): void
     {
         [, $revisionId] = $this->createdRevision('018f4ca3-224d-7d8d-9f00-979797979797');
         $this->storage->putFailureAfterWrite = new RuntimeException('Storage acknowledgement failed.');
@@ -655,19 +656,22 @@ final class FakeDocumentStorage implements DocumentStorage
     /** @var array<string, string> */
     public array $documents = [];
 
-    /** @var array<string, string> */
-    public array $ownershipTokens = [];
+    /** @var array<string, DocumentStorageWrite> */
+    public array $writes = [];
 
     /** @var list<string> */
     public array $deleted = [];
 
-    public function putPdf(string $seriesUuid, string $bytes, string $ownershipToken): StoredDocument
-    {
+    public function putPdf(
+        string $seriesUuid,
+        string $bytes,
+        DocumentStorageWrite $write,
+    ): StoredDocument {
         $this->puts++;
         $sha256 = hash('sha256', $bytes);
         $path = sprintf('finance/revisions/%s/%d-%s.pdf', $seriesUuid, $this->puts, $sha256);
         $this->documents[$path] = $bytes;
-        $this->ownershipTokens[$path] = $ownershipToken;
+        $this->writes[$path] = $write;
 
         if ($this->putFailureAfterWrite !== null) {
             throw $this->putFailureAfterWrite;
@@ -676,13 +680,21 @@ final class FakeDocumentStorage implements DocumentStorage
         return new StoredDocument($path, $this->reportedSha256 ?? $sha256);
     }
 
-    public function delete(string $ownershipToken): void
+    public function delete(DocumentStorageWrite $write): void
     {
         if ($this->deleteFailure !== null) {
             throw $this->deleteFailure;
         }
 
-        $path = array_search($ownershipToken, $this->ownershipTokens, true);
+        $path = null;
+        foreach ($this->writes as $candidatePath => $candidate) {
+            if ($candidate->ownershipToken === $write->ownershipToken
+                && $candidate->cleanupProof === $write->cleanupProof
+                && $candidate->sha256 === $write->sha256) {
+                $path = $candidatePath;
+                break;
+            }
+        }
 
         if (! is_string($path)) {
             return;
@@ -690,13 +702,17 @@ final class FakeDocumentStorage implements DocumentStorage
 
         $this->deleted[] = $path;
         unset($this->documents[$path]);
-        unset($this->ownershipTokens[$path]);
+        unset($this->writes[$path]);
     }
 
     public function replaceWithForeignObject(string $path, string $bytes): void
     {
         $this->documents[$path] = $bytes;
-        $this->ownershipTokens[$path] = 'foreign-object';
+        $this->writes[$path] = new DocumentStorageWrite(
+            str_repeat('fa', 32),
+            str_repeat('fb', 32),
+            hash('sha256', $bytes),
+        );
     }
 }
 

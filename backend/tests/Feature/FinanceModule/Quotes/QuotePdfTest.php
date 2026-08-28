@@ -7,30 +7,197 @@ namespace Tests\Feature\FinanceModule\Quotes;
 use App\Models\User;
 use App\Modules\Finance\Application\Commands\PublishDocumentRevision;
 use App\Modules\Finance\Application\DTOs\DocumentRevisionId;
+use App\Modules\Finance\Application\DTOs\DocumentStorageWrite;
 use App\Modules\Finance\Application\Ports\DocumentRenderer;
 use App\Modules\Finance\Application\Ports\DocumentStorage;
 use App\Modules\Finance\Infrastructure\Pdf\BladeDocumentRenderer;
 use App\Modules\Finance\Infrastructure\Pdf\FlysystemDocumentStorage;
+use App\Modules\Finance\Infrastructure\Pdf\LocalAtomicDocumentObjectStore;
 use App\Modules\Finance\Infrastructure\Pdf\QuotePdfViewModel;
+use App\Modules\Finance\Infrastructure\Pdf\S3AtomicDocumentObjectStore;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord;
-use Illuminate\Filesystem\FilesystemAdapter;
+use Aws\CommandInterface;
+use Aws\MockHandler;
+use Aws\Result;
+use Aws\S3\S3Client;
+use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use LogicException;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 final class QuotePdfTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_local_production_storage_allows_only_one_concurrent_writer_for_a_capability(): void
+    {
+        [$root, $locks] = $this->storageDirectories();
+        $barrier = $root.DIRECTORY_SEPARATOR.'start';
+        $token = str_repeat('71', 32);
+        $script = <<<'PHP'
+            require $argv[1].'/vendor/autoload.php';
+            $bytes = '%PDF-concurrent';
+            $write = new App\Modules\Finance\Application\DTOs\DocumentStorageWrite(
+                $argv[4],
+                $argv[5],
+                hash('sha256', $bytes),
+            );
+            $storage = new App\Modules\Finance\Infrastructure\Pdf\FlysystemDocumentStorage(
+                new App\Modules\Finance\Infrastructure\Pdf\LocalAtomicDocumentObjectStore($argv[2], $argv[3]),
+            );
+            while (! file_exists($argv[6])) {
+                usleep(1_000);
+            }
+            try {
+                $storage->putPdf('series', $bytes, $write);
+                echo 'won';
+            } catch (LogicException) {
+                echo 'lost';
+            }
+            PHP;
+        $first = new Process([
+            PHP_BINARY, '-r', $script, base_path(), $root, $locks, $token, str_repeat('72', 32), $barrier,
+        ]);
+        $second = new Process([
+            PHP_BINARY, '-r', $script, base_path(), $root, $locks, $token, str_repeat('73', 32), $barrier,
+        ]);
+
+        try {
+            $first->start();
+            $second->start();
+            touch($barrier);
+            $first->wait();
+            $second->wait();
+
+            $this->assertSame(['lost', 'won'], collect([$first->getOutput(), $second->getOutput()])->sort()->values()->all());
+            $this->assertSame(1, count(glob($root.'/finance/revisions/*/*.pdf') ?: []));
+        } finally {
+            $this->deleteDirectory($root);
+            $this->deleteDirectory($locks);
+        }
+    }
+
+    public function test_stale_cleanup_preserves_a_new_generation_and_current_cleanup_removes_it(): void
+    {
+        [$root, $locks] = $this->storageDirectories();
+        $storage = new FlysystemDocumentStorage(new LocalAtomicDocumentObjectStore($root, $locks));
+        $token = str_repeat('74', 32);
+        $bytes = '%PDF-generation';
+        $old = new DocumentStorageWrite($token, str_repeat('75', 32), hash('sha256', $bytes));
+        $current = new DocumentStorageWrite($token, str_repeat('76', 32), hash('sha256', $bytes));
+
+        try {
+            $stored = $storage->putPdf('series', $bytes, $old);
+            $storage->delete($old);
+            $storage->putPdf('series', $bytes, $current);
+
+            $storage->delete($old);
+            $this->assertSame($bytes, file_get_contents($root.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $stored->path)));
+
+            $storage->delete($current);
+            $this->assertFileDoesNotExist($root.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $stored->path));
+        } finally {
+            $this->deleteDirectory($root);
+            $this->deleteDirectory($locks);
+        }
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_s3_storage_uses_conditional_create_and_generation_bound_conditional_delete(): void
+    {
+        $commands = new S3CommandLog;
+        $bytes = '%PDF-s3';
+        $lastModified = new DateTimeImmutable('2026-08-28T10:11:12.123456Z');
+        $write = new DocumentStorageWrite(
+            str_repeat('77', 32),
+            str_repeat('78', 32),
+            hash('sha256', $bytes),
+        );
+        $handler = new MockHandler([
+            static function (CommandInterface $command) use ($commands): Result {
+                $commands->record($command);
+
+                return new Result(['ETag' => '"etag-created"']);
+            },
+            new Result([
+                'ETag' => '"etag-created"',
+                'LastModified' => $lastModified,
+                'ContentLength' => strlen($bytes),
+                'Metadata' => [
+                    'ledgerline-proof' => $write->cleanupProof,
+                    'ledgerline-sha256' => $write->sha256,
+                    'ledgerline-generation' => $write->generation(),
+                ],
+            ]),
+            static function (CommandInterface $command) use ($commands): Result {
+                $commands->record($command);
+
+                return new Result;
+            },
+        ]);
+        $store = new S3AtomicDocumentObjectStore($this->s3Client($handler), 'private-bucket', 'tenant-prefix');
+        $path = 'finance/revisions/77/'.str_repeat('77', 32).'.pdf';
+
+        $store->create($path, $bytes, $write);
+        $store->deleteIfOwned($path, $write);
+
+        $put = $commands->get(0);
+        $delete = $commands->get(1);
+        $metadata = $put['Metadata'];
+        $this->assertIsArray($metadata);
+        $this->assertSame('PutObject', $put->getName());
+        $this->assertSame('*', $put['IfNoneMatch']);
+        $this->assertSame('tenant-prefix/'.$path, $put['Key']);
+        $this->assertSame($write->cleanupProof, $metadata['ledgerline-proof']);
+        $this->assertSame('DeleteObject', $delete->getName());
+        $this->assertSame('"etag-created"', $delete['IfMatch']);
+        $this->assertSame($lastModified, $delete['IfMatchLastModifiedTime']);
+        $this->assertSame(strlen($bytes), $delete['IfMatchSize']);
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_s3_stale_cleanup_does_not_issue_a_delete_for_a_new_generation(): void
+    {
+        $bytes = '%PDF-s3-generation';
+        $stale = new DocumentStorageWrite(
+            str_repeat('79', 32),
+            str_repeat('7a', 32),
+            hash('sha256', $bytes),
+        );
+        $current = new DocumentStorageWrite(
+            $stale->ownershipToken,
+            str_repeat('7b', 32),
+            $stale->sha256,
+        );
+        $handler = new MockHandler([new Result([
+            'ETag' => '"etag-current"',
+            'Metadata' => [
+                'ledgerline-proof' => $current->cleanupProof,
+                'ledgerline-sha256' => $current->sha256,
+                'ledgerline-generation' => $current->generation(),
+            ],
+        ])]);
+        $store = new S3AtomicDocumentObjectStore($this->s3Client($handler), 'private-bucket');
+
+        $store->deleteIfOwned('finance/revisions/79/'.str_repeat('79', 32).'.pdf', $stale);
+
+        $this->assertCount(0, $handler);
+    }
+
     public function test_production_document_ports_are_bound_to_quote_pdf_adapters(): void
     {
-        Storage::fake('quote-pdfs');
-        config()->set('files.disk', 'quote-pdfs');
+        $this->configureLocalDocumentDisk();
 
         $this->assertInstanceOf(BladeDocumentRenderer::class, app(DocumentRenderer::class));
         $this->assertInstanceOf(FlysystemDocumentStorage::class, app(DocumentStorage::class));
@@ -38,15 +205,14 @@ final class QuotePdfTest extends TestCase
 
     public function test_production_publication_is_byte_verified_immutable_and_idempotent(): void
     {
-        Storage::fake('quote-pdfs');
-        config()->set('files.disk', 'quote-pdfs');
+        [, $diskName] = $this->configureLocalDocumentDisk();
         [$owner, $revisionId] = $this->draftRevision();
         $this->actingAs($owner);
         $command = app(PublishDocumentRevision::class);
 
         $published = $command->handle(new DocumentRevisionId($revisionId));
         $retry = $command->handle(new DocumentRevisionId($revisionId));
-        $bytes = Storage::disk('quote-pdfs')->get($published->path);
+        $bytes = Storage::disk($diskName)->get($published->path);
 
         $this->assertEquals($published, $retry);
         $this->assertIsString($bytes);
@@ -56,13 +222,16 @@ final class QuotePdfTest extends TestCase
             '#\Afinance/revisions/[a-f0-9]{2}/[a-f0-9]{64}\.pdf\z#',
             $published->path,
         );
-        $this->assertCount(1, Storage::disk('quote-pdfs')->allFiles());
+        $pdfs = array_values(array_filter(
+            Storage::disk($diskName)->allFiles(),
+            static fn (string $path): bool => str_ends_with($path, '.pdf'),
+        ));
+        $this->assertCount(1, $pdfs);
     }
 
     public function test_production_publication_compensates_the_owned_object_after_database_failure(): void
     {
-        Storage::fake('quote-pdfs');
-        config()->set('files.disk', 'quote-pdfs');
+        [, $diskName] = $this->configureLocalDocumentDisk();
         [$owner, $revisionId] = $this->draftRevision('018f4ca3-224d-7d8d-9f00-949494949494');
         $this->actingAs($owner);
         DocumentActivityRecord::creating(static function (DocumentActivityRecord $activity): void {
@@ -78,7 +247,7 @@ final class QuotePdfTest extends TestCase
             $this->assertSame('Injected activity failure.', $exception->getMessage());
         }
 
-        $this->assertSame([], Storage::disk('quote-pdfs')->allFiles());
+        $this->assertSame([], Storage::disk($diskName)->allFiles());
         $this->assertDatabaseHas('finance_document_revisions', [
             'id' => $revisionId,
             'status' => 'draft',
@@ -181,104 +350,146 @@ final class QuotePdfTest extends TestCase
 
     public function test_storage_uses_the_capability_path_preserves_bytes_and_never_overwrites(): void
     {
-        Storage::fake('quote-pdfs');
-        $disk = Storage::disk('quote-pdfs');
-        $storage = new FlysystemDocumentStorage($disk);
+        [$root, $locks] = $this->storageDirectories();
+        $storage = new FlysystemDocumentStorage(new LocalAtomicDocumentObjectStore($root, $locks));
         $token = str_repeat('ab', 32);
         $path = "finance/revisions/ab/{$token}.pdf";
+        $firstWrite = $this->storageWrite($token, str_repeat('ad', 32), '%PDF-first');
 
-        $stored = $storage->putPdf('018f4ca3-224d-7d8d-9f00-101010101010', '%PDF-first', $token);
+        try {
+            $stored = $storage->putPdf(
+                '018f4ca3-224d-7d8d-9f00-101010101010',
+                '%PDF-first',
+                $firstWrite,
+            );
 
-        $this->assertSame($path, $stored->path);
-        $this->assertSame(hash('sha256', '%PDF-first'), $stored->sha256);
-        $disk->assertExists($path);
-        $this->assertSame('%PDF-first', $disk->get($path));
+            $this->assertSame($path, $stored->path);
+            $this->assertSame(hash('sha256', '%PDF-first'), $stored->sha256);
+            $this->assertSame('%PDF-first', file_get_contents($this->objectPath($root, $path)));
 
-        $otherToken = str_repeat('ac', 32);
-        $other = $storage->putPdf(
-            '018f4ca3-224d-7d8d-9f00-101010101010',
-            '%PDF-first',
-            $otherToken,
-        );
-        $this->assertNotSame($stored->path, $other->path);
-        $disk->assertExists($other->path);
+            $otherToken = str_repeat('ac', 32);
+            $other = $storage->putPdf(
+                '018f4ca3-224d-7d8d-9f00-101010101010',
+                '%PDF-first',
+                $this->storageWrite($otherToken, str_repeat('ae', 32), '%PDF-first'),
+            );
+            $this->assertNotSame($stored->path, $other->path);
+            $this->assertFileExists($this->objectPath($root, $other->path));
 
-        $this->expectException(LogicException::class);
-        $storage->putPdf('018f4ca3-224d-7d8d-9f00-101010101010', '%PDF-second', $token);
+            $storage->putPdf(
+                '018f4ca3-224d-7d8d-9f00-101010101010',
+                '%PDF-second',
+                $this->storageWrite($token, str_repeat('af', 32), '%PDF-second'),
+            );
+            $this->fail('A colliding capability unexpectedly overwrote its object.');
+        } catch (LogicException $exception) {
+            $this->assertSame('The document capability is already in use.', $exception->getMessage());
+            $this->assertSame('%PDF-first', file_get_contents($this->objectPath($root, $path)));
+        } finally {
+            $this->deleteDirectory($root);
+            $this->deleteDirectory($locks);
+        }
     }
 
     public function test_storage_cleanup_derives_only_the_supplied_capability_path(): void
     {
-        Storage::fake('quote-pdfs');
-        $disk = Storage::disk('quote-pdfs');
-        $storage = new FlysystemDocumentStorage($disk);
+        [$root, $locks] = $this->storageDirectories();
+        $storage = new FlysystemDocumentStorage(new LocalAtomicDocumentObjectStore($root, $locks));
         $ownedToken = str_repeat('cd', 32);
         $otherToken = str_repeat('ef', 32);
-        $ownedPath = $storage->putPdf('series', '%PDF-owned', $ownedToken)->path;
-        $otherPath = $storage->putPdf('series', '%PDF-other', $otherToken)->path;
+        $ownedWrite = $this->storageWrite($ownedToken, str_repeat('ce', 32), '%PDF-owned');
+        $otherWrite = $this->storageWrite($otherToken, str_repeat('f0', 32), '%PDF-other');
 
-        $storage->delete('../'.$otherToken);
-        $storage->delete($ownedToken);
+        try {
+            $ownedPath = $storage->putPdf('series', '%PDF-owned', $ownedWrite)->path;
+            $otherPath = $storage->putPdf('series', '%PDF-other', $otherWrite)->path;
+            $storage->delete($ownedWrite);
 
-        $disk->assertMissing($ownedPath);
-        $disk->assertExists($otherPath);
+            $this->assertFileDoesNotExist($this->objectPath($root, $ownedPath));
+            $this->assertFileExists($this->objectPath($root, $otherPath));
+        } finally {
+            $this->deleteDirectory($root);
+            $this->deleteDirectory($locks);
+        }
     }
 
     public function test_storage_failure_is_reported_and_the_same_capability_can_be_retried_after_cleanup(): void
     {
-        Storage::fake('quote-pdfs');
-        $disk = Storage::disk('quote-pdfs');
-        $storage = new FlysystemDocumentStorage($disk);
+        [$root, $locks] = $this->storageDirectories();
+        $storage = new FlysystemDocumentStorage(new LocalAtomicDocumentObjectStore($root, $locks));
         $token = str_repeat('12', 32);
-
-        $storage->putPdf('series', '%PDF-original', $token);
+        $original = $this->storageWrite($token, str_repeat('13', 32), '%PDF-original');
+        $retry = $this->storageWrite($token, str_repeat('14', 32), '%PDF-retry');
 
         try {
-            $storage->putPdf('series', '%PDF-retry', $token);
-            $this->fail('A colliding storage write unexpectedly succeeded.');
-        } catch (LogicException $exception) {
-            $this->assertSame('The document capability is already in use.', $exception->getMessage());
-        }
+            $storage->putPdf('series', '%PDF-original', $original);
 
-        $storage->delete($token);
-        $stored = $storage->putPdf('series', '%PDF-retry', $token);
-        $this->assertSame("finance/revisions/12/{$token}.pdf", $stored->path);
-        $this->assertSame(hash('sha256', '%PDF-retry'), $stored->sha256);
-        $this->assertSame('%PDF-retry', $disk->get($stored->path));
+            try {
+                $storage->putPdf('series', '%PDF-retry', $retry);
+                $this->fail('A colliding storage write unexpectedly succeeded.');
+            } catch (LogicException $exception) {
+                $this->assertSame('The document capability is already in use.', $exception->getMessage());
+            }
+
+            $storage->delete($original);
+            $stored = $storage->putPdf('series', '%PDF-retry', $retry);
+            $this->assertSame("finance/revisions/12/{$token}.pdf", $stored->path);
+            $this->assertSame(hash('sha256', '%PDF-retry'), $stored->sha256);
+            $this->assertSame('%PDF-retry', file_get_contents($this->objectPath($root, $stored->path)));
+        } finally {
+            $this->deleteDirectory($root);
+            $this->deleteDirectory($locks);
+        }
     }
 
     public function test_storage_reports_a_failed_private_write(): void
     {
-        Storage::fake('quote-pdfs');
-        $disk = Storage::disk('quote-pdfs');
-        $this->assertInstanceOf(FilesystemAdapter::class, $disk);
-        $storage = new FlysystemDocumentStorage(new RejectingPutFilesystem($disk));
+        [$root, $locks] = $this->storageDirectories();
+        $blockedRoot = $root.DIRECTORY_SEPARATOR.'not-a-directory';
+        file_put_contents($blockedRoot, 'blocked');
+        $storage = new FlysystemDocumentStorage(new LocalAtomicDocumentObjectStore($blockedRoot, $locks));
 
-        $this->expectException(LogicException::class);
-        $this->expectExceptionMessage('The PDF could not be stored.');
-        $storage->putPdf('series', '%PDF-failed', str_repeat('34', 32));
+        try {
+            $storage->putPdf(
+                'series',
+                '%PDF-failed',
+                $this->storageWrite(str_repeat('34', 32), str_repeat('35', 32), '%PDF-failed'),
+            );
+            $this->fail('Writing below a regular file unexpectedly succeeded.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('The document storage directory could not be created.', $exception->getMessage());
+        } finally {
+            $this->deleteDirectory($root);
+            $this->deleteDirectory($locks);
+        }
     }
 
     public function test_storage_rejects_non_canonical_or_traversal_capabilities(): void
     {
-        Storage::fake('quote-pdfs');
-        $storage = new FlysystemDocumentStorage(Storage::disk('quote-pdfs'));
-
         $this->expectException(InvalidArgumentException::class);
-        $storage->putPdf('series', '%PDF-invalid', '../'.str_repeat('a', 64));
+        new DocumentStorageWrite('../'.str_repeat('a', 64), str_repeat('36', 32), str_repeat('a', 64));
     }
 
     public function test_storage_rejects_non_pdf_bytes_before_writing(): void
     {
-        Storage::fake('quote-pdfs');
-        $disk = Storage::disk('quote-pdfs');
-        $storage = new FlysystemDocumentStorage($disk);
+        [$root, $locks] = $this->storageDirectories();
+        $storage = new FlysystemDocumentStorage(new LocalAtomicDocumentObjectStore($root, $locks));
 
         $this->expectException(InvalidArgumentException::class);
         try {
-            $storage->putPdf('series', '<html>not a PDF</html>', str_repeat('56', 32));
+            $storage->putPdf(
+                'series',
+                '<html>not a PDF</html>',
+                $this->storageWrite(
+                    str_repeat('56', 32),
+                    str_repeat('57', 32),
+                    '<html>not a PDF</html>',
+                ),
+            );
         } finally {
-            $this->assertSame([], $disk->allFiles());
+            $this->assertSame([], glob($root.'/finance/revisions/*/*.pdf') ?: []);
+            $this->deleteDirectory($root);
+            $this->deleteDirectory($locks);
         }
     }
 
@@ -483,17 +694,84 @@ final class QuotePdfTest extends TestCase
 
         return [$owner, $revisionId];
     }
-}
 
-final class RejectingPutFilesystem extends FilesystemAdapter
-{
-    public function __construct(FilesystemAdapter $delegate)
+    /** @return array{string, string} */
+    private function storageDirectories(): array
     {
-        parent::__construct($delegate->getDriver(), $delegate->getAdapter());
+        $base = storage_path('framework/testing/quote-pdf-'.bin2hex(random_bytes(8)));
+        $root = $base.'-objects';
+        $locks = $base.'-locks';
+        File::ensureDirectoryExists($root);
+        File::ensureDirectoryExists($locks);
+
+        return [$root, $locks];
     }
 
-    public function put($path, $contents, $options = []): bool
+    private function deleteDirectory(string $path): void
     {
-        return false;
+        if (str_starts_with($path, storage_path('framework/testing/quote-pdf-'))) {
+            File::deleteDirectory($path);
+        }
+    }
+
+    private function s3Client(MockHandler $handler): S3Client
+    {
+        return new S3Client([
+            'version' => 'latest',
+            'region' => 'eu-central-1',
+            'credentials' => ['key' => 'test', 'secret' => 'test'],
+            'handler' => $handler,
+        ]);
+    }
+
+    /** @return array{string, string} */
+    private function configureLocalDocumentDisk(): array
+    {
+        $diskName = 'quote-pdf-atomic';
+        $root = storage_path('framework/testing/'.$diskName.'-'.bin2hex(random_bytes(8)));
+        $lockRoot = storage_path('framework/finance-document-locks/'.hash('sha256', $root));
+        File::ensureDirectoryExists($root);
+        config()->set('files.disk', $diskName);
+        config()->set('filesystems.disks.'.$diskName, [
+            'driver' => 'local',
+            'root' => $root,
+            'throw' => true,
+        ]);
+        Storage::forgetDisk($diskName);
+        $this->beforeApplicationDestroyed(function () use ($root, $lockRoot, $diskName): void {
+            Storage::forgetDisk($diskName);
+            $this->deleteDirectory($root);
+            if (str_starts_with($lockRoot, storage_path('framework/finance-document-locks/'))) {
+                File::deleteDirectory($lockRoot);
+            }
+        });
+
+        return [$root, $diskName];
+    }
+
+    private function storageWrite(string $token, string $proof, string $bytes): DocumentStorageWrite
+    {
+        return new DocumentStorageWrite($token, $proof, hash('sha256', $bytes));
+    }
+
+    private function objectPath(string $root, string $path): string
+    {
+        return $root.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $path);
+    }
+}
+
+final class S3CommandLog
+{
+    /** @var list<CommandInterface> */
+    private array $commands = [];
+
+    public function record(CommandInterface $command): void
+    {
+        $this->commands[] = $command;
+    }
+
+    public function get(int $index): CommandInterface
+    {
+        return $this->commands[$index] ?? throw new LogicException('S3 command was not recorded.');
     }
 }

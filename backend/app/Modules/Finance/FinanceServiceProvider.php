@@ -26,6 +26,8 @@ use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectRateSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectReferenceResolver;
 use App\Modules\Finance\Infrastructure\Pdf\BladeDocumentRenderer;
 use App\Modules\Finance\Infrastructure\Pdf\FlysystemDocumentStorage;
+use App\Modules\Finance\Infrastructure\Pdf\LocalAtomicDocumentObjectStore;
+use App\Modules\Finance\Infrastructure\Pdf\S3AtomicDocumentObjectStore;
 use App\Modules\Finance\Infrastructure\Persistence\DatabaseQuoteNumberAllocator;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentDocumentRevisionRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectOperationRepository;
@@ -36,6 +38,7 @@ use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteReferenceResolve
 use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteRepository;
 use App\Modules\Finance\Infrastructure\Settings\EloquentQuoteSettings;
 use App\Modules\Finance\Infrastructure\Time\SystemClock;
+use Illuminate\Filesystem\AwsS3V3Adapter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
@@ -46,12 +49,48 @@ final class FinanceServiceProvider extends ServiceProvider
     {
         $this->app->bind(DocumentRenderer::class, BladeDocumentRenderer::class);
         $this->app->bind(DocumentStorage::class, static function (): DocumentStorage {
-            $disk = config('files.disk');
-            if (! is_string($disk) || $disk === '') {
+            $diskName = config('files.disk');
+            if (! is_string($diskName) || $diskName === '') {
                 throw new LogicException('The document storage disk is not configured.');
             }
 
-            return new FlysystemDocumentStorage(Storage::disk($disk));
+            $diskConfig = config('filesystems.disks.'.$diskName);
+            if (! is_array($diskConfig)) {
+                throw new LogicException('The configured document storage disk does not exist.');
+            }
+
+            $driver = $diskConfig['driver'] ?? null;
+            if ($driver === 'local') {
+                $root = $diskConfig['root'] ?? null;
+                if (! is_string($root) || $root === '') {
+                    throw new LogicException('The local document storage root is not configured.');
+                }
+
+                return new FlysystemDocumentStorage(new LocalAtomicDocumentObjectStore(
+                    $root,
+                    storage_path('framework/finance-document-locks/'.hash('sha256', $root)),
+                ));
+            }
+
+            if ($driver === 's3') {
+                $disk = Storage::disk($diskName);
+                $bucket = $diskConfig['bucket'] ?? null;
+                $prefix = $diskConfig['root'] ?? '';
+                if (! $disk instanceof AwsS3V3Adapter
+                    || ! is_string($bucket)
+                    || $bucket === ''
+                    || ! is_string($prefix)) {
+                    throw new LogicException('The S3 document storage disk is incomplete.');
+                }
+
+                return new FlysystemDocumentStorage(new S3AtomicDocumentObjectStore(
+                    $disk->getClient(),
+                    $bucket,
+                    $prefix,
+                ));
+            }
+
+            throw new LogicException('Document storage requires an atomic local or S3 disk.');
         });
         $this->app->bind(
             DocumentRevisionRepository::class,

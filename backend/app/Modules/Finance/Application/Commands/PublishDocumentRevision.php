@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Application\Commands;
 
 use App\Modules\Finance\Application\DTOs\DocumentRevisionId;
+use App\Modules\Finance\Application\DTOs\DocumentStorageWrite;
 use App\Modules\Finance\Application\DTOs\PublishedRevision;
 use App\Modules\Finance\Application\DTOs\StoredDocument;
 use App\Modules\Finance\Application\Ports\DocumentRenderer;
@@ -27,7 +28,7 @@ final readonly class PublishDocumentRevision
     {
         $stored = null;
         $storageAttempted = false;
-        $ownershipToken = bin2hex(random_bytes(32));
+        $write = null;
 
         try {
             return $this->revisions->publish(
@@ -35,13 +36,18 @@ final readonly class PublishDocumentRevision
                 function (string $seriesUuid, array $snapshot) use (
                     &$stored,
                     &$storageAttempted,
-                    $ownershipToken,
+                    &$write,
                 ): StoredDocument {
                     $bytes = $this->renderer->render($snapshot);
+                    $write = new DocumentStorageWrite(
+                        bin2hex(random_bytes(32)),
+                        bin2hex(random_bytes(32)),
+                        hash('sha256', $bytes),
+                    );
                     $storageAttempted = true;
-                    $stored = $this->storage->putPdf($seriesUuid, $bytes, $ownershipToken);
+                    $stored = $this->storage->putPdf($seriesUuid, $bytes, $write);
 
-                    if (! hash_equals(hash('sha256', $bytes), $stored->sha256)) {
+                    if (! hash_equals($write->sha256, $stored->sha256)) {
                         throw new LogicException('Stored PDF hash does not match the rendered bytes.');
                     }
 
@@ -49,9 +55,9 @@ final readonly class PublishDocumentRevision
                 },
             );
         } catch (Throwable $exception) {
-            if ($storageAttempted) {
+            if ($storageAttempted && $write instanceof DocumentStorageWrite) {
                 try {
-                    $this->storage->delete($ownershipToken);
+                    $this->storage->delete($write);
                 } catch (Throwable $cleanupException) {
                     try {
                         $this->logger->error(
