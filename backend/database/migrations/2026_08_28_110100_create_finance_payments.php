@@ -136,7 +136,9 @@ return new class extends Migration
             );
         });
         $this->addAllocationChecksAndGuards();
+        $this->addSqliteReplaceGuards();
         $this->addAllocatedContextGuards();
+        $this->addAllocatedParentDeleteGuards();
         $this->addLedgerImmutabilityGuards();
     }
 
@@ -152,6 +154,7 @@ return new class extends Migration
         if ($driver === 'pgsql') {
             DB::unprepared('DROP FUNCTION IF EXISTS finance_payment_allocation_guard()');
             DB::unprepared('DROP FUNCTION IF EXISTS finance_payment_allocated_context_guard()');
+            DB::unprepared('DROP FUNCTION IF EXISTS finance_payment_allocated_parent_delete_guard()');
             DB::unprepared('DROP FUNCTION IF EXISTS finance_payment_ledger_immutable_guard()');
         }
     }
@@ -258,24 +261,32 @@ return new class extends Migration
                 DECLARE
                     payment_amount bigint;
                     payment_currency char(3);
+                    invoice_series_id bigint;
+                    invoice_revision_id bigint;
                     invoice_gross bigint;
                     invoice_currency char(3);
                     original_amount bigint;
                     original_reversal_id bigint;
                 BEGIN
-                    SELECT amount_minor, currency
-                    INTO payment_amount, payment_currency
-                    FROM finance_payments
-                    WHERE user_id = NEW.user_id AND id = NEW.payment_id;
+                    SELECT invoice.document_series_id, invoice.current_revision_id
+                    INTO invoice_series_id, invoice_revision_id
+                    FROM finance_invoices AS invoice
+                    WHERE invoice.user_id = NEW.user_id AND invoice.id = NEW.invoice_id
+                    FOR SHARE;
 
                     SELECT revision.gross_minor, revision.currency
                     INTO invoice_gross, invoice_currency
-                    FROM finance_invoices AS invoice
-                    INNER JOIN finance_document_revisions AS revision
-                        ON revision.user_id = invoice.user_id
-                        AND revision.document_series_id = invoice.document_series_id
-                        AND revision.id = invoice.current_revision_id
-                    WHERE invoice.user_id = NEW.user_id AND invoice.id = NEW.invoice_id;
+                    FROM finance_document_revisions AS revision
+                    WHERE revision.user_id = NEW.user_id
+                        AND revision.document_series_id = invoice_series_id
+                        AND revision.id = invoice_revision_id
+                    FOR SHARE;
+
+                    SELECT payment.amount_minor, payment.currency
+                    INTO payment_amount, payment_currency
+                    FROM finance_payments AS payment
+                    WHERE payment.user_id = NEW.user_id AND payment.id = NEW.payment_id
+                    FOR SHARE;
 
                     IF payment_amount IS NULL OR invoice_gross IS NULL THEN
                         RAISE EXCEPTION 'finance_payment_allocation_owner_context_check'
@@ -460,6 +471,73 @@ return new class extends Migration
         }
     }
 
+    private function addSqliteReplaceGuards(): void
+    {
+        if ($this->assertSupportedDriver() !== 'sqlite') {
+            return;
+        }
+
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_payments_insert_conflict_guard
+            BEFORE INSERT ON finance_payments
+            WHEN
+                (NEW.id > 0 AND EXISTS (
+                    SELECT 1 FROM finance_payments WHERE id = NEW.id
+                ))
+                OR EXISTS (
+                    SELECT 1 FROM finance_payments
+                    WHERE user_id = NEW.user_id AND uuid = NEW.uuid
+                )
+                OR (
+                    NEW.source_type IS NOT NULL
+                    AND NEW.source_key IS NOT NULL
+                    AND EXISTS (
+                        SELECT 1 FROM finance_payments
+                        WHERE user_id = NEW.user_id
+                            AND source_type = NEW.source_type
+                            AND source_key = NEW.source_key
+                    )
+                )
+            BEGIN
+                SELECT RAISE(ABORT, 'finance_payments_insert_conflict_guard');
+            END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_payment_batches_insert_conflict_guard
+            BEFORE INSERT ON finance_payment_allocation_batches
+            WHEN
+                (NEW.id > 0 AND EXISTS (
+                    SELECT 1 FROM finance_payment_allocation_batches WHERE id = NEW.id
+                ))
+                OR EXISTS (
+                    SELECT 1 FROM finance_payment_allocation_batches
+                    WHERE user_id = NEW.user_id
+                        AND idempotency_key_hash = NEW.idempotency_key_hash
+                )
+            BEGIN
+                SELECT RAISE(ABORT, 'finance_payment_batches_insert_conflict_guard');
+            END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_payment_allocations_insert_conflict_guard
+            BEFORE INSERT ON finance_payment_allocations
+            WHEN
+                (NEW.id > 0 AND EXISTS (
+                    SELECT 1 FROM finance_payment_allocations WHERE id = NEW.id
+                ))
+                OR (
+                    NEW.reverses_allocation_id IS NOT NULL
+                    AND EXISTS (
+                        SELECT 1 FROM finance_payment_allocations
+                        WHERE reverses_allocation_id = NEW.reverses_allocation_id
+                    )
+                )
+            BEGIN
+                SELECT RAISE(ABORT, 'finance_payment_allocations_insert_conflict_guard');
+            END
+            SQL);
+    }
+
     private function addAllocatedContextGuards(): void
     {
         $driver = $this->assertSupportedDriver();
@@ -596,26 +674,154 @@ return new class extends Migration
             SQL);
     }
 
+    private function addAllocatedParentDeleteGuards(): void
+    {
+        $driver = $this->assertSupportedDriver();
+
+        if ($driver === 'pgsql') {
+            DB::unprepared(<<<'SQL'
+                CREATE FUNCTION finance_payment_allocated_parent_delete_guard()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM users WHERE id = OLD.user_id) THEN
+                        RETURN OLD;
+                    END IF;
+
+                    IF TG_TABLE_NAME = 'finance_payments'
+                        AND EXISTS (
+                            SELECT 1 FROM finance_payment_allocations
+                            WHERE user_id = OLD.user_id AND payment_id = OLD.id
+                        ) THEN
+                        RAISE EXCEPTION 'finance_payment_allocated_payment_delete_guard'
+                            USING ERRCODE = '23514';
+                    END IF;
+
+                    IF TG_TABLE_NAME = 'finance_invoices'
+                        AND EXISTS (
+                            SELECT 1 FROM finance_payment_allocations
+                            WHERE user_id = OLD.user_id AND invoice_id = OLD.id
+                        ) THEN
+                        RAISE EXCEPTION 'finance_payment_allocated_invoice_delete_guard'
+                            USING ERRCODE = '23514';
+                    END IF;
+
+                    IF TG_TABLE_NAME = 'finance_document_revisions'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM finance_invoices AS invoice
+                            INNER JOIN finance_payment_allocations AS allocation
+                                ON allocation.user_id = invoice.user_id
+                                AND allocation.invoice_id = invoice.id
+                            WHERE invoice.user_id = OLD.user_id
+                                AND invoice.document_series_id = (to_jsonb(OLD) ->> 'document_series_id')::bigint
+                                AND invoice.current_revision_id = OLD.id
+                        ) THEN
+                        RAISE EXCEPTION 'finance_payment_allocated_revision_delete_guard'
+                            USING ERRCODE = '23514';
+                    END IF;
+
+                    RETURN OLD;
+                END;
+                $$
+                SQL);
+
+            foreach ([
+                'finance_payments' => 'finance_payments_allocated_context_delete_guard',
+                'finance_invoices' => 'finance_invoices_allocated_context_delete_guard',
+                'finance_document_revisions' => 'finance_document_revisions_allocated_context_delete_guard',
+            ] as $table => $trigger) {
+                DB::unprepared(<<<SQL
+                    CREATE TRIGGER {$trigger}
+                    BEFORE DELETE ON {$table}
+                    FOR EACH ROW
+                    EXECUTE FUNCTION finance_payment_allocated_parent_delete_guard()
+                    SQL);
+            }
+
+            return;
+        }
+
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_payments_allocated_context_delete_guard
+            BEFORE DELETE ON finance_payments
+            WHEN
+                EXISTS (SELECT 1 FROM users WHERE id = OLD.user_id)
+                AND EXISTS (
+                    SELECT 1 FROM finance_payment_allocations
+                    WHERE user_id = OLD.user_id AND payment_id = OLD.id
+                )
+            BEGIN
+                SELECT RAISE(ABORT, 'finance_payment_allocated_payment_delete_guard');
+            END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_invoices_allocated_context_delete_guard
+            BEFORE DELETE ON finance_invoices
+            WHEN
+                EXISTS (SELECT 1 FROM users WHERE id = OLD.user_id)
+                AND EXISTS (
+                    SELECT 1 FROM finance_payment_allocations
+                    WHERE user_id = OLD.user_id AND invoice_id = OLD.id
+                )
+            BEGIN
+                SELECT RAISE(ABORT, 'finance_payment_allocated_invoice_delete_guard');
+            END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_document_revisions_allocated_context_delete_guard
+            BEFORE DELETE ON finance_document_revisions
+            WHEN
+                EXISTS (SELECT 1 FROM users WHERE id = OLD.user_id)
+                AND EXISTS (
+                    SELECT 1
+                    FROM finance_invoices AS invoice
+                    INNER JOIN finance_payment_allocations AS allocation
+                        ON allocation.user_id = invoice.user_id
+                        AND allocation.invoice_id = invoice.id
+                    WHERE invoice.user_id = OLD.user_id
+                        AND invoice.document_series_id = OLD.document_series_id
+                        AND invoice.current_revision_id = OLD.id
+                )
+            BEGIN
+                SELECT RAISE(ABORT, 'finance_payment_allocated_revision_delete_guard');
+            END
+            SQL);
+    }
+
     private function dropAllocatedContextGuards(string $driver): void
     {
         if ($driver === 'pgsql') {
-            DB::unprepared(
-                'DROP TRIGGER IF EXISTS finance_payments_allocated_context_immutable ON finance_payments',
-            );
-            DB::unprepared(
-                'DROP TRIGGER IF EXISTS finance_invoices_allocated_context_immutable ON finance_invoices',
-            );
-            DB::unprepared(
-                'DROP TRIGGER IF EXISTS finance_document_revisions_allocated_context_immutable ON finance_document_revisions',
-            );
+            foreach ([
+                'finance_payments' => [
+                    'finance_payments_allocated_context_immutable',
+                    'finance_payments_allocated_context_delete_guard',
+                ],
+                'finance_invoices' => [
+                    'finance_invoices_allocated_context_immutable',
+                    'finance_invoices_allocated_context_delete_guard',
+                ],
+                'finance_document_revisions' => [
+                    'finance_document_revisions_allocated_context_immutable',
+                    'finance_document_revisions_allocated_context_delete_guard',
+                ],
+            ] as $table => $triggers) {
+                foreach ($triggers as $trigger) {
+                    DB::unprepared("DROP TRIGGER IF EXISTS {$trigger} ON {$table}");
+                }
+            }
 
             return;
         }
 
         foreach ([
             'finance_payments_allocated_context_immutable',
+            'finance_payments_allocated_context_delete_guard',
             'finance_invoices_allocated_context_immutable',
+            'finance_invoices_allocated_context_delete_guard',
             'finance_document_revisions_allocated_context_immutable',
+            'finance_document_revisions_allocated_context_delete_guard',
         ] as $trigger) {
             DB::unprepared("DROP TRIGGER IF EXISTS {$trigger}");
         }

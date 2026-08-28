@@ -10,6 +10,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 final class PaymentSchemaTest extends TestCase
@@ -344,6 +345,115 @@ final class PaymentSchemaTest extends TestCase
             ->delete());
     }
 
+    public function test_sqlite_replace_cannot_overwrite_payment_id_uuid_or_source_identity(): void
+    {
+        $owner = User::factory()->create();
+        $paymentId = $this->insertPayment((int) $owner->id, 11_900, [
+            'source_type' => 'bank_transaction',
+            'source_key' => 'replace-payment-source',
+        ]);
+        $invoiceId = $this->invoiceFixture((int) $owner->id, 621);
+        $batchId = $this->insertBatch((int) $owner->id, $paymentId);
+        $this->insertAllocation((int) $owner->id, $batchId, $paymentId, $invoiceId, 100);
+        $persisted = (array) DB::table('finance_payments')->find($paymentId);
+
+        $sameId = array_merge($persisted, [
+            'amount_minor' => 200,
+            'uuid' => '018f4ca3-224d-7d8d-9f40-620000000002',
+            'source_key' => 'replace-payment-id',
+        ]);
+        $this->expectConstraintViolation(fn () => $this->replaceRow('finance_payments', $sameId));
+
+        $sameUuid = array_merge($persisted, [
+            'id' => $paymentId + 10_000,
+            'amount_minor' => 200,
+            'source_type' => null,
+            'source_key' => null,
+        ]);
+        $this->expectConstraintViolation(fn () => $this->replaceRow('finance_payments', $sameUuid));
+
+        $sameSource = array_merge($persisted, [
+            'id' => $paymentId + 20_000,
+            'amount_minor' => 200,
+            'uuid' => '018f4ca3-224d-7d8d-9f40-620000000003',
+        ]);
+        $this->expectConstraintViolation(fn () => $this->replaceRow('finance_payments', $sameSource));
+
+        $this->assertSame(11_900, (int) DB::table('finance_payments')->where('id', $paymentId)->value('amount_minor'));
+        $this->assertSame(1, DB::table('finance_payments')->where('user_id', $owner->id)->count());
+    }
+
+    public function test_sqlite_replace_cannot_overwrite_batch_id_or_idempotency_identity(): void
+    {
+        $owner = User::factory()->create();
+        $paymentId = $this->insertPayment((int) $owner->id, 11_900);
+        $invoiceId = $this->invoiceFixture((int) $owner->id, 631);
+        $batchId = $this->insertBatch((int) $owner->id, $paymentId);
+        $this->insertAllocation((int) $owner->id, $batchId, $paymentId, $invoiceId, 100);
+        $persisted = (array) DB::table('finance_payment_allocation_batches')->find($batchId);
+
+        $sameId = array_merge($persisted, ['request_hash' => hash('sha256', 'replace-batch-id')]);
+        $this->expectConstraintViolation(fn () => $this->replaceRow(
+            'finance_payment_allocation_batches',
+            $sameId,
+        ));
+
+        $sameIdempotencyKey = array_merge($persisted, [
+            'id' => $batchId + 10_000,
+            'request_hash' => hash('sha256', 'replace-batch-idempotency'),
+        ]);
+        $this->expectConstraintViolation(fn () => $this->replaceRow(
+            'finance_payment_allocation_batches',
+            $sameIdempotencyKey,
+        ));
+
+        $this->assertSame(
+            $persisted['request_hash'],
+            DB::table('finance_payment_allocation_batches')->where('id', $batchId)->value('request_hash'),
+        );
+        $this->assertSame(1, DB::table('finance_payment_allocation_batches')->count());
+    }
+
+    public function test_sqlite_replace_cannot_rewrite_original_or_retarget_reversal(): void
+    {
+        $owner = User::factory()->create();
+        $paymentId = $this->insertPayment((int) $owner->id, 11_900);
+        $invoiceId = $this->invoiceFixture((int) $owner->id, 641);
+        $batchId = $this->insertBatch((int) $owner->id, $paymentId);
+        $originalId = $this->insertAllocation((int) $owner->id, $batchId, $paymentId, $invoiceId, 100);
+        $reversalBatchId = $this->insertBatch(
+            (int) $owner->id,
+            $paymentId,
+            hash('sha256', 'replace-reversal-batch'),
+        );
+        $reversalId = $this->insertAllocation(
+            (int) $owner->id,
+            $reversalBatchId,
+            $paymentId,
+            $invoiceId,
+            -100,
+            $originalId,
+        );
+        $original = (array) DB::table('finance_payment_allocations')->find($originalId);
+        $reversal = (array) DB::table('finance_payment_allocations')->find($reversalId);
+
+        $rewrittenOriginal = array_merge($original, ['amount_minor' => 200]);
+        $this->expectConstraintViolation(fn () => $this->replaceRow(
+            'finance_payment_allocations',
+            $rewrittenOriginal,
+        ));
+
+        $retargetedReversal = array_merge($reversal, ['id' => $reversalId + 10_000]);
+        $this->expectConstraintViolation(fn () => $this->replaceRow(
+            'finance_payment_allocations',
+            $retargetedReversal,
+        ));
+
+        $this->assertSame(100, (int) DB::table('finance_payment_allocations')->where('id', $originalId)->value('amount_minor'));
+        $this->assertSame(-100, (int) DB::table('finance_payment_allocations')->where('id', $reversalId)->value('amount_minor'));
+        $this->assertSame(2, DB::table('finance_payment_allocations')->count());
+    }
+
     public function test_allocation_freezes_the_payment_and_invoice_currency_sign_context(): void
     {
         $owner = User::factory()->create();
@@ -392,6 +502,38 @@ final class PaymentSchemaTest extends TestCase
         $this->expectConstraintViolation(fn (): int => DB::table('finance_document_revisions')
             ->where('id', $revisionId)
             ->update(['gross_minor' => -11_900]));
+    }
+
+    public function test_delete_reinsert_cannot_retarget_allocated_parent_context(): void
+    {
+        $owner = User::factory()->create();
+        $paymentId = $this->insertPayment((int) $owner->id, 11_900);
+        $invoiceId = $this->invoiceFixture((int) $owner->id, 661);
+        $batchId = $this->insertBatch((int) $owner->id, $paymentId);
+        $this->insertAllocation((int) $owner->id, $batchId, $paymentId, $invoiceId, 100);
+        $revisionId = (int) DB::table('finance_invoices')
+            ->where('id', $invoiceId)
+            ->value('current_revision_id');
+
+        $this->expectConstraintViolation(fn () => $this->deleteAndReinsertRow(
+            'finance_payments',
+            $paymentId,
+            ['amount_minor' => -11_900],
+        ));
+        $this->expectConstraintViolation(fn () => $this->deleteAndReinsertRow(
+            'finance_invoices',
+            $invoiceId,
+            ['kind' => 'credit_note'],
+        ));
+        $this->expectConstraintViolation(fn () => $this->deleteAndReinsertRow(
+            'finance_document_revisions',
+            $revisionId,
+            ['gross_minor' => -11_900, 'currency' => 'USD'],
+        ));
+
+        $this->assertSame(11_900, (int) DB::table('finance_payments')->where('id', $paymentId)->value('amount_minor'));
+        $this->assertSame('invoice', DB::table('finance_invoices')->where('id', $invoiceId)->value('kind'));
+        $this->assertSame('EUR', DB::table('finance_document_revisions')->where('id', $revisionId)->value('currency'));
     }
 
     public function test_owner_deletion_cascades_payment_ledger_with_invoice_cancellation_relations(): void
@@ -549,6 +691,21 @@ final class PaymentSchemaTest extends TestCase
             $this->expectConstraintViolation(fn (): int => DB::table('finance_document_revisions')
                 ->where('id', $revisionId)
                 ->update(['currency' => 'USD']));
+            $this->expectConstraintViolation(fn () => $this->deleteAndReinsertRow(
+                'finance_payments',
+                $paymentId,
+                ['amount_minor' => -11_900],
+            ));
+            $this->expectConstraintViolation(fn () => $this->deleteAndReinsertRow(
+                'finance_invoices',
+                $invoiceId,
+                ['kind' => 'credit_note'],
+            ));
+            $this->expectConstraintViolation(fn () => $this->deleteAndReinsertRow(
+                'finance_document_revisions',
+                $revisionId,
+                ['gross_minor' => -11_900, 'currency' => 'USD'],
+            ));
 
             $reversalBatchId = $this->insertBatch(1, $paymentId, hash('sha256', 'pgsql-reversal'));
             $this->expectConstraintViolation(fn (): int => $this->insertAllocation(
@@ -580,6 +737,19 @@ final class PaymentSchemaTest extends TestCase
             ]);
             $refundBatchId = $this->insertBatch(1, $refundId, hash('sha256', 'pgsql-refund'));
             $this->insertAllocation(1, $refundBatchId, $refundId, $creditInvoiceId, -11_900);
+
+            $raceInvoiceId = $this->invoiceFixture(1, 805);
+            $racePaymentId = $this->insertPayment(1, 11_900, [
+                'uuid' => '018f4ca3-224d-7d8d-9f40-800000000004',
+            ]);
+            $raceBatchId = $this->insertBatch(1, $racePaymentId, hash('sha256', 'pgsql-race'));
+            $this->assertPostgresAllocationSerializesParentUpdate(
+                $postgresUrl,
+                $schema,
+                $raceBatchId,
+                $racePaymentId,
+                $raceInvoiceId,
+            );
 
             DB::transaction(function (): void {
                 DB::table('users')->where('id', 1)->delete();
@@ -673,7 +843,20 @@ final class PaymentSchemaTest extends TestCase
         $this->assertStringContainsString('finance_payments_currency_check', $ddl);
         $this->assertStringContainsString('finance_payment_allocations_amount_check', $ddl);
         $this->assertStringContainsString('finance_payment_allocation_guard', $ddl);
+        $this->assertMatchesRegularExpression(
+            '/finance_invoices as invoice.*for share.*finance_document_revisions.*for share.*finance_payments.*for share/s',
+            $ddl,
+        );
         $this->assertStringContainsString('finance_payment_ledger_immutable_guard', $ddl);
+        $this->assertStringContainsString('finance_payment_allocated_parent_delete_guard', $ddl);
+        foreach ([
+            'finance_payments_allocated_context_delete_guard',
+            'finance_invoices_allocated_context_delete_guard',
+            'finance_document_revisions_allocated_context_delete_guard',
+        ] as $trigger) {
+            $this->assertStringContainsString($trigger, $ddl);
+            $this->assertStringContainsString("drop trigger if exists {$trigger}", $downDdl);
+        }
         $this->assertMatchesRegularExpression(
             '/create table "finance_payments".*"amount_minor" bigint/s',
             $ddl,
@@ -693,6 +876,7 @@ final class PaymentSchemaTest extends TestCase
         }
         $this->assertStringContainsString('drop function if exists finance_payment_allocation_guard()', $downDdl);
         $this->assertStringContainsString('drop function if exists finance_payment_allocated_context_guard()', $downDdl);
+        $this->assertStringContainsString('drop function if exists finance_payment_allocated_parent_delete_guard()', $downDdl);
         $this->assertStringContainsString('drop function if exists finance_payment_ledger_immutable_guard()', $downDdl);
     }
 
@@ -822,6 +1006,199 @@ final class PaymentSchemaTest extends TestCase
             'reverses_allocation_id' => $reversesAllocationId,
             'created_at' => now(),
         ]);
+    }
+
+    /** @param array<string, mixed> $row */
+    private function replaceRow(string $table, array $row): void
+    {
+        $columns = array_keys($row);
+        $quotedColumns = implode(', ', array_map(
+            static fn (string $column): string => '"'.$column.'"',
+            $columns,
+        ));
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+
+        DB::statement(
+            "INSERT OR REPLACE INTO \"{$table}\" ({$quotedColumns}) VALUES ({$placeholders})",
+            array_values($row),
+        );
+    }
+
+    /** @param array<string, mixed> $changes */
+    private function deleteAndReinsertRow(string $table, int $id, array $changes): void
+    {
+        DB::transaction(function () use ($table, $id, $changes): void {
+            $row = (array) DB::table($table)->find($id);
+
+            DB::table($table)->where('id', $id)->delete();
+            DB::table($table)->insert(array_merge($row, $changes));
+        });
+    }
+
+    private function assertPostgresAllocationSerializesParentUpdate(
+        string $postgresUrl,
+        string $schema,
+        int $batchId,
+        int $paymentId,
+        int $invoiceId,
+    ): void {
+        $process = null;
+        DB::beginTransaction();
+
+        try {
+            $this->insertAllocation(1, $batchId, $paymentId, $invoiceId, 100);
+            $process = $this->startPostgresCurrencyUpdateProcess($postgresUrl, $schema, $paymentId);
+            $this->waitForProcessMarker($process, 'ready=');
+            preg_match('/ready=(\d+)/', $process->getOutput(), $matches);
+            $this->assertArrayHasKey(1, $matches, $process->getOutput());
+            $this->waitForPostgresLock($process, (int) $matches[1]);
+            $this->assertTrue(
+                $process->isRunning(),
+                'The concurrent parent update did not wait for allocation validation locks: '.$process->getErrorOutput(),
+            );
+
+            DB::commit();
+            $process->wait();
+        } finally {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+
+            if ($process instanceof Process && $process->isRunning()) {
+                $process->stop(1.0);
+            }
+        }
+
+        $this->assertInstanceOf(Process::class, $process);
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput().$process->getOutput());
+        $this->assertStringContainsString('sqlstate=23514', strtolower($process->getOutput()));
+        $this->assertSame(
+            'EUR',
+            DB::table('finance_payments')->where('id', $paymentId)->value('currency'),
+        );
+    }
+
+    private function startPostgresCurrencyUpdateProcess(
+        string $postgresUrl,
+        string $schema,
+        int $paymentId,
+    ): Process {
+        $script = <<<'PHP'
+            $url = getenv('FINANCE_TEST_PGSQL_URL');
+            $schema = getenv('FINANCE_TEST_PGSQL_SCHEMA');
+            $paymentId = (int) getenv('FINANCE_TEST_PAYMENT_ID');
+            $parts = is_string($url) ? parse_url($url) : false;
+
+            if (! is_array($parts) || ! isset($parts['host'], $parts['path'])) {
+                fwrite(STDERR, 'invalid-postgres-url');
+                exit(90);
+            }
+
+            $query = [];
+            parse_str($parts['query'] ?? '', $query);
+            $dsn = sprintf(
+                'pgsql:host=%s;port=%d;dbname=%s',
+                $parts['host'],
+                (int) ($parts['port'] ?? 5432),
+                rawurldecode(ltrim($parts['path'], '/')),
+            );
+
+            if (isset($query['sslmode'])) {
+                $dsn .= ';sslmode='.$query['sslmode'];
+            }
+
+            $pdo = new PDO(
+                $dsn,
+                rawurldecode($parts['user'] ?? ''),
+                rawurldecode($parts['pass'] ?? ''),
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+            );
+            $pdo->exec('SET search_path TO "'.str_replace('"', '""', (string) $schema).'"');
+            $pdo->exec("SET statement_timeout TO '10s'");
+            echo 'ready='.$pdo->query('SELECT pg_backend_pid()')->fetchColumn()."\n";
+            flush();
+
+            try {
+                $pdo->beginTransaction();
+                $statement = $pdo->prepare('UPDATE finance_payments SET currency = ? WHERE id = ?');
+                $statement->execute(['USD', $paymentId]);
+                $pdo->commit();
+                echo "unexpected-success\n";
+                exit(2);
+            } catch (PDOException $exception) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+
+                echo 'sqlstate='.$exception->getCode()."\n";
+                exit($exception->getCode() === '23514' ? 0 : 3);
+            }
+            PHP;
+
+        $process = new Process(
+            [PHP_BINARY, '-r', $script],
+            base_path(),
+            [
+                'FINANCE_TEST_PGSQL_URL' => $postgresUrl,
+                'FINANCE_TEST_PGSQL_SCHEMA' => $schema,
+                'FINANCE_TEST_PAYMENT_ID' => (string) $paymentId,
+            ],
+            null,
+            15,
+        );
+        $process->start();
+
+        return $process;
+    }
+
+    private function waitForProcessMarker(Process $process, string $marker): void
+    {
+        $deadline = microtime(true) + 5.0;
+
+        while (microtime(true) < $deadline) {
+            if (str_contains($process->getOutput(), $marker)) {
+                return;
+            }
+
+            if (! $process->isRunning()) {
+                break;
+            }
+
+            usleep(20_000);
+        }
+
+        $this->fail(
+            "Concurrent PostgreSQL worker did not emit {$marker}: "
+            .$process->getErrorOutput().$process->getOutput(),
+        );
+    }
+
+    private function waitForPostgresLock(Process $process, int $backendPid): void
+    {
+        $deadline = microtime(true) + 5.0;
+
+        while (microtime(true) < $deadline) {
+            $waitType = DB::table('pg_catalog.pg_stat_activity')
+                ->where('pid', $backendPid)
+                ->value('wait_event_type');
+
+            if ($waitType === 'Lock') {
+                $this->addToAssertionCount(1);
+
+                return;
+            }
+
+            if (! $process->isRunning()) {
+                break;
+            }
+
+            usleep(20_000);
+        }
+
+        $this->fail(
+            'Concurrent PostgreSQL worker did not wait on a row lock: '
+            .$process->getErrorOutput().$process->getOutput(),
+        );
     }
 
     /** @param callable(): mixed $operation */
