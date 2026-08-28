@@ -9,11 +9,13 @@ use App\Modules\Finance\Application\DTOs\Projects\CreateProjectData;
 use App\Modules\Finance\Application\DTOs\Projects\MoveProjectData;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectId;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectListFilter;
+use App\Modules\Finance\Application\DTOs\Projects\ProjectMutationResult;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectPage;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectView;
 use App\Modules\Finance\Application\DTOs\Projects\UpdateProjectData;
 use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\Projects\ProjectRepository;
+use App\Modules\Finance\Domain\Projects\Exception\InvalidProjectAction;
 use App\Modules\Finance\Domain\Projects\ProjectKind;
 use App\Modules\Finance\Domain\Projects\ProjectStatus;
 use App\Modules\Finance\Infrastructure\Persistence\Models\ProjectRecord;
@@ -47,15 +49,20 @@ final class EloquentProjectRepository implements ProjectRepository
             );
 
         if ($filter->q !== null && trim($filter->q) !== '') {
-            $needle = '%'.mb_strtolower(trim($filter->q)).'%';
+            $escaped = str_replace(
+                ['!', '%', '_'],
+                ['!!', '!%', '!_'],
+                mb_strtolower(trim($filter->q)),
+            );
+            $needle = '%'.$escaped.'%';
             $query->where(function (Builder $query) use ($needle, $filter): void {
-                $query->whereRaw('LOWER(finance_project_records.name) LIKE ?', [$needle])
+                $query->whereRaw("LOWER(finance_project_records.name) LIKE ? ESCAPE '!'", [$needle])
                     ->orWhereExists(function (QueryBuilder $notes) use ($needle, $filter): void {
                         $notes->selectRaw('1')
                             ->from('finance_project_notes')
                             ->whereColumn('finance_project_notes.project_id', 'finance_project_records.id')
                             ->where('finance_project_notes.user_id', $filter->ownerId)
-                            ->whereRaw('LOWER(finance_project_notes.body) LIKE ?', [$needle]);
+                            ->whereRaw("LOWER(finance_project_notes.body) LIKE ? ESCAPE '!'", [$needle]);
                     });
             });
         }
@@ -136,11 +143,11 @@ final class EloquentProjectRepository implements ProjectRepository
         }, 1);
     }
 
-    public function update(UpdateProjectData $data): ProjectView
+    public function update(UpdateProjectData $data): ProjectMutationResult
     {
-        return DB::transaction(function () use ($data): ProjectView {
+        return DB::transaction(function () use ($data): ProjectMutationResult {
             $record = $this->lockedRecord($data->projectId);
-            $this->compareAndSwap($record, $data->expectedVersion, [
+            $applied = $this->compareAndSwap($record, $data->expectedVersion, [
                 'name' => $data->name,
                 'kind' => $data->kind->value,
                 'partner_reference' => $data->partnerReference,
@@ -150,65 +157,98 @@ final class EloquentProjectRepository implements ProjectRepository
                 'currency' => $data->budget->currency(),
             ]);
 
-            return $this->view($this->ownedRecordByInternalId($data->projectId->ownerId, (int) $record->id));
+            return $this->mutationResult($applied, $data->projectId->ownerId, (int) $record->id);
         }, 1);
     }
 
-    public function changeStatus(ChangeProjectStatusData $data): ProjectView
+    public function changeStatus(ChangeProjectStatusData $data): ProjectMutationResult
     {
-        return DB::transaction(function () use ($data): ProjectView {
+        return DB::transaction(function () use ($data): ProjectMutationResult {
             $record = $this->lockedRecord($data->projectId);
-            $this->compareAndSwap($record, $data->expectedVersion, ['status' => $data->target->value]);
+            $applied = $this->compareAndSwap($record, $data->expectedVersion, ['status' => $data->target->value]);
 
-            return $this->view($this->ownedRecordByInternalId($data->projectId->ownerId, (int) $record->id));
+            return $this->mutationResult($applied, $data->projectId->ownerId, (int) $record->id);
         }, 1);
     }
 
-    public function move(MoveProjectData $data): ProjectView
+    public function move(MoveProjectData $data): ProjectMutationResult
     {
-        return DB::transaction(function () use ($data): ProjectView {
+        return DB::transaction(function () use ($data): ProjectMutationResult {
             $record = $this->record($data->projectId);
             $newParentId = $this->parentInternalId($data->projectId->ownerId, $data->parentId);
-            $ids = array_values(array_unique(array_filter([
-                (int) $record->id,
-                $record->parent_project_id !== null ? (int) $record->parent_project_id : null,
-                $newParentId,
-            ], static fn (?int $id): bool => $id !== null)));
-            sort($ids, SORT_NUMERIC);
-            $locked = ProjectRecord::query()
-                ->withoutGlobalScopes()
-                ->where('user_id', $data->projectId->ownerId)
-                ->whereIn('id', $ids)
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get(['id']);
-            if ($locked->count() !== count($ids)) {
-                throw (new ModelNotFoundException)->setModel(ProjectRecord::class, $ids);
+            $hierarchy = $this->lockedOwnerHierarchy($data->projectId->ownerId);
+            $lockedRecord = $hierarchy[(int) $record->id] ?? null;
+            if (! $lockedRecord instanceof ProjectRecord) {
+                throw (new ModelNotFoundException)->setModel(ProjectRecord::class, [(int) $record->id]);
             }
+            if ((int) $lockedRecord->version !== $data->expectedVersion) {
+                return $this->mutationResult(false, $data->projectId->ownerId, (int) $record->id);
+            }
+            $this->assertValidParent($lockedRecord, $newParentId, $hierarchy);
 
-            $this->compareAndSwap($record, $data->expectedVersion, ['parent_project_id' => $newParentId]);
+            $applied = $this->compareAndSwap($lockedRecord, $data->expectedVersion, ['parent_project_id' => $newParentId]);
 
-            return $this->view($this->ownedRecordByInternalId($data->projectId->ownerId, (int) $record->id));
+            return $this->mutationResult($applied, $data->projectId->ownerId, (int) $record->id);
         }, 1);
     }
 
-    public function archive(ProjectId $id, int $expectedVersion): ProjectView
+    /** @return array<int, ProjectRecord> */
+    private function lockedOwnerHierarchy(int $ownerId): array
+    {
+        $records = ProjectRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['id', 'user_id', 'parent_project_id', 'archived_at', 'version']);
+        $byId = [];
+        foreach ($records as $record) {
+            $byId[(int) $record->id] = $record;
+        }
+
+        return $byId;
+    }
+
+    /** @param array<int, ProjectRecord> $hierarchy */
+    private function assertValidParent(
+        ProjectRecord $project,
+        ?int $parentId,
+        array $hierarchy,
+    ): void {
+        $visited = [];
+        while ($parentId !== null) {
+            if ($parentId === (int) $project->id || isset($visited[$parentId])) {
+                throw new InvalidProjectAction('project_parent_cycle');
+            }
+            $visited[$parentId] = true;
+            $parent = $hierarchy[$parentId] ?? null;
+            if (! $parent instanceof ProjectRecord) {
+                throw (new ModelNotFoundException)->setModel(ProjectRecord::class, [$parentId]);
+            }
+            if ($parent->archived_at !== null) {
+                throw new InvalidProjectAction('project_parent_archived');
+            }
+            $parentId = $parent->parent_project_id !== null ? (int) $parent->parent_project_id : null;
+        }
+    }
+
+    public function archive(ProjectId $id, int $expectedVersion): ProjectMutationResult
     {
         return $this->setArchive($id, $expectedVersion, $this->clock->now());
     }
 
-    public function restore(ProjectId $id, int $expectedVersion): ProjectView
+    public function restore(ProjectId $id, int $expectedVersion): ProjectMutationResult
     {
         return $this->setArchive($id, $expectedVersion, null);
     }
 
-    private function setArchive(ProjectId $id, int $expectedVersion, ?DateTimeImmutable $archivedAt): ProjectView
+    private function setArchive(ProjectId $id, int $expectedVersion, ?DateTimeImmutable $archivedAt): ProjectMutationResult
     {
-        return DB::transaction(function () use ($id, $expectedVersion, $archivedAt): ProjectView {
+        return DB::transaction(function () use ($id, $expectedVersion, $archivedAt): ProjectMutationResult {
             $record = $this->lockedRecord($id);
-            $this->compareAndSwap($record, $expectedVersion, ['archived_at' => $archivedAt]);
+            $applied = $this->compareAndSwap($record, $expectedVersion, ['archived_at' => $archivedAt]);
 
-            return $this->view($this->ownedRecordByInternalId($id->ownerId, (int) $record->id));
+            return $this->mutationResult($applied, $id->ownerId, (int) $record->id);
         }, 1);
     }
 
@@ -235,9 +275,9 @@ final class EloquentProjectRepository implements ProjectRepository
     }
 
     /** @param array<string, mixed> $values */
-    private function compareAndSwap(ProjectRecord $record, int $expectedVersion, array $values): void
+    private function compareAndSwap(ProjectRecord $record, int $expectedVersion, array $values): bool
     {
-        DB::table('finance_project_records')
+        return DB::table('finance_project_records')
             ->where('id', $record->id)
             ->where('user_id', $record->user_id)
             ->where('version', $expectedVersion)
@@ -245,7 +285,16 @@ final class EloquentProjectRepository implements ProjectRepository
                 ...$values,
                 'version' => $expectedVersion + 1,
                 'updated_at' => $this->clock->now(),
-            ]);
+            ]) === 1;
+    }
+
+    private function mutationResult(bool $applied, int $ownerId, int $recordId): ProjectMutationResult
+    {
+        $current = $this->view($this->ownedRecordByInternalId($ownerId, $recordId));
+
+        return $applied
+            ? ProjectMutationResult::applied($current)
+            : ProjectMutationResult::conflict($current);
     }
 
     private function lockedRecord(ProjectId $id): ProjectRecord
@@ -282,12 +331,15 @@ final class EloquentProjectRepository implements ProjectRepository
             return null;
         }
 
-        ProjectRecord::query()
+        $parent = ProjectRecord::query()
             ->withoutGlobalScopes()
             ->where('user_id', $ownerId)
             ->whereKey($internalId)
             ->lockForUpdate()
-            ->firstOrFail(['id']);
+            ->firstOrFail(['id', 'archived_at']);
+        if ($parent->archived_at !== null) {
+            throw new InvalidProjectAction('project_parent_archived');
+        }
 
         return $internalId;
     }

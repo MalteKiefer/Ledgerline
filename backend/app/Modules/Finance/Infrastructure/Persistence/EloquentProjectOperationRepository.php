@@ -29,10 +29,13 @@ final class EloquentProjectOperationRepository implements ProjectOperationReposi
         ?ProjectId $projectId,
     ): OperationReservation {
         $this->assertReservationInput($ownerId, $operation, $key, $requestSha256);
+        $internalProjectId = $this->resolveProjectId($ownerId, $projectId);
 
         try {
-            $recordId = DB::transaction(function () use ($ownerId, $operation, $key, $requestSha256, $projectId): int {
-                $internalProjectId = $this->lockedProjectId($ownerId, $projectId);
+            $recordId = DB::transaction(function () use ($ownerId, $operation, $key, $requestSha256, $internalProjectId): int {
+                if ($internalProjectId !== null) {
+                    $this->lockProject($ownerId, $internalProjectId);
+                }
 
                 return (int) DB::table('finance_project_operations')->insertGetId([
                     'user_id' => $ownerId,
@@ -50,7 +53,14 @@ final class EloquentProjectOperationRepository implements ProjectOperationReposi
 
             return $this->reservation($this->ownedOperation($ownerId, $recordId), 'new');
         } catch (UniqueConstraintViolationException $exception) {
-            return $this->existingReservation($ownerId, $operation, $key, $requestSha256, $exception);
+            return $this->existingReservation(
+                $ownerId,
+                $operation,
+                $key,
+                $requestSha256,
+                $internalProjectId,
+                $exception,
+            );
         }
     }
 
@@ -72,7 +82,7 @@ final class EloquentProjectOperationRepository implements ProjectOperationReposi
         }
     }
 
-    private function lockedProjectId(int $ownerId, ?ProjectId $projectId): ?int
+    private function resolveProjectId(int $ownerId, ?ProjectId $projectId): ?int
     {
         if ($projectId === null) {
             return null;
@@ -85,9 +95,18 @@ final class EloquentProjectOperationRepository implements ProjectOperationReposi
             ->withoutGlobalScopes()
             ->where('user_id', $ownerId)
             ->where('uuid', $projectId->uuid)
-            ->lockForUpdate()
             ->firstOrFail(['id'])
             ->id;
+    }
+
+    private function lockProject(int $ownerId, int $projectId): void
+    {
+        ProjectRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->whereKey($projectId)
+            ->lockForUpdate()
+            ->firstOrFail(['id']);
     }
 
     private function existingReservation(
@@ -95,6 +114,7 @@ final class EloquentProjectOperationRepository implements ProjectOperationReposi
         string $operation,
         string $key,
         string $requestSha256,
+        ?int $projectId,
         UniqueConstraintViolationException $exception,
     ): OperationReservation {
         $record = ProjectOperationRecord::query()
@@ -108,6 +128,10 @@ final class EloquentProjectOperationRepository implements ProjectOperationReposi
             throw $exception;
         }
         if (! hash_equals((string) $record->request_sha256, $requestSha256)) {
+            throw new DomainException('idempotency_key_reused');
+        }
+        $reservedProjectId = $record->project_id !== null ? (int) $record->project_id : null;
+        if ($reservedProjectId !== $projectId) {
             throw new DomainException('idempotency_key_reused');
         }
 

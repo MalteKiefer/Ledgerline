@@ -9,6 +9,7 @@ use App\Modules\Finance\Application\DTOs\Projects\CreateProjectData;
 use App\Modules\Finance\Application\DTOs\Projects\MoveProjectData;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectId;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectListFilter;
+use App\Modules\Finance\Application\DTOs\Projects\ProjectMutationResult;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectPage;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectView;
 use App\Modules\Finance\Application\DTOs\Projects\UpdateProjectData;
@@ -21,13 +22,13 @@ interface ProjectRepository
 
     public function create(CreateProjectData $data): ProjectView;
 
-    public function update(UpdateProjectData $data): ProjectView;
+    public function update(UpdateProjectData $data): ProjectMutationResult;
 
-    public function changeStatus(ChangeProjectStatusData $data): ProjectView;
+    public function changeStatus(ChangeProjectStatusData $data): ProjectMutationResult;
 
-    public function move(MoveProjectData $data): ProjectView;
+    public function move(MoveProjectData $data): ProjectMutationResult;
 
-    public function archive(ProjectId $id, int $expectedVersion): ProjectView;
+    public function archive(ProjectId $id, int $expectedVersion): ProjectMutationResult;
 
-    public function restore(ProjectId $id, int $expectedVersion): ProjectView;
+    public function restore(ProjectId $id, int $expectedVersion): ProjectMutationResult;
 }
