@@ -722,7 +722,7 @@ return new class extends Migration
     private function currencyCheckExpression(): string
     {
         return match (DB::getDriverName()) {
-            'pgsql' => "currency ~ '^[A-Z]{3}$'",
+            'pgsql' => "currency COLLATE \"C\" ~ '^[A-Z]{3}$'",
             'sqlite' => "currency GLOB '[A-Z][A-Z][A-Z]'",
             default => throw new LogicException('Unsupported database driver: '.DB::getDriverName()),
         };
@@ -806,12 +806,8 @@ return new class extends Migration
                 CREATE FUNCTION finance_project_document_series_guard_uuid()
                 RETURNS trigger AS $$
                 BEGIN
-                    IF NEW.uuid IS DISTINCT FROM OLD.uuid AND EXISTS (
-                        SELECT 1 FROM finance_project_document_links link
-                        WHERE link.user_id = OLD.user_id
-                          AND link.document_series_id = OLD.id
-                    ) THEN
-                        RAISE EXCEPTION 'finance_project_document_series_uuid_referenced'
+                    IF NEW.uuid IS DISTINCT FROM OLD.uuid THEN
+                        RAISE EXCEPTION 'finance_project_document_series_uuid_immutable'
                             USING ERRCODE = '23503';
                     END IF;
                     RETURN NEW;
@@ -846,13 +842,9 @@ return new class extends Migration
         DB::unprepared(<<<'SQL'
             CREATE TRIGGER finance_project_document_series_guard_uuid
             BEFORE UPDATE OF uuid ON finance_document_series
-            WHEN NEW.uuid <> OLD.uuid AND EXISTS (
-                SELECT 1 FROM finance_project_document_links link
-                WHERE link.user_id = OLD.user_id
-                  AND link.document_series_id = OLD.id
-            )
+            WHEN NEW.uuid <> OLD.uuid
             BEGIN
-                SELECT RAISE(ABORT, 'finance_project_document_series_uuid_referenced');
+                SELECT RAISE(ABORT, 'finance_project_document_series_uuid_immutable');
             END
             SQL);
     }

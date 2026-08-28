@@ -331,10 +331,19 @@ final class ProjectSchemaTest extends TestCase
         $this->assertSame(0, DB::table('finance_document_notes')->where('document_series_id', $seriesId)->count());
     }
 
-    public function test_linked_finance_series_uuid_is_immutable_while_unlinked_uuid_can_change(): void
+    public function test_finance_series_uuid_is_immutable_with_or_without_links_and_owner_cascade_still_works(): void
     {
         $owner = User::factory()->create();
         $projectId = $this->insertProject((int) $owner->id);
+        $unlinkedUuid = $this->uuid(703);
+        $unlinkedSeriesId = $this->insertSeries((int) $owner->id, $unlinkedUuid);
+
+        $this->expectConstraint(
+            fn () => DB::table('finance_document_series')->where('id', $unlinkedSeriesId)->update([
+                'uuid' => $this->uuid(704),
+            ]),
+        );
+
         $linkedUuid = $this->uuid(701);
         $linkedSeriesId = $this->insertSeries((int) $owner->id, $linkedUuid);
         $this->insertDocumentLink((int) $owner->id, $projectId, [
@@ -350,14 +359,10 @@ final class ProjectSchemaTest extends TestCase
             ]),
         );
 
-        $unlinkedSeriesId = $this->insertSeries((int) $owner->id, $this->uuid(703));
-        DB::table('finance_document_series')->where('id', $unlinkedSeriesId)->update([
-            'uuid' => $this->uuid(704),
-        ]);
-        $this->assertSame(
-            $this->uuid(704),
-            DB::table('finance_document_series')->where('id', $unlinkedSeriesId)->value('uuid'),
-        );
+        $owner->delete();
+
+        $this->assertSame(0, DB::table('finance_document_series')->where('user_id', $owner->id)->count());
+        $this->assertSame(0, DB::table('finance_project_document_links')->where('user_id', $owner->id)->count());
     }
 
     public function test_document_note_types_are_canonical_and_legacy_comment_input_is_normalized(): void
@@ -563,10 +568,10 @@ final class ProjectSchemaTest extends TestCase
             'finance_project_time_entries_currency_check',
             'finance_project_ledger_entries_currency_check',
         ] as $constraint) {
-            $this->assertPostgresConstraintContains(
+            $this->assertPostgresStatementContains(
                 $statements,
-                $constraint,
-                "check (currency ~ '^[a-z]{3}$')",
+                "constraint {$constraint}",
+                "constraint {$constraint} check (currency collate \"c\" ~ '^[a-z]{3}$')",
             );
         }
         $this->assertStringContainsString(
@@ -583,8 +588,9 @@ final class ProjectSchemaTest extends TestCase
         $this->assertPostgresStatementContains(
             $statements,
             'create function finance_project_document_series_guard_uuid()',
-            'link.document_series_id = old.id',
+            'if new.uuid is distinct from old.uuid then',
         );
+        $this->assertStringNotContainsString('from finance_project_document_links link', $ddl);
         $this->assertPostgresStatementContains(
             $statements,
             'create trigger finance_document_notes_normalize_type',
