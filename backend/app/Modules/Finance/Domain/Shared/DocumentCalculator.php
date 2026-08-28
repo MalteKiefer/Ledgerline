@@ -158,7 +158,7 @@ final class DocumentCalculator
             $allocations[$index] += $increment;
         }
 
-        return $allocations;
+        return array_values($allocations);
     }
 
     private function multiplyAndRound(int $left, int $right, int $denominator): int
