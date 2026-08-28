@@ -1028,6 +1028,10 @@ final class PaymentSchemaTest extends TestCase
     private function deleteAndReinsertRow(string $table, int $id, array $changes): void
     {
         DB::transaction(function () use ($table, $id, $changes): void {
+            if (DB::getDriverName() === 'pgsql') {
+                DB::statement('SET CONSTRAINTS ALL DEFERRED');
+            }
+
             $row = (array) DB::table($table)->find($id);
 
             DB::table($table)->where('id', $id)->delete();
