@@ -31,7 +31,7 @@ Database scale four would otherwise be lost when values pass through legacy Eloq
 
 ## Verification
 
-- Relevant Finance suite: 208 tests discovered, 204 passed, 1,085 assertions, 4 skipped.
+- Relevant Finance suite after review round 1: 220 tests discovered, 216 passed, 1,121 assertions, 4 skipped.
 - The skipped cases are opt-in PostgreSQL/runtime contracts when their external environment is unavailable. Task 7's test uses `FINANCE_TEST_PGSQL_URL`, creates an isolated schema, executes the PostgreSQL migrations, validates scale/index DDL, and runs two allocator processes against the same first sequence.
 - PHPStan on all changed Task 7 production paths and the two approved models: 0 errors (run with a 1 GB PHP memory limit after the default 128 MB process limit was exhausted).
 - Pint completed successfully on the explicit Task 7 allowlist.
@@ -51,5 +51,20 @@ The existing `InvoiceRepository`, `DocumentRenderer`, `DocumentStorage`, and log
 ## Remaining concerns
 
 - The real PostgreSQL execution path is present but was skipped locally because `FINANCE_TEST_PGSQL_URL`/`pdo_pgsql` was not available; CI with PostgreSQL must exercise it.
-- SQLite uses numeric affinity rather than enforcing a declared decimal scale. Exactness there is maintained by canonical scale-4 strings, integer-scaled domain values, model casts, and adapter parsing; PostgreSQL enforces `NUMERIC(16,4)` physically.
+- SQLite stores stock quantities as canonical text because its numeric affinity loses precision near the full `NUMERIC(16,4)` range; PostgreSQL enforces `NUMERIC(16,4)` physically. Both paths use checked scale-4 integer arithmetic in application services.
 - No provider change, push, tag, deployment, or historical migration rewrite is included.
+
+## Review round 1
+
+The inventory classification boundary no longer trusts line snapshot metadata. Finalization gathers every referenced product ID, locks live owner-scoped product rows in numeric order, derives the authoritative product kind, writes that kind into the final snapshot, rejects an explicit mismatch with `invoice_inventory_kind_mismatch`, always aggregates hardware, and never creates service movements. Regression coverage includes hardware mislabeled as service, hardware with an omitted kind, and service mislabeled as hardware; all rejection paths remain before number allocation.
+
+Legacy stock arithmetic no longer uses float casts or database `SUM`:
+
+- `StockLedger::move` accepts the existing integer/float calls plus exact decimal strings, converts once to scale-4 integers, checks the `NUMERIC(16,4)` range before writing, and formats canonical strings.
+- `StockLedger::recompute` streams ledger values as text, performs checked integer addition, writes and returns a canonical scale-4 string, and leaves stock unchanged on overflow.
+- `FinanceProduct::isLowOnStock` compares scaled integers, including adjacent values near `999999999999.9999` that collapse when converted to float.
+- The invoice inventory adapter applies the same maximum and checks stock overflow before inserting a movement.
+
+SQLite migration storage was changed from numeric affinity to text so the full scale-4 range remains exact. Down validates every value before dropping an index or changing a column. SQLite table rebuilds explicitly preserve the existing partial live-SKU index and the partial invoice-sale idempotency index; repeated Up and lossy Down behaviors have dedicated regressions.
+
+Review TDD evidence included red reproductions for the kind bypasses, large positive and negative arithmetic, recompute precision, move/recompute overflow, large reorder comparison, invoice-adapter overflow, lossy Down index mutation, and SQLite partial-index loss during an idempotent Up. Each passed after its focused implementation change.

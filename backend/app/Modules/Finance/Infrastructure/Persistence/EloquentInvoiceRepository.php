@@ -852,14 +852,15 @@ final class EloquentInvoiceRepository implements InvoiceRepository
         if (is_array($source)) {
             $snapshot['source'] = $source;
         }
+        $inventory = $this->authoritativeInventory($ownerId, $snapshot);
 
         return [
-            'snapshot' => $this->canonicalize($snapshot),
+            'snapshot' => $this->canonicalize($inventory['snapshot']),
             'net' => $calculated['net'],
             'vat' => $calculated['vat'],
             'gross' => $calculated['gross'],
             'currency' => $currency,
-            'inventory' => $this->inventoryQuantities($snapshot),
+            'inventory' => $inventory['quantities'],
         ];
     }
 
@@ -941,22 +942,81 @@ final class EloquentInvoiceRepository implements InvoiceRepository
 
     /**
      * @param  array<array-key, mixed>  $snapshot
-     * @return array<int, int>
+     * @return array{snapshot: array<array-key, mixed>, quantities: array<int, int>}
      */
-    private function inventoryQuantities(array $snapshot): array
+    private function authoritativeInventory(int $ownerId, array $snapshot): array
     {
-        $quantities = [];
         $lines = $snapshot['lines'] ?? null;
         if (! is_array($lines)) {
             throw new DomainException('invoice_draft_snapshot_invalid');
         }
+
+        $productIds = [];
         foreach ($lines as $line) {
-            if (! is_array($line) || ($line['kind'] ?? null) !== 'hardware') {
-                continue;
+            if (! is_array($line)) {
+                throw new DomainException('invoice_draft_snapshot_invalid');
             }
             $productId = $line['product_id'] ?? null;
+            if ($productId === null) {
+                if (($line['kind'] ?? null) === 'hardware') {
+                    throw new DomainException('invoice_inventory_line_invalid');
+                }
+
+                continue;
+            }
+            if (! is_int($productId) || $productId < 1) {
+                throw new DomainException('invoice_inventory_line_invalid');
+            }
+            $productIds[$productId] = $productId;
+        }
+        ksort($productIds, SORT_NUMERIC);
+
+        $products = [];
+        if ($productIds !== []) {
+            $rows = DB::table('finance_products')
+                ->select(['id', 'kind'])
+                ->where('user_id', $ownerId)
+                ->whereNull('deleted_at')
+                ->whereIn('id', array_values($productIds))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            foreach ($rows as $row) {
+                if (! is_numeric($row->id ?? null) || ! is_string($row->kind ?? null)) {
+                    throw new DomainException('invoice_inventory_product_invalid');
+                }
+                $products[(int) $row->id] = $row->kind;
+            }
+            if (count($products) !== count($productIds)) {
+                $missing = array_values(array_diff(array_keys($productIds), array_keys($products)));
+
+                throw (new ModelNotFoundException)->setModel(FinanceProduct::class, $missing);
+            }
+        }
+
+        $quantities = [];
+        foreach ($lines as $index => $line) {
+            $productId = $line['product_id'] ?? null;
+            if ($productId === null) {
+                continue;
+            }
+            if (! is_int($productId) || $productId < 1) {
+                throw new DomainException('invoice_inventory_line_invalid');
+            }
+            $authoritativeKind = $products[$productId] ?? null;
+            if (! in_array($authoritativeKind, ['service', 'hardware'], true)) {
+                throw new DomainException('invoice_inventory_product_invalid');
+            }
+            $snapshotKind = $line['kind'] ?? null;
+            if ($snapshotKind !== null && $snapshotKind !== $authoritativeKind) {
+                throw new DomainException('invoice_inventory_kind_mismatch');
+            }
+            $lines[$index]['kind'] = $authoritativeKind;
+            if ($authoritativeKind !== 'hardware') {
+                continue;
+            }
             $quantityScaled = $line['quantity_scaled'] ?? null;
-            if (! is_int($productId) || $productId < 1 || ! is_int($quantityScaled)) {
+            if (! is_int($quantityScaled)) {
                 throw new DomainException('invoice_inventory_line_invalid');
             }
             $current = $quantities[$productId] ?? 0;
@@ -973,8 +1033,9 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             $quantities[$productId] = $next;
         }
         ksort($quantities, SORT_NUMERIC);
+        $snapshot['lines'] = $lines;
 
-        return $quantities;
+        return ['snapshot' => $snapshot, 'quantities' => $quantities];
     }
 
     /**

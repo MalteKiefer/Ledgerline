@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
+use App\Modules\Finance\Domain\Shared\DecimalQuantity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -89,6 +90,7 @@ class FinanceProduct extends Model
             return false;
         }
 
-        return (float) $this->stock_qty <= (float) $this->stock_min;
+        return DecimalQuantity::fromString($this->stock_qty)->scaled()
+            <= DecimalQuantity::fromString($this->stock_min)->scaled();
     }
 }

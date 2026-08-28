@@ -9,6 +9,7 @@ use App\Models\FinanceProduct;
 use App\Models\FinanceStockMovement;
 use App\Models\User;
 use App\Services\Finance\StockLedger;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -116,8 +117,112 @@ class FinanceProductTest extends TestCase
         // Pretend the denormalised figure drifted.
         $product->fresh()?->forceFill(['stock_qty' => 100])->save();
 
-        $this->assertSame(5.0, StockLedger::recompute($product));
+        $this->assertSame('5.0000', StockLedger::recompute($product));
         $this->assertSame('5.0000', (string) $product->fresh()?->stock_qty);
+    }
+
+    public function test_stock_ledger_moves_large_scale_four_quantities_exactly(): void
+    {
+        $this->signIn();
+        $product = $this->article(['track_stock' => true]);
+        $product->forceFill(['stock_qty' => '999999999999.9997'])->save();
+
+        $movement = StockLedger::move($product, '0.0001', 'purchase');
+
+        $this->assertSame('0.0001', (string) $movement->qty);
+        $this->assertSame('999999999999.9998', (string) $product->fresh()?->stock_qty);
+    }
+
+    public function test_stock_ledger_moves_negative_scale_four_quantities_exactly(): void
+    {
+        $this->signIn();
+        $product = $this->article(['track_stock' => true]);
+        $product->forceFill(['stock_qty' => '-999999999999.9997'])->save();
+
+        $movement = StockLedger::move($product, '-0.0001', 'sale');
+
+        $this->assertSame('-0.0001', (string) $movement->qty);
+        $this->assertSame('-999999999999.9998', (string) $product->fresh()?->stock_qty);
+    }
+
+    public function test_recompute_uses_exact_checked_scale_four_arithmetic(): void
+    {
+        $this->signIn();
+        $product = $this->article(['track_stock' => true]);
+        FinanceStockMovement::query()->create([
+            'finance_product_id' => $product->id,
+            'qty' => '999999999999.9997',
+            'reason' => 'initial',
+            'occurred_at' => now(),
+        ]);
+        FinanceStockMovement::query()->create([
+            'finance_product_id' => $product->id,
+            'qty' => '0.0001',
+            'reason' => 'purchase',
+            'occurred_at' => now(),
+        ]);
+
+        $this->assertSame('999999999999.9998', StockLedger::recompute($product));
+        $this->assertSame('999999999999.9998', (string) $product->fresh()?->stock_qty);
+    }
+
+    public function test_stock_move_rejects_storage_overflow_atomically(): void
+    {
+        $this->signIn();
+        $product = $this->article(['track_stock' => true]);
+        $product->forceFill(['stock_qty' => '999999999999.9999'])->save();
+
+        try {
+            StockLedger::move($product, '0.0001', 'purchase');
+            $this->fail('An overflowing stock movement was accepted.');
+        } catch (DomainException $exception) {
+            $this->assertSame('stock_quantity_overflow', $exception->getMessage());
+        }
+
+        $this->assertSame('999999999999.9999', (string) $product->fresh()?->stock_qty);
+        $this->assertSame(0, FinanceStockMovement::query()->count());
+    }
+
+    public function test_recompute_rejects_storage_overflow_without_rewriting_stock(): void
+    {
+        $this->signIn();
+        $product = $this->article(['track_stock' => true]);
+        $product->forceFill(['stock_qty' => '7.0000'])->save();
+        foreach (['999999999999.9999', '0.0001'] as $quantity) {
+            FinanceStockMovement::query()->create([
+                'finance_product_id' => $product->id,
+                'qty' => $quantity,
+                'reason' => 'correction',
+                'occurred_at' => now(),
+            ]);
+        }
+
+        try {
+            StockLedger::recompute($product);
+            $this->fail('An overflowing ledger sum was written to stock.');
+        } catch (DomainException $exception) {
+            $this->assertSame('stock_quantity_overflow', $exception->getMessage());
+        }
+
+        $this->assertSame('7.0000', (string) $product->fresh()?->stock_qty);
+    }
+
+    public function test_reorder_comparison_does_not_collapse_large_scale_four_values(): void
+    {
+        $this->signIn();
+        $product = $this->article(['track_stock' => true]);
+        $product->forceFill([
+            'stock_qty' => '999999999999.9998',
+            'stock_min' => '999999999999.9997',
+        ])->save();
+
+        $this->assertFalse($product->fresh()?->isLowOnStock());
+
+        $product->forceFill([
+            'stock_qty' => '999999999999.9997',
+            'stock_min' => '999999999999.9998',
+        ])->save();
+        $this->assertTrue($product->fresh()?->isLowOnStock());
     }
 
     public function test_another_owner_cannot_reach_the_article_or_its_movements(): void

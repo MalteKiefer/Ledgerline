@@ -14,6 +14,8 @@ use LogicException;
 
 final readonly class LegacyStockLedgerAdapter implements InventoryMovementPort
 {
+    private const int MAX_SCALED = 9_999_999_999_999_999;
+
     public function recordInvoiceSale(
         int $ownerId,
         string $invoiceUuid,
@@ -28,6 +30,9 @@ final readonly class LegacyStockLedgerAdapter implements InventoryMovementPort
         foreach ($quantityScaledByProduct as $productId => $quantityScaled) {
             if (! is_int($productId) || $productId < 1 || ! is_int($quantityScaled) || $quantityScaled === 0) {
                 throw new LogicException('Invoice inventory quantities must be non-zero exact scale-4 values.');
+            }
+            if ($quantityScaled > self::MAX_SCALED || $quantityScaled < -self::MAX_SCALED) {
+                throw new DomainException('inventory_quantity_overflow');
             }
 
             $product = DB::table('finance_products')
@@ -62,6 +67,22 @@ final readonly class LegacyStockLedgerAdapter implements InventoryMovementPort
                 continue;
             }
 
+            $tracksStock = $product->track_stock === true
+                || $product->track_stock === 1
+                || $product->track_stock === '1';
+            $nextScaled = null;
+            if ($tracksStock) {
+                if (! is_string($product->stock_qty_exact)) {
+                    throw new DomainException('inventory_quantity_invalid');
+                }
+                $stockScaled = $this->parseScaled($product->stock_qty_exact);
+                if (($movementScaled > 0 && $stockScaled > self::MAX_SCALED - $movementScaled)
+                    || ($movementScaled < 0 && $stockScaled < -self::MAX_SCALED - $movementScaled)) {
+                    throw new DomainException('inventory_quantity_overflow');
+                }
+                $nextScaled = $stockScaled + $movementScaled;
+            }
+
             DB::table('finance_stock_movements')->insert([
                 'user_id' => $ownerId,
                 'finance_product_id' => $productId,
@@ -74,19 +95,7 @@ final readonly class LegacyStockLedgerAdapter implements InventoryMovementPort
                 'created_at' => $occurredAt,
             ]);
 
-            $tracksStock = $product->track_stock === true
-                || $product->track_stock === 1
-                || $product->track_stock === '1';
-            if ($tracksStock) {
-                if (! is_string($product->stock_qty_exact)) {
-                    throw new DomainException('inventory_quantity_invalid');
-                }
-                $stockScaled = $this->parseScaled($product->stock_qty_exact);
-                $nextScaled = $stockScaled + $movementScaled;
-                if (($movementScaled > 0 && $nextScaled < $stockScaled)
-                    || ($movementScaled < 0 && $nextScaled > $stockScaled)) {
-                    throw new DomainException('inventory_quantity_overflow');
-                }
+            if ($nextScaled !== null) {
                 DB::table('finance_products')
                     ->where('id', $productId)
                     ->where('user_id', $ownerId)
@@ -105,7 +114,9 @@ final readonly class LegacyStockLedgerAdapter implements InventoryMovementPort
         }
         $digits = ltrim($parts[2].str_pad($parts[3] ?? '', 4, '0'), '0');
         $digits = $digits === '' ? '0' : $digits;
-        if (strlen($digits) > strlen((string) PHP_INT_MAX)) {
+        $maximum = (string) self::MAX_SCALED;
+        if (strlen($digits) > strlen($maximum)
+            || (strlen($digits) === strlen($maximum) && strcmp($digits, $maximum) > 0)) {
             throw new DomainException('inventory_quantity_overflow');
         }
         $scaled = (int) $digits;

@@ -85,6 +85,65 @@ final class InvoiceFinalizationTest extends TestCase
         ));
     }
 
+    public function test_stock_hardening_down_refuses_lossy_narrowing_without_schema_change(): void
+    {
+        $owner = User::factory()->create();
+        $hardware = $this->product((int) $owner->id, 'hardware', '0.0001', true);
+        $migration = require database_path(
+            'migrations/2027_02_28_100100_guarantee_invoice_stock_idempotency.php',
+        );
+
+        try {
+            $migration->down();
+            $this->fail('A lossy scale-four stock migration rollback was accepted.');
+        } catch (\LogicException $exception) {
+            $this->assertSame(
+                'Invoice stock quantities cannot be safely narrowed to scale 3.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertFourDecimalStockStorage();
+        $this->assertTrue(Schema::hasIndex(
+            'finance_stock_movements',
+            'finance_stock_movements_invoice_sale_unique',
+            'unique',
+        ));
+        $this->assertSame('0.0001', (string) $hardware->fresh()?->stock_qty);
+    }
+
+    public function test_sqlite_stock_hardening_up_keeps_the_invoice_index_partial(): void
+    {
+        if (DB::getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('SQLite table-rebuild index semantics are SQLite-specific.');
+        }
+        $owner = User::factory()->create();
+        $hardware = $this->product((int) $owner->id, 'hardware', '1.0000', true);
+        $migration = require database_path(
+            'migrations/2027_02_28_100100_guarantee_invoice_stock_idempotency.php',
+        );
+
+        $migration->up();
+
+        foreach (['first return', 'second return'] as $note) {
+            DB::table('finance_stock_movements')->insert([
+                'user_id' => $owner->id,
+                'finance_product_id' => $hardware->id,
+                'qty' => '0.0001',
+                'reason' => 'return',
+                'ref_type' => 'finance_invoice',
+                'ref_id' => 'same-non-sale-reference',
+                'note' => $note,
+                'occurred_at' => now(),
+                'created_at' => now(),
+            ]);
+        }
+
+        $this->assertSame(2, DB::table('finance_stock_movements')
+            ->where('ref_id', 'same-non-sale-reference')
+            ->count());
+    }
+
     public function test_finalization_is_atomic_exact_and_idempotent(): void
     {
         $owner = User::factory()->create();
@@ -318,6 +377,28 @@ final class InvoiceFinalizationTest extends TestCase
         }
     }
 
+    public function test_invoice_inventory_rejects_scale_four_storage_overflow_atomically(): void
+    {
+        $owner = User::factory()->create();
+        $hardware = $this->product((int) $owner->id, 'hardware', '999999999999.9999', true);
+        $adapter = new LegacyStockLedgerAdapter;
+
+        try {
+            $adapter->recordInvoiceSale(
+                (int) $owner->id,
+                '018f4ca3-224d-7d8d-9f03-000000000073',
+                [(int) $hardware->id => -1],
+                new DateTimeImmutable('2026-08-28T12:00:00+00:00'),
+            );
+            $this->fail('An overflowing invoice inventory movement was accepted.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('inventory_quantity_overflow', $exception->getMessage());
+        }
+
+        $this->assertSame('999999999999.9999', (string) $hardware->fresh()?->stock_qty);
+        $this->assertSame(0, DB::table('finance_stock_movements')->where('user_id', $owner->id)->count());
+    }
+
     public function test_zero_net_hardware_quantity_is_omitted_after_exact_aggregation(): void
     {
         $owner = User::factory()->create();
@@ -348,6 +429,82 @@ final class InvoiceFinalizationTest extends TestCase
         $this->assertSame('finalized', $finalized->invoice->status);
         $this->assertSame(0, DB::table('finance_stock_movements')->where('ref_id', $finalized->invoice->uuid)->count());
         $this->assertSame('1.0000', (string) $hardware->fresh()?->stock_qty);
+    }
+
+    public function test_hardware_cannot_be_marked_as_service_to_bypass_inventory(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $hardware = $this->product((int) $owner->id, 'hardware', '2.0000', true);
+        $repository = $this->repository();
+        $invoiceId = $repository->createDraft($this->productDraft((int) $hardware->id, 'service'));
+
+        try {
+            $this->command(
+                $repository,
+                new InvoiceFinalizationRenderer,
+                new InvoiceFinalizationStorage,
+            )->handle($invoiceId, new IdempotencyKey('hardware-marked-service'));
+            $this->fail('Hardware marked as service bypassed authoritative inventory classification.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('invoice_inventory_kind_mismatch', $exception->getMessage());
+        }
+
+        $this->assertDatabaseHas('finance_invoices', [
+            'id' => $invoiceId->value,
+            'workflow_status' => 'draft',
+            'number' => null,
+        ]);
+        $this->assertSame(0, DB::table('finance_invoice_sequences')->where('user_id', $owner->id)->count());
+        $this->assertSame(0, DB::table('finance_stock_movements')->where('user_id', $owner->id)->count());
+    }
+
+    public function test_hardware_with_no_snapshot_kind_uses_the_locked_product_kind(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $hardware = $this->product((int) $owner->id, 'hardware', '2.0000', true);
+        $repository = $this->repository();
+        $invoiceId = $repository->createDraft($this->productDraft((int) $hardware->id, null));
+
+        $finalized = $this->command(
+            $repository,
+            new InvoiceFinalizationRenderer,
+            new InvoiceFinalizationStorage,
+        )->handle($invoiceId, new IdempotencyKey('hardware-without-kind'));
+
+        $this->assertSame('hardware', $finalized->invoice->snapshot['lines'][0]['kind']);
+        $this->assertDatabaseHas('finance_stock_movements', [
+            'user_id' => $owner->id,
+            'finance_product_id' => $hardware->id,
+            'qty' => '-1.0000',
+            'ref_type' => 'finance_invoice',
+            'ref_id' => $finalized->invoice->uuid,
+        ]);
+        $this->assertSame('1.0000', (string) $hardware->fresh()?->stock_qty);
+    }
+
+    public function test_service_cannot_be_marked_as_hardware_to_create_inventory(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $service = $this->product((int) $owner->id, 'service', '0.0000', false);
+        $repository = $this->repository();
+        $invoiceId = $repository->createDraft($this->productDraft((int) $service->id, 'hardware'));
+
+        try {
+            $this->command(
+                $repository,
+                new InvoiceFinalizationRenderer,
+                new InvoiceFinalizationStorage,
+            )->handle($invoiceId, new IdempotencyKey('service-marked-hardware'));
+            $this->fail('Service marked as hardware crossed authoritative inventory classification.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('invoice_inventory_kind_mismatch', $exception->getMessage());
+        }
+
+        $this->assertSame(0, DB::table('finance_invoice_sequences')->where('user_id', $owner->id)->count());
+        $this->assertSame(0, DB::table('finance_stock_movements')->where('user_id', $owner->id)->count());
     }
 
     public function test_source_contract_survives_finalization_and_published_revision_is_immutable(): void
@@ -516,6 +673,26 @@ final class InvoiceFinalizationTest extends TestCase
         );
     }
 
+    private function productDraft(int $productId, ?string $snapshotKind): InvoiceDraftData
+    {
+        return new InvoiceDraftData(
+            issueDate: new DateTimeImmutable('2026-08-28'),
+            dueDate: new DateTimeImmutable('2026-09-11'),
+            currency: 'EUR',
+            customer: ['name' => 'ACME'],
+            lines: [new InvoiceLineData(
+                'Product line',
+                '1.0000',
+                10_000,
+                1_900,
+                'pc',
+                $productId,
+                $snapshotKind,
+            )],
+            discount: Discount::none('EUR'),
+        );
+    }
+
     private function assertDraftWasNotFinalized(int $invoiceId, int $revisionId): void
     {
         $this->assertDatabaseHas('finance_invoices', [
@@ -581,7 +758,7 @@ final class InvoiceFinalizationTest extends TestCase
             $definition = collect(DB::select("PRAGMA table_info('{$table}')"))
                 ->first(static fn (object $item): bool => ($item->name ?? null) === $column);
             $this->assertNotNull($definition);
-            $this->assertSame('numeric', strtolower((string) $definition->type));
+            $this->assertSame('text', strtolower((string) $definition->type));
         }
     }
 
