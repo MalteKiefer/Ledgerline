@@ -506,7 +506,7 @@ final class ProjectSchemaTest extends TestCase
             static fn (array $query): string => preg_replace(
                 '/\s+/',
                 ' ',
-                strtolower($query['query']),
+                $query['query'],
             ) ?? '',
             $queries,
         );
@@ -568,18 +568,18 @@ final class ProjectSchemaTest extends TestCase
             'finance_project_time_entries_currency_check',
             'finance_project_ledger_entries_currency_check',
         ] as $constraint) {
-            $this->assertPostgresStatementContains(
+            $this->assertPostgresConstraintContainsCaseSensitively(
                 $statements,
-                "constraint {$constraint}",
-                "constraint {$constraint} check (currency collate \"c\" ~ '^[a-z]{3}$')",
+                $constraint,
+                "currency COLLATE \"C\" ~ '^[A-Z]{3}$'",
             );
         }
-        $this->assertStringContainsString(
+        $this->assertStringContainsStringIgnoringCase(
             'create unique index finance_project_document_links_active_unique',
             $ddl,
         );
-        $this->assertStringContainsString('where detached_at is null', $ddl);
-        $this->assertStringContainsString('finance_project_document_links_validate_source', $ddl);
+        $this->assertStringContainsStringIgnoringCase('where detached_at is null', $ddl);
+        $this->assertStringContainsStringIgnoringCase('finance_project_document_links_validate_source', $ddl);
         $this->assertPostgresStatementContains(
             $statements,
             'create trigger finance_project_document_series_guard_uuid',
@@ -590,19 +590,22 @@ final class ProjectSchemaTest extends TestCase
             'create function finance_project_document_series_guard_uuid()',
             'if new.uuid is distinct from old.uuid then',
         );
-        $this->assertStringNotContainsString('from finance_project_document_links link', $ddl);
+        $this->assertStringNotContainsStringIgnoringCase('from finance_project_document_links link', $ddl);
         $this->assertPostgresStatementContains(
             $statements,
             'create trigger finance_document_notes_normalize_type',
             'before insert or update of type on finance_document_notes',
         );
 
-        $downDdl = strtolower(implode("\n", array_column($downQueries, 'query')));
+        $downDdl = implode("\n", array_map(
+            static fn (array $query): string => preg_replace('/\s+/', ' ', $query['query']) ?? '',
+            $downQueries,
+        ));
         $dropTrigger = 'drop trigger if exists finance_project_document_links_validate_source on finance_project_document_links';
         $dropFunction = 'drop function if exists finance_project_document_links_validate_source()';
-        $this->assertStringContainsString($dropTrigger, $downDdl);
-        $this->assertStringContainsString($dropFunction, $downDdl);
-        $this->assertLessThan(strpos($downDdl, $dropFunction), strpos($downDdl, $dropTrigger));
+        $this->assertStringContainsStringIgnoringCase($dropTrigger, $downDdl);
+        $this->assertStringContainsStringIgnoringCase($dropFunction, $downDdl);
+        $this->assertLessThan(stripos($downDdl, $dropFunction), stripos($downDdl, $dropTrigger));
     }
 
     /** @return list<string> */
@@ -791,12 +794,34 @@ final class ProjectSchemaTest extends TestCase
         $needle = "constraint {$constraint}";
         $matches = array_values(array_filter(
             array_map(static fn (string $statement): string => str_replace('"', '', $statement), $statements),
-            static fn (string $statement): bool => str_contains($statement, $needle),
+            static fn (string $statement): bool => stripos($statement, $needle) !== false,
         ));
         $this->assertCount(1, $matches, "Expected one PostgreSQL statement for {$constraint}.");
 
-        $segment = substr($matches[0], (int) strpos($matches[0], $needle));
-        $nextConstraint = strpos($segment, ', add constraint ', strlen($needle));
+        $segment = substr($matches[0], (int) stripos($matches[0], $needle));
+        $nextConstraint = stripos($segment, ', add constraint ', strlen($needle));
+        if ($nextConstraint !== false) {
+            $segment = substr($segment, 0, $nextConstraint);
+        }
+
+        $this->assertStringContainsStringIgnoringCase($clause, $segment, $constraint);
+    }
+
+    /** @param list<string> $statements */
+    private function assertPostgresConstraintContainsCaseSensitively(
+        array $statements,
+        string $constraint,
+        string $clause,
+    ): void {
+        $needle = "constraint {$constraint}";
+        $matches = array_values(array_filter(
+            $statements,
+            static fn (string $statement): bool => stripos($statement, $needle) !== false,
+        ));
+        $this->assertCount(1, $matches, "Expected one PostgreSQL statement for {$constraint}.");
+
+        $segment = substr($matches[0], (int) stripos($matches[0], $needle));
+        $nextConstraint = stripos($segment, ', add constraint ', strlen($needle));
         if ($nextConstraint !== false) {
             $segment = substr($segment, 0, $nextConstraint);
         }
@@ -812,10 +837,10 @@ final class ProjectSchemaTest extends TestCase
     ): void {
         $matches = array_values(array_filter(
             $statements,
-            static fn (string $statement): bool => str_contains($statement, $needle),
+            static fn (string $statement): bool => stripos($statement, $needle) !== false,
         ));
 
         $this->assertCount(1, $matches, "Expected one PostgreSQL statement containing {$needle}.");
-        $this->assertStringContainsString($clause, $matches[0], $needle);
+        $this->assertStringContainsStringIgnoringCase($clause, $matches[0], $needle);
     }
 }
