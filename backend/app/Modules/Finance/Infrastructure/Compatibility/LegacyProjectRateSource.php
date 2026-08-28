@@ -19,6 +19,6 @@ final class LegacyProjectRateSource implements ProjectRateSource
             return null;
         }
 
-return Money::fromDecimal((string) $partner->hourly_rate, (string) $partner->currency);
+        return Money::fromDecimal((string) $partner->hourly_rate, (string) $partner->currency);
     }
 }

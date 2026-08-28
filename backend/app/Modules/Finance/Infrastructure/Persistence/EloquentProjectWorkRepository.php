@@ -390,9 +390,28 @@ final class EloquentProjectWorkRepository implements ProjectWorkRepository
     {
         return DB::transaction(function () use ($projectId, $uuids, $claimReference, $occurredAt): array {
             $project = $this->lockedProject($projectId);
+            $this->assertProjectActive($project);
             $records = ProjectTimeEntryRecord::query()->withoutGlobalScopes()->where('user_id', $projectId->ownerId)->where('project_id', $project->id)->whereIn('uuid', $uuids)->whereNull('deleted_at')->orderBy('id')->lockForUpdate()->get();
             if ($records->count() !== count($uuids)) {
                 throw new InvalidProjectAction('time_entry_set_mismatch');
+            }
+            /** @var array<string, array{hours: int, rate: int, currency: string}> $groups */
+            $groups = [];
+            foreach ($records as $record) {
+                if (! (bool) $record->billable || $record->hourly_rate_minor === null) {
+                    throw new InvalidProjectAction('time_entry_not_invoiceable');
+                }
+                $currency = (string) $record->currency;
+                if ($currency !== (string) $project->currency) {
+                    throw new InvalidProjectAction('invoice_time_currency_mismatch');
+                }
+                $rate = (int) $record->hourly_rate_minor;
+                $key = $currency.':'.$rate;
+                $groups[$key] ??= ['hours' => 0, 'rate' => $rate, 'currency' => $currency];
+                $groups[$key]['hours'] = $this->checkedAdd($groups[$key]['hours'], (int) $record->quantity_scaled);
+            }
+            foreach ($groups as $group) {
+                TimeCharge::calculate(DecimalQuantity::fromString($this->scaledDecimal($group['hours'])), Money::fromMinor($group['rate'], $group['currency']));
             }
             foreach ($records as $record) {
                 if ($record->invoice_target_reference !== null && $record->invoice_target_reference !== $claimReference) {

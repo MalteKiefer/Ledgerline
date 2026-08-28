@@ -50,6 +50,7 @@ use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectWorkRepository
 use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -395,6 +396,81 @@ final class ProjectWorkApplicationTest extends TestCase
         $this->assertSame(2, $fake->calls);
     }
 
+    public function test_local_invoice_validation_never_leaves_a_claim_and_same_or_different_key_can_recover(): void
+    {
+        $owner = User::factory()->create();
+        $at = new DateTimeImmutable('2026-08-28 16:30:00');
+        $fake = new ProjectInvoiceStub;
+        $this->app->instance(ProjectToInvoicePort::class, $fake);
+        $cases = [
+            ['nonbillable', [['quantity_scaled' => 10000, 'billable' => false, 'hourly_rate_minor' => null, 'currency' => 'EUR']], 'time_entry_not_invoiceable'],
+            ['missing-rate', [['quantity_scaled' => 10000, 'billable' => true, 'hourly_rate_minor' => null, 'currency' => 'EUR']], 'time_entry_not_invoiceable'],
+            ['mixed', [['quantity_scaled' => 10000, 'billable' => true, 'hourly_rate_minor' => 10000, 'currency' => 'EUR'], ['quantity_scaled' => 10000, 'billable' => true, 'hourly_rate_minor' => 10000, 'currency' => 'USD']], 'invoice_time_currency_mismatch'],
+            ['overflow', [['quantity_scaled' => PHP_INT_MAX, 'billable' => true, 'hourly_rate_minor' => 1, 'currency' => 'EUR'], ['quantity_scaled' => 1, 'billable' => true, 'hourly_rate_minor' => 1, 'currency' => 'EUR']], 'project_total_overflow'],
+        ];
+        foreach ($cases as [$label,$rows,$expected]) {
+            $project = $this->storedProject($owner);
+            $uuids = [];
+            foreach ($rows as $row) {
+                $uuids[] = $this->insertRawTime($project, $owner, $row);
+            }
+            try {
+                app(CreateInvoiceDraftFromTime::class)->handle(new InvoiceTimeData($project['id'], $uuids, 'local-'.$label, (int) $owner->id, $at));
+                $this->fail('Local invoice validation accepted '.$label);
+            } catch (DomainException $exception) {
+                $this->assertSame($expected, $exception->getMessage());
+            }
+            $this->assertSame([null], DB::table('finance_project_time_entries')->whereIn('uuid', $uuids)->distinct()->pluck('invoice_target_reference')->all());
+            $this->assertSame('failed', DB::table('finance_project_operations')->where('idempotency_key', 'local-'.$label)->value('state'));
+        }
+        $this->assertSame(0, $fake->calls);
+
+        $recoverProject = $this->storedProject($owner);
+        $recoverUuid = $this->insertRawTime($recoverProject, $owner, ['quantity_scaled' => 10000, 'billable' => false, 'hourly_rate_minor' => null, 'currency' => 'EUR']);
+        $recoverData = new InvoiceTimeData($recoverProject['id'], [$recoverUuid], 'same-key', (int) $owner->id, $at);
+        try {
+            app(CreateInvoiceDraftFromTime::class)->handle($recoverData);
+        } catch (DomainException) {
+        }
+        DB::table('finance_project_time_entries')->where('uuid', $recoverUuid)->update(['billable' => true, 'hourly_rate_minor' => 10000]);
+        $this->assertSame('legacy-invoice:77', app(CreateInvoiceDraftFromTime::class)->handle($recoverData)->targetReference);
+
+        $differentProject = $this->storedProject($owner);
+        $differentUuid = $this->insertRawTime($differentProject, $owner, ['billable' => true, 'hourly_rate_minor' => null]);
+        try {
+            app(CreateInvoiceDraftFromTime::class)->handle(new InvoiceTimeData($differentProject['id'], [$differentUuid], 'failed-key', (int) $owner->id, $at));
+        } catch (DomainException) {
+        }
+        DB::table('finance_project_time_entries')->where('uuid', $differentUuid)->update(['hourly_rate_minor' => 10000]);
+        $this->assertSame('legacy-invoice:77', app(CreateInvoiceDraftFromTime::class)->handle(new InvoiceTimeData($differentProject['id'], [$differentUuid], 'new-key', (int) $owner->id, $at))->targetReference);
+    }
+
+    public function test_archive_interleaving_is_rechecked_under_the_claim_project_lock_before_port_call(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->storedProject($owner);
+        $at = new DateTimeImmutable('2026-08-28 16:45:00');
+        $uuid = $this->insertRawTime($project, $owner, ['quantity_scaled' => 10000, 'billable' => true, 'hourly_rate_minor' => 10000, 'currency' => 'EUR']);
+        $fake = new ProjectInvoiceStub;
+        $this->app->instance(ProjectToInvoicePort::class, $fake);
+        $interleaved = false;
+        DB::listen(function (QueryExecuted $query) use (&$interleaved, $project): void {
+            if (! $interleaved && str_contains($query->sql, 'insert into "finance_project_operations"')) {
+                $interleaved = true;
+                DB::table('finance_project_records')->where('id', $project['record_id'])->update(['archived_at' => '2026-08-28 16:44:00']);
+            }
+        });
+        try {
+            app(CreateInvoiceDraftFromTime::class)->handle(new InvoiceTimeData($project['id'], [$uuid], 'archive-race', (int) $owner->id, $at));
+            $this->fail('Archived project reached invoice port.');
+        } catch (InvalidProjectAction $exception) {
+            $this->assertSame('project_archived', $exception->errorCode);
+        }
+        $this->assertTrue($interleaved);
+        $this->assertSame(0, $fake->calls);
+        $this->assertNull(DB::table('finance_project_time_entries')->where('uuid', $uuid)->value('invoice_target_reference'));
+    }
+
     public function test_ledger_references_are_owner_validated_on_create_and_correction(): void
     {
         $owner = User::factory()->create();
@@ -489,6 +565,15 @@ final class ProjectWorkApplicationTest extends TestCase
         ]);
 
         return ['record_id' => $id, 'id' => new ProjectId((int) $owner->id, $uuid)];
+    }
+
+    /** @param array<string,mixed> $overrides */
+    private function insertRawTime(array $project, User $owner, array $overrides): string
+    {
+        $uuid = (string) Str::uuid();
+        DB::table('finance_project_time_entries')->insert(['user_id' => $owner->id, 'project_id' => $project['record_id'], 'work_item_id' => null, 'uuid' => $uuid, 'worked_on' => '2026-08-28', 'quantity_scaled' => 10000, 'description' => null, 'billable' => true, 'hourly_rate_minor' => 10000, 'currency' => 'EUR', 'invoice_target_reference' => null, 'invoiced_at' => null, 'version' => 0, 'created_by' => $owner->id, 'deleted_at' => null, 'created_at' => '2026-08-28 16:00:00', 'updated_at' => '2026-08-28 16:00:00', ...$overrides]);
+
+        return $uuid;
     }
 }
 
