@@ -10,7 +10,6 @@ use App\Http\Controllers\Concerns\OptimisticUpdates;
 use App\Mail\InvoiceMail;
 use App\Mail\InvoiceReminderMail;
 use App\Mail\QuoteMail;
-use App\Models\AppSettings;
 use App\Models\AuditLog;
 use App\Models\BankTransaction;
 use App\Models\FileEntry;
@@ -25,10 +24,10 @@ use App\Models\GalleryPhoto;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\UserSetting;
+use App\Modules\Finance\Infrastructure\Mail\CompanySmtpMailer;
 use App\Services\Finance\StockLedger;
 use App\Support\DocumentNumber;
 use App\Support\FinanceScope;
-use App\Support\OutboundUrl;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
@@ -39,7 +38,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -65,6 +63,8 @@ class FinanceController extends Controller
 {
     use HandlesFinanceBlobs;
     use OptimisticUpdates;
+
+    public function __construct(private readonly CompanySmtpMailer $companySmtp) {}
 
     // ---- Storage helpers ----
 
@@ -1065,16 +1065,11 @@ class FinanceController extends Controller
 
         // Invoices go out over the user's OWN company SMTP (settings.company),
         // deliberately independent of the workspace notification SMTP.
-        $mailer = $this->companyMailer($uid);
-        if ($mailer === null) {
+        if (! $this->companySmtp->configured($uid)) {
             return response()->json(['error' => 'no_smtp'], 422);
         }
 
-        try {
-            Mail::mailer($mailer)->to($to)->send(new InvoiceMail($invoice));
-        } finally {
-            $this->forgetCompanyMailer();
-        }
+        $this->companySmtp->send($uid, $to, new InvoiceMail($invoice));
 
         $sentAt = Carbon::now();
         $invoice->forceFill(['sent_at' => $sentAt])->saveQuietly();
@@ -1126,16 +1121,11 @@ class FinanceController extends Controller
             return response()->json(['error' => 'no_recipient'], 422);
         }
 
-        $mailer = $this->companyMailer($uid);
-        if ($mailer === null) {
+        if (! $this->companySmtp->configured($uid)) {
             return response()->json(['error' => 'no_smtp'], 422);
         }
 
-        try {
-            Mail::mailer($mailer)->to($to)->send(new QuoteMail($quote));
-        } finally {
-            $this->forgetCompanyMailer();
-        }
+        $this->companySmtp->send($uid, $to, new QuoteMail($quote));
 
         $sentAt = Carbon::now();
         $quote->forceFill(['sent_at' => $sentAt])->saveQuietly();
@@ -1167,17 +1157,12 @@ class FinanceController extends Controller
             return response()->json(['error' => 'no_recipient'], 422);
         }
 
-        $mailer = $this->companyMailer($uid);
-        if ($mailer === null) {
+        if (! $this->companySmtp->configured($uid)) {
             return response()->json(['error' => 'no_smtp'], 422);
         }
 
         $level = (int) $invoice->reminder_count + 1;
-        try {
-            Mail::mailer($mailer)->to($to)->send(new InvoiceReminderMail($invoice, $level));
-        } finally {
-            $this->forgetCompanyMailer();
-        }
+        $this->companySmtp->send($uid, $to, new InvoiceReminderMail($invoice, $level));
 
         $now = Carbon::now();
         $invoice->forceFill(['reminded_at' => $now, 'reminder_count' => $level])->saveQuietly();
@@ -1203,63 +1188,6 @@ class FinanceController extends Controller
     private function validEmail(mixed $email): ?string
     {
         return is_string($email) && str_contains($email, '@') && trim($email) !== '' ? trim($email) : null;
-    }
-
-    /**
-     * Configure a runtime SMTP mailer from the user's OWN company SMTP settings
-     * and return its name, or null if company SMTP isn't fully configured.
-     * Deliberately separate from the AppSettings notification SMTP so invoices go
-     * out under the business's own mail identity.
-     */
-    private function companyMailer(int $userId): ?string
-    {
-        $s = UserSetting::for($userId);
-        $host = is_string($s->company_smtp_host) ? trim($s->company_smtp_host) : '';
-        $from = is_string($s->company_smtp_from_address) ? trim($s->company_smtp_from_address) : '';
-        if (! $s->company_smtp_enabled || $host === '' || $from === '') {
-            return null;
-        }
-
-        // Egress-guard the per-user SMTP host (mirrors ChannelNotifier::mailTo,
-        // ntfy/webhook/backup): refuse the cloud-metadata surface (169.254.169.254)
-        // and, in hardened mode, private/loopback ranges — a blind SMTP-SSRF /
-        // internal port-probe primitive otherwise reachable by any finance user.
-        // Fails closed (→ null → 'no_smtp' 422 at the call site).
-        if (! OutboundUrl::hostAllowed($host)) {
-            return null;
-        }
-
-        $enc = is_string($s->company_smtp_encryption) && $s->company_smtp_encryption !== ''
-            ? $s->company_smtp_encryption
-            : null;
-        config([
-            'mail.mailers.company_smtp' => [
-                'transport' => 'smtp',
-                'host' => $host,
-                'port' => $s->company_smtp_port ?: 587,
-                'encryption' => $enc,
-                'username' => is_string($s->company_smtp_username) && $s->company_smtp_username !== '' ? $s->company_smtp_username : null,
-                'password' => is_string($s->company_smtp_password) && $s->company_smtp_password !== '' ? $s->company_smtp_password : null,
-                'timeout' => 15,
-            ],
-            'mail.from.company_smtp' => [
-                'address' => $from,
-                'name' => is_string($s->company_smtp_from_name) && $s->company_smtp_from_name !== '' ? $s->company_smtp_from_name : ($s->company_name ?: $from),
-            ],
-        ]);
-
-        return 'company_smtp';
-    }
-
-    /**
-     * Tear the per-user runtime company mailer back out of the merged config after
-     * a send (mirrors MailSender's `finally`). Under classic FPM this just keeps the
-     * SMTP password from lingering in-process; under Octane's persistent worker it is
-     * REQUIRED so one finance user's SMTP creds never survive into the next request.
-     */
-    private function forgetCompanyMailer(): void
-    {
-        config(['mail.mailers.company_smtp' => null, 'mail.from.company_smtp' => null]);
     }
 
     /**

@@ -15,6 +15,7 @@ use App\Modules\Finance\Application\Ports\Projects\ProjectReferenceResolver;
 use App\Modules\Finance\Application\Ports\Projects\ProjectRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectToInvoicePort;
 use App\Modules\Finance\Application\Ports\Projects\ProjectWorkRepository;
+use App\Modules\Finance\Application\Ports\Quotes\QuoteMailer;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteNumberAllocator;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteOperationRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteReferenceResolver;
@@ -24,6 +25,9 @@ use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftFromTimeA
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectFinancialSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectRateSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectReferenceResolver;
+use App\Modules\Finance\Infrastructure\Mail\CompanyMailTransport;
+use App\Modules\Finance\Infrastructure\Mail\LaravelCompanyMailTransport;
+use App\Modules\Finance\Infrastructure\Mail\LaravelQuoteMailer;
 use App\Modules\Finance\Infrastructure\Pdf\BladeDocumentRenderer;
 use App\Modules\Finance\Infrastructure\Pdf\FlysystemDocumentStorage;
 use App\Modules\Finance\Infrastructure\Pdf\LocalAtomicDocumentObjectStore;
@@ -102,6 +106,8 @@ final class FinanceServiceProvider extends ServiceProvider
             EloquentQuoteOperationRepository::class,
         );
         $this->app->bind(QuoteNumberAllocator::class, DatabaseQuoteNumberAllocator::class);
+        $this->app->bind(QuoteMailer::class, LaravelQuoteMailer::class);
+        $this->app->bind(CompanyMailTransport::class, LaravelCompanyMailTransport::class);
         $this->app->bind(
             QuoteReferenceResolver::class,
             EloquentQuoteReferenceResolver::class,

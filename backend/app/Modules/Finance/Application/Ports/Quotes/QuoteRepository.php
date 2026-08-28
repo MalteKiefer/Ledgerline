@@ -71,4 +71,12 @@ interface QuoteRepository
         int $expectedVersion,
         DocumentRevisionId $revisionId,
     ): QuoteView;
+
+    public function queueDelivery(
+        QuoteId $id,
+        int $revisionId,
+        int $operationId,
+        string $recipient,
+        string $messageId,
+    ): int;
 }

@@ -18,6 +18,7 @@ use App\Modules\Finance\Domain\Shared\DocumentTotals;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
+use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteDeliveryRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteDraftRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteOperationRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteSeriesRecord;
@@ -758,6 +759,110 @@ final class EloquentQuoteRepository implements QuoteRepository
             }
 
             return $this->viewForUuid($id);
+        }, 1);
+    }
+
+    public function queueDelivery(
+        QuoteId $id,
+        int $revisionId,
+        int $operationId,
+        string $recipient,
+        string $messageId,
+    ): int {
+        return DB::transaction(function () use (
+            $id,
+            $revisionId,
+            $operationId,
+            $recipient,
+            $messageId,
+        ): int {
+            $series = DocumentSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_series.user_id', $id->ownerId)
+                ->where('uuid', $id->uuid)
+                ->where('document_type', 'quote')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $quote = QuoteSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_series.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $revision = DocumentRevisionRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_revisions.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($revisionId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            QuoteOperationRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_operations.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('operation', 'send')
+                ->whereKey($operationId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((int) $quote->current_revision_id !== $revisionId
+                || (string) $series->status !== 'sent'
+                || (string) $revision->status !== 'published'
+                || $revision->published_at === null) {
+                throw new InvalidQuoteAction('quote_revision_stale');
+            }
+
+            $delivery = QuoteDeliveryRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_deliveries.user_id', $id->ownerId)
+                ->where('message_id', $messageId)
+                ->lockForUpdate()
+                ->first();
+            if ($delivery instanceof QuoteDeliveryRecord) {
+                if ((int) $delivery->document_series_id !== (int) $series->id
+                    || (int) $delivery->document_revision_id !== $revisionId
+                    || ! hash_equals((string) $delivery->recipient, $recipient)) {
+                    throw new LogicException('Quote delivery replay identity is inconsistent.');
+                }
+
+                return (int) $delivery->id;
+            }
+
+            $domain = strrchr($recipient, '@');
+            if (! is_string($domain) || strlen($domain) < 2) {
+                throw new InvalidArgumentException('Quote delivery recipient has no domain.');
+            }
+            $queuedAt = $this->clock->now();
+            $deliveryId = (int) DB::table('finance_quote_deliveries')->insertGetId([
+                'user_id' => $id->ownerId,
+                'document_series_id' => $series->id,
+                'document_revision_id' => $revisionId,
+                'recipient' => $recipient,
+                'recipient_domain' => strtolower(substr($domain, 1)),
+                'message_id' => $messageId,
+                'state' => 'queued',
+                'attempts' => 0,
+                'last_error_code' => null,
+                'queued_at' => $queuedAt,
+                'sent_at' => null,
+                'failed_at' => null,
+            ]);
+            $activity = new DocumentActivityRecord;
+            $activity->forceFill([
+                'user_id' => $id->ownerId,
+                'document_series_id' => $series->id,
+                'document_revision_id' => $revisionId,
+                'type' => 'quote.mail.queued',
+                'payload' => [
+                    'delivery_id' => $deliveryId,
+                    'recipient_domain' => strtolower(substr($domain, 1)),
+                ],
+                'created_by' => $id->ownerId,
+                'created_at' => $queuedAt,
+            ]);
+            $activity->save();
+
+            return $deliveryId;
         }, 1);
     }
 
