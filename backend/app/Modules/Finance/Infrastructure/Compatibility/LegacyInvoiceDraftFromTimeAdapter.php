@@ -9,11 +9,17 @@ use App\Modules\Finance\Application\DTOs\Projects\InvoiceDraftTarget;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourceRef;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectView;
 use App\Modules\Finance\Application\Ports\Projects\ProjectToInvoicePort;
+use App\Modules\Finance\Domain\Projects\Exception\InvalidProjectAction;
 
 final class LegacyInvoiceDraftFromTimeAdapter implements ProjectToInvoicePort
 {
     public function createDraft(int $ownerId, ProjectView $project, array $lines, array $timeEntryUuids, string $idempotencyKey): InvoiceDraftTarget
     {
+        foreach ($lines as $line) {
+            if ($line->currency !== $project->currency) {
+                throw new InvalidProjectAction('invoice_time_currency_mismatch');
+            }
+        }
         $partnerId = null;
         if ($project->partnerReference !== null && preg_match('/\Alegacy-partner:(\d+)\z/D', $project->partnerReference, $m) === 1) {
             $partnerId = (int) $m[1];

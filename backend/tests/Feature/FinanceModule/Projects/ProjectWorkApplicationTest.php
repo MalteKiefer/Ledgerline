@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\FinanceModule\Projects;
 
+use App\Models\FinanceCategory;
+use App\Models\Invoice;
+use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Modules\Finance\Application\Commands\Projects\CreateInvoiceDraftFromTime;
 use App\Modules\Finance\Application\Commands\Projects\CreateLedgerEntry;
@@ -20,23 +23,33 @@ use App\Modules\Finance\Application\DTOs\Projects\CreateLedgerEntryData;
 use App\Modules\Finance\Application\DTOs\Projects\CreateWorkItemData;
 use App\Modules\Finance\Application\DTOs\Projects\InvoiceDraftTarget;
 use App\Modules\Finance\Application\DTOs\Projects\InvoiceTimeData;
+use App\Modules\Finance\Application\DTOs\Projects\InvoiceTimeLine;
 use App\Modules\Finance\Application\DTOs\Projects\LogTimeData;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourceRef;
+use App\Modules\Finance\Application\DTOs\Projects\ProjectFinancialSourceRow;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectId;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectView;
 use App\Modules\Finance\Application\DTOs\Projects\UpdateTimeData;
 use App\Modules\Finance\Application\DTOs\Projects\UpdateWorkItemData;
+use App\Modules\Finance\Application\Ports\Projects\ProjectFinancialSource;
 use App\Modules\Finance\Application\Ports\Projects\ProjectRateSource;
+use App\Modules\Finance\Application\Ports\Projects\ProjectReferenceResolver;
+use App\Modules\Finance\Application\Ports\Projects\ProjectRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectToInvoicePort;
 use App\Modules\Finance\Application\Ports\Projects\ProjectWorkRepository;
+use App\Modules\Finance\Application\Queries\Projects\GetProjectTotals;
 use App\Modules\Finance\Application\Queries\Projects\ListProjectLedger;
 use App\Modules\Finance\Application\Queries\Projects\ListProjectWork;
 use App\Modules\Finance\Domain\Projects\Exception\InvalidProjectAction;
 use App\Modules\Finance\Domain\Projects\WorkItemStatus;
 use App\Modules\Finance\Domain\Shared\Money;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftFromTimeAdapter;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectFinancialSource;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectRateSource;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectWorkRepository;
 use DateTimeImmutable;
 use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -47,11 +60,12 @@ final class ProjectWorkApplicationTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function setUp(): void
+    public function test_project_work_ports_have_production_bindings(): void
     {
-        parent::setUp();
-
-        $this->app->bind(ProjectWorkRepository::class, EloquentProjectWorkRepository::class);
+        $this->assertInstanceOf(EloquentProjectWorkRepository::class, app(ProjectWorkRepository::class));
+        $this->assertInstanceOf(LegacyProjectRateSource::class, app(ProjectRateSource::class));
+        $this->assertInstanceOf(LegacyProjectFinancialSource::class, app(ProjectFinancialSource::class));
+        $this->assertInstanceOf(LegacyInvoiceDraftFromTimeAdapter::class, app(ProjectToInvoicePort::class));
     }
 
     public function test_work_items_enforce_exact_values_owner_workflow_and_explicit_cas(): void
@@ -290,7 +304,7 @@ final class ProjectWorkApplicationTest extends TestCase
 
         $created = app(CreateLedgerEntry::class)->handle(new CreateLedgerEntryData(
             $project['id'], 'out', 12345, 'eur', (int) $owner->id, $at,
-            occurredOn: new DateTimeImmutable('2026-08-20'), title: 'Hosting', categoryReference: 'software',
+            occurredOn: new DateTimeImmutable('2026-08-20'), title: 'Hosting',
         ));
         $this->assertSame(12345, $created->amountMinor);
         $this->assertSame('EUR', $created->currency);
@@ -298,13 +312,13 @@ final class ProjectWorkApplicationTest extends TestCase
         $corrected = app(UpdateLedgerEntry::class)->handle(
             $project['id'], $created->uuid, 0,
             new CreateLedgerEntryData($project['id'], 'in', 5000, 'EUR', (int) $owner->id, $at,
-                occurredOn: new DateTimeImmutable('2026-08-21'), title: 'Refund', categoryReference: 'software'),
+                occurredOn: new DateTimeImmutable('2026-08-21'), title: 'Refund'),
         );
         $this->assertNotSame($created->uuid, $corrected->uuid);
         $this->assertNotNull(DB::table('finance_project_ledger_entries')->where('uuid', $created->uuid)->value('deleted_at'));
         $this->assertSame($created->uuid, DB::table('finance_project_ledger_entries')->where('uuid', $corrected->uuid)->value('legacy_metadata->corrects_uuid'));
 
-        $page = app(ListProjectLedger::class)->handle($project['id'], direction: 'in', categoryReference: 'software', perPage: 500);
+        $page = app(ListProjectLedger::class)->handle($project['id'], direction: 'in', perPage: 500);
         $this->assertSame(100, $page['per_page']);
         $this->assertSame([$corrected->uuid], array_column($page['items'], 'uuid'));
 
@@ -340,6 +354,122 @@ final class ProjectWorkApplicationTest extends TestCase
         $this->assertSame(15000, $fake->lines[0]->hoursScaled);
         $this->assertSame(15002, $fake->lines[0]->valueMinor);
         $this->assertSame(['legacy-invoice:77'], DB::table('finance_project_time_entries')->distinct()->pluck('invoice_target_reference')->all());
+        $this->assertSame(1, DB::table('finance_project_activities')->where('type', 'time_entries.invoiced')->count());
+    }
+
+    public function test_invoice_claim_blocks_a_different_key_before_the_external_port_and_recovers_same_key_after_error(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->storedProject($owner);
+        $at = new DateTimeImmutable('2026-08-28 16:00:00');
+        $this->app->instance(ProjectRateSource::class, new ProjectRateStub(Money::fromMinor(10000, 'EUR')));
+        $entry = app(LogProjectTime::class)->handle(new LogTimeData($project['id'], null, new DateTimeImmutable('2026-08-28'), '1', (int) $owner->id, $at));
+        $fake = new ProjectInvoiceStub;
+        $fake->failOnce = true;
+        $blockedCode = null;
+        $fake->duringCall = function () use ($project, $entry, $owner, $at, &$blockedCode): void {
+            try {
+                app(CreateInvoiceDraftFromTime::class)->handle(new InvoiceTimeData($project['id'], [$entry->uuid], 'overlapping-key', (int) $owner->id, $at));
+            } catch (InvalidProjectAction $exception) {
+                $blockedCode = $exception->errorCode;
+            }
+        };
+        $this->app->instance(ProjectToInvoicePort::class, $fake);
+        $data = new InvoiceTimeData($project['id'], [$entry->uuid], 'recover-key', (int) $owner->id, $at);
+        try {
+            app(CreateInvoiceDraftFromTime::class)->handle($data);
+            $this->fail('Port failure was swallowed.');
+        } catch (DomainException $e) {
+            $this->assertSame('port_failed', $e->getMessage());
+        }
+        $this->assertSame('time_entry_invoiced', $blockedCode);
+        $this->assertSame('failed', DB::table('finance_project_operations')->value('state'));
+        try {
+            app(CreateInvoiceDraftFromTime::class)->handle(new InvoiceTimeData($project['id'], [$entry->uuid], 'different-key', (int) $owner->id, $at));
+            $this->fail('A second key crossed the persisted claim.');
+        } catch (InvalidProjectAction $e) {
+            $this->assertSame('time_entry_invoiced', $e->errorCode);
+        }
+        $target = app(CreateInvoiceDraftFromTime::class)->handle($data);
+        $this->assertSame('legacy-invoice:77', $target->targetReference);
+        $this->assertSame(2, $fake->calls);
+    }
+
+    public function test_ledger_references_are_owner_validated_on_create_and_correction(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->storedProject($owner);
+        $at = new DateTimeImmutable('2026-08-28 17:00:00');
+        $refs = new ProjectReferenceSpy;
+        $this->app->instance(ProjectReferenceResolver::class, $refs);
+        $created = app(CreateLedgerEntry::class)->handle(new CreateLedgerEntryData($project['id'], 'out', 100, 'EUR', (int) $owner->id, $at, categoryReference: 'legacy-category:1', paymentMethodReference: 'legacy-payment-method:2'));
+        app(UpdateLedgerEntry::class)->handle($project['id'], $created->uuid, 0, new CreateLedgerEntryData($project['id'], 'out', 200, 'EUR', (int) $owner->id, $at, categoryReference: 'legacy-category:3', paymentMethodReference: 'legacy-payment-method:4'));
+        $this->assertSame(['legacy-category:1', 'legacy-category:3'], $refs->categories);
+        $this->assertSame(['legacy-payment-method:2', 'legacy-payment-method:4'], $refs->payments);
+    }
+
+    public function test_foreign_ledger_references_are_rejected_without_a_write(): void
+    {
+        $owner = User::factory()->create();
+        $foreign = User::factory()->create();
+        $project = $this->storedProject($owner);
+        $at = new DateTimeImmutable('2026-08-28 17:30:00');
+        $category = new FinanceCategory;
+        $category->forceFill(['user_id' => $foreign->id, 'name' => 'Foreign'])->save();
+        $method = new PaymentMethod;
+        $method->forceFill(['user_id' => $foreign->id, 'type' => 'bank', 'name' => 'Foreign', 'scope' => 'business', 'business' => true, 'version' => 0])->save();
+        foreach ([['legacy-category:'.$category->id, null], [null, 'legacy-payment-method:'.$method->id]] as [$categoryRef,$methodRef]) {
+            try {
+                app(CreateLedgerEntry::class)->handle(new CreateLedgerEntryData($project['id'], 'out', 100, 'EUR', (int) $owner->id, $at, categoryReference: $categoryRef, paymentMethodReference: $methodRef));
+                $this->fail('Foreign ledger reference accepted.');
+            } catch (ModelNotFoundException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        $this->assertSame(0, DB::table('finance_project_ledger_entries')->count());
+    }
+
+    public function test_totals_deduplicate_a_receipt_when_its_settlement_transaction_is_present(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->storedProject($owner);
+        $this->app->instance(ProjectFinancialSource::class, new ProjectFinancialStub([
+            new ProjectFinancialSourceRow('bank-transaction:8', 1000, 'EUR', new DateTimeImmutable('2026-08-28')),
+            new ProjectFinancialSourceRow('finance-receipt:9', -1000, 'EUR', new DateTimeImmutable('2026-08-28'), ['bank-transaction:8']),
+        ]));
+        $this->assertSame(1000, app(GetProjectTotals::class)->handle($project['id'])->currencies['EUR']['financial_minor']);
+        $native = $this->storedProject($owner);
+        $this->assertSame([], app(LegacyProjectFinancialSource::class)->rows((int) $owner->id, $native['id']));
+    }
+
+    public function test_totals_fail_stably_instead_of_overflowing_or_using_floats(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->storedProject($owner);
+        $this->app->instance(ProjectFinancialSource::class, new ProjectFinancialStub([
+            new ProjectFinancialSourceRow('external:1', PHP_INT_MAX, 'EUR', new DateTimeImmutable('2026-08-28')),
+            new ProjectFinancialSourceRow('external:2', 1, 'EUR', new DateTimeImmutable('2026-08-28')),
+        ]));
+        try {
+            app(GetProjectTotals::class)->handle($project['id']);
+            $this->fail('Overflow was accepted.');
+        } catch (DomainException $exception) {
+            $this->assertSame('project_total_overflow', $exception->getMessage());
+        }
+    }
+
+    public function test_legacy_invoice_adapter_rejects_multiple_currencies_without_creating_a_draft(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->storedProject($owner);
+        $view = app(ProjectRepository::class)->get($project['id']);
+        try {
+            app(LegacyInvoiceDraftFromTimeAdapter::class)->createDraft((int) $owner->id, $view, [new InvoiceTimeLine(10000, 10000, 10000, 'EUR', 'A'), new InvoiceTimeLine(10000, 10000, 10000, 'USD', 'B')], ['a', 'b'], 'key');
+            $this->fail('Mixed currencies were mislabeled.');
+        } catch (InvalidProjectAction $e) {
+            $this->assertSame('invoice_time_currency_mismatch', $e->errorCode);
+        }
+        $this->assertSame(0, Invoice::query()->count());
     }
 
     /**
@@ -378,11 +508,55 @@ final class ProjectInvoiceStub implements ProjectToInvoicePort
 
     public array $lines = [];
 
+    public bool $failOnce = false;
+
+    public ?\Closure $duringCall = null;
+
     public function createDraft(int $ownerId, ProjectView $project, array $lines, array $timeEntryUuids, string $idempotencyKey): InvoiceDraftTarget
     {
         $this->calls++;
         $this->lines = $lines;
+        if ($this->duringCall !== null) {
+            $callback = $this->duringCall;
+            $this->duringCall = null;
+            $callback();
+        }
+        if ($this->failOnce) {
+            $this->failOnce = false;
+            throw new DomainException('port_failed');
+        }
 
-        return new InvoiceDraftTarget('legacy-invoice:77',new ProjectDocumentSourceRef('legacy_invoice','legacy-invoice:77'),'invoice.show');
+        return new InvoiceDraftTarget('legacy-invoice:77', new ProjectDocumentSourceRef('legacy_invoice', 'legacy-invoice:77'), 'invoice.show');
+    }
+}
+
+final class ProjectReferenceSpy implements ProjectReferenceResolver
+{
+    public array $categories = [];
+
+    public array $payments = [];
+
+    public function assertOwnedPartnerReference(int $ownerId, ?string $reference): void {}
+
+    public function assertOwnedProductReference(int $ownerId, ?string $reference): void {}
+
+    public function assertOwnedCategoryReference(int $ownerId, ?string $reference): void
+    {
+        $this->categories[] = $reference;
+    }
+
+    public function assertOwnedPaymentMethodReference(int $ownerId, ?string $reference): void
+    {
+        $this->payments[] = $reference;
+    }
+}
+
+final readonly class ProjectFinancialStub implements ProjectFinancialSource
+{
+    public function __construct(private array $sourceRows) {}
+
+    public function rows(int $ownerId, ProjectId $projectId): array
+    {
+        return $this->sourceRows;
     }
 }

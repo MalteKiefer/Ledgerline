@@ -74,6 +74,19 @@ final class EloquentProjectOperationRepository implements ProjectOperationReposi
         $this->complete($reservation, 'failed', null, $errorCode);
     }
 
+    public function retryFailed(OperationReservation $reservation): OperationReservation
+    {
+        return DB::transaction(function () use ($reservation): OperationReservation {
+            $record = ProjectOperationRecord::query()->withoutGlobalScopes()->where('user_id', $reservation->ownerId)->whereKey($reservation->recordId)->lockForUpdate()->firstOrFail();
+            if ((string) $record->state !== 'failed' || ! hash_equals((string) $record->request_sha256, $reservation->requestSha256)) {
+                throw new DomainException('operation_not_retryable');
+            }
+            DB::table('finance_project_operations')->where('id', $record->id)->update(['state' => 'reserved', 'error_code' => null, 'result' => null, 'completed_at' => null]);
+
+            return new OperationReservation($reservation->recordId, $reservation->ownerId, $reservation->operation, $reservation->key, $reservation->requestSha256, 'new');
+        }, 1);
+    }
+
     private function assertReservationInput(int $ownerId, string $operation, string $key, string $sha256): void
     {
         if ($ownerId < 1 || $operation === '' || strlen($operation) > 64 || $key === '' || strlen($key) > 255

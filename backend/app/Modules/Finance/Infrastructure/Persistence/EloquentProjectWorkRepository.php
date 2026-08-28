@@ -382,26 +382,57 @@ final class EloquentProjectWorkRepository implements ProjectWorkRepository
         return array_values($records->map(fn ($r) => $this->timeView($r, $projectId))->all());
     }
 
-    public function stampInvoicedTime(ProjectId $projectId, array $uuids, InvoiceDraftTarget $target, int $actorId, DateTimeImmutable $occurredAt): void
+    /**
+     * @param  list<string>  $uuids
+     * @return list<TimeEntryView>
+     */
+    public function claimInvoiceTime(ProjectId $projectId, array $uuids, string $claimReference, DateTimeImmutable $occurredAt): array
     {
-        DB::transaction(function () use ($projectId, $uuids, $target, $actorId, $occurredAt): void {
+        return DB::transaction(function () use ($projectId, $uuids, $claimReference, $occurredAt): array {
             $project = $this->lockedProject($projectId);
             $records = ProjectTimeEntryRecord::query()->withoutGlobalScopes()->where('user_id', $projectId->ownerId)->where('project_id', $project->id)->whereIn('uuid', $uuids)->whereNull('deleted_at')->orderBy('id')->lockForUpdate()->get();
             if ($records->count() !== count($uuids)) {
                 throw new InvalidProjectAction('time_entry_set_mismatch');
             }
             foreach ($records as $record) {
-                if ($record->invoice_target_reference !== null && $record->invoice_target_reference !== $target->targetReference) {
+                if ($record->invoice_target_reference !== null && $record->invoice_target_reference !== $claimReference) {
                     throw new InvalidProjectAction('time_entry_invoiced');
-                } if ($record->invoice_target_reference === null) {
+                }
+                if ($record->invoice_target_reference === null) {
+                    DB::table('finance_project_time_entries')->where('id', $record->id)->update(['invoice_target_reference' => $claimReference, 'invoiced_at' => $this->timestamp($occurredAt), 'version' => DB::raw('version + 1'), 'updated_at' => $this->timestamp($occurredAt)]);
+                }
+            }
+            $claimed = ProjectTimeEntryRecord::query()->withoutGlobalScopes()->whereIn('id', $records->pluck('id')->all())->orderBy('id')->get();
+
+            return array_values($claimed->map(fn ($record) => $this->timeView($record, $projectId))->all());
+        }, 1);
+    }
+
+    public function stampInvoicedTime(ProjectId $projectId, array $uuids, string $claimReference, InvoiceDraftTarget $target, int $actorId, DateTimeImmutable $occurredAt): void
+    {
+        DB::transaction(function () use ($projectId, $uuids, $claimReference, $target, $actorId, $occurredAt): void {
+            $project = $this->lockedProject($projectId);
+            $records = ProjectTimeEntryRecord::query()->withoutGlobalScopes()->where('user_id', $projectId->ownerId)->where('project_id', $project->id)->whereIn('uuid', $uuids)->whereNull('deleted_at')->orderBy('id')->lockForUpdate()->get();
+            if ($records->count() !== count($uuids)) {
+                throw new InvalidProjectAction('time_entry_set_mismatch');
+            }
+            $stamped = false;
+            foreach ($records as $record) {
+                if ($record->invoice_target_reference !== $claimReference && $record->invoice_target_reference !== $target->targetReference) {
+                    throw new InvalidProjectAction('time_entry_invoiced');
+                }
+                if ($record->invoice_target_reference === $claimReference) {
                     DB::table('finance_project_time_entries')->where('id', $record->id)->update(['invoice_target_reference' => $target->targetReference, 'invoiced_at' => $this->timestamp($occurredAt), 'version' => DB::raw('version + 1'), 'updated_at' => $this->timestamp($occurredAt)]);
+                    $stamped = true;
                 }
             }
             $exists = DB::table('finance_project_document_links')->where('user_id', $projectId->ownerId)->where('project_id', $project->id)->where('source_type', $target->source->sourceType)->where('source_reference', $target->source->sourceReference)->where('role', 'invoice')->whereNull('detached_at')->exists();
             if (! $exists) {
                 DB::table('finance_project_document_links')->insert(['user_id' => $projectId->ownerId, 'project_id' => $project->id, 'source_type' => $target->source->sourceType, 'source_reference' => $target->source->sourceReference, 'document_series_id' => null, 'pinned_revision_id' => $target->source->pinnedRevisionId, 'role' => 'invoice', 'metadata_snapshot' => json_encode(['target_reference' => $target->targetReference], JSON_THROW_ON_ERROR), 'attached_by' => $actorId, 'attached_at' => $this->timestamp($occurredAt), 'detached_by' => null, 'detached_at' => null]);
             }
-            $this->activity($projectId->ownerId, (int) $project->id, 'time_entries.invoiced', ['target_reference' => $target->targetReference, 'time_entry_uuids' => $uuids], $actorId, $occurredAt);
+            if ($stamped) {
+                $this->activity($projectId->ownerId, (int) $project->id, 'time_entries.invoiced', ['target_reference' => $target->targetReference, 'time_entry_uuids' => $uuids], $actorId, $occurredAt);
+            }
         }, 1);
     }
 
@@ -414,16 +445,18 @@ final class EloquentProjectWorkRepository implements ProjectWorkRepository
             $currency = (string) $time->currency;
             $totals[$currency] ??= ['hours_scaled' => 0, 'time_value_minor' => 0, 'ledger_minor' => 0];
             $hours = (int) $time->quantity_scaled;
-            $totals[$currency]['hours_scaled'] += $hours;
+            $totals[$currency]['hours_scaled'] = $this->checkedAdd($totals[$currency]['hours_scaled'], $hours);
             if ($time->hourly_rate_minor !== null) {
-                $totals[$currency]['time_value_minor'] += TimeCharge::calculate(DecimalQuantity::fromString($this->scaledDecimal($hours)), Money::fromMinor((int) $time->hourly_rate_minor, $currency))->minor();
+                $charge = TimeCharge::calculate(DecimalQuantity::fromString($this->scaledDecimal($hours)), Money::fromMinor((int) $time->hourly_rate_minor, $currency))->minor();
+                $totals[$currency]['time_value_minor'] = $this->checkedAdd($totals[$currency]['time_value_minor'], $charge);
             }
         }
         $ledger = ProjectLedgerEntryRecord::query()->withoutGlobalScopes()->where('user_id', $projectId->ownerId)->where('project_id', $project->id)->whereNull('deleted_at')->get();
         foreach ($ledger as $entry) {
             $currency = (string) $entry->currency;
             $totals[$currency] ??= ['hours_scaled' => 0, 'time_value_minor' => 0, 'ledger_minor' => 0];
-            $totals[$currency]['ledger_minor'] += ((string) $entry->direction === 'in' ? 1 : -1) * (int) $entry->amount_minor;
+            $signed = (string) $entry->direction === 'in' ? (int) $entry->amount_minor : -(int) $entry->amount_minor;
+            $totals[$currency]['ledger_minor'] = $this->checkedAdd($totals[$currency]['ledger_minor'], $signed);
         }
 
         return $totals;
@@ -431,10 +464,20 @@ final class EloquentProjectWorkRepository implements ProjectWorkRepository
 
     private function scaledDecimal(int $scaled): string
     {
-        $sign = $scaled < 0 ? '-' : '';
-        $absolute = abs($scaled);
+        $raw = (string) $scaled;
+        $sign = str_starts_with($raw, '-') ? '-' : '';
+        $digits = str_pad(ltrim($raw, '-'), 5, '0', STR_PAD_LEFT);
 
-        return $sign.intdiv($absolute, 10000).'.'.str_pad((string) ($absolute % 10000), 4, '0', STR_PAD_LEFT);
+        return $sign.substr($digits, 0, -4).'.'.substr($digits, -4);
+    }
+
+    private function checkedAdd(int $left, int $right): int
+    {
+        if (($right > 0 && $left > PHP_INT_MAX - $right) || ($right < 0 && $left < PHP_INT_MIN - $right)) {
+            throw new DomainException('project_total_overflow');
+        }
+
+        return $left + $right;
     }
 
     private function workInternalId(ProjectId $projectId, int $internalProjectId, ?string $uuid): ?int

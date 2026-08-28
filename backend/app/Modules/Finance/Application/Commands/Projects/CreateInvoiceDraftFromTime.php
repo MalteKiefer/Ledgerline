@@ -13,6 +13,7 @@ use App\Modules\Finance\Application\Ports\Projects\ProjectRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectToInvoicePort;
 use App\Modules\Finance\Application\Ports\Projects\ProjectWorkRepository;
 use App\Modules\Finance\Application\Services\Projects\ProjectDataValidator;
+use App\Modules\Finance\Domain\Projects\Exception\InvalidProjectAction;
 use App\Modules\Finance\Domain\Projects\ProjectWorkflow;
 use App\Modules\Finance\Domain\Projects\TimeCharge;
 use App\Modules\Finance\Domain\Shared\DecimalQuantity;
@@ -34,8 +35,9 @@ final readonly class CreateInvoiceDraftFromTime
             throw new DomainException('operation_in_progress');
         }
         if ($reservation->status === 'failed') {
-            throw new DomainException($reservation->errorCode ?? 'operation_failed');
+            $reservation = $this->operations->retryFailed($reservation);
         }
+        $claimReference = 'project-invoice-operation:'.$reservation->recordId;
         if ($reservation->status === 'replay') {
             $result = $reservation->result ?? throw new DomainException('operation_result_missing');
             foreach (['target_reference', 'source_type', 'source_reference'] as $key) {
@@ -48,39 +50,67 @@ final readonly class CreateInvoiceDraftFromTime
                 throw new DomainException('operation_result_invalid');
             }
             $target = new InvoiceDraftTarget($result['target_reference'], new ProjectDocumentSourceRef($result['source_type'], $result['source_reference'], $revisionId), isset($result['navigation']) && is_string($result['navigation']) ? $result['navigation'] : null);
-            $this->work->stampInvoicedTime($data->projectId, $data->timeEntryUuids, $target, $data->actorId, $data->occurredAt);
+            $this->work->stampInvoicedTime($data->projectId, $data->timeEntryUuids, $claimReference, $target, $data->actorId, $data->occurredAt);
 
             return $target;
         }
-        $entries = $this->work->invoiceableTime($data->projectId, $data->timeEntryUuids);
-        /** @var array<string, array{hours: int, rate: int, currency: string}> $groups */
-        $groups = [];
-        foreach ($entries as $entry) {
-            if (! $entry->billable || $entry->hourlyRateMinor === null || $entry->invoiceTargetReference !== null) {
-                throw new DomainException('time_entry_not_invoiceable');
+        try {
+            $entries = $this->work->claimInvoiceTime($data->projectId, $data->timeEntryUuids, $claimReference, $data->occurredAt);
+        } catch (\Throwable $exception) {
+            $this->operations->fail($reservation, self::errorCode($exception));
+            throw $exception;
+        }
+        try {
+            /** @var array<string, array{hours: int, rate: int, currency: string}> $groups */
+            $groups = [];
+            foreach ($entries as $entry) {
+                if (! $entry->billable || $entry->hourlyRateMinor === null || $entry->invoiceTargetReference !== $claimReference) {
+                    throw new DomainException('time_entry_not_invoiceable');
+                }
+                $key = $entry->currency.':'.$entry->hourlyRateMinor;
+                $groups[$key] ??= ['hours' => 0, 'rate' => $entry->hourlyRateMinor, 'currency' => $entry->currency];
+                $groups[$key]['hours'] = self::checkedAdd($groups[$key]['hours'], $entry->quantityScaled);
             }
-            $key = $entry->currency.':'.$entry->hourlyRateMinor;
-            $groups[$key] ??= ['hours' => 0, 'rate' => $entry->hourlyRateMinor, 'currency' => $entry->currency];
-            $groups[$key]['hours'] += $entry->quantityScaled;
+            $lines = [];
+            foreach ($groups as $group) {
+                $hours = DecimalQuantity::fromString(self::decimal($group['hours']));
+                $value = TimeCharge::calculate($hours, Money::fromMinor($group['rate'], $group['currency']))->minor();
+                $lines[] = new InvoiceTimeLine($group['hours'], $group['rate'], $value, $group['currency'], 'Project time');
+            }
+            $target = $this->invoices->createDraft($data->projectId->ownerId, $project, $lines, $data->timeEntryUuids, $data->idempotencyKey);
+            $this->operations->succeed($reservation, ['target_reference' => $target->targetReference, 'source_type' => $target->source->sourceType, 'source_reference' => $target->source->sourceReference, 'pinned_revision_id' => $target->source->pinnedRevisionId, 'navigation' => $target->navigationCapability]);
+        } catch (\Throwable $exception) {
+            $this->operations->fail($reservation, self::errorCode($exception));
+            throw $exception;
         }
-        $lines = [];
-        foreach ($groups as $group) {
-            $hours = DecimalQuantity::fromString(self::decimal((int) $group['hours']));
-            $value = TimeCharge::calculate($hours, Money::fromMinor((int) $group['rate'], (string) $group['currency']))->minor();
-            $lines[] = new InvoiceTimeLine((int) $group['hours'], (int) $group['rate'], $value, (string) $group['currency'], 'Project time');
-        }
-        $target = $this->invoices->createDraft($data->projectId->ownerId, $project, $lines, $data->timeEntryUuids, $data->idempotencyKey);
-        $this->operations->succeed($reservation, ['target_reference' => $target->targetReference, 'source_type' => $target->source->sourceType, 'source_reference' => $target->source->sourceReference, 'pinned_revision_id' => $target->source->pinnedRevisionId, 'navigation' => $target->navigationCapability]);
-        $this->work->stampInvoicedTime($data->projectId, $data->timeEntryUuids, $target, $data->actorId, $data->occurredAt);
+        $this->work->stampInvoicedTime($data->projectId, $data->timeEntryUuids, $claimReference, $target, $data->actorId, $data->occurredAt);
 
         return $target;
     }
 
     private static function decimal(int $scaled): string
     {
-        $sign = $scaled < 0 ? '-' : '';
-        $abs = abs($scaled);
+        $raw = (string) $scaled;
+        $sign = str_starts_with($raw, '-') ? '-' : '';
+        $digits = ltrim($raw, '-');
+        $digits = str_pad($digits, 5, '0', STR_PAD_LEFT);
 
-        return $sign.intdiv($abs, 10000).'.'.str_pad((string) ($abs % 10000), 4, '0', STR_PAD_LEFT);
+        return $sign.substr($digits, 0, -4).'.'.substr($digits, -4);
+    }
+
+    private static function checkedAdd(int $left, int $right): int
+    {
+        if (($right > 0 && $left > PHP_INT_MAX - $right) || ($right < 0 && $left < PHP_INT_MIN - $right)) {
+            throw new DomainException('project_total_overflow');
+        }
+
+        return $left + $right;
+    }
+
+    private static function errorCode(\Throwable $exception): string
+    {
+        $code = $exception instanceof InvalidProjectAction ? $exception->errorCode : $exception->getMessage();
+
+        return preg_match('/\A[a-z0-9_.-]{1,64}\z/D', $code) === 1 ? $code : 'invoice_time_failed';
     }
 }

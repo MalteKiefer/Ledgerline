@@ -21,4 +21,6 @@ interface ProjectOperationRepository
     public function succeed(OperationReservation $reservation, array $result): void;
 
     public function fail(OperationReservation $reservation, string $errorCode): void;
+
+    public function retryFailed(OperationReservation $reservation): OperationReservation;
 }

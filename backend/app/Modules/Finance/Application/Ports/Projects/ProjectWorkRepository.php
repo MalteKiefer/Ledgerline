@@ -79,8 +79,14 @@ interface ProjectWorkRepository
      */
     public function invoiceableTime(ProjectId $projectId, array $uuids): array;
 
+    /**
+     * @param  list<string>  $uuids
+     * @return list<TimeEntryView>
+     */
+    public function claimInvoiceTime(ProjectId $projectId, array $uuids, string $claimReference, DateTimeImmutable $occurredAt): array;
+
     /** @param list<string> $uuids */
-    public function stampInvoicedTime(ProjectId $projectId, array $uuids, InvoiceDraftTarget $target, int $actorId, DateTimeImmutable $occurredAt): void;
+    public function stampInvoicedTime(ProjectId $projectId, array $uuids, string $claimReference, InvoiceDraftTarget $target, int $actorId, DateTimeImmutable $occurredAt): void;
 
     /** @return array<string,array{hours_scaled:int,time_value_minor:int,ledger_minor:int}> */
     public function localTotals(ProjectId $projectId): array;
