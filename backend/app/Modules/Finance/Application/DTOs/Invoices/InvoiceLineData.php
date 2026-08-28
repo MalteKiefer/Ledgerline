@@ -29,5 +29,8 @@ final readonly class InvoiceLineData
         if ($productId !== null && $productId < 1) {
             throw new InvalidArgumentException('Invoice product IDs must be positive.');
         }
+        if ($kind !== null && ! in_array($kind, ['service', 'hardware'], true)) {
+            throw new InvalidArgumentException('Invoice line kind must be service, hardware, or null.');
+        }
     }
 }

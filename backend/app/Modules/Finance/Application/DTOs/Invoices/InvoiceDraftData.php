@@ -36,6 +36,7 @@ final readonly class InvoiceDraftData
         if (! isset($customer['name']) || ! is_string($customer['name']) || trim($customer['name']) === '') {
             throw new InvalidArgumentException('Invoice customer name must not be empty.');
         }
+        $this->assertExactJson($customer);
         if ($lines === []) {
             throw new InvalidArgumentException('Invoices require at least one line.');
         }
@@ -47,6 +48,21 @@ final readonly class InvoiceDraftData
         foreach ([$partnerId, $projectId] as $referenceId) {
             if ($referenceId !== null && $referenceId < 1) {
                 throw new InvalidArgumentException('Invoice reference IDs must be positive.');
+            }
+        }
+    }
+
+    /** @param array<array-key, mixed> $value */
+    private function assertExactJson(array $value): void
+    {
+        foreach ($value as $item) {
+            if (is_float($item)
+                || (! is_array($item) && ! is_string($item) && ! is_int($item) && ! is_bool($item) && $item !== null)) {
+                throw new InvalidArgumentException('Invoice customer data must contain JSON values without floats.');
+            }
+
+            if (is_array($item)) {
+                $this->assertExactJson($item);
             }
         }
     }

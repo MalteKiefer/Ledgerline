@@ -8,6 +8,7 @@ use App\Modules\Finance\Application\DTOs\IdempotencyKey;
 use App\Modules\Finance\Application\DTOs\Invoices\DeliveryId;
 use App\Modules\Finance\Application\DTOs\Invoices\FinalizedInvoice;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftData;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftSource;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceView;
 use Closure;
@@ -19,7 +20,11 @@ interface InvoiceRepository
 
     public function createDraft(InvoiceDraftData $data): InvoiceId;
 
+    public function createDraftFromSource(InvoiceDraftSource $source, IdempotencyKey $key): InvoiceView;
+
     public function updateDraft(InvoiceId $id, InvoiceDraftData $data, int $expectedVersion): InvoiceView;
+
+    public function deleteDraft(InvoiceId $id, int $expectedVersion): void;
 
     public function finalize(InvoiceId $id, IdempotencyKey $key, Closure $publish): FinalizedInvoice;
 
