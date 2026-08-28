@@ -139,6 +139,144 @@ final class DocumentPersistenceTest extends TestCase
         $this->assertSame('Draft corrected', $revision->change_reason);
     }
 
+    public function test_normal_save_cannot_create_an_already_published_revision(): void
+    {
+        $series = $this->createOwnedAggregate()[0];
+        $revision = $series->revisions()->make([
+            'status' => 'published',
+            'snapshot' => ['lines' => []],
+            'net_minor' => 10000,
+            'vat_minor' => 1900,
+            'gross_minor' => 11900,
+            'currency' => 'EUR',
+            'change_reason' => 'Publication bypass',
+            'created_by' => auth()->id(),
+        ]);
+        $revision->forceFill([
+            'revision_number' => 2,
+            'pdf_path' => 'finance/revisions/create-bypass.pdf',
+            'pdf_sha256' => str_repeat('b', 64),
+            'published_at' => now(),
+        ]);
+
+        $this->expectException(PublishedRevisionMutation::class);
+
+        $revision->save();
+    }
+
+    public function test_normal_update_cannot_publish_a_draft_revision(): void
+    {
+        $revision = $this->createOwnedAggregate()[1];
+
+        try {
+            $revision->update(['status' => 'published']);
+            $this->fail('A normal update published a draft revision.');
+        } catch (PublishedRevisionMutation) {
+            $this->addToAssertionCount(1);
+        }
+
+        $revision->refresh();
+        $this->assertSame('draft', $revision->status);
+        $this->assertNull($revision->published_at);
+    }
+
+    public function test_normal_save_cannot_set_publication_fields_on_a_draft_revision(): void
+    {
+        $revision = $this->createOwnedAggregate()[1];
+        $revision->forceFill([
+            'pdf_path' => 'finance/revisions/bypass.pdf',
+            'pdf_sha256' => str_repeat('b', 64),
+            'published_at' => now(),
+        ]);
+
+        try {
+            $revision->save();
+            $this->fail('A normal save set publication fields on a draft revision.');
+        } catch (PublishedRevisionMutation) {
+            $this->addToAssertionCount(1);
+        }
+
+        $revision->refresh();
+        $this->assertSame('draft', $revision->status);
+        $this->assertNull($revision->pdf_path);
+        $this->assertNull($revision->pdf_sha256);
+        $this->assertNull($revision->published_at);
+    }
+
+    public function test_quiet_operations_cannot_publish_a_draft_revision(): void
+    {
+        $operations = [
+            'updateQuietly' => static fn (DocumentRevisionRecord $revision): bool => $revision->updateQuietly([
+                'status' => 'published',
+            ]),
+            'saveQuietly' => static function (DocumentRevisionRecord $revision): bool {
+                $revision->forceFill([
+                    'status' => 'published',
+                    'pdf_path' => 'finance/revisions/quiet-bypass.pdf',
+                    'pdf_sha256' => str_repeat('c', 64),
+                    'published_at' => now(),
+                ]);
+
+                return $revision->saveQuietly();
+            },
+        ];
+
+        foreach ($operations as $name => $operation) {
+            $revision = $this->createOwnedAggregate()[1];
+
+            try {
+                $operation($revision);
+                $this->fail("{$name} published a draft revision.");
+            } catch (PublishedRevisionMutation) {
+                $this->addToAssertionCount(1);
+            }
+
+            $revision->refresh();
+            $this->assertSame('draft', $revision->status);
+            $this->assertNull($revision->pdf_path);
+            $this->assertNull($revision->published_at);
+        }
+    }
+
+    public function test_bulk_operations_cannot_publish_a_draft_revision(): void
+    {
+        $operations = [
+            'update' => static fn (DocumentRevisionRecord $revision): int => DocumentRevisionRecord::query()
+                ->whereKey($revision->id)
+                ->update([
+                    'status' => 'published',
+                    'pdf_path' => 'finance/revisions/bulk-bypass.pdf',
+                    'pdf_sha256' => str_repeat('d', 64),
+                    'published_at' => now(),
+                ]),
+            'increment extra' => static fn (DocumentRevisionRecord $revision): int => DocumentRevisionRecord::query()
+                ->whereKey($revision->id)
+                ->increment('net_minor', 1, ['status' => 'published']),
+            'incrementEach extra' => static fn (DocumentRevisionRecord $revision): int => DocumentRevisionRecord::query()
+                ->whereKey($revision->id)
+                ->incrementEach(['net_minor' => 1], ['published_at' => now()]),
+            'updateFrom' => static fn (DocumentRevisionRecord $revision): int => DocumentRevisionRecord::query()
+                ->whereKey($revision->id)
+                ->updateFrom(['status' => 'published']),
+        ];
+
+        foreach ($operations as $name => $operation) {
+            $revision = $this->createOwnedAggregate()[1];
+
+            try {
+                $operation($revision);
+                $this->fail("{$name} published a draft revision.");
+            } catch (PublishedRevisionMutation) {
+                $this->addToAssertionCount(1);
+            }
+
+            $revision->refresh();
+            $this->assertSame('draft', $revision->status);
+            $this->assertNull($revision->pdf_path);
+            $this->assertNull($revision->published_at);
+        }
+    }
+
     public function test_a_published_revision_cannot_be_updated(): void
     {
         $revision = $this->publishedRevision();
@@ -347,12 +485,14 @@ final class DocumentPersistenceTest extends TestCase
 
     private function publishRevision(DocumentRevisionRecord $revision): DocumentRevisionRecord
     {
-        $revision->forceFill([
-            'status' => 'published',
-            'pdf_path' => 'finance/revisions/original.pdf',
-            'pdf_sha256' => str_repeat('a', 64),
-            'published_at' => now(),
-        ])->save();
+        DB::table('finance_document_revisions')
+            ->where('id', $revision->id)
+            ->update([
+                'status' => 'published',
+                'pdf_path' => 'finance/revisions/original.pdf',
+                'pdf_sha256' => str_repeat('a', 64),
+                'published_at' => now(),
+            ]);
 
         return $revision->refresh();
     }

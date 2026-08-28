@@ -106,12 +106,23 @@ final class EloquentDocumentRevisionRepository implements DocumentRevisionReposi
 
             $stored = $storePdf((string) $series->uuid, $this->snapshot($revision));
             $publishedAt = now()->toImmutable();
-            $revision->forceFill([
-                'status' => 'published',
-                'pdf_path' => $stored->path,
-                'pdf_sha256' => $stored->sha256,
-                'published_at' => $publishedAt,
-            ])->save();
+            $updated = DB::table('finance_document_revisions')
+                ->where('id', $revision->id)
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('status', 'draft')
+                ->whereNull('published_at')
+                ->update([
+                    'status' => 'published',
+                    'pdf_path' => $stored->path,
+                    'pdf_sha256' => $stored->sha256,
+                    'published_at' => $publishedAt,
+                ]);
+
+            if ($updated !== 1) {
+                throw new LogicException('The locked draft revision could not be published.');
+            }
+
             $series->activities()->create([
                 'document_revision_id' => $revision->id,
                 'type' => 'revision.published',

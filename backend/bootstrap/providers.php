@@ -1,9 +1,9 @@
 <?php
 
+use App\Modules\Finance\FinanceServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
 use App\Providers\RateLimitServiceProvider;
-use App\Modules\Finance\FinanceServiceProvider;
 
 return [
     AppServiceProvider::class,

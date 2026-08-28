@@ -15,6 +15,14 @@ final class DocumentRevisionRecord extends Model
 {
     use OwnsUserData;
 
+    /** @var list<string> */
+    private const array PUBLICATION_FIELDS = [
+        'status',
+        'pdf_path',
+        'pdf_sha256',
+        'published_at',
+    ];
+
     public $timestamps = false;
 
     protected $table = 'finance_document_revisions';
@@ -49,6 +57,9 @@ final class DocumentRevisionRecord extends Model
 
     protected static function booted(): void
     {
+        self::creating(function (self $revision): void {
+            $revision->assertDraftCreation();
+        });
         self::updating(function (self $revision): void {
             $revision->assertMutable();
         });
@@ -63,8 +74,12 @@ final class DocumentRevisionRecord extends Model
         return GuardedMutationBuilder::forModel(
             $query,
             self::class,
-            static function (GuardedMutationBuilder $builder, string $operation): void {
+            static function (GuardedMutationBuilder $builder, string $operation, array $values): void {
                 if (in_array($operation, ['upsert', 'updateOrInsert', 'truncate'], true)) {
+                    throw PublishedRevisionMutation::revision();
+                }
+
+                if (array_intersect(self::PUBLICATION_FIELDS, array_keys($values)) !== []) {
                     throw PublishedRevisionMutation::revision();
                 }
 
@@ -79,7 +94,18 @@ final class DocumentRevisionRecord extends Model
 
     private function assertMutable(): void
     {
-        if ($this->getRawOriginal('published_at') !== null) {
+        if ($this->getRawOriginal('published_at') !== null
+            || $this->isDirty(self::PUBLICATION_FIELDS)) {
+            throw PublishedRevisionMutation::revision();
+        }
+    }
+
+    private function assertDraftCreation(): void
+    {
+        if ($this->getAttribute('status') !== 'draft'
+            || $this->getAttribute('pdf_path') !== null
+            || $this->getAttribute('pdf_sha256') !== null
+            || $this->getAttribute('published_at') !== null) {
             throw PublishedRevisionMutation::revision();
         }
     }

@@ -21,7 +21,7 @@ final class GuardedMutationBuilder extends Builder
 {
     /**
      * @param  QueryBuilder  $query
-     * @param  Closure(self<TModel>, string): void  $guard
+     * @param  Closure(self<TModel>, string, array<int|string, mixed>): void  $guard
      */
     public function __construct($query, private readonly Closure $guard)
     {
@@ -32,7 +32,7 @@ final class GuardedMutationBuilder extends Builder
      * @template TGuardedModel of Model
      *
      * @param  class-string<TGuardedModel>  $modelClass
-     * @param  Closure(self<TGuardedModel>, string): void  $guard
+     * @param  Closure(self<TGuardedModel>, string, array<int|string, mixed>): void  $guard
      * @return self<TGuardedModel>
      */
     public static function forModel(QueryBuilder $query, string $modelClass, Closure $guard): self
@@ -42,7 +42,7 @@ final class GuardedMutationBuilder extends Builder
 
     public function update(array $values)
     {
-        $this->guard('update');
+        $this->guard('update', $values);
 
         return parent::update($values);
     }
@@ -69,28 +69,28 @@ final class GuardedMutationBuilder extends Builder
 
     public function increment($column, $amount = 1, array $extra = [])
     {
-        $this->guard('increment');
+        $this->guard('increment', $this->incrementValues($column, $amount, $extra));
 
         return parent::increment($column, $amount, $extra);
     }
 
     public function decrement($column, $amount = 1, array $extra = [])
     {
-        $this->guard('decrement');
+        $this->guard('decrement', $this->incrementValues($column, $amount, $extra));
 
         return parent::decrement($column, $amount, $extra);
     }
 
     public function incrementEach(array $columns, array $extra = [])
     {
-        $this->guard('incrementEach');
+        $this->guard('incrementEach', [...$columns, ...$extra]);
 
         return parent::incrementEach($columns, $extra);
     }
 
     public function decrementEach(array $columns, array $extra = [])
     {
-        $this->guard('decrementEach');
+        $this->guard('decrementEach', [...$columns, ...$extra]);
 
         return parent::decrementEach($columns, $extra);
     }
@@ -123,7 +123,7 @@ final class GuardedMutationBuilder extends Builder
     /** @param array<string, mixed> $values */
     public function updateFrom(array $values): int
     {
-        $this->guard('updateFrom');
+        $this->guard('updateFrom', $values);
 
         return $this->toBase()->updateFrom($values);
     }
@@ -135,8 +135,24 @@ final class GuardedMutationBuilder extends Builder
         $this->toBase()->truncate();
     }
 
-    private function guard(string $operation): void
+    /** @param array<int|string, mixed> $values */
+    private function guard(string $operation, array $values = []): void
     {
-        ($this->guard)($this, $operation);
+        ($this->guard)($this, $operation, $values);
+    }
+
+    /**
+     * @param  mixed  $column
+     * @param  mixed  $amount
+     * @param  array<int|string, mixed>  $extra
+     * @return array<int|string, mixed>
+     */
+    private function incrementValues($column, $amount, array $extra): array
+    {
+        if (is_string($column)) {
+            $extra[$column] = $amount;
+        }
+
+        return $extra;
     }
 }
