@@ -24,13 +24,6 @@ final readonly class ArchiveProject
         DateTimeImmutable $occurredAt,
     ): ProjectMutationResult {
         $this->validator->actor($projectId, $actorId);
-        $current = $this->projects->get($projectId);
-        if ($current->version !== $expectedVersion) {
-            return ProjectMutationResult::conflict($current);
-        }
-        if ($current->archived) {
-            return ProjectMutationResult::applied($current);
-        }
 
         return $this->projects->archive($projectId, $expectedVersion, $actorId, $occurredAt);
     }

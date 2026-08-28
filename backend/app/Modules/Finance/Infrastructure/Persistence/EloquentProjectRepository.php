@@ -291,13 +291,13 @@ final class EloquentProjectRepository implements ProjectRepository
     public function archive(
         ProjectId $id,
         int $expectedVersion,
-        ?int $actorId = null,
-        ?DateTimeImmutable $occurredAt = null,
+        int $actorId,
+        DateTimeImmutable $occurredAt,
     ): ProjectMutationResult {
         return $this->setArchive(
             $id,
             $expectedVersion,
-            $occurredAt ?? $this->clock->now(),
+            $occurredAt,
             $actorId,
             $occurredAt,
             'project.archived',
@@ -307,8 +307,8 @@ final class EloquentProjectRepository implements ProjectRepository
     public function restore(
         ProjectId $id,
         int $expectedVersion,
-        ?int $actorId = null,
-        ?DateTimeImmutable $occurredAt = null,
+        int $actorId,
+        DateTimeImmutable $occurredAt,
     ): ProjectMutationResult {
         return $this->setArchive(
             $id,
@@ -324,8 +324,8 @@ final class EloquentProjectRepository implements ProjectRepository
         ProjectId $id,
         int $expectedVersion,
         ?DateTimeImmutable $archivedAt,
-        ?int $actorId,
-        ?DateTimeImmutable $occurredAt,
+        int $actorId,
+        DateTimeImmutable $occurredAt,
         string $activityType,
     ): ProjectMutationResult {
         return DB::transaction(function () use (
@@ -337,8 +337,15 @@ final class EloquentProjectRepository implements ProjectRepository
             $activityType,
         ): ProjectMutationResult {
             $record = $this->lockedRecord($id);
+            if ((int) $record->version !== $expectedVersion) {
+                return $this->mutationResult(false, $id->ownerId, (int) $record->id);
+            }
+            if (($record->archived_at !== null) === ($archivedAt !== null)) {
+                return ProjectMutationResult::applied($this->view($record));
+            }
+
             $applied = $this->compareAndSwap($record, $expectedVersion, ['archived_at' => $archivedAt]);
-            if ($applied && $actorId !== null && $occurredAt !== null) {
+            if ($applied) {
                 $this->appendActivity(
                     $id->ownerId,
                     (int) $record->id,

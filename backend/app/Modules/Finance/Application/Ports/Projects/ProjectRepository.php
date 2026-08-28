@@ -32,14 +32,14 @@ interface ProjectRepository
     public function archive(
         ProjectId $id,
         int $expectedVersion,
-        ?int $actorId = null,
-        ?DateTimeImmutable $occurredAt = null,
+        int $actorId,
+        DateTimeImmutable $occurredAt,
     ): ProjectMutationResult;
 
     public function restore(
         ProjectId $id,
         int $expectedVersion,
-        ?int $actorId = null,
-        ?DateTimeImmutable $occurredAt = null,
+        int $actorId,
+        DateTimeImmutable $occurredAt,
     ): ProjectMutationResult;
 }

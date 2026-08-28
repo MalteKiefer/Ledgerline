@@ -302,7 +302,7 @@ final class ProjectPersistenceTest extends TestCase
             $child->id, 1, ProjectStatus::Active, $owner->id, $at,
         ))->current;
         $moved = $projects->move(new MoveProjectData($child->id, 2, null, $owner->id, $at))->current;
-        $archived = $projects->archive($child->id, 3)->current;
+        $archived = $projects->archive($child->id, 3, $owner->id, $at)->current;
         $this->assertSame(ProjectStatus::Active, $active->status);
         $this->assertNull($moved->parentId);
         $this->assertTrue($archived->archived);
@@ -312,7 +312,7 @@ final class ProjectPersistenceTest extends TestCase
         $this->assertSame(1, $projects->page(new ProjectListFilter(
             ownerId: $owner->id, q: 'Updated child', archived: true,
         ))->total);
-        $restored = $projects->restore($child->id, 4)->current;
+        $restored = $projects->restore($child->id, 4, $owner->id, $at)->current;
         $this->assertFalse($restored->archived);
         $this->assertSame(5, $restored->version);
 

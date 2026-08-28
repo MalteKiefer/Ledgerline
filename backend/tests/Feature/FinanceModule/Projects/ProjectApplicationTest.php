@@ -25,6 +25,7 @@ use App\Modules\Finance\Domain\Projects\ProjectKind;
 use App\Modules\Finance\Domain\Projects\ProjectStatus;
 use DateTimeImmutable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -634,6 +635,73 @@ final class ProjectApplicationTest extends TestCase
         $this->assertTrue($restoreResult->applied);
         $this->assertFalse($restoreResult->current->archived);
         $this->assertSame(5, $restoreResult->current->version);
+        $this->assertSame(0, DB::table('finance_project_activities')->count());
+    }
+
+    public function test_archive_same_state_decision_cannot_be_invalidated_before_the_repository_lock(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->storedProject($owner, [
+            'name' => 'Archived concurrently',
+            'version' => 3,
+            'archived_at' => '2026-08-28 14:00:00',
+        ]);
+        $interleaved = false;
+        $outsideTransactionLevel = DB::transactionLevel();
+        DB::listen(function (QueryExecuted $query) use (&$interleaved, $outsideTransactionLevel, $project): void {
+            if ($interleaved || DB::transactionLevel() !== $outsideTransactionLevel || ! str_contains($query->sql, 'finance_project_records')) {
+                return;
+            }
+
+            $interleaved = true;
+            DB::table('finance_project_records')->where('id', $project['record_id'])->update([
+                'archived_at' => null,
+                'version' => 4,
+            ]);
+        });
+
+        $result = app(ArchiveProject::class)->handle(
+            $project['id'], 3, (int) $owner->id, new DateTimeImmutable('2026-08-28 19:00:00'),
+        );
+        $interleaved = true;
+        $persisted = DB::table('finance_project_records')->where('id', $project['record_id'])->sole();
+
+        $this->assertIsInt($persisted->version);
+        $this->assertSame($persisted->version, $result->current->version);
+        $this->assertSame($persisted->archived_at !== null, $result->current->archived);
+        $this->assertSame(0, DB::table('finance_project_activities')->count());
+    }
+
+    public function test_restore_same_state_decision_cannot_be_invalidated_before_the_repository_lock(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->storedProject($owner, [
+            'name' => 'Restored concurrently',
+            'version' => 3,
+        ]);
+        $interleaved = false;
+        $outsideTransactionLevel = DB::transactionLevel();
+        DB::listen(function (QueryExecuted $query) use (&$interleaved, $outsideTransactionLevel, $project): void {
+            if ($interleaved || DB::transactionLevel() !== $outsideTransactionLevel || ! str_contains($query->sql, 'finance_project_records')) {
+                return;
+            }
+
+            $interleaved = true;
+            DB::table('finance_project_records')->where('id', $project['record_id'])->update([
+                'archived_at' => '2026-08-28 14:30:00',
+                'version' => 4,
+            ]);
+        });
+
+        $result = app(RestoreProject::class)->handle(
+            $project['id'], 3, (int) $owner->id, new DateTimeImmutable('2026-08-28 20:00:00'),
+        );
+        $interleaved = true;
+        $persisted = DB::table('finance_project_records')->where('id', $project['record_id'])->sole();
+
+        $this->assertIsInt($persisted->version);
+        $this->assertSame($persisted->version, $result->current->version);
+        $this->assertSame($persisted->archived_at !== null, $result->current->archived);
         $this->assertSame(0, DB::table('finance_project_activities')->count());
     }
 
