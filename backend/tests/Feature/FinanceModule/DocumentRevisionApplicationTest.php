@@ -22,11 +22,15 @@ use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use LogicException;
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
+use Stringable;
 use Tests\TestCase;
 
 final class DocumentRevisionApplicationTest extends TestCase
@@ -37,14 +41,18 @@ final class DocumentRevisionApplicationTest extends TestCase
 
     private FakeDocumentStorage $storage;
 
+    private FakeLogger $logger;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->renderer = new FakeDocumentRenderer;
         $this->storage = new FakeDocumentStorage;
+        $this->logger = new FakeLogger;
         $this->app->instance(DocumentRenderer::class, $this->renderer);
         $this->app->instance(DocumentStorage::class, $this->storage);
+        $this->app->instance(LoggerInterface::class, $this->logger);
     }
 
     public function test_the_repository_port_is_bound_to_the_eloquent_adapter(): void
@@ -124,6 +132,110 @@ final class DocumentRevisionApplicationTest extends TestCase
         $this->assertSame('EUR', $revision->currency);
     }
 
+    public function test_snapshot_lines_and_totals_are_derived_from_domain_values(): void
+    {
+        $series = $this->ownedSeries('018f4ca3-224d-7d8d-9f00-232323232323');
+        $data = new CreateRevisionData(
+            seriesUuid: $series->uuid,
+            snapshot: [
+                'metadata' => ['reference' => 'AUTHORITATIVE'],
+                'lines' => [['description' => 'Forged', 'unit_price' => 0.01]],
+                'totals' => ['gross' => 1.25],
+            ],
+            lines: [
+                new DocumentLine(
+                    'Consulting',
+                    DecimalQuantity::fromString('1.5'),
+                    Money::fromMinor(10_000, 'EUR'),
+                    1900,
+                ),
+                new DocumentLine(
+                    'Hardware',
+                    DecimalQuantity::fromString('2'),
+                    Money::fromMinor(5_000, 'EUR'),
+                    700,
+                ),
+            ],
+            discount: Discount::fixed(Money::fromMinor(1_000, 'EUR')),
+            changeReason: 'Authoritative snapshot',
+        );
+
+        $id = $this->app->make(CreateDocumentRevision::class)->handle($data);
+        $revision = DocumentRevisionRecord::query()->findOrFail($id->value);
+        $snapshot = $revision->getAttribute('snapshot');
+        $this->assertIsArray($snapshot);
+
+        $this->assertSame([
+            [
+                'currency' => 'EUR',
+                'description' => 'Consulting',
+                'quantity_scaled' => 15_000,
+                'tax_rate_basis_points' => 1900,
+                'unit_price_minor' => 10_000,
+            ],
+            [
+                'currency' => 'EUR',
+                'description' => 'Hardware',
+                'quantity_scaled' => 20_000,
+                'tax_rate_basis_points' => 700,
+                'unit_price_minor' => 5_000,
+            ],
+        ], $snapshot['lines']);
+        $this->assertSame([
+            'currency' => 'EUR',
+            'discount_minor' => 1_000,
+            'gross_minor' => 27_408,
+            'net_minor' => 24_000,
+            'tax_breakdowns' => [
+                [
+                    'gross_minor' => 10_272,
+                    'net_minor' => 9_600,
+                    'tax_rate_basis_points' => 700,
+                    'vat_minor' => 672,
+                ],
+                [
+                    'gross_minor' => 17_136,
+                    'net_minor' => 14_400,
+                    'tax_rate_basis_points' => 1900,
+                    'vat_minor' => 2_736,
+                ],
+            ],
+            'vat_minor' => 3_408,
+        ], $snapshot['totals']);
+        $this->assertSame(['reference' => 'AUTHORITATIVE'], $snapshot['metadata']);
+        $storedSnapshot = DB::table('finance_document_revisions')
+            ->where('id', $id->value)
+            ->value('snapshot');
+        $this->assertIsString($storedSnapshot);
+        $this->assertStringNotContainsString('1.25', $storedSnapshot);
+    }
+
+    public function test_snapshot_metadata_rejects_floating_point_values(): void
+    {
+        $series = $this->ownedSeries('018f4ca3-224d-7d8d-9f00-242424242424');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Document snapshots cannot contain floating-point values.');
+
+        $this->app->make(CreateDocumentRevision::class)->handle($this->revisionData(
+            $series->uuid,
+            ['metadata' => ['amount' => 12.34]],
+        ));
+    }
+
+    public function test_snapshot_metadata_rejects_non_array_json_objects(): void
+    {
+        $series = $this->ownedSeries('018f4ca3-224d-7d8d-9f00-252525252525');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Document snapshots may contain only arrays and scalar JSON values.');
+
+        $this->app->make(CreateDocumentRevision::class)->handle($this->revisionData(
+            $series->uuid,
+            ['metadata' => ['unstable' => (object) ['b' => 2, 'a' => 1]]],
+        ));
+    }
+
     public function test_snapshot_keys_are_canonicalized_recursively_before_hashing_and_storage(): void
     {
         $series = $this->ownedSeries('018f4ca3-224d-7d8d-9f00-333333333333');
@@ -171,8 +283,8 @@ final class DocumentRevisionApplicationTest extends TestCase
             })
             ->all();
 
-        $expectedJson = '{"customer":{"city":"Berlin","name":"Ada"},"lines":[{"description":"Consulting","meta":{"a":1,"z":2}}]}';
-        $expectedHash = 'ec4993a37dccbc7205f64ab68ae8be5b7be1effdb8c2a2d2c1f5c5b335022fdc';
+        $expectedJson = '{"customer":{"city":"Berlin","name":"Ada"},"lines":[{"currency":"EUR","description":"Consulting","quantity_scaled":10000,"tax_rate_basis_points":1900,"unit_price_minor":10000}],"totals":{"currency":"EUR","discount_minor":0,"gross_minor":11900,"net_minor":10000,"tax_breakdowns":[{"gross_minor":11900,"net_minor":10000,"tax_rate_basis_points":1900,"vat_minor":1900}],"vat_minor":1900}}';
+        $expectedHash = 'c51a09b18defb4350f736aff2951961f9a92fa7def0839e3f7c670d60fce3fd7';
 
         $this->assertSame([$expectedJson, $expectedJson], $storedSnapshots);
         $this->assertSame($expectedHash, hash('sha256', $storedSnapshots[0]));
@@ -190,7 +302,7 @@ final class DocumentRevisionApplicationTest extends TestCase
             ->handle($this->revisionData($series->uuid, ['version' => 1]));
     }
 
-    public function test_a_unique_sequence_race_is_retried_without_creating_a_duplicate_number(): void
+    public function test_a_forced_unique_sequence_collision_is_retried_without_leaving_a_duplicate_number(): void
     {
         $series = $this->ownedSeries('018f4ca3-224d-7d8d-9f00-555555555555');
         $ownerId = (int) auth()->id();
@@ -213,7 +325,7 @@ final class DocumentRevisionApplicationTest extends TestCase
                 'vat_minor' => 0,
                 'gross_minor' => 0,
                 'currency' => 'EUR',
-                'change_reason' => 'Concurrent attempt',
+                'change_reason' => 'Injected collision',
                 'created_by' => $ownerId,
                 'created_at' => now(),
             ]);
@@ -228,6 +340,29 @@ final class DocumentRevisionApplicationTest extends TestCase
             [1],
             DocumentRevisionRecord::query()->orderBy('revision_number')->pluck('revision_number')->all(),
         );
+    }
+
+    public function test_publication_resolves_the_series_before_locking_the_revision(): void
+    {
+        [, $revisionId] = $this->createdRevision('018f4ca3-224d-7d8d-9f00-565656565656');
+        $aggregateReads = [];
+        DB::listen(static function (QueryExecuted $query) use (&$aggregateReads): void {
+            $sql = strtolower($query->sql);
+
+            if (str_starts_with($sql, 'select')
+                && (str_contains($sql, 'finance_document_series')
+                    || str_contains($sql, 'finance_document_revisions'))) {
+                $aggregateReads[] = $sql;
+            }
+        });
+
+        $this->app->make(PublishDocumentRevision::class)->handle($revisionId);
+
+        $this->assertGreaterThanOrEqual(3, count($aggregateReads));
+        $this->assertStringContainsString('select "document_series_id"', $aggregateReads[0]);
+        $this->assertStringContainsString('from "finance_document_series"', $aggregateReads[1]);
+        $this->assertStringContainsString('from "finance_document_revisions"', $aggregateReads[2]);
+        $this->assertStringContainsString('"document_series_id"', $aggregateReads[2]);
     }
 
     public function test_publication_stores_a_safe_server_path_byte_hash_timestamp_and_activity_atomically(): void
@@ -264,7 +399,7 @@ final class DocumentRevisionApplicationTest extends TestCase
             'path' => $published->path,
             'pdf_sha256' => $expectedHash,
         ], $activity->payload);
-        $this->assertSame([['version' => 1]], $this->renderer->snapshots);
+        $this->assertSame([$revision->snapshot], $this->renderer->snapshots);
         $this->assertSame('%PDF-test', $this->storage->documents[$published->path]);
     }
 
@@ -367,6 +502,78 @@ final class DocumentRevisionApplicationTest extends TestCase
         $this->assertSame(0, DocumentActivityRecord::query()->where('type', 'revision.published')->count());
     }
 
+    public function test_cleanup_cannot_delete_a_foreign_object_that_reuses_the_same_path(): void
+    {
+        [, $revisionId] = $this->createdRevision('018f4ca3-224d-7d8d-9f00-989898989898');
+
+        DocumentActivityRecord::creating(function (DocumentActivityRecord $activity): void {
+            if ($activity->type !== 'revision.published') {
+                return;
+            }
+
+            $path = array_key_first($this->storage->documents);
+
+            if (! is_string($path)) {
+                throw new RuntimeException('The PDF was not written before the activity.');
+            }
+
+            $this->storage->replaceWithForeignObject($path, '%PDF-foreign');
+
+            throw new RuntimeException('Activity insert failed after path reuse.');
+        });
+
+        try {
+            $this->app->make(PublishDocumentRevision::class)->handle($revisionId);
+            $this->fail('Publication unexpectedly succeeded.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Activity insert failed after path reuse.', $exception->getMessage());
+        }
+
+        $this->assertSame(['%PDF-foreign'], array_values($this->storage->documents));
+    }
+
+    public function test_a_storage_write_that_throws_after_persisting_is_cleaned_up_by_ownership_token(): void
+    {
+        [, $revisionId] = $this->createdRevision('018f4ca3-224d-7d8d-9f00-979797979797');
+        $this->storage->putFailureAfterWrite = new RuntimeException('Storage acknowledgement failed.');
+
+        try {
+            $this->app->make(PublishDocumentRevision::class)->handle($revisionId);
+            $this->fail('Publication unexpectedly succeeded.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Storage acknowledgement failed.', $exception->getMessage());
+        }
+
+        $revision = DocumentRevisionRecord::query()->findOrFail($revisionId->value);
+        $this->assertSame('draft', $revision->status);
+        $this->assertNull($revision->published_at);
+        $this->assertSame(1, $this->storage->puts);
+        $this->assertCount(1, $this->storage->deleted);
+        $this->assertSame([], $this->storage->documents);
+    }
+
+    public function test_cleanup_failure_is_logged_without_hiding_the_primary_failure(): void
+    {
+        [, $revisionId] = $this->createdRevision('018f4ca3-224d-7d8d-9f00-969696969696');
+        $primaryFailure = new RuntimeException('Storage acknowledgement failed.');
+        $cleanupFailure = new RuntimeException('Storage cleanup failed.');
+        $this->storage->putFailureAfterWrite = $primaryFailure;
+        $this->storage->deleteFailure = $cleanupFailure;
+
+        try {
+            $this->app->make(PublishDocumentRevision::class)->handle($revisionId);
+            $this->fail('Publication unexpectedly succeeded.');
+        } catch (RuntimeException $caught) {
+            $this->assertSame($primaryFailure, $caught);
+        }
+
+        $this->assertCount(1, $this->logger->records);
+        $this->assertSame('error', $this->logger->records[0]['level']);
+        $this->assertSame('Document PDF cleanup failed after publication error.', $this->logger->records[0]['message']);
+        $this->assertSame($cleanupFailure, $this->logger->records[0]['context']['exception']);
+        $this->assertSame($primaryFailure, $this->logger->records[0]['context']['primary_exception']);
+    }
+
     private function ownedSeries(string $uuid): DocumentSeriesRecord
     {
         $this->actingAs(User::factory()->create());
@@ -441,25 +648,70 @@ final class FakeDocumentStorage implements DocumentStorage
 
     public ?string $reportedSha256 = null;
 
+    public ?RuntimeException $putFailureAfterWrite = null;
+
+    public ?RuntimeException $deleteFailure = null;
+
     /** @var array<string, string> */
     public array $documents = [];
+
+    /** @var array<string, string> */
+    public array $ownershipTokens = [];
 
     /** @var list<string> */
     public array $deleted = [];
 
-    public function putPdf(string $seriesUuid, string $bytes): StoredDocument
+    public function putPdf(string $seriesUuid, string $bytes, string $ownershipToken): StoredDocument
     {
         $this->puts++;
         $sha256 = hash('sha256', $bytes);
         $path = sprintf('finance/revisions/%s/%d-%s.pdf', $seriesUuid, $this->puts, $sha256);
         $this->documents[$path] = $bytes;
+        $this->ownershipTokens[$path] = $ownershipToken;
+
+        if ($this->putFailureAfterWrite !== null) {
+            throw $this->putFailureAfterWrite;
+        }
 
         return new StoredDocument($path, $this->reportedSha256 ?? $sha256);
     }
 
-    public function delete(string $path): void
+    public function delete(string $ownershipToken): void
     {
+        if ($this->deleteFailure !== null) {
+            throw $this->deleteFailure;
+        }
+
+        $path = array_search($ownershipToken, $this->ownershipTokens, true);
+
+        if (! is_string($path)) {
+            return;
+        }
+
         $this->deleted[] = $path;
         unset($this->documents[$path]);
+        unset($this->ownershipTokens[$path]);
+    }
+
+    public function replaceWithForeignObject(string $path, string $bytes): void
+    {
+        $this->documents[$path] = $bytes;
+        $this->ownershipTokens[$path] = 'foreign-object';
+    }
+}
+
+final class FakeLogger extends AbstractLogger
+{
+    /** @var list<array{level: mixed, message: string, context: array<mixed>}> */
+    public array $records = [];
+
+    /** @param array<mixed> $context */
+    public function log($level, string|Stringable $message, array $context = []): void
+    {
+        $this->records[] = [
+            'level' => $level,
+            'message' => (string) $message,
+            'context' => $context,
+        ];
     }
 }

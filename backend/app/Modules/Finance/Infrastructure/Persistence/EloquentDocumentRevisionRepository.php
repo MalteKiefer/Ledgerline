@@ -88,7 +88,14 @@ final class EloquentDocumentRevisionRepository implements DocumentRevisionReposi
         $ownerId = $this->authenticatedOwnerId();
 
         return DB::transaction(function () use ($id, $storePdf, $ownerId): PublishedRevision {
-            $revision = DocumentRevisionRecord::query()
+            $revisionLocator = DocumentRevisionRecord::query()
+                ->whereKey($id->value)
+                ->firstOrFail(['document_series_id']);
+            $series = DocumentSeriesRecord::query()
+                ->whereKey($revisionLocator->document_series_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $revision = $series->revisions()
                 ->whereKey($id->value)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -97,7 +104,6 @@ final class EloquentDocumentRevisionRepository implements DocumentRevisionReposi
                 return $this->publishedRevision($revision);
             }
 
-            $series = $revision->series()->lockForUpdate()->firstOrFail();
             $stored = $storePdf((string) $series->uuid, $this->snapshot($revision));
             $publishedAt = now()->toImmutable();
             $revision->forceFill([
