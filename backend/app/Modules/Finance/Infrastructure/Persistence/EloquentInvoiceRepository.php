@@ -7,21 +7,26 @@ namespace App\Modules\Finance\Infrastructure\Persistence;
 use App\Models\FinancePartner;
 use App\Models\FinanceProduct;
 use App\Models\FinanceProject;
+use App\Models\UserSetting;
 use App\Modules\Finance\Application\DTOs\IdempotencyKey;
 use App\Modules\Finance\Application\DTOs\Invoices\DeliveryId;
 use App\Modules\Finance\Application\DTOs\Invoices\FinalizedInvoice;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftData;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftSource;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoiceLineData;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceView;
+use App\Modules\Finance\Application\DTOs\StoredDocument;
 use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\IdempotencyStore;
 use App\Modules\Finance\Application\Ports\InvoiceRepository;
 use App\Modules\Finance\Domain\Shared\DecimalQuantity;
+use App\Modules\Finance\Domain\Shared\Discount;
 use App\Modules\Finance\Domain\Shared\DocumentCalculator;
 use App\Modules\Finance\Domain\Shared\DocumentLine;
 use App\Modules\Finance\Domain\Shared\Money;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord;
+use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\InvoiceDeliveryRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\InvoiceRecord;
@@ -317,6 +322,186 @@ final class EloquentInvoiceRepository implements InvoiceRepository
         }, 1);
     }
 
+    public function finalizeAtomically(
+        InvoiceId $id,
+        IdempotencyKey $key,
+        Closure $allocateNumber,
+        Closure $storePdf,
+        Closure $recordInventory,
+    ): FinalizedInvoice {
+        $requestHash = hash('sha256', "invoice.finalize:{$id->value}");
+
+        return DB::transaction(function () use (
+            $id,
+            $key,
+            $allocateNumber,
+            $storePdf,
+            $recordInventory,
+            $requestHash,
+        ): FinalizedInvoice {
+            $reservation = $this->idempotency->reserve('invoice.finalize', $key, $requestHash);
+
+            if ($reservation['status'] === 'replay') {
+                return $this->replayedFinalization($id, $reservation['response_payload']);
+            }
+            if ($reservation['status'] !== 'new') {
+                throw new DomainException('idempotency_'.$reservation['status']);
+            }
+
+            $ownerId = $this->ownerId();
+            $locator = $this->ownedInvoice($id);
+            $series = DocumentSeriesRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_type', 'invoice')
+                ->whereKey($locator->document_series_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $invoice = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($id->value)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $revision = DocumentRevisionRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($invoice->current_revision_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((string) $series->status !== 'draft'
+                || (string) $invoice->workflow_status !== 'draft'
+                || $invoice->number !== null
+                || (string) $revision->status !== 'draft'
+                || $revision->published_at !== null) {
+                throw new DomainException('invoice_not_finalizable');
+            }
+
+            $prepared = $this->preparedFinalization($ownerId, $series, $invoice, $revision);
+            $number = $allocateNumber(
+                $ownerId,
+                $this->date($invoice->getAttribute('issue_date'))->format('Y-m-d'),
+            );
+            if (! is_string($number['number'] ?? null)
+                || trim($number['number']) === ''
+                || ! is_int($number['year'] ?? null)
+                || $number['year'] < 1
+                || ! is_int($number['sequence'] ?? null)
+                || $number['sequence'] < 1) {
+                throw new LogicException('Invoice number allocator returned an invalid result.');
+            }
+
+            $snapshot = $prepared['snapshot'];
+            $snapshot['document_number'] = $number['number'];
+            $snapshot = $this->canonicalize($snapshot);
+            $revision->forceFill([
+                'snapshot' => $snapshot,
+                'net_minor' => $prepared['net'],
+                'vat_minor' => $prepared['vat'],
+                'gross_minor' => $prepared['gross'],
+                'currency' => $prepared['currency'],
+            ])->save();
+
+            $stored = $storePdf((string) $series->uuid, $snapshot);
+            if (! $stored instanceof StoredDocument) {
+                throw new LogicException('Invoice PDF storage returned an invalid result.');
+            }
+            $finalizedAt = $this->clock->now();
+            $published = DB::table('finance_document_revisions')
+                ->where('id', $revision->id)
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('status', 'draft')
+                ->whereNull('published_at')
+                ->update([
+                    'status' => 'published',
+                    'pdf_path' => $stored->path,
+                    'pdf_sha256' => $stored->sha256,
+                    'published_at' => $finalizedAt,
+                ]);
+            if ($published !== 1) {
+                throw new DomainException('invoice_revision_publish_conflict');
+            }
+
+            $recordInventory(
+                $ownerId,
+                (string) $invoice->uuid,
+                $prepared['inventory'],
+                $finalizedAt,
+            );
+
+            $seriesUpdated = DB::table('finance_document_series')
+                ->where('id', $series->id)
+                ->where('user_id', $ownerId)
+                ->where('document_type', 'invoice')
+                ->where('status', 'draft')
+                ->update([
+                    'status' => 'finalized',
+                    'updated_at' => $finalizedAt,
+                ]);
+            $invoiceUpdated = DB::table('finance_invoices')
+                ->where('id', $invoice->id)
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('current_revision_id', $revision->id)
+                ->where('workflow_status', 'draft')
+                ->whereNull('number')
+                ->where('version', (int) $invoice->version)
+                ->update([
+                    'number' => $number['number'],
+                    'year' => $number['year'],
+                    'sequence' => $number['sequence'],
+                    'workflow_status' => 'finalized',
+                    'finalized_at' => $finalizedAt,
+                    'open_minor' => $prepared['gross'],
+                    'version' => (int) $invoice->version + 1,
+                    'updated_at' => $finalizedAt,
+                ]);
+            if ($seriesUpdated !== 1 || $invoiceUpdated !== 1) {
+                throw new DomainException('invoice_finalization_conflict');
+            }
+
+            $publishedActivity = new DocumentActivityRecord;
+            $publishedActivity->forceFill([
+                'user_id' => $ownerId,
+                'document_series_id' => $series->id,
+                'document_revision_id' => $revision->id,
+                'type' => 'revision.published',
+                'payload' => [
+                    'path' => $stored->path,
+                    'pdf_sha256' => $stored->sha256,
+                ],
+                'created_by' => $ownerId,
+                'created_at' => $finalizedAt,
+            ])->save();
+            $this->appendActivity(
+                $ownerId,
+                (int) $series->id,
+                (int) $revision->id,
+                'invoice.finalized',
+                (int) $invoice->version + 1,
+            );
+
+            $this->idempotency->complete($reservation['record_id'], 200, [
+                'revision_id' => (int) $revision->id,
+                'pdf_path' => $stored->path,
+                'pdf_sha256' => $stored->sha256,
+                'finalized_at' => $finalizedAt->format(DATE_ATOM),
+            ]);
+
+            return new FinalizedInvoice(
+                $this->view($invoice->refresh()),
+                (int) $revision->id,
+                $stored->path,
+                $stored->sha256,
+                $finalizedAt,
+            );
+        }, 1);
+    }
+
     public function markDeliverySent(DeliveryId $deliveryId, DateTimeImmutable $at): InvoiceView
     {
         $ownerId = $this->ownerId();
@@ -577,6 +762,219 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             'vat' => $totals->vat->minor(),
             'gross' => $totals->gross->minor(),
         ];
+    }
+
+    /**
+     * @return array{
+     *     snapshot: array<array-key, mixed>,
+     *     net: int,
+     *     vat: int,
+     *     gross: int,
+     *     currency: string,
+     *     inventory: array<int, int>
+     * }
+     */
+    private function preparedFinalization(
+        int $ownerId,
+        DocumentSeriesRecord $series,
+        InvoiceRecord $invoice,
+        DocumentRevisionRecord $revision,
+    ): array {
+        $draftSnapshot = $this->snapshot($revision->getAttribute('snapshot'));
+        $currency = $draftSnapshot['currency'] ?? null;
+        $customer = $draftSnapshot['customer'] ?? null;
+        $lineValues = $draftSnapshot['lines'] ?? null;
+        if (! is_string($currency)
+            || ! is_array($customer)
+            || ! is_array($lineValues)
+            || $lineValues === []) {
+            throw new DomainException('invoice_draft_snapshot_invalid');
+        }
+
+        $lines = [];
+        foreach ($lineValues as $line) {
+            if (! is_array($line)
+                || ! is_string($line['description'] ?? null)
+                || ! is_string($line['quantity'] ?? null)
+                || ! is_int($line['unit_price_minor'] ?? null)
+                || ! is_int($line['tax_rate_basis_points'] ?? null)
+                || ! is_string($line['unit'] ?? null)) {
+                throw new DomainException('invoice_draft_snapshot_invalid');
+            }
+            $productId = $line['product_id'] ?? null;
+            $kind = $line['kind'] ?? null;
+            if ($productId !== null && ! is_int($productId)) {
+                throw new DomainException('invoice_draft_snapshot_invalid');
+            }
+            if ($kind !== null && ! is_string($kind)) {
+                throw new DomainException('invoice_draft_snapshot_invalid');
+            }
+            $lines[] = new InvoiceLineData(
+                $line['description'],
+                $line['quantity'],
+                $line['unit_price_minor'],
+                $line['tax_rate_basis_points'],
+                $line['unit'],
+                $productId,
+                $kind,
+            );
+        }
+
+        $customerData = [];
+        foreach ($customer as $key => $value) {
+            if (! is_string($key)) {
+                throw new DomainException('invoice_draft_snapshot_invalid');
+            }
+            $customerData[$key] = $value;
+        }
+        $data = new InvoiceDraftData(
+            issueDate: $this->date($invoice->getAttribute('issue_date')),
+            dueDate: $this->date($invoice->getAttribute('due_date')),
+            currency: $currency,
+            customer: $customerData,
+            lines: $lines,
+            discount: $this->snapshotDiscount($draftSnapshot, $currency),
+            partnerId: $invoice->partner_id !== null ? (int) $invoice->partner_id : null,
+            projectId: $invoice->project_id !== null ? (int) $invoice->project_id : null,
+        );
+        $calculated = $this->calculatedDraft($data);
+        $source = $draftSnapshot['source'] ?? null;
+        $this->assertFinalizationSource($invoice, $source);
+
+        $snapshot = $calculated['snapshot'];
+        $snapshot['schema_version'] = 1;
+        $snapshot['document_type'] = 'invoice';
+        $snapshot['invoice_kind'] = (string) $invoice->kind;
+        $snapshot['series_uuid'] = (string) $series->uuid;
+        $snapshot['document_number'] = null;
+        $snapshot['revision_number'] = (int) $revision->revision_number;
+        $snapshot['company'] = $this->companySnapshot($ownerId);
+        if (is_array($source)) {
+            $snapshot['source'] = $source;
+        }
+
+        return [
+            'snapshot' => $this->canonicalize($snapshot),
+            'net' => $calculated['net'],
+            'vat' => $calculated['vat'],
+            'gross' => $calculated['gross'],
+            'currency' => $currency,
+            'inventory' => $this->inventoryQuantities($snapshot),
+        ];
+    }
+
+    /** @param array<array-key, mixed> $snapshot */
+    private function snapshotDiscount(array $snapshot, string $currency): Discount
+    {
+        $discount = $snapshot['discount'] ?? null;
+        if (! is_array($discount)
+            || ! is_int($discount['basis_points'] ?? null)
+            || ! is_int($discount['fixed_minor'] ?? null)
+            || ($discount['currency'] ?? null) !== $currency) {
+            throw new DomainException('invoice_draft_snapshot_invalid');
+        }
+        $basisPoints = $discount['basis_points'];
+        $fixedMinor = $discount['fixed_minor'];
+        if ($basisPoints !== 0 && $fixedMinor !== 0) {
+            throw new DomainException('invoice_draft_snapshot_invalid');
+        }
+
+        if ($basisPoints !== 0) {
+            return Discount::percentBasisPoints($basisPoints, $currency);
+        }
+
+        return $fixedMinor !== 0
+            ? Discount::fixed(Money::fromMinor($fixedMinor, $currency))
+            : Discount::none($currency);
+    }
+
+    private function assertFinalizationSource(InvoiceRecord $invoice, mixed $source): void
+    {
+        if ($invoice->source_type === null) {
+            if ($source !== null) {
+                throw new DomainException('source_snapshot_conflict');
+            }
+
+            return;
+        }
+        if (! is_array($source)
+            || ($source['type'] ?? null) !== $invoice->source_type
+            || ($source['key'] ?? null) !== $invoice->source_key
+            || ($source['revision_id'] ?? null) !== (int) $invoice->source_revision_id
+            || ($source['snapshot_sha256'] ?? null) !== $invoice->source_snapshot_sha256
+            || ! is_string($source['request_sha256'] ?? null)
+            || preg_match('/\A[0-9a-f]{64}\z/D', $source['request_sha256']) !== 1) {
+            throw new DomainException('source_snapshot_conflict');
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function companySnapshot(int $ownerId): array
+    {
+        $settings = UserSetting::query()->where('user_id', $ownerId)->lockForUpdate()->first();
+
+        $contacts = $settings?->getAttribute('company_contacts');
+
+        return [
+            'name' => $this->settingString($settings, 'company_name'),
+            'address' => $this->settingString($settings, 'company_address'),
+            'email' => $this->settingString($settings, 'company_email'),
+            'phone' => $this->settingString($settings, 'company_phone'),
+            'tax_id' => $this->settingString($settings, 'company_tax_id'),
+            'vat_id' => $this->settingString($settings, 'company_vat_id'),
+            'iban' => $this->settingString($settings, 'company_iban'),
+            'bic' => $this->settingString($settings, 'company_bic'),
+            'bank_name' => $this->settingString($settings, 'company_bank_name'),
+            'website' => $this->settingString($settings, 'company_website'),
+            'contacts' => is_array($contacts)
+                ? $this->canonicalize($contacts)
+                : [],
+        ];
+    }
+
+    private function settingString(?UserSetting $settings, string $attribute): ?string
+    {
+        $value = $settings?->getAttribute($attribute);
+
+        return is_string($value) ? $value : null;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $snapshot
+     * @return array<int, int>
+     */
+    private function inventoryQuantities(array $snapshot): array
+    {
+        $quantities = [];
+        $lines = $snapshot['lines'] ?? null;
+        if (! is_array($lines)) {
+            throw new DomainException('invoice_draft_snapshot_invalid');
+        }
+        foreach ($lines as $line) {
+            if (! is_array($line) || ($line['kind'] ?? null) !== 'hardware') {
+                continue;
+            }
+            $productId = $line['product_id'] ?? null;
+            $quantityScaled = $line['quantity_scaled'] ?? null;
+            if (! is_int($productId) || $productId < 1 || ! is_int($quantityScaled)) {
+                throw new DomainException('invoice_inventory_line_invalid');
+            }
+            $current = $quantities[$productId] ?? 0;
+            if (($quantityScaled > 0 && $current > PHP_INT_MAX - $quantityScaled)
+                || ($quantityScaled < 0 && $current < PHP_INT_MIN - $quantityScaled)) {
+                throw new DomainException('invoice_inventory_quantity_invalid');
+            }
+            $next = $current + $quantityScaled;
+            if ($next === 0) {
+                unset($quantities[$productId]);
+
+                continue;
+            }
+            $quantities[$productId] = $next;
+        }
+        ksort($quantities, SORT_NUMERIC);
+
+        return $quantities;
     }
 
     /**

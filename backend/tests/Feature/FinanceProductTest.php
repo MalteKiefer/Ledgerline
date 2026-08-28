@@ -35,7 +35,7 @@ class FinanceProductTest extends TestCase
             ->assertOk()
             ->assertJsonPath('products.0.sku', 'SW-24')
             // Stock starts at zero and only a movement changes it.
-            ->assertJsonPath('products.0.stock_qty', '0.000');
+            ->assertJsonPath('products.0.stock_qty', '0.0000');
     }
 
     public function test_stock_moves_only_through_a_movement_and_the_ledger_explains_the_figure(): void
@@ -48,10 +48,10 @@ class FinanceProductTest extends TestCase
         $this->postJson(route('api.finance.products.stock', $product), ['qty' => 5, 'reason' => 'purchase'])->assertCreated();
         $this->postJson(route('api.finance.products.stock', $product), ['qty' => -3, 'reason' => 'sale'])
             ->assertCreated()
-            ->assertJsonPath('product.stock_qty', '12.000');
+            ->assertJsonPath('product.stock_qty', '12.0000');
 
         // The figure equals the ledger, which is the point of keeping both.
-        $this->assertSame('12.000', (string) $product->fresh()?->stock_qty);
+        $this->assertSame('12.0000', (string) $product->fresh()?->stock_qty);
         $this->assertSame(3, FinanceStockMovement::query()->count());
 
         // A zero movement says nothing and is refused.
@@ -73,7 +73,7 @@ class FinanceProductTest extends TestCase
         ])->assertOk()->assertJsonPath('product.name', 'Renamed');
 
         $fresh = $product->fresh();
-        $this->assertSame('7.000', (string) $fresh?->stock_qty);
+        $this->assertSame('7.0000', (string) $fresh?->stock_qty);
         $this->assertNull($fresh?->stock_min);
     }
 
@@ -87,7 +87,7 @@ class FinanceProductTest extends TestCase
         StockLedger::move($product, 4, 'purchase');
 
         $this->assertSame(1, FinanceStockMovement::query()->count());
-        $this->assertSame('0.000', (string) $product->fresh()?->stock_qty);
+        $this->assertSame('0.0000', (string) $product->fresh()?->stock_qty);
     }
 
     public function test_the_reorder_level_only_warns_for_something_we_count(): void
@@ -117,7 +117,7 @@ class FinanceProductTest extends TestCase
         $product->fresh()?->forceFill(['stock_qty' => 100])->save();
 
         $this->assertSame(5.0, StockLedger::recompute($product));
-        $this->assertSame('5.000', (string) $product->fresh()?->stock_qty);
+        $this->assertSame('5.0000', (string) $product->fresh()?->stock_qty);
     }
 
     public function test_another_owner_cannot_reach_the_article_or_its_movements(): void

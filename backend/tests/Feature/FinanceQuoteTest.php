@@ -160,14 +160,14 @@ class FinanceQuoteTest extends TestCase
         $this->postJson(route('api.finance.invoices.finalize', $invoice))->assertOk();
 
         // Hardware went out; a service has no shelf.
-        $this->assertSame('7.000', (string) $switch->fresh()?->stock_qty);
+        $this->assertSame('7.0000', (string) $switch->fresh()?->stock_qty);
         $this->assertSame(0, FinanceStockMovement::query()->where('finance_product_id', $service->id)->count());
         $sale = FinanceStockMovement::query()->where('reason', 'sale')->firstOrFail();
         $this->assertSame('invoice', (string) $sale->ref_type);
 
         // Finalising again is idempotent and must not book the goods twice.
         $this->postJson(route('api.finance.invoices.finalize', $invoice))->assertOk();
-        $this->assertSame('7.000', (string) $switch->fresh()?->stock_qty);
+        $this->assertSame('7.0000', (string) $switch->fresh()?->stock_qty);
     }
 
     public function test_selling_more_than_the_shelf_holds_is_recorded_not_refused(): void
@@ -186,7 +186,7 @@ class FinanceQuoteTest extends TestCase
         $invoice->save();
 
         $this->postJson(route('api.finance.invoices.finalize', $invoice))->assertOk();
-        $this->assertSame('-2.000', (string) $switch->fresh()?->stock_qty);
+        $this->assertSame('-2.0000', (string) $switch->fresh()?->stock_qty);
     }
 
     public function test_a_decision_needs_a_sent_quote(): void
