@@ -46,6 +46,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 final class FinanceInvoicePersistenceTest extends TestCase
@@ -521,6 +522,54 @@ final class FinanceInvoicePersistenceTest extends TestCase
         );
     }
 
+    public function test_delivery_compare_and_set_rejects_a_draft_invoice_without_mutating_delivery(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $repository = $this->invoiceRepository();
+        $invoiceId = $repository->createDraft($this->invoiceDraft(10_000, 1_900, 11_900));
+        $invoice = DB::table('finance_invoices')->where('id', $invoiceId->value)->first();
+        $this->assertNotNull($invoice);
+        $deliveryId = (int) DB::table('finance_invoice_deliveries')->insertGetId([
+            'user_id' => $owner->id,
+            'uuid' => '018f4ca3-224d-7d8d-9f03-000000000099',
+            'invoice_id' => $invoiceId->value,
+            'document_series_id' => $invoice->document_series_id,
+            'document_revision_id' => $invoice->current_revision_id,
+            'kind' => 'invoice',
+            'recipient' => 'draft@example.test',
+            'message_id' => '<draft-invoice-delivery@example.test>',
+            'status' => 'pending',
+            'attempts' => 0,
+            'idempotency_key_hash' => hash('sha256', 'draft-delivery-key'),
+            'request_hash' => hash('sha256', 'draft-delivery-request'),
+            'queued_at' => '2026-08-28 12:00:00',
+            'created_at' => '2026-08-28 12:00:00',
+            'updated_at' => '2026-08-28 12:00:00',
+        ]);
+
+        try {
+            $repository->markDeliverySent(
+                new DeliveryId($deliveryId),
+                new DateTimeImmutable('2026-08-28T13:00:00+00:00'),
+            );
+            $this->fail('A pending delivery advanced while its invoice was still a draft.');
+        } catch (DomainException $exception) {
+            $this->assertSame('delivery_invoice_not_eligible', $exception->getMessage());
+        }
+
+        $this->assertDatabaseHas('finance_invoice_deliveries', [
+            'id' => $deliveryId,
+            'status' => 'pending',
+            'sent_at' => null,
+        ]);
+        $this->assertDatabaseHas('finance_invoices', [
+            'id' => $invoiceId->value,
+            'workflow_status' => 'draft',
+            'sent_at' => null,
+        ]);
+    }
+
     public function test_payment_recording_is_owner_scoped_and_idempotent_without_persisting_raw_keys(): void
     {
         $owner = User::factory()->create();
@@ -595,9 +644,14 @@ final class FinanceInvoicePersistenceTest extends TestCase
         $this->assertSame(2, DB::table('finance_payment_allocations')
             ->where('payment_id', $aggregate['payment_id'])->count());
 
-        $reversed = $repository->reverse($first->allocationIds[0], new IdempotencyKey('reverse-50'));
-        $reverseReplay = $repository->reverse($first->allocationIds[0], new IdempotencyKey('reverse-50'));
+        $reversed = $repository->reverse($first->allocationIds[0], $key);
+        $reverseReplay = $repository->reverse($first->allocationIds[0], $key);
         $this->assertSame($reversed->batchId, $reverseReplay->batchId);
+        $batchHashes = DB::table('finance_payment_allocation_batches')
+            ->whereIn('id', [$first->batchId, $reversed->batchId])
+            ->pluck('idempotency_key_hash')
+            ->all();
+        $this->assertCount(2, array_unique($batchHashes));
         $this->assertSame(1_000, $reversed->payment->allocatedMinor);
         $this->assertSame(10_900, $reversed->payment->unappliedMinor);
         $this->assertSame(1_000, $reversed->invoices[0]->allocatedMinor);
@@ -627,14 +681,54 @@ final class FinanceInvoicePersistenceTest extends TestCase
         }
     }
 
+    public function test_allocation_batch_unique_conflict_is_normalized_without_appending_history(): void
+    {
+        $owner = User::factory()->create();
+        $aggregate = $this->storedFinanceAggregate((int) $owner->id, 52);
+        $this->actingAs($owner);
+        $repository = $this->paymentRepository();
+        $key = new IdempotencyKey('orphaned-allocation-key-52');
+        $data = new AllocatePaymentData(
+            new PaymentId($aggregate['payment_id']),
+            [new AllocationLineData(new InvoiceId($aggregate['invoice_id']), 500)],
+        );
+        $first = $repository->allocate($data, $key);
+
+        DB::table('finance_idempotency_records')
+            ->where('user_id', $owner->id)
+            ->where('operation', 'payment.allocate')
+            ->where('key_hash', $key->hash())
+            ->delete();
+
+        try {
+            $repository->allocate($data, $key);
+            $this->fail('An orphaned allocation batch surfaced no stable conflict.');
+        } catch (DomainException $exception) {
+            $this->assertSame('allocation_idempotency_conflict', $exception->getMessage());
+        }
+
+        $this->assertSame(2, DB::table('finance_payment_allocation_batches')
+            ->where('payment_id', $aggregate['payment_id'])->count());
+        $this->assertSame(2, DB::table('finance_payment_allocations')
+            ->where('payment_id', $aggregate['payment_id'])->count());
+        $this->assertSame(1_500, $repository->get(new PaymentId($aggregate['payment_id']))->allocatedMinor);
+        $this->assertSame($first->batchId, (int) DB::table('finance_payment_allocation_batches')
+            ->where('payment_id', $aggregate['payment_id'])->max('id'));
+    }
+
     public function test_postgresql_executes_owner_idempotency_and_lock_contract_when_configured(): void
     {
-        $this->withIsolatedPostgresSchema(function (string $connectionName): void {
+        $this->withIsolatedPostgresSchema(function (
+            string $connectionName,
+            string $_postgresUrl,
+            string $_schema,
+        ): void {
             $owner = new User;
             $owner->forceFill(['id' => 1]);
             $this->actingAs($owner);
             $aggregate = $this->storedFinanceAggregate(1, 60);
             $repository = $this->paymentRepository();
+            $operationKey = new IdempotencyKey('pgsql-shared-operation-key-60');
 
             $queries = [];
             DB::listen(static function (QueryExecuted $query) use (&$queries, $connectionName): void {
@@ -646,15 +740,29 @@ final class FinanceInvoicePersistenceTest extends TestCase
             $allocation = $repository->allocate(new AllocatePaymentData(
                 new PaymentId($aggregate['payment_id']),
                 [new AllocationLineData(new InvoiceId($aggregate['invoice_id']), 500)],
-            ), new IdempotencyKey('pgsql-allocation-60'));
+            ), $operationKey);
             $replay = $repository->allocate(new AllocatePaymentData(
                 new PaymentId($aggregate['payment_id']),
                 [new AllocationLineData(new InvoiceId($aggregate['invoice_id']), 500)],
-            ), new IdempotencyKey('pgsql-allocation-60'));
+            ), $operationKey);
 
             $this->assertSame($allocation->batchId, $replay->batchId);
             $this->assertSame(1_500, $allocation->payment->allocatedMinor);
             $this->assertSame(10_400, $allocation->invoices[0]->openMinor);
+            DB::table('finance_idempotency_records')
+                ->where('user_id', 1)
+                ->where('operation', 'payment.allocate')
+                ->where('key_hash', $operationKey->hash())
+                ->delete();
+            try {
+                $repository->allocate(new AllocatePaymentData(
+                    new PaymentId($aggregate['payment_id']),
+                    [new AllocationLineData(new InvoiceId($aggregate['invoice_id']), 500)],
+                ), $operationKey);
+                $this->fail('PostgreSQL exposed no stable orphaned-batch conflict.');
+            } catch (DomainException $exception) {
+                $this->assertSame('allocation_idempotency_conflict', $exception->getMessage());
+            }
 
             $lockQueries = array_values(array_filter(
                 $queries,
@@ -696,8 +804,11 @@ final class FinanceInvoicePersistenceTest extends TestCase
             );
             $reversed = $repository->reverse(
                 $allocation->allocationIds[0],
-                new IdempotencyKey('pgsql-reversal-60'),
+                $operationKey,
             );
+            $reverseReplay = $repository->reverse($allocation->allocationIds[0], $operationKey);
+            $this->assertSame($reversed->batchId, $reverseReplay->batchId);
+            $this->assertNotSame($allocation->batchId, $reversed->batchId);
             $this->assertSame(1_000, $reversed->payment->allocatedMinor);
             $this->assertSame(10_900, $reversed->invoices[0]->openMinor);
 
@@ -705,6 +816,44 @@ final class FinanceInvoicePersistenceTest extends TestCase
             $foreign->forceFill(['id' => 2]);
             $this->actingAs($foreign);
             $this->assertModelNotFound(fn () => $repository->get(new PaymentId($aggregate['payment_id'])));
+        });
+    }
+
+    public function test_postgresql_concurrent_allocation_replays_one_batch_when_configured(): void
+    {
+        $this->withIsolatedPostgresSchema(function (
+            string $_connectionName,
+            string $postgresUrl,
+            string $schema,
+        ): void {
+            $aggregate = $this->storedFinanceAggregate(1, 61);
+            DB::statement('CREATE TABLE finance_task5_allocation_barrier (worker varchar(32) PRIMARY KEY)');
+            $processes = [
+                $this->startPostgresAllocationWorker($postgresUrl, $schema, 'first', $aggregate),
+                $this->startPostgresAllocationWorker($postgresUrl, $schema, 'second', $aggregate),
+            ];
+            $results = [];
+
+            foreach ($processes as $process) {
+                $exitCode = $process->wait();
+                $this->assertSame(
+                    0,
+                    $exitCode,
+                    $process->getErrorOutput().$process->getOutput(),
+                );
+                $result = json_decode(trim($process->getOutput()), true, 512, JSON_THROW_ON_ERROR);
+                $this->assertIsArray($result);
+                $results[] = $result;
+            }
+
+            $this->assertSame($results[0]['batch_id'], $results[1]['batch_id']);
+            $this->assertSame($results[0]['allocation_id'], $results[1]['allocation_id']);
+            $this->assertSame(2, DB::table('finance_payment_allocation_batches')
+                ->where('payment_id', $aggregate['payment_id'])->count());
+            $this->assertSame(2, DB::table('finance_payment_allocations')
+                ->where('payment_id', $aggregate['payment_id'])->count());
+            $this->assertSame(1_500, (int) DB::table('finance_invoices')
+                ->where('id', $aggregate['invoice_id'])->value('allocated_minor'));
         });
     }
 
@@ -900,7 +1049,7 @@ final class FinanceInvoicePersistenceTest extends TestCase
         }
     }
 
-    /** @param callable(string): void $test */
+    /** @param callable(string, string, string): void $test */
     private function withIsolatedPostgresSchema(callable $test): void
     {
         $postgresUrl = getenv('FINANCE_TEST_PGSQL_URL');
@@ -951,7 +1100,7 @@ final class FinanceInvoicePersistenceTest extends TestCase
             }
             DB::table('users')->insert([['id' => 1], ['id' => 2]]);
 
-            $test($connectionName);
+            $test($connectionName, $postgresUrl, $schema);
         } finally {
             while ($connection->transactionLevel() > 0) {
                 $connection->rollBack();
@@ -968,6 +1117,119 @@ final class FinanceInvoicePersistenceTest extends TestCase
                 DB::purge($connectionName);
             }
         }
+    }
+
+    /**
+     * @param  array{payment_id: int, invoice_id: int}  $aggregate
+     */
+    private function startPostgresAllocationWorker(
+        string $postgresUrl,
+        string $schema,
+        string $worker,
+        array $aggregate,
+    ): Process {
+        $script = <<<'PHP'
+            require getcwd().'/vendor/autoload.php';
+            $app = require getcwd().'/bootstrap/app.php';
+            $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+            $url = getenv('FINANCE_TEST_PGSQL_URL');
+            $schema = getenv('FINANCE_TEST_PGSQL_SCHEMA');
+            $worker = getenv('FINANCE_TEST_PAYMENT_WORKER');
+            if (! is_string($url) || ! is_string($schema) || ! is_string($worker)
+                || preg_match('/\Afinance_invoice_task5_[0-9a-f]{16}\z/D', $schema) !== 1) {
+                fwrite(STDERR, 'invalid-postgres-worker-configuration');
+                exit(90);
+            }
+
+            $base = config('database.connections.pgsql');
+            $base = is_array($base) ? $base : [];
+            foreach (['pgsql_task5_worker', 'pgsql_task5_barrier'] as $connectionName) {
+                config([
+                    "database.connections.{$connectionName}" => array_merge(
+                        $base,
+                        ['driver' => 'pgsql', 'url' => $url, 'search_path' => $schema],
+                    ),
+                ]);
+                \Illuminate\Support\Facades\DB::purge($connectionName);
+                \Illuminate\Support\Facades\DB::connection($connectionName)
+                    ->statement('SET search_path TO "'.$schema.'"');
+            }
+            \Illuminate\Support\Facades\DB::setDefaultConnection('pgsql_task5_worker');
+            \Illuminate\Support\Facades\Schema::clearResolvedInstance('db.schema');
+            \Illuminate\Support\Facades\DB::statement("SET lock_timeout TO '10s'");
+            \Illuminate\Support\Facades\DB::statement("SET statement_timeout TO '20s'");
+
+            $barrier = \Illuminate\Support\Facades\DB::connection('pgsql_task5_barrier');
+            $barrier->table('finance_task5_allocation_barrier')->insert(['worker' => $worker]);
+            $deadline = microtime(true) + 10.0;
+            while ((int) $barrier->table('finance_task5_allocation_barrier')->count() < 2) {
+                if (microtime(true) >= $deadline) {
+                    fwrite(STDERR, 'postgres-allocation-barrier-timeout');
+                    exit(91);
+                }
+                usleep(20_000);
+            }
+
+            $owner = new \App\Models\User;
+            $owner->forceFill(['id' => 1]);
+            \Illuminate\Support\Facades\Auth::setUser($owner);
+            $clock = new \App\Modules\Finance\Infrastructure\SystemClock;
+            $idempotency = new \App\Modules\Finance\Infrastructure\Persistence\EloquentIdempotencyStore($clock);
+            $invoices = new \App\Modules\Finance\Infrastructure\Persistence\EloquentInvoiceRepository(
+                $idempotency,
+                $clock,
+            );
+            $payments = new \App\Modules\Finance\Infrastructure\Persistence\EloquentPaymentRepository(
+                $idempotency,
+                $clock,
+                $invoices,
+            );
+
+            try {
+                $result = $payments->allocate(
+                    new \App\Modules\Finance\Application\DTOs\Payments\AllocatePaymentData(
+                        new \App\Modules\Finance\Application\DTOs\Payments\PaymentId(
+                            (int) getenv('FINANCE_TEST_PAYMENT_ID'),
+                        ),
+                        [new \App\Modules\Finance\Application\DTOs\Payments\AllocationLineData(
+                            new \App\Modules\Finance\Application\DTOs\Invoices\InvoiceId(
+                                (int) getenv('FINANCE_TEST_INVOICE_ID'),
+                            ),
+                            500,
+                        )],
+                    ),
+                    new \App\Modules\Finance\Application\DTOs\IdempotencyKey(
+                        'pgsql-concurrent-allocation-key',
+                    ),
+                );
+                echo json_encode([
+                    'batch_id' => $result->batchId,
+                    'allocation_id' => $result->allocationIds[0]->value,
+                ], JSON_THROW_ON_ERROR);
+                exit(0);
+            } catch (Throwable $exception) {
+                fwrite(STDERR, $exception::class.':'.$exception->getMessage());
+                exit(92);
+            }
+            PHP;
+
+        $process = new Process(
+            [PHP_BINARY, '-r', $script],
+            base_path(),
+            [
+                'FINANCE_TEST_PGSQL_URL' => $postgresUrl,
+                'FINANCE_TEST_PGSQL_SCHEMA' => $schema,
+                'FINANCE_TEST_PAYMENT_WORKER' => $worker,
+                'FINANCE_TEST_PAYMENT_ID' => (string) $aggregate['payment_id'],
+                'FINANCE_TEST_INVOICE_ID' => (string) $aggregate['invoice_id'],
+            ],
+            null,
+            25,
+        );
+        $process->start();
+
+        return $process;
     }
 
     private function assertModelNotFound(callable $lookup): void

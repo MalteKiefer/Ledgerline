@@ -217,6 +217,9 @@ final class EloquentInvoiceRepository implements InvoiceRepository
                 ->lockForUpdate()
                 ->firstOrFail();
             $invoice->currentRevision()->lockForUpdate()->firstOrFail(['id']);
+            if (! in_array((string) $invoice->workflow_status, ['finalized', 'sent'], true)) {
+                throw new DomainException('delivery_invoice_not_eligible');
+            }
             $delivery = InvoiceDeliveryRecord::query()
                 ->withoutGlobalScopes()
                 ->where('user_id', $ownerId)
@@ -242,7 +245,7 @@ final class EloquentInvoiceRepository implements InvoiceRepository
                     throw new DomainException('delivery_state_conflict');
                 }
 
-                DB::table('finance_invoices')
+                $invoiceUpdated = DB::table('finance_invoices')
                     ->where('id', $invoice->id)
                     ->where('user_id', $ownerId)
                     ->whereIn('workflow_status', ['finalized', 'sent'])
@@ -251,6 +254,10 @@ final class EloquentInvoiceRepository implements InvoiceRepository
                         'sent_at' => $at,
                         'updated_at' => $this->clock->now(),
                     ]);
+
+                if ($invoiceUpdated !== 1) {
+                    throw new DomainException('delivery_invoice_state_conflict');
+                }
             }
 
             return $this->view($invoice->refresh());

@@ -164,7 +164,7 @@ final class EloquentPaymentRepository implements PaymentRepository
             }
             $this->assertMagnitude($newPaymentAllocation, (int) $payment->amount_minor, 'allocation_exceeds_payment');
 
-            $batch = $this->newBatch((int) $payment->id, $key, $requestHash);
+            $batch = $this->newBatch((int) $payment->id, 'payment.allocate', $key, $requestHash);
             $allocationIds = [];
             foreach ($data->lines as $line) {
                 $allocation = new PaymentAllocationRecord;
@@ -229,7 +229,7 @@ final class EloquentPaymentRepository implements PaymentRepository
                 throw new DomainException('allocation_already_reversed');
             }
 
-            $batch = $this->newBatch((int) $original->payment_id, $key, $requestHash);
+            $batch = $this->newBatch((int) $original->payment_id, 'payment.reverse', $key, $requestHash);
             $reversal = new PaymentAllocationRecord;
             $reversal->forceFill([
                 'user_id' => $ownerId,
@@ -388,19 +388,39 @@ final class EloquentPaymentRepository implements PaymentRepository
         ];
     }
 
-    private function newBatch(int $paymentId, IdempotencyKey $key, string $requestHash): PaymentAllocationBatchRecord
-    {
-        $batch = new PaymentAllocationBatchRecord;
-        $batch->forceFill([
-            'user_id' => $this->ownerId(),
-            'payment_id' => $paymentId,
-            'idempotency_key_hash' => $key->hash(),
-            'request_hash' => $requestHash,
-            'created_by' => $this->ownerId(),
-            'created_at' => $this->clock->now(),
-        ])->save();
+    private function newBatch(
+        int $paymentId,
+        string $operation,
+        IdempotencyKey $key,
+        string $requestHash,
+    ): PaymentAllocationBatchRecord {
+        $ownerId = $this->ownerId();
+        $batchKeyHash = hash('sha256', $operation."\0".$key->hash());
 
-        return $batch;
+        try {
+            return DB::transaction(function () use ($ownerId, $paymentId, $batchKeyHash, $requestHash): PaymentAllocationBatchRecord {
+                $batch = new PaymentAllocationBatchRecord;
+                $batch->forceFill([
+                    'user_id' => $ownerId,
+                    'payment_id' => $paymentId,
+                    'idempotency_key_hash' => $batchKeyHash,
+                    'request_hash' => $requestHash,
+                    'created_by' => $ownerId,
+                    'created_at' => $this->clock->now(),
+                ])->save();
+
+                return $batch;
+            }, 1);
+        } catch (QueryException $exception) {
+            if (DB::table('finance_payment_allocation_batches')
+                ->where('user_id', $ownerId)
+                ->where('idempotency_key_hash', $batchKeyHash)
+                ->exists()) {
+                throw new DomainException('allocation_idempotency_conflict', previous: $exception);
+            }
+
+            throw $exception;
+        }
     }
 
     /**
