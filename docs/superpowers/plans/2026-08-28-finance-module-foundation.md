@@ -572,7 +572,7 @@ git commit -m "feat(finance): add document revision application services"
 - Consumes: Tasks 1–8.
 - Produces: verified module boundary and documented interfaces for downstream plans.
 
-- [ ] **Step 1: Run complete relevant regression suites**
+- [x] **Step 1: Run complete relevant regression suites**
 
 Run:
 
@@ -583,7 +583,7 @@ php artisan test tests/Feature/FinanceModule tests/Unit/Modules/Finance tests/Fe
 
 Expected: PASS.
 
-- [ ] **Step 2: Run project quality gates affected by this plan**
+- [x] **Step 2: Run project quality gates affected by this plan**
 
 Run:
 
@@ -595,7 +595,7 @@ vendor/bin/phpstan analyse app/Modules/Finance --memory-limit=1G
 
 Expected: both commands exit zero.
 
-- [ ] **Step 3: Document stable contracts**
+- [x] **Step 3: Document stable contracts**
 
 Document exact namespace boundaries, Money and DecimalQuantity formats,
 rounding rule, calculator inputs/outputs, workflow API, schema ownership,
@@ -603,7 +603,7 @@ revision immutability, repository and renderer ports, and the commands executed
 for verification. State explicitly that production routes still use the legacy
 Finance implementation until later cutover.
 
-- [ ] **Step 4: Mark completed checklist entries and commit**
+- [x] **Step 4: Mark completed checklist entries and commit**
 
 Only mark a checkbox after its command has succeeded.
 
