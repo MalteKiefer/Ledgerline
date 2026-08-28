@@ -6,6 +6,7 @@ namespace App\Modules\Finance\Infrastructure\Mail\Jobs;
 
 use App\Modules\Finance\Infrastructure\Mail\CompanySmtpMailer;
 use App\Modules\Finance\Infrastructure\Mail\QuoteRevisionMail;
+use App\Modules\Finance\Infrastructure\Mail\SafePreAcceptMailFailure;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
@@ -64,8 +65,14 @@ final class DeliverQuoteRevision implements ShouldBeUnique, ShouldQueue
                 || ! hash_equals($attempt['pdf_sha256'], hash('sha256', $bytes))) {
                 throw new LogicException('quote_delivery_pdf_invalid');
             }
+        } catch (Throwable) {
+            $this->retrySafeFailure($attempt['revision_id'], 'pdf_unavailable');
 
-            $smtp->send(
+            return;
+        }
+
+        try {
+            $result = $smtp->send(
                 $this->ownerId,
                 $attempt['recipient'],
                 new QuoteRevisionMail(
@@ -78,17 +85,17 @@ final class DeliverQuoteRevision implements ShouldBeUnique, ShouldQueue
                     $smtp->senderIdentity($this->ownerId),
                 ),
             );
-        } catch (Throwable $exception) {
-            $errorCode = $exception instanceof LogicException
-                && $exception->getMessage() === 'quote_delivery_pdf_invalid'
-                ? 'pdf_unavailable'
-                : 'smtp_send_failed';
-            $final = $this->attempts() >= $this->tries;
-            $this->recordFailure($attempt['revision_id'], $errorCode, $final);
+        } catch (SafePreAcceptMailFailure) {
+            $this->retrySafeFailure($attempt['revision_id'], 'smtp_send_failed');
 
-            if (! $final) {
-                throw new RuntimeException('quote_delivery_failed');
-            }
+            return;
+        } catch (Throwable) {
+            $this->recordUncertain($attempt['revision_id']);
+
+            return;
+        }
+        if (! $result->accepted) {
+            $this->recordUncertain($attempt['revision_id']);
 
             return;
         }
@@ -106,6 +113,10 @@ final class DeliverQuoteRevision implements ShouldBeUnique, ShouldQueue
         return DB::transaction(function (): ?array {
             [$series, $quote, $revision, $delivery] = $this->lockedRecords();
             if ((string) $delivery->state === 'sent') {
+                return null;
+            }
+            if ((string) $delivery->state === 'failed'
+                && (string) $delivery->last_error_code === 'delivery_outcome_uncertain') {
                 return null;
             }
             if ((string) $delivery->state === 'sending') {
@@ -242,6 +253,43 @@ final class DeliverQuoteRevision implements ShouldBeUnique, ShouldQueue
                     $errorCode,
                 );
             }
+        }, 1);
+    }
+
+    private function retrySafeFailure(int $revisionId, string $errorCode): void
+    {
+        $final = $this->attempts() >= $this->tries;
+        $this->recordFailure($revisionId, $errorCode, $final);
+        if (! $final) {
+            throw new RuntimeException('quote_delivery_failed');
+        }
+    }
+
+    private function recordUncertain(int $revisionId): void
+    {
+        DB::transaction(function () use ($revisionId): void {
+            [$series, , $revision, $delivery] = $this->lockedRecords();
+            if ((int) $revision->id !== $revisionId || (string) $delivery->state !== 'sending') {
+                throw new LogicException('quote_delivery_uncertain_conflict');
+            }
+            $failedAt = now();
+            DB::table('finance_quote_deliveries')
+                ->where('id', $delivery->id)
+                ->where('user_id', $this->ownerId)
+                ->where('state', 'sending')
+                ->update([
+                    'state' => 'failed',
+                    'last_error_code' => 'delivery_outcome_uncertain',
+                    'failed_at' => $failedAt,
+                ]);
+            $this->activity(
+                $series,
+                $revision,
+                $delivery,
+                'quote.mail.uncertain',
+                $failedAt,
+                'delivery_outcome_uncertain',
+            );
         }, 1);
     }
 

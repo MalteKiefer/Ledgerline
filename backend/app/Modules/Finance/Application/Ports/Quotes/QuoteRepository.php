@@ -77,6 +77,7 @@ interface QuoteRepository
         int $revisionId,
         int $operationId,
         string $recipient,
+        string $deliveryUuid,
         string $messageId,
     ): int;
 }

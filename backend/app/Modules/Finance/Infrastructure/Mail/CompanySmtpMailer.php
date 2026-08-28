@@ -8,7 +8,7 @@ use App\Models\UserSetting;
 use App\Support\OutboundUrl;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\MailManager;
-use RuntimeException;
+use Throwable;
 
 final class CompanySmtpMailer
 {
@@ -43,18 +43,18 @@ final class CompanySmtpMailer
         ];
     }
 
-    public function send(int $ownerId, string $recipient, Mailable $mail): void
+    public function send(int $ownerId, string $recipient, Mailable $mail): CompanyMailTransportResult
     {
         $settings = UserSetting::query()->find($ownerId);
         if (! $this->configured($ownerId) || $settings === null) {
-            throw new RuntimeException('quote_mail_smtp_unavailable');
+            throw new SafePreAcceptMailFailure('quote_mail_smtp_unavailable');
         }
 
         $hostValue = $settings->getAttribute('company_smtp_host');
         $fromValue = $settings->getAttribute('company_smtp_from_address');
         $portValue = $settings->getAttribute('company_smtp_port');
         if (! is_string($hostValue) || ! is_string($fromValue)) {
-            throw new RuntimeException('quote_mail_smtp_unavailable');
+            throw new SafePreAcceptMailFailure('quote_mail_smtp_unavailable');
         }
         $host = trim($hostValue);
         $from = trim($fromValue);
@@ -80,16 +80,28 @@ final class CompanySmtpMailer
         ]);
 
         try {
-            $this->transport->send($mailerName, $recipient, $mail);
-        } finally {
-            $manager = app('mail.manager');
-            if ($manager instanceof MailManager) {
-                $manager->purge($mailerName);
+            try {
+                return $this->transport->send($mailerName, $recipient, $mail);
+            } finally {
+                try {
+                    $manager = app('mail.manager');
+                    if ($manager instanceof MailManager) {
+                        $manager->purge($mailerName);
+                    }
+                } finally {
+                    config([
+                        "mail.mailers.{$mailerName}" => null,
+                        "mail.from.{$mailerName}" => null,
+                    ]);
+                }
             }
-            config([
-                "mail.mailers.{$mailerName}" => null,
-                "mail.from.{$mailerName}" => null,
-            ]);
+        } catch (CompanyMailTransportFailure $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            throw new UncertainMailTransportFailure(
+                'The SMTP transport outcome is uncertain.',
+                previous: $exception,
+            );
         }
     }
 }

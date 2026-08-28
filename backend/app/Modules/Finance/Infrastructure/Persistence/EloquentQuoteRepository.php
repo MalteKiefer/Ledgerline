@@ -767,6 +767,7 @@ final class EloquentQuoteRepository implements QuoteRepository
         int $revisionId,
         int $operationId,
         string $recipient,
+        string $deliveryUuid,
         string $messageId,
     ): int {
         return DB::transaction(function () use (
@@ -774,6 +775,7 @@ final class EloquentQuoteRepository implements QuoteRepository
             $revisionId,
             $operationId,
             $recipient,
+            $deliveryUuid,
             $messageId,
         ): int {
             $series = DocumentSeriesRecord::query()
@@ -815,7 +817,7 @@ final class EloquentQuoteRepository implements QuoteRepository
             $delivery = QuoteDeliveryRecord::query()
                 ->withoutGlobalScope('owner')
                 ->where('finance_quote_deliveries.user_id', $id->ownerId)
-                ->where('message_id', $messageId)
+                ->where('uuid', $deliveryUuid)
                 ->lockForUpdate()
                 ->first();
             if ($delivery instanceof QuoteDeliveryRecord) {
@@ -835,6 +837,7 @@ final class EloquentQuoteRepository implements QuoteRepository
             $queuedAt = $this->clock->now();
             $deliveryId = (int) DB::table('finance_quote_deliveries')->insertGetId([
                 'user_id' => $id->ownerId,
+                'uuid' => $deliveryUuid,
                 'document_series_id' => $series->id,
                 'document_revision_id' => $revisionId,
                 'recipient' => $recipient,

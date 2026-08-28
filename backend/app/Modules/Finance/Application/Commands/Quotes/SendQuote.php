@@ -73,12 +73,14 @@ final readonly class SendQuote
             throw new InvalidQuoteAction('quote_revision_stale');
         }
         $this->mailer->assertRevisionReady($revision);
-        $messageId = $this->messageId($operation);
+        $deliveryUuid = $this->deliveryUuid($operation);
+        $messageId = '<'.$deliveryUuid.'@quotes.ledgerline>';
         $deliveryId = $this->quotes->queueDelivery(
             $data->quoteId,
             $revisionId,
             $operation->recordId,
             $recipient,
+            $deliveryUuid,
             $messageId,
         );
         $operation = $this->operations->checkpoint($operation, [
@@ -136,7 +138,7 @@ final readonly class SendQuote
         return $recipient;
     }
 
-    private function messageId(OperationReservation $operation): string
+    private function deliveryUuid(OperationReservation $operation): string
     {
         $hex = substr(hash('sha256', 'ledgerline-quote-delivery:'.$operation->ownerId.':'.$operation->recordId), 0, 32);
         $hex[12] = '5';
@@ -150,7 +152,7 @@ final readonly class SendQuote
             substr($hex, 20, 12),
         );
 
-        return '<'.$uuid.'@quotes.ledgerline>';
+        return $uuid;
     }
 
     private function resultInt(OperationReservation $operation, string $key): ?int

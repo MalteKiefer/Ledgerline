@@ -8,5 +8,5 @@ use Illuminate\Mail\Mailable;
 
 interface CompanyMailTransport
 {
-    public function send(string $mailerName, string $recipient, Mailable $mail): void;
+    public function send(string $mailerName, string $recipient, Mailable $mail): CompanyMailTransportResult;
 }
