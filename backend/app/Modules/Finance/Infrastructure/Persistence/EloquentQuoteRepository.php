@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Finance\Infrastructure\Persistence;
 
+use App\Models\FinancePartner;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteId;
 use App\Modules\Finance\Application\DTOs\Quotes\QuotePage;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteRevisionRef;
@@ -19,6 +20,8 @@ use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteSeriesRecord;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -48,23 +51,57 @@ final class EloquentQuoteRepository implements QuoteRepository
             throw new InvalidArgumentException('Quote pagination must use page >= 1 and perPage between 1 and 100.');
         }
 
-        $quotes = QuoteSeriesRecord::query()
-            ->ownedBy($ownerId)
-            ->whereHas('series', static function ($query) use ($ownerId): void {
-                $query->where('user_id', $ownerId)->where('document_type', 'quote');
+        $query = QuoteSeriesRecord::query()
+            ->withoutGlobalScope('owner')
+            ->select('finance_quote_series.*')
+            ->where('finance_quote_series.user_id', $ownerId)
+            ->join('finance_document_series as quote_document_series', function (JoinClause $join) use ($ownerId): void {
+                $join->on('quote_document_series.id', '=', 'finance_quote_series.document_series_id')
+                    ->where('quote_document_series.user_id', '=', $ownerId)
+                    ->where('quote_document_series.document_type', '=', 'quote');
             })
+            ->leftJoin('finance_quote_drafts as quote_draft_search', function (JoinClause $join) use ($ownerId): void {
+                $join->on('quote_draft_search.document_series_id', '=', 'finance_quote_series.document_series_id')
+                    ->where('quote_draft_search.user_id', '=', $ownerId);
+            })
+            ->leftJoin('finance_document_revisions as quote_current_revision', function (JoinClause $join) use ($ownerId): void {
+                $join->on('quote_current_revision.id', '=', 'finance_quote_series.current_revision_id')
+                    ->whereColumn('quote_current_revision.document_series_id', 'finance_quote_series.document_series_id')
+                    ->where('quote_current_revision.user_id', '=', $ownerId);
+            });
+
+        $search = $filters['q'] ?? null;
+        if (is_string($search) && trim($search) !== '') {
+            $escapedSearch = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], strtolower(trim($search)));
+            $needle = '%'.$escapedSearch.'%';
+            $query->where(static function (Builder $query) use ($needle): void {
+                $query->whereRaw("LOWER(finance_quote_series.number) LIKE ? ESCAPE '!'", [$needle])
+                    ->orWhereRaw("LOWER(CAST(quote_document_series.uuid AS TEXT)) LIKE ? ESCAPE '!'", [$needle])
+                    ->orWhereRaw("LOWER(CAST(quote_draft_search.payload AS TEXT)) LIKE ? ESCAPE '!'", [$needle])
+                    ->orWhereRaw("LOWER(CAST(quote_current_revision.snapshot AS TEXT)) LIKE ? ESCAPE '!'", [$needle]);
+            });
+        }
+
+        if (isset($filters['status'])) {
+            $query->where('quote_document_series.status', $filters['status']);
+        }
+
+        $this->applyEffectiveStatusFilter($query, $filters, $ownerId);
+        $this->applyPublishedDateFilters($query, $filters, $ownerId);
+
+        $total = (clone $query)->count('finance_quote_series.document_series_id');
+        $quotes = $query
             ->with(['series', 'draft', 'currentRevision'])
-            ->orderByRaw('CASE WHEN published_at IS NULL THEN 1 ELSE 0 END ASC')
-            ->orderByDesc('published_at')
-            ->orderByDesc('document_series_id')
+            ->orderByRaw('CASE WHEN finance_quote_series.published_at IS NULL THEN 1 ELSE 0 END ASC')
+            ->orderByDesc('finance_quote_series.published_at')
+            ->orderByDesc('finance_quote_series.document_series_id')
+            ->limit($perPage)
+            ->offset(($page - 1) * $perPage)
             ->get()
-            ->map(fn (QuoteSeriesRecord $quote): QuoteView => $this->viewFromRecord($ownerId, $quote))
-            ->filter(fn (QuoteView $quote): bool => $this->matchesFilters($quote, $filters))
-            ->values();
-        $total = $quotes->count();
+            ->map(fn (QuoteSeriesRecord $quote): QuoteView => $this->viewFromRecord($ownerId, $quote));
 
         return new QuotePage(
-            array_values($quotes->slice(($page - 1) * $perPage, $perPage)->all()),
+            array_values($quotes->all()),
             $page,
             $perPage,
             $total,
@@ -74,9 +111,15 @@ final class EloquentQuoteRepository implements QuoteRepository
     public function revisions(QuoteId $id): array
     {
         $series = $this->seriesForUuid($id);
+        QuoteSeriesRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_quote_series.user_id', $id->ownerId)
+            ->where('document_series_id', $series->id)
+            ->firstOrFail(['document_series_id']);
 
         return array_values(DocumentRevisionRecord::query()
-            ->ownedBy($id->ownerId)
+            ->withoutGlobalScope('owner')
+            ->where('finance_document_revisions.user_id', $id->ownerId)
             ->where('document_series_id', $series->id)
             ->orderByDesc('revision_number')
             ->orderByDesc('id')
@@ -85,13 +128,20 @@ final class EloquentQuoteRepository implements QuoteRepository
             ->all());
     }
 
-    public function createDraft(int $ownerId, array $payload, DocumentTotals $totals): QuoteView
-    {
+    public function createDraft(
+        int $ownerId,
+        array $payload,
+        DocumentTotals $totals,
+        ?int $partnerId = null,
+    ): QuoteView {
         if ($ownerId < 1) {
             throw new LogicException('Quote drafts require a positive owner ID.');
         }
 
-        return DB::transaction(function () use ($ownerId, $payload, $totals): QuoteView {
+        return DB::transaction(function () use ($ownerId, $payload, $totals, $partnerId): QuoteView {
+            $this->assertOwnedPartner($ownerId, $partnerId);
+            $createdAt = $this->clock->now();
+
             $series = new DocumentSeriesRecord;
             $series->forceFill([
                 'user_id' => $ownerId,
@@ -101,6 +151,8 @@ final class EloquentQuoteRepository implements QuoteRepository
                 'source_type' => null,
                 'source_id' => null,
                 'created_by' => $ownerId,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
             ]);
             $series->save();
 
@@ -109,7 +161,7 @@ final class EloquentQuoteRepository implements QuoteRepository
                 'document_series_id' => $series->id,
                 'user_id' => $ownerId,
                 'document_type' => 'quote',
-                'partner_id' => null,
+                'partner_id' => $partnerId,
                 'current_revision_id' => null,
                 'number' => null,
                 'sequence_year' => null,
@@ -119,6 +171,8 @@ final class EloquentQuoteRepository implements QuoteRepository
                 'accepted_at' => null,
                 'declined_at' => null,
                 'converted_at' => null,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
             ]);
             $quote->save();
 
@@ -129,6 +183,8 @@ final class EloquentQuoteRepository implements QuoteRepository
                 'based_on_revision_id' => null,
                 ...$this->draftValues($payload, $totals),
                 'updated_by' => $ownerId,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
             ]);
             $draft->save();
 
@@ -141,23 +197,27 @@ final class EloquentQuoteRepository implements QuoteRepository
         int $expectedVersion,
         array $payload,
         DocumentTotals $totals,
+        ?int $partnerId = null,
     ): QuoteView {
-        return DB::transaction(function () use ($id, $expectedVersion, $payload, $totals): QuoteView {
+        return DB::transaction(function () use ($id, $expectedVersion, $payload, $totals, $partnerId): QuoteView {
             $series = DocumentSeriesRecord::query()
-                ->ownedBy($id->ownerId)
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_series.user_id', $id->ownerId)
                 ->where('uuid', $id->uuid)
                 ->where('document_type', 'quote')
                 ->lockForUpdate()
                 ->firstOrFail();
             $quote = QuoteSeriesRecord::query()
-                ->ownedBy($id->ownerId)
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_series.user_id', $id->ownerId)
                 ->where('document_series_id', $series->id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
             if ($quote->current_revision_id !== null) {
                 DocumentRevisionRecord::query()
-                    ->ownedBy($id->ownerId)
+                    ->withoutGlobalScope('owner')
+                    ->where('finance_document_revisions.user_id', $id->ownerId)
                     ->where('document_series_id', $series->id)
                     ->whereKey($quote->current_revision_id)
                     ->lockForUpdate()
@@ -165,21 +225,35 @@ final class EloquentQuoteRepository implements QuoteRepository
             }
 
             $draft = QuoteDraftRecord::query()
-                ->ownedBy($id->ownerId)
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_drafts.user_id', $id->ownerId)
                 ->where('document_series_id', $series->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            if ((int) $quote->version !== $expectedVersion) {
+                return $this->viewForUuid($id);
+            }
+
+            $this->assertOwnedPartner($id->ownerId, $partnerId);
+            $updatedAt = $this->clock->now();
 
             $updated = DB::table('finance_quote_series')
                 ->where('user_id', $id->ownerId)
                 ->where('document_series_id', $series->id)
                 ->where('version', $expectedVersion)
                 ->update([
+                    'partner_id' => $partnerId,
                     'version' => $expectedVersion + 1,
-                    'updated_at' => now(),
+                    'updated_at' => $updatedAt,
                 ]);
 
             if ($updated === 1) {
+                DB::table('finance_document_series')
+                    ->where('id', $series->id)
+                    ->where('user_id', $id->ownerId)
+                    ->where('document_type', 'quote')
+                    ->update(['updated_at' => $updatedAt]);
                 $draft->forceFill([
                     ...$this->draftValues($payload, $totals),
                     'updated_by' => $id->ownerId,
@@ -190,10 +264,25 @@ final class EloquentQuoteRepository implements QuoteRepository
         }, 1);
     }
 
+    private function assertOwnedPartner(int $ownerId, ?int $partnerId): void
+    {
+        if ($partnerId === null) {
+            return;
+        }
+
+        FinancePartner::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_partners.user_id', $ownerId)
+            ->whereKey($partnerId)
+            ->lockForUpdate()
+            ->firstOrFail(['id']);
+    }
+
     private function seriesForUuid(QuoteId $id): DocumentSeriesRecord
     {
         return DocumentSeriesRecord::query()
-            ->ownedBy($id->ownerId)
+            ->withoutGlobalScope('owner')
+            ->where('finance_document_series.user_id', $id->ownerId)
             ->where('uuid', $id->uuid)
             ->where('document_type', 'quote')
             ->firstOrFail();
@@ -203,7 +292,8 @@ final class EloquentQuoteRepository implements QuoteRepository
     {
         $series = $this->seriesForUuid($id);
         $quote = QuoteSeriesRecord::query()
-            ->ownedBy($id->ownerId)
+            ->withoutGlobalScope('owner')
+            ->where('finance_quote_series.user_id', $id->ownerId)
             ->with(['draft', 'currentRevision'])
             ->where('document_series_id', $series->id)
             ->firstOrFail();
@@ -253,49 +343,68 @@ final class EloquentQuoteRepository implements QuoteRepository
         );
     }
 
-    /** @param array<string, mixed> $filters */
-    private function matchesFilters(QuoteView $quote, array $filters): bool
+    /**
+     * @param  Builder<QuoteSeriesRecord>  $query
+     * @param  array<string, mixed>  $filters
+     */
+    private function applyEffectiveStatusFilter(Builder $query, array $filters, int $ownerId): void
     {
-        $query = $filters['q'] ?? null;
-        if (is_string($query) && trim($query) !== '') {
-            $needle = trim($query);
-            $draft = $quote->draft !== null
-                ? json_encode($quote->draft, JSON_THROW_ON_ERROR)
-                : '';
-            $haystack = implode("\n", [
-                $quote->id->uuid,
-                $quote->number ?? '',
-                $draft,
-            ]);
-
-            if (stripos($haystack, $needle) === false) {
-                return false;
-            }
+        $effectiveStatus = $filters['effective_status'] ?? null;
+        if (! is_string($effectiveStatus)) {
+            return;
         }
 
-        if (isset($filters['status']) && $filters['status'] !== $quote->status) {
-            return false;
+        $validUntil = DB::getDriverName() === 'pgsql'
+            ? "quote_current_revision.snapshot ->> 'valid_until'"
+            : "json_extract(quote_current_revision.snapshot, '$.valid_until')";
+        $today = $this->clock->now()
+            ->setTimezone(new DateTimeZone($this->settings->ownerTimezone($ownerId)))
+            ->format('Y-m-d');
+
+        if ($effectiveStatus === 'expired') {
+            $query->where('quote_document_series.status', 'sent')
+                ->whereNotNull('quote_current_revision.id')
+                ->whereRaw("{$validUntil} IS NOT NULL")
+                ->whereRaw("{$validUntil} < ?", [$today]);
+
+            return;
         }
 
-        if (isset($filters['effective_status'])
-            && $filters['effective_status'] !== $quote->effectiveStatus) {
-            return false;
+        if ($effectiveStatus === 'sent') {
+            $query->where('quote_document_series.status', 'sent')
+                ->where(static function (Builder $query) use ($validUntil, $today): void {
+                    $query->whereNull('quote_current_revision.id')
+                        ->orWhereRaw("{$validUntil} IS NULL")
+                        ->orWhereRaw("{$validUntil} >= ?", [$today]);
+                });
+
+            return;
         }
 
-        if ($quote->publishedAt === null) {
-            return ! isset($filters['published_from']) && ! isset($filters['published_to']);
-        }
+        $query->where('quote_document_series.status', $effectiveStatus);
+    }
 
+    /**
+     * @param  Builder<QuoteSeriesRecord>  $query
+     * @param  array<string, mixed>  $filters
+     */
+    private function applyPublishedDateFilters(Builder $query, array $filters, int $ownerId): void
+    {
+        $timezone = new DateTimeZone($this->settings->ownerTimezone($ownerId));
         $from = $filters['published_from'] ?? null;
-        if (is_string($from)
-            && $quote->publishedAt < new DateTimeImmutable($from.' 00:00:00')) {
-            return false;
+        if (is_string($from)) {
+            $fromUtc = (new DateTimeImmutable($from.' 00:00:00', $timezone))
+                ->setTimezone(new DateTimeZone('UTC'));
+            $query->where('finance_quote_series.published_at', '>=', $fromUtc);
         }
 
         $to = $filters['published_to'] ?? null;
-
-        return ! is_string($to)
-            || $quote->publishedAt <= new DateTimeImmutable($to.' 23:59:59.999999');
+        if (is_string($to)) {
+            $afterToUtc = (new DateTimeImmutable($to.' 00:00:00', $timezone))
+                ->modify('+1 day')
+                ->setTimezone(new DateTimeZone('UTC'));
+            $query->where('finance_quote_series.published_at', '<', $afterToUtc);
+        }
     }
 
     /**

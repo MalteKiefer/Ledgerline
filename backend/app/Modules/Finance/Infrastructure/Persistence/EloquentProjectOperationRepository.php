@@ -4,20 +4,20 @@ declare(strict_types=1);
 
 namespace App\Modules\Finance\Infrastructure\Persistence;
 
-use App\Modules\Finance\Application\DTOs\Quotes\OperationReservation;
-use App\Modules\Finance\Application\DTOs\Quotes\QuoteId;
+use App\Modules\Finance\Application\DTOs\Projects\OperationReservation;
+use App\Modules\Finance\Application\DTOs\Projects\ProjectId;
 use App\Modules\Finance\Application\Ports\Clock;
-use App\Modules\Finance\Application\Ports\Quotes\QuoteOperationRepository;
-use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
-use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteOperationRecord;
-use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteSeriesRecord;
+use App\Modules\Finance\Application\Ports\Projects\ProjectOperationRepository;
+use App\Modules\Finance\Infrastructure\Persistence\Models\ProjectOperationRecord;
+use App\Modules\Finance\Infrastructure\Persistence\Models\ProjectRecord;
 use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use LogicException;
 
-final class EloquentQuoteOperationRepository implements QuoteOperationRepository
+final class EloquentProjectOperationRepository implements ProjectOperationRepository
 {
     public function __construct(private readonly Clock $clock) {}
 
@@ -26,16 +26,17 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
         string $operation,
         string $key,
         string $requestSha256,
-        ?QuoteId $quoteId,
+        ?ProjectId $projectId,
     ): OperationReservation {
-        $this->validateReservationInput($ownerId, $operation, $key, $requestSha256);
-        $seriesId = $this->resolveSeriesId($ownerId, $quoteId);
+        $this->assertReservationInput($ownerId, $operation, $key, $requestSha256);
 
         try {
-            $recordId = DB::transaction(fn (): int => (int) DB::table('finance_quote_operations')
-                ->insertGetId([
+            $recordId = DB::transaction(function () use ($ownerId, $operation, $key, $requestSha256, $projectId): int {
+                $internalProjectId = $this->lockedProjectId($ownerId, $projectId);
+
+                return (int) DB::table('finance_project_operations')->insertGetId([
                     'user_id' => $ownerId,
-                    'document_series_id' => $seriesId,
+                    'project_id' => $internalProjectId,
                     'operation' => $operation,
                     'idempotency_key' => $key,
                     'request_sha256' => $requestSha256,
@@ -44,23 +45,12 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
                     'error_code' => null,
                     'started_at' => $this->clock->now(),
                     'completed_at' => null,
-                ]), 1);
+                ]);
+            }, 1);
 
-            $record = QuoteOperationRecord::query()
-                ->withoutGlobalScope('owner')
-                ->where('finance_quote_operations.user_id', $ownerId)
-                ->findOrFail($recordId);
-
-            return $this->reservation($record, 'new');
+            return $this->reservation($this->ownedOperation($ownerId, $recordId), 'new');
         } catch (UniqueConstraintViolationException $exception) {
-            return $this->existingReservation(
-                $ownerId,
-                $operation,
-                $key,
-                $requestSha256,
-                $seriesId,
-                $exception,
-            );
+            return $this->existingReservation($ownerId, $operation, $key, $requestSha256, $exception);
         }
     }
 
@@ -74,26 +64,30 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
         $this->complete($reservation, 'failed', null, $errorCode);
     }
 
-    private function resolveSeriesId(int $ownerId, ?QuoteId $quoteId): ?int
+    private function assertReservationInput(int $ownerId, string $operation, string $key, string $sha256): void
     {
-        if ($quoteId === null) {
+        if ($ownerId < 1 || $operation === '' || strlen($operation) > 64 || $key === '' || strlen($key) > 255
+            || preg_match('/\A[0-9a-f]{64}\z/D', $sha256) !== 1) {
+            throw new InvalidArgumentException('Project operation reservation is invalid.');
+        }
+    }
+
+    private function lockedProjectId(int $ownerId, ?ProjectId $projectId): ?int
+    {
+        if ($projectId === null) {
             return null;
         }
+        if ($projectId->ownerId !== $ownerId) {
+            throw (new ModelNotFoundException)->setModel(ProjectRecord::class, [$projectId->uuid]);
+        }
 
-        $series = DocumentSeriesRecord::query()
-            ->withoutGlobalScope('owner')
-            ->where('finance_document_series.user_id', $ownerId)
-            ->where('finance_document_series.user_id', $quoteId->ownerId)
-            ->where('uuid', $quoteId->uuid)
-            ->where('document_type', 'quote')
-            ->firstOrFail(['id']);
-        QuoteSeriesRecord::query()
-            ->withoutGlobalScope('owner')
-            ->where('finance_quote_series.user_id', $ownerId)
-            ->where('document_series_id', $series->id)
-            ->firstOrFail(['document_series_id']);
-
-        return (int) $series->id;
+        return (int) ProjectRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->where('uuid', $projectId->uuid)
+            ->lockForUpdate()
+            ->firstOrFail(['id'])
+            ->id;
     }
 
     private function existingReservation(
@@ -101,26 +95,19 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
         string $operation,
         string $key,
         string $requestSha256,
-        ?int $seriesId,
         UniqueConstraintViolationException $exception,
     ): OperationReservation {
-        $record = QuoteOperationRecord::query()
-            ->withoutGlobalScope('owner')
-            ->where('finance_quote_operations.user_id', $ownerId)
+        $record = ProjectOperationRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
             ->where('operation', $operation)
             ->where('idempotency_key', $key)
             ->first();
 
-        if (! $record instanceof QuoteOperationRecord) {
+        if (! $record instanceof ProjectOperationRecord) {
             throw $exception;
         }
-
-        $recordSeriesId = $record->document_series_id !== null
-            ? (int) $record->document_series_id
-            : null;
-
-        if ($recordSeriesId !== $seriesId
-            || ! hash_equals((string) $record->request_sha256, $requestSha256)) {
+        if (! hash_equals((string) $record->request_sha256, $requestSha256)) {
             throw new DomainException('idempotency_key_reused');
         }
 
@@ -128,33 +115,10 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
             'succeeded' => 'replay',
             'failed' => 'failed',
             'reserved', 'running' => 'in_progress',
-            default => throw new LogicException('Unknown quote operation state.'),
+            default => throw new LogicException('Unknown project operation state.'),
         };
 
         return $this->reservation($record, $status);
-    }
-
-    private function validateReservationInput(
-        int $ownerId,
-        string $operation,
-        string $key,
-        string $requestSha256,
-    ): void {
-        if ($ownerId < 1) {
-            throw new InvalidArgumentException('Quote operation owner ID must be positive.');
-        }
-
-        if (trim($operation) === '' || strlen($operation) > 64) {
-            throw new InvalidArgumentException('Quote operation must contain between 1 and 64 bytes.');
-        }
-
-        if (trim($key) === '' || strlen($key) > 255) {
-            throw new InvalidArgumentException('Quote idempotency key must contain between 1 and 255 bytes.');
-        }
-
-        if (preg_match('/\A[0-9a-f]{64}\z/D', $requestSha256) !== 1) {
-            throw new InvalidArgumentException('Quote request hash must be canonical lowercase SHA-256 hex.');
-        }
     }
 
     /** @param array<string, mixed>|null $result */
@@ -165,22 +129,30 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
         ?string $errorCode,
     ): void {
         DB::transaction(function () use ($reservation, $state, $result, $errorCode): void {
-            $record = QuoteOperationRecord::query()
-                ->withoutGlobalScope('owner')
-                ->where('finance_quote_operations.user_id', $reservation->ownerId)
+            $unlocked = $this->ownedOperation($reservation->ownerId, $reservation->recordId);
+            if ($unlocked->project_id !== null) {
+                ProjectRecord::query()
+                    ->withoutGlobalScopes()
+                    ->where('user_id', $reservation->ownerId)
+                    ->whereKey($unlocked->project_id)
+                    ->lockForUpdate()
+                    ->firstOrFail(['id']);
+            }
+
+            $record = ProjectOperationRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $reservation->ownerId)
                 ->whereKey($reservation->recordId)
                 ->lockForUpdate()
                 ->firstOrFail();
-
             if (! hash_equals((string) $record->request_sha256, $reservation->requestSha256)) {
                 throw new DomainException('idempotency_key_reused');
             }
-
             if (in_array((string) $record->state, ['succeeded', 'failed'], true)) {
                 return;
             }
 
-            DB::table('finance_quote_operations')
+            DB::table('finance_project_operations')
                 ->where('id', $record->id)
                 ->where('user_id', $reservation->ownerId)
                 ->update([
@@ -192,7 +164,15 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
         }, 1);
     }
 
-    private function reservation(QuoteOperationRecord $record, string $status): OperationReservation
+    private function ownedOperation(int $ownerId, int $recordId): ProjectOperationRecord
+    {
+        return ProjectOperationRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->findOrFail($recordId);
+    }
+
+    private function reservation(ProjectOperationRecord $record, string $status): OperationReservation
     {
         return new OperationReservation(
             (int) $record->id,
@@ -212,17 +192,15 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
         if ($value === null) {
             return null;
         }
-
         if (! is_array($value)) {
-            throw new LogicException('Quote operation result must be an object.');
+            throw new LogicException('Project operation result must be an object.');
         }
 
         $result = [];
         foreach ($value as $key => $item) {
             if (! is_string($key)) {
-                throw new LogicException('Quote operation result must use string keys.');
+                throw new LogicException('Project operation result must use string keys.');
             }
-
             $result[$key] = $item;
         }
 

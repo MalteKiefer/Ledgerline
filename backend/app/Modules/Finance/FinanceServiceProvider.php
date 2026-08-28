@@ -6,11 +6,17 @@ namespace App\Modules\Finance;
 
 use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\DocumentRevisionRepository;
+use App\Modules\Finance\Application\Ports\Projects\ProjectOperationRepository;
+use App\Modules\Finance\Application\Ports\Projects\ProjectReferenceResolver;
+use App\Modules\Finance\Application\Ports\Projects\ProjectRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteOperationRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteReferenceResolver;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteSettings;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectReferenceResolver;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentDocumentRevisionRepository;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectOperationRepository;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteOperationRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteReferenceResolver;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteRepository;
@@ -37,6 +43,15 @@ final class FinanceServiceProvider extends ServiceProvider
         );
         $this->app->bind(QuoteRepository::class, EloquentQuoteRepository::class);
         $this->app->bind(QuoteSettings::class, EloquentQuoteSettings::class);
+        $this->app->bind(ProjectRepository::class, EloquentProjectRepository::class);
+        $this->app->bind(
+            ProjectOperationRepository::class,
+            EloquentProjectOperationRepository::class,
+        );
+        $this->app->bind(
+            ProjectReferenceResolver::class,
+            LegacyProjectReferenceResolver::class,
+        );
     }
 
     public function boot(): void

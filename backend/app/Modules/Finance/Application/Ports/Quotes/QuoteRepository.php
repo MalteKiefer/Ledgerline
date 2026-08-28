@@ -21,7 +21,12 @@ interface QuoteRepository
     public function revisions(QuoteId $id): array;
 
     /** @param array<array-key, mixed> $payload */
-    public function createDraft(int $ownerId, array $payload, DocumentTotals $totals): QuoteView;
+    public function createDraft(
+        int $ownerId,
+        array $payload,
+        DocumentTotals $totals,
+        ?int $partnerId = null,
+    ): QuoteView;
 
     /** @param array<array-key, mixed> $payload */
     public function updateDraft(
@@ -29,5 +34,6 @@ interface QuoteRepository
         int $expectedVersion,
         array $payload,
         DocumentTotals $totals,
+        ?int $partnerId = null,
     ): QuoteView;
 }

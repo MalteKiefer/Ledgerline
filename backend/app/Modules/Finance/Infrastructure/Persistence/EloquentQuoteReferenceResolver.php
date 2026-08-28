@@ -20,7 +20,8 @@ final class EloquentQuoteReferenceResolver implements QuoteReferenceResolver
         }
 
         FinancePartner::query()
-            ->ownedBy($this->ownerId())
+            ->withoutGlobalScope('owner')
+            ->where('finance_partners.user_id', $this->ownerId())
             ->whereKey($partnerId)
             ->firstOrFail(['id']);
     }
@@ -34,7 +35,8 @@ final class EloquentQuoteReferenceResolver implements QuoteReferenceResolver
         }
 
         $found = FinanceProduct::query()
-            ->ownedBy($this->ownerId())
+            ->withoutGlobalScope('owner')
+            ->where('finance_products.user_id', $this->ownerId())
             ->whereKey($ids)
             ->count();
 
