@@ -37,7 +37,7 @@ return new class extends Migration
 
         Schema::create('finance_document_revisions', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->unsignedBigInteger('user_id');
             $table->foreignId('document_series_id');
             $table->unsignedInteger('revision_number');
             $table->foreignId('previous_revision_id')->nullable();
@@ -57,7 +57,7 @@ return new class extends Migration
             $table->foreign(['user_id', 'document_series_id'], 'finance_document_revisions_owner_series_foreign')
                 ->references(['user_id', 'id'])
                 ->on('finance_document_series')
-                ->restrictOnDelete();
+                ->cascadeOnDelete();
             $table->unique(
                 ['document_series_id', 'id'],
                 'finance_document_revisions_series_id_unique',
@@ -72,7 +72,9 @@ return new class extends Migration
             )
                 ->references(['document_series_id', 'id'])
                 ->on('finance_document_revisions')
-                ->restrictOnDelete();
+                ->noActionOnDelete()
+                ->deferrable()
+                ->initiallyImmediate(false);
             $table->unique(
                 ['document_series_id', 'revision_number'],
                 'finance_document_revisions_series_number_unique',
@@ -87,7 +89,7 @@ return new class extends Migration
 
         Schema::create('finance_document_activities', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->unsignedBigInteger('user_id');
             $table->foreignId('document_series_id');
             $table->foreignId('document_revision_id')->nullable();
             $table->string('type', 64);
@@ -105,7 +107,9 @@ return new class extends Migration
             )
                 ->references(['user_id', 'document_series_id', 'id'])
                 ->on('finance_document_revisions')
-                ->restrictOnDelete();
+                ->noActionOnDelete()
+                ->deferrable()
+                ->initiallyImmediate(false);
             $table->index(
                 ['user_id', 'created_at'],
                 'finance_document_activities_owner_created_index',
@@ -118,7 +122,7 @@ return new class extends Migration
 
         Schema::create('finance_document_notes', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->unsignedBigInteger('user_id');
             $table->foreignId('document_series_id');
             $table->foreignId('document_revision_id')->nullable();
             $table->string('type', 64);
@@ -137,7 +141,9 @@ return new class extends Migration
             )
                 ->references(['user_id', 'document_series_id', 'id'])
                 ->on('finance_document_revisions')
-                ->restrictOnDelete();
+                ->noActionOnDelete()
+                ->deferrable()
+                ->initiallyImmediate(false);
             $table->index(
                 ['user_id', 'created_at'],
                 'finance_document_notes_owner_created_index',
