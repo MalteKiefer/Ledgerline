@@ -138,6 +138,17 @@ final class EloquentProjectRepository implements ProjectRepository
                 'created_at' => $timestamp,
                 'updated_at' => $timestamp,
             ]);
+            $this->appendActivity(
+                $data->ownerId,
+                $id,
+                'project.created',
+                [
+                    'parent_uuid' => $data->parentId?->uuid,
+                    'status' => ProjectStatus::Planned->value,
+                ],
+                $data->actorId,
+                $data->occurredAt,
+            );
 
             return $this->view($this->ownedRecordByInternalId($data->ownerId, $id));
         }, 1);
@@ -156,6 +167,19 @@ final class EloquentProjectRepository implements ProjectRepository
                 'budget_minor' => $data->budget->minor(),
                 'currency' => $data->budget->currency(),
             ]);
+            if ($applied) {
+                $this->appendActivity(
+                    $data->projectId->ownerId,
+                    (int) $record->id,
+                    'project.updated',
+                    [
+                        'old_version' => $data->expectedVersion,
+                        'new_version' => $data->expectedVersion + 1,
+                    ],
+                    $data->actorId,
+                    $data->occurredAt,
+                );
+            }
 
             return $this->mutationResult($applied, $data->projectId->ownerId, (int) $record->id);
         }, 1);
@@ -166,6 +190,22 @@ final class EloquentProjectRepository implements ProjectRepository
         return DB::transaction(function () use ($data): ProjectMutationResult {
             $record = $this->lockedRecord($data->projectId);
             $applied = $this->compareAndSwap($record, $data->expectedVersion, ['status' => $data->target->value]);
+            if ($applied) {
+                $oldStatus = ProjectStatus::from((string) $record->status);
+                $this->appendActivity(
+                    $data->projectId->ownerId,
+                    (int) $record->id,
+                    'project.status_changed',
+                    [
+                        'new_status' => $data->target->value,
+                        'old_status' => $oldStatus->value,
+                        'reopened' => ($oldStatus === ProjectStatus::Done && $data->target === ProjectStatus::Active)
+                            || ($oldStatus === ProjectStatus::Cancelled && $data->target === ProjectStatus::Planned),
+                    ],
+                    $data->actorId,
+                    $data->occurredAt,
+                );
+            }
 
             return $this->mutationResult($applied, $data->projectId->ownerId, (int) $record->id);
         }, 1);
@@ -187,6 +227,22 @@ final class EloquentProjectRepository implements ProjectRepository
             $this->assertValidParent($lockedRecord, $newParentId, $hierarchy);
 
             $applied = $this->compareAndSwap($lockedRecord, $data->expectedVersion, ['parent_project_id' => $newParentId]);
+            if ($applied) {
+                $oldParent = $lockedRecord->parent_project_id !== null
+                    ? $hierarchy[(int) $lockedRecord->parent_project_id] ?? null
+                    : null;
+                $this->appendActivity(
+                    $data->projectId->ownerId,
+                    (int) $record->id,
+                    'project.moved',
+                    [
+                        'new_parent_uuid' => $data->parentId?->uuid,
+                        'old_parent_uuid' => $oldParent instanceof ProjectRecord ? (string) $oldParent->uuid : null,
+                    ],
+                    $data->actorId,
+                    $data->occurredAt,
+                );
+            }
 
             return $this->mutationResult($applied, $data->projectId->ownerId, (int) $record->id);
         }, 1);
@@ -200,7 +256,7 @@ final class EloquentProjectRepository implements ProjectRepository
             ->where('user_id', $ownerId)
             ->orderBy('id')
             ->lockForUpdate()
-            ->get(['id', 'user_id', 'parent_project_id', 'archived_at', 'version']);
+            ->get(['id', 'user_id', 'uuid', 'parent_project_id', 'archived_at', 'version']);
         $byId = [];
         foreach ($records as $record) {
             $byId[(int) $record->id] = $record;
@@ -232,21 +288,66 @@ final class EloquentProjectRepository implements ProjectRepository
         }
     }
 
-    public function archive(ProjectId $id, int $expectedVersion): ProjectMutationResult
-    {
-        return $this->setArchive($id, $expectedVersion, $this->clock->now());
+    public function archive(
+        ProjectId $id,
+        int $expectedVersion,
+        ?int $actorId = null,
+        ?DateTimeImmutable $occurredAt = null,
+    ): ProjectMutationResult {
+        return $this->setArchive(
+            $id,
+            $expectedVersion,
+            $occurredAt ?? $this->clock->now(),
+            $actorId,
+            $occurredAt,
+            'project.archived',
+        );
     }
 
-    public function restore(ProjectId $id, int $expectedVersion): ProjectMutationResult
-    {
-        return $this->setArchive($id, $expectedVersion, null);
+    public function restore(
+        ProjectId $id,
+        int $expectedVersion,
+        ?int $actorId = null,
+        ?DateTimeImmutable $occurredAt = null,
+    ): ProjectMutationResult {
+        return $this->setArchive(
+            $id,
+            $expectedVersion,
+            null,
+            $actorId,
+            $occurredAt,
+            'project.restored',
+        );
     }
 
-    private function setArchive(ProjectId $id, int $expectedVersion, ?DateTimeImmutable $archivedAt): ProjectMutationResult
-    {
-        return DB::transaction(function () use ($id, $expectedVersion, $archivedAt): ProjectMutationResult {
+    private function setArchive(
+        ProjectId $id,
+        int $expectedVersion,
+        ?DateTimeImmutable $archivedAt,
+        ?int $actorId,
+        ?DateTimeImmutable $occurredAt,
+        string $activityType,
+    ): ProjectMutationResult {
+        return DB::transaction(function () use (
+            $id,
+            $expectedVersion,
+            $archivedAt,
+            $actorId,
+            $occurredAt,
+            $activityType,
+        ): ProjectMutationResult {
             $record = $this->lockedRecord($id);
             $applied = $this->compareAndSwap($record, $expectedVersion, ['archived_at' => $archivedAt]);
+            if ($applied && $actorId !== null && $occurredAt !== null) {
+                $this->appendActivity(
+                    $id->ownerId,
+                    (int) $record->id,
+                    $activityType,
+                    ['archived' => $archivedAt !== null],
+                    $actorId,
+                    $occurredAt,
+                );
+            }
 
             return $this->mutationResult($applied, $id->ownerId, (int) $record->id);
         }, 1);
@@ -295,6 +396,29 @@ final class EloquentProjectRepository implements ProjectRepository
         return $applied
             ? ProjectMutationResult::applied($current)
             : ProjectMutationResult::conflict($current);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function appendActivity(
+        int $ownerId,
+        int $projectId,
+        string $type,
+        array $payload,
+        int $actorId,
+        DateTimeImmutable $occurredAt,
+    ): void {
+        $timestamp = $occurredAt->format('Y-m-d H:i:s.u');
+        DB::table('finance_project_activities')->insert([
+            'user_id' => $ownerId,
+            'project_id' => $projectId,
+            'type' => $type,
+            'subject_type' => null,
+            'subject_reference' => null,
+            'payload' => json_encode($payload, JSON_THROW_ON_ERROR),
+            'created_by' => $actorId,
+            'occurred_at' => $timestamp,
+            'created_at' => $timestamp,
+        ]);
     }
 
     private function lockedRecord(ProjectId $id): ProjectRecord

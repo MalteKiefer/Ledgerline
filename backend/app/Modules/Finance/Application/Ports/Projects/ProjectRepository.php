@@ -13,6 +13,7 @@ use App\Modules\Finance\Application\DTOs\Projects\ProjectMutationResult;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectPage;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectView;
 use App\Modules\Finance\Application\DTOs\Projects\UpdateProjectData;
+use DateTimeImmutable;
 
 interface ProjectRepository
 {
@@ -28,7 +29,17 @@ interface ProjectRepository
 
     public function move(MoveProjectData $data): ProjectMutationResult;
 
-    public function archive(ProjectId $id, int $expectedVersion): ProjectMutationResult;
+    public function archive(
+        ProjectId $id,
+        int $expectedVersion,
+        ?int $actorId = null,
+        ?DateTimeImmutable $occurredAt = null,
+    ): ProjectMutationResult;
 
-    public function restore(ProjectId $id, int $expectedVersion): ProjectMutationResult;
+    public function restore(
+        ProjectId $id,
+        int $expectedVersion,
+        ?int $actorId = null,
+        ?DateTimeImmutable $occurredAt = null,
+    ): ProjectMutationResult;
 }
