@@ -36,4 +36,6 @@ interface QuoteRepository
         DocumentTotals $totals,
         ?int $partnerId = null,
     ): QuoteView;
+
+    public function discardDraft(QuoteId $id, int $expectedVersion): QuoteView;
 }

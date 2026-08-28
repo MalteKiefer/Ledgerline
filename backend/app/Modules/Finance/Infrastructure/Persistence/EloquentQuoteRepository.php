@@ -12,7 +12,9 @@ use App\Modules\Finance\Application\DTOs\Quotes\QuoteView;
 use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteSettings;
+use App\Modules\Finance\Domain\Quotes\Exception\InvalidQuoteAction;
 use App\Modules\Finance\Domain\Shared\DocumentTotals;
+use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteDraftRecord;
@@ -187,6 +189,7 @@ final class EloquentQuoteRepository implements QuoteRepository
                 'updated_at' => $createdAt,
             ]);
             $draft->save();
+            $this->appendActivity($ownerId, (int) $series->id, 'quote.created', 0, $createdAt);
 
             return $this->viewForUuid(new QuoteId($ownerId, (string) $series->uuid));
         }, 1);
@@ -258,6 +261,85 @@ final class EloquentQuoteRepository implements QuoteRepository
                     ...$this->draftValues($payload, $totals),
                     'updated_by' => $id->ownerId,
                 ])->save();
+                $this->appendActivity(
+                    $id->ownerId,
+                    (int) $series->id,
+                    'quote.draft.updated',
+                    $expectedVersion + 1,
+                    $updatedAt,
+                );
+            }
+
+            return $this->viewForUuid($id);
+        }, 1);
+    }
+
+    public function discardDraft(QuoteId $id, int $expectedVersion): QuoteView
+    {
+        return DB::transaction(function () use ($id, $expectedVersion): QuoteView {
+            $series = DocumentSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_series.user_id', $id->ownerId)
+                ->where('uuid', $id->uuid)
+                ->where('document_type', 'quote')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $quote = QuoteSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_series.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($quote->current_revision_id !== null) {
+                DocumentRevisionRecord::query()
+                    ->withoutGlobalScope('owner')
+                    ->where('finance_document_revisions.user_id', $id->ownerId)
+                    ->where('document_series_id', $series->id)
+                    ->whereKey($quote->current_revision_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
+
+            if ((int) $quote->version !== $expectedVersion) {
+                return $this->viewForUuid($id);
+            }
+
+            $draft = QuoteDraftRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_drafts.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($draft->based_on_revision_id === null) {
+                throw new InvalidQuoteAction('initial_draft_cannot_be_discarded');
+            }
+
+            $updatedAt = $this->clock->now();
+            $updated = DB::table('finance_quote_series')
+                ->where('user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('version', $expectedVersion)
+                ->update([
+                    'version' => $expectedVersion + 1,
+                    'updated_at' => $updatedAt,
+                ]);
+
+            if ($updated === 1) {
+                DB::table('finance_document_series')
+                    ->where('id', $series->id)
+                    ->where('user_id', $id->ownerId)
+                    ->where('document_type', 'quote')
+                    ->update(['updated_at' => $updatedAt]);
+                $draft->delete();
+                $this->appendActivity(
+                    $id->ownerId,
+                    (int) $series->id,
+                    'quote.draft.discarded',
+                    $expectedVersion + 1,
+                    $updatedAt,
+                );
             }
 
             return $this->viewForUuid($id);
@@ -276,6 +358,26 @@ final class EloquentQuoteRepository implements QuoteRepository
             ->whereKey($partnerId)
             ->lockForUpdate()
             ->firstOrFail(['id']);
+    }
+
+    private function appendActivity(
+        int $ownerId,
+        int $seriesId,
+        string $type,
+        int $version,
+        DateTimeInterface $createdAt,
+    ): void {
+        $activity = new DocumentActivityRecord;
+        $activity->forceFill([
+            'user_id' => $ownerId,
+            'document_series_id' => $seriesId,
+            'document_revision_id' => null,
+            'type' => $type,
+            'payload' => ['version' => $version],
+            'created_by' => $ownerId,
+            'created_at' => $createdAt,
+        ]);
+        $activity->save();
     }
 
     private function seriesForUuid(QuoteId $id): DocumentSeriesRecord
