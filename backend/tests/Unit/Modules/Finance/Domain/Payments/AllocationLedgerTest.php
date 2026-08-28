@@ -86,6 +86,27 @@ final class AllocationLedgerTest extends TestCase
         );
     }
 
+    public function test_exhausted_follow_up_ids_fail_atomically_without_reusing_an_existing_id(): void
+    {
+        $ledger = AllocationLedger::forPayment(Money::fromMinor(300, 'EUR'))
+            ->apply(10, Money::fromMinor(100, 'EUR'), PHP_INT_MAX - 2)
+            ->apply(11, Money::fromMinor(100, 'EUR'), PHP_INT_MAX - 1);
+
+        $this->assertSame(100, $ledger->remaining()->minor());
+
+        $this->assertInvalidCode(
+            'allocation_id_exhausted',
+            fn () => $ledger->reverse(PHP_INT_MAX - 2),
+        );
+        $this->assertSame(100, $ledger->remaining()->minor());
+
+        $this->assertInvalidCode(
+            'allocation_id_exhausted',
+            fn () => $ledger->apply(12, Money::fromMinor(100, 'EUR')),
+        );
+        $this->assertSame(100, $ledger->remaining()->minor());
+    }
+
     private function assertInvalidCode(string $expectedCode, callable $operation): void
     {
         try {

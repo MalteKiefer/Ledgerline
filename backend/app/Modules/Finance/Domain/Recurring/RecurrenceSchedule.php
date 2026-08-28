@@ -99,11 +99,16 @@ final readonly class RecurrenceSchedule
         }
 
         $months = $step * $this->interval->months();
-        $firstOfStartMonth = $this->start->setDate(
-            (int) $this->start->format('Y'),
-            (int) $this->start->format('n'),
-            1,
+        $firstOfStartMonth = DateTimeImmutable::createFromFormat(
+            '!Y-n-j',
+            sprintf('%d-%d-1', (int) $this->start->format('Y'), (int) $this->start->format('n')),
+            new DateTimeZone('UTC'),
         );
+
+        if ($firstOfStartMonth === false) {
+            throw new InvalidArgumentException('The recurrence start month is invalid.');
+        }
+
         $firstOfTargetMonth = $months === 0
             ? $firstOfStartMonth
             : $firstOfStartMonth->modify(sprintf('+%d months', $months));
@@ -112,11 +117,117 @@ final readonly class RecurrenceSchedule
             ? $daysInTargetMonth
             : min($this->anchorDay, $daysInTargetMonth);
 
-        return $firstOfTargetMonth->setDate(
+        return $this->resolveLocalDateTime(
             (int) $firstOfTargetMonth->format('Y'),
             (int) $firstOfTargetMonth->format('n'),
             $day,
         );
+    }
+
+    /**
+     * Resolves a local calendar target at the timezone boundary.
+     *
+     * A nonexistent wall time moves forward by the exact DST gap. If a wall
+     * time occurs twice, the earlier of its two UTC instants is selected.
+     */
+    private function resolveLocalDateTime(int $year, int $month, int $day): DateTimeImmutable
+    {
+        $microseconds = (int) $this->start->format('u');
+        $wallTime = sprintf(
+            '%04d-%02d-%02d %02d:%02d:%02d.%06d',
+            $year,
+            $month,
+            $day,
+            (int) $this->start->format('H'),
+            (int) $this->start->format('i'),
+            (int) $this->start->format('s'),
+            $microseconds,
+        );
+        $utc = new DateTimeZone('UTC');
+        $naiveWallClock = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s.u', $wallTime, $utc);
+
+        if ($naiveWallClock === false) {
+            throw new InvalidArgumentException('The recurrence calendar target is invalid.');
+        }
+
+        if ($this->timezone->getName() === 'UTC') {
+            return $naiveWallClock;
+        }
+
+        $naiveTimestamp = $naiveWallClock->getTimestamp();
+        $transitions = $this->timezone->getTransitions(
+            $naiveTimestamp - (3 * 86_400),
+            $naiveTimestamp + (3 * 86_400),
+        );
+
+        if ($transitions === false || $transitions === []) {
+            throw new InvalidArgumentException('The recurrence timezone has no transition data.');
+        }
+
+        /** @var array<int, true> $offsets */
+        $offsets = [];
+
+        foreach ($transitions as $transition) {
+            $offsets[$transition['offset']] = true;
+        }
+
+        /** @var list<DateTimeImmutable> $matches */
+        $matches = [];
+
+        foreach (array_keys($offsets) as $offset) {
+            $candidate = self::instantFromTimestamp($naiveTimestamp - $offset, $microseconds)
+                ->setTimezone($this->timezone);
+
+            if ($candidate->format('Y-m-d H:i:s.u') === $wallTime) {
+                $matches[] = $candidate;
+            }
+        }
+
+        if ($matches !== []) {
+            usort(
+                $matches,
+                static fn (DateTimeImmutable $left, DateTimeImmutable $right): int => $left->getTimestamp() <=> $right->getTimestamp(),
+            );
+
+            return $matches[0];
+        }
+
+        $previousOffset = $transitions[0]['offset'];
+
+        foreach (array_slice($transitions, 1) as $transition) {
+            $nextOffset = $transition['offset'];
+
+            if ($nextOffset > $previousOffset) {
+                $gapStartsAt = $transition['ts'] + $previousOffset;
+                $gapEndsAt = $transition['ts'] + $nextOffset;
+
+                if ($naiveTimestamp >= $gapStartsAt && $naiveTimestamp < $gapEndsAt) {
+                    return self::instantFromTimestamp(
+                        $naiveTimestamp - $previousOffset,
+                        $microseconds,
+                    )->setTimezone($this->timezone);
+                }
+            }
+
+            $previousOffset = $nextOffset;
+        }
+
+        throw new InvalidArgumentException('The recurrence wall time cannot be resolved.');
+    }
+
+    private static function instantFromTimestamp(int $timestamp, int $microseconds): DateTimeImmutable
+    {
+        $instant = DateTimeImmutable::createFromFormat(
+            'U.u',
+            sprintf('%d.%06d', $timestamp, $microseconds),
+            new DateTimeZone('UTC'),
+        );
+
+        if ($instant === false) {
+            throw new InvalidArgumentException('The recurrence instant is invalid.');
+        }
+
+        return $instant->setTimezone(new DateTimeZone('UTC'));
     }
 
     private function withinEndDate(DateTimeImmutable $candidate): bool

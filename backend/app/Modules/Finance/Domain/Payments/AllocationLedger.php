@@ -58,8 +58,7 @@ final readonly class AllocationLedger
             );
         }
 
-        $id = $allocationId ?? $this->nextAllocationId;
-        $this->assertNewAllocationId($id);
+        [$id, $nextAllocationId] = $this->reserveAllocationId($allocationId);
 
         $entries = $this->entries;
         $entries[$id] = [
@@ -72,7 +71,7 @@ final readonly class AllocationLedger
             $this->payment,
             $entries,
             $this->reversedAllocationIds,
-            self::nextId($this->nextAllocationId, $id),
+            $nextAllocationId,
         );
     }
 
@@ -97,7 +96,7 @@ final readonly class AllocationLedger
         }
 
         $original = $this->entries[$allocationId];
-        $reversalId = $this->nextAllocationId;
+        [$reversalId, $nextAllocationId] = $this->reserveAllocationId(null);
         $reversalAmount = Money::fromMinor(-$original['amount']->minor(), $original['amount']->currency());
         $entries = $this->entries;
         $entries[$reversalId] = [
@@ -112,7 +111,7 @@ final readonly class AllocationLedger
             $this->payment,
             $entries,
             $reversedAllocationIds,
-            self::nextId($this->nextAllocationId, $reversalId),
+            $nextAllocationId,
         );
     }
 
@@ -137,19 +136,29 @@ final readonly class AllocationLedger
         }
     }
 
-    private function assertNewAllocationId(int $allocationId): void
+    /** @return array{int, int} */
+    private function reserveAllocationId(?int $requestedAllocationId): array
     {
-        if ($allocationId <= 0 || $allocationId === PHP_INT_MAX) {
+        $allocationId = $requestedAllocationId ?? $this->nextAllocationId;
+
+        if ($allocationId <= 0) {
             throw new InvalidAllocation('invalid_allocation_id', 'An allocation requires a positive usable ID.');
         }
 
         if (isset($this->entries[$allocationId])) {
             throw new InvalidAllocation('duplicate_allocation_id', 'Allocation IDs must be unique.');
         }
-    }
 
-    private static function nextId(int $current, int $used): int
-    {
-        return max($current, $used + 1);
+        if ($allocationId === PHP_INT_MAX) {
+            throw new InvalidAllocation(
+                'allocation_id_exhausted',
+                'No unique follow-up allocation ID remains.',
+            );
+        }
+
+        return [
+            $allocationId,
+            max($this->nextAllocationId, $allocationId + 1),
+        ];
     }
 }

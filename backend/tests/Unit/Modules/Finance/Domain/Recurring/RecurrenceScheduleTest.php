@@ -79,6 +79,47 @@ final class RecurrenceScheduleTest extends TestCase
         $this->assertSame('2026-02-28T08:00:00+01:00', $next?->format(DATE_ATOM));
     }
 
+    public function test_a_nonexistent_spring_wall_time_moves_forward_by_the_dst_gap(): void
+    {
+        $schedule = RecurrenceSchedule::monthly($this->berlin('2026-01-29 02:30:00'));
+        $february = $schedule->nextAfter($schedule->start());
+        $this->assertInstanceOf(DateTimeImmutable::class, $february);
+
+        $march = $schedule->nextAfter($february);
+        $this->assertInstanceOf(DateTimeImmutable::class, $march);
+
+        $this->assertSame('2026-03-29T03:30:00+02:00', $march->format(DATE_ATOM));
+        $this->assertSame(
+            '2026-03-29T01:30:00+00:00',
+            $march->setTimezone(new DateTimeZone('UTC'))->format(DATE_ATOM),
+        );
+        $this->assertSame(
+            $march->format(DATE_ATOM),
+            (new DateTimeImmutable('@'.$march->getTimestamp()))
+                ->setTimezone(new DateTimeZone('Europe/Berlin'))
+                ->format(DATE_ATOM),
+        );
+    }
+
+    public function test_an_ambiguous_autumn_wall_time_uses_the_earlier_instant(): void
+    {
+        $schedule = RecurrenceSchedule::monthly($this->berlin('2026-09-25 02:30:00'));
+        $october = $schedule->nextAfter($schedule->start());
+        $this->assertInstanceOf(DateTimeImmutable::class, $october);
+
+        $this->assertSame('2026-10-25T02:30:00+02:00', $october->format(DATE_ATOM));
+        $this->assertSame(
+            '2026-10-25T00:30:00+00:00',
+            $october->setTimezone(new DateTimeZone('UTC'))->format(DATE_ATOM),
+        );
+        $this->assertSame(
+            $october->format(DATE_ATOM),
+            (new DateTimeImmutable('@'.$october->getTimestamp()))
+                ->setTimezone(new DateTimeZone('Europe/Berlin'))
+                ->format(DATE_ATOM),
+        );
+    }
+
     private function berlin(string $dateTime): DateTimeImmutable
     {
         return new DateTimeImmutable($dateTime, new DateTimeZone('Europe/Berlin'));
