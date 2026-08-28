@@ -86,7 +86,9 @@ return new class extends Migration
             )
                 ->references('id')
                 ->on('users')
-                ->nullOnDelete();
+                ->noActionOnDelete()
+                ->deferrable()
+                ->initiallyImmediate(false);
         });
         $this->addVersionChecks();
         $this->addCurrentVersionRelation();
@@ -312,6 +314,7 @@ return new class extends Migration
                     CHECK (
                         id > 0
                         AND version_number > 0
+                        AND (created_by IS NULL OR created_by = user_id)
                         AND jsonb_typeof(draft_snapshot) = 'object'
                         AND snapshot_sha256 ~ '^[0-9a-f]{64}$'
                     )
@@ -325,6 +328,7 @@ return new class extends Migration
             BEFORE INSERT ON finance_recurring_invoice_template_versions
             WHEN
                 NEW.version_number <= 0
+                OR (NEW.created_by IS NOT NULL AND NEW.created_by <> NEW.user_id)
                 OR json_valid(NEW.draft_snapshot) <> 1
                 OR json_type(NEW.draft_snapshot) <> 'object'
                 OR length(NEW.snapshot_sha256) <> 64
@@ -381,6 +385,73 @@ return new class extends Migration
                             OR length(btrim(last_error_code)) BETWEEN 1 AND 128
                         )
                         AND (last_error_detail IS NULL OR last_error_code IS NOT NULL)
+                        AND (last_error_detail IS NULL OR length(last_error_detail) <= 512)
+                        AND COALESCE((
+                            (
+                                status IN ('pending', 'failed')
+                                AND (
+                                    (
+                                        last_completed_step IS NULL
+                                        AND invoice_id IS NULL
+                                        AND delivery_id IS NULL
+                                    )
+                                    OR (
+                                        last_completed_step = 'draft_created'
+                                        AND invoice_id IS NOT NULL
+                                        AND delivery_id IS NULL
+                                    )
+                                    OR (
+                                        last_completed_step = 'finalized'
+                                        AND invoice_id IS NOT NULL
+                                        AND delivery_id IS NULL
+                                    )
+                                    OR (
+                                        last_completed_step = 'delivery_staged'
+                                        AND invoice_id IS NOT NULL
+                                        AND delivery_id IS NOT NULL
+                                    )
+                                )
+                            )
+                            OR (
+                                status = 'creating_draft'
+                                AND last_completed_step IS NULL
+                                AND invoice_id IS NULL
+                                AND delivery_id IS NULL
+                            )
+                            OR (
+                                status IN ('draft_created', 'finalizing')
+                                AND last_completed_step = 'draft_created'
+                                AND invoice_id IS NOT NULL
+                                AND delivery_id IS NULL
+                            )
+                            OR (
+                                status = 'finalized'
+                                AND last_completed_step = 'finalized'
+                                AND invoice_id IS NOT NULL
+                                AND delivery_id IS NULL
+                            )
+                            OR (
+                                status = 'sending'
+                                AND last_completed_step = 'delivery_staged'
+                                AND invoice_id IS NOT NULL
+                                AND delivery_id IS NOT NULL
+                            )
+                            OR (
+                                status = 'sent'
+                                AND last_completed_step = 'sent'
+                                AND invoice_id IS NOT NULL
+                                AND delivery_id IS NOT NULL
+                            )
+                        ), FALSE)
+                        AND (
+                            (status = 'failed' AND last_error_code IS NOT NULL)
+                            OR (
+                                status <> 'failed'
+                                AND last_error_code IS NULL
+                                AND last_error_detail IS NULL
+                                AND next_retry_at IS NULL
+                            )
+                        )
                     )
                 SQL);
 
@@ -421,6 +492,73 @@ return new class extends Migration
                         AND length(trim(NEW.last_error_code)) NOT BETWEEN 1 AND 128
                     )
                     OR (NEW.last_error_detail IS NOT NULL AND NEW.last_error_code IS NULL)
+                    OR length(NEW.last_error_detail) > 512
+                    OR NOT COALESCE((
+                        (
+                            NEW.status IN ('pending', 'failed')
+                            AND (
+                                (
+                                    NEW.last_completed_step IS NULL
+                                    AND NEW.invoice_id IS NULL
+                                    AND NEW.delivery_id IS NULL
+                                )
+                                OR (
+                                    NEW.last_completed_step = 'draft_created'
+                                    AND NEW.invoice_id IS NOT NULL
+                                    AND NEW.delivery_id IS NULL
+                                )
+                                OR (
+                                    NEW.last_completed_step = 'finalized'
+                                    AND NEW.invoice_id IS NOT NULL
+                                    AND NEW.delivery_id IS NULL
+                                )
+                                OR (
+                                    NEW.last_completed_step = 'delivery_staged'
+                                    AND NEW.invoice_id IS NOT NULL
+                                    AND NEW.delivery_id IS NOT NULL
+                                )
+                            )
+                        )
+                        OR (
+                            NEW.status = 'creating_draft'
+                            AND NEW.last_completed_step IS NULL
+                            AND NEW.invoice_id IS NULL
+                            AND NEW.delivery_id IS NULL
+                        )
+                        OR (
+                            NEW.status IN ('draft_created', 'finalizing')
+                            AND NEW.last_completed_step = 'draft_created'
+                            AND NEW.invoice_id IS NOT NULL
+                            AND NEW.delivery_id IS NULL
+                        )
+                        OR (
+                            NEW.status = 'finalized'
+                            AND NEW.last_completed_step = 'finalized'
+                            AND NEW.invoice_id IS NOT NULL
+                            AND NEW.delivery_id IS NULL
+                        )
+                        OR (
+                            NEW.status = 'sending'
+                            AND NEW.last_completed_step = 'delivery_staged'
+                            AND NEW.invoice_id IS NOT NULL
+                            AND NEW.delivery_id IS NOT NULL
+                        )
+                        OR (
+                            NEW.status = 'sent'
+                            AND NEW.last_completed_step = 'sent'
+                            AND NEW.invoice_id IS NOT NULL
+                            AND NEW.delivery_id IS NOT NULL
+                        )
+                    ), 0)
+                    OR NOT (
+                        (NEW.status = 'failed' AND NEW.last_error_code IS NOT NULL)
+                        OR (
+                            NEW.status <> 'failed'
+                            AND NEW.last_error_code IS NULL
+                            AND NEW.last_error_detail IS NULL
+                            AND NEW.next_retry_at IS NULL
+                        )
+                    )
                 BEGIN
                     SELECT RAISE(ABORT, 'finance_recurring_runs_integrity_check');
                 END
@@ -550,6 +688,44 @@ return new class extends Migration
                             ARRAY['draft_created', 'finalized', 'delivery_staged', 'sent']::text[],
                             OLD.last_completed_step
                         ), 0)
+                        OR (
+                            NEW.status = OLD.status
+                            AND (
+                                NEW.last_completed_step IS DISTINCT FROM OLD.last_completed_step
+                                OR NEW.invoice_id IS DISTINCT FROM OLD.invoice_id
+                                OR NEW.delivery_id IS DISTINCT FROM OLD.delivery_id
+                            )
+                        )
+                        OR (
+                            NEW.status IS DISTINCT FROM OLD.status
+                            AND NOT COALESCE((
+                                (
+                                    OLD.status = 'pending'
+                                    AND (
+                                        (OLD.last_completed_step IS NULL AND NEW.status IN ('creating_draft', 'failed'))
+                                        OR (OLD.last_completed_step = 'draft_created' AND NEW.status IN ('finalizing', 'failed'))
+                                        OR (OLD.last_completed_step IN ('finalized', 'delivery_staged') AND NEW.status IN ('sending', 'failed'))
+                                    )
+                                )
+                                OR (OLD.status = 'creating_draft' AND NEW.status IN ('draft_created', 'failed'))
+                                OR (OLD.status = 'draft_created' AND NEW.status IN ('finalizing', 'failed'))
+                                OR (OLD.status = 'finalizing' AND NEW.status IN ('finalized', 'failed'))
+                                OR (OLD.status = 'finalized' AND NEW.status IN ('sending', 'failed'))
+                                OR (OLD.status = 'sending' AND NEW.status IN ('sent', 'failed'))
+                                OR (OLD.status = 'failed' AND NEW.status = 'pending')
+                            ), FALSE)
+                        )
+                        OR (
+                            (
+                                NEW.status = 'failed'
+                                OR (OLD.status = 'failed' AND NEW.status = 'pending')
+                            )
+                            AND (
+                                NEW.last_completed_step IS DISTINCT FROM OLD.last_completed_step
+                                OR NEW.invoice_id IS DISTINCT FROM OLD.invoice_id
+                                OR NEW.delivery_id IS DISTINCT FROM OLD.delivery_id
+                            )
+                        )
                     THEN
                         RAISE EXCEPTION 'finance_recurring_run_progress_guard'
                             USING ERRCODE = '23514';
@@ -601,6 +777,44 @@ return new class extends Migration
                         WHEN 'sent' THEN 4
                         ELSE 0
                     END
+                )
+                OR (
+                    NEW.status = OLD.status
+                    AND (
+                        NEW.last_completed_step IS NOT OLD.last_completed_step
+                        OR NEW.invoice_id IS NOT OLD.invoice_id
+                        OR NEW.delivery_id IS NOT OLD.delivery_id
+                    )
+                )
+                OR (
+                    NEW.status IS NOT OLD.status
+                    AND NOT COALESCE((
+                        (
+                            OLD.status = 'pending'
+                            AND (
+                                (OLD.last_completed_step IS NULL AND NEW.status IN ('creating_draft', 'failed'))
+                                OR (OLD.last_completed_step = 'draft_created' AND NEW.status IN ('finalizing', 'failed'))
+                                OR (OLD.last_completed_step IN ('finalized', 'delivery_staged') AND NEW.status IN ('sending', 'failed'))
+                            )
+                        )
+                        OR (OLD.status = 'creating_draft' AND NEW.status IN ('draft_created', 'failed'))
+                        OR (OLD.status = 'draft_created' AND NEW.status IN ('finalizing', 'failed'))
+                        OR (OLD.status = 'finalizing' AND NEW.status IN ('finalized', 'failed'))
+                        OR (OLD.status = 'finalized' AND NEW.status IN ('sending', 'failed'))
+                        OR (OLD.status = 'sending' AND NEW.status IN ('sent', 'failed'))
+                        OR (OLD.status = 'failed' AND NEW.status = 'pending')
+                    ), 0)
+                )
+                OR (
+                    (
+                        NEW.status = 'failed'
+                        OR (OLD.status = 'failed' AND NEW.status = 'pending')
+                    )
+                    AND (
+                        NEW.last_completed_step IS NOT OLD.last_completed_step
+                        OR NEW.invoice_id IS NOT OLD.invoice_id
+                        OR NEW.delivery_id IS NOT OLD.delivery_id
+                    )
                 )
             BEGIN
                 SELECT RAISE(ABORT, 'finance_recurring_run_progress_guard');

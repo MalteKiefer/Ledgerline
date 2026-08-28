@@ -159,6 +159,37 @@ final class RecurringInvoiceSchemaTest extends TestCase
         );
     }
 
+    public function test_template_version_creator_is_owner_scoped_and_owner_deletion_removes_audit_history(): void
+    {
+        $owner = User::factory()->create();
+        $otherOwner = User::factory()->create();
+        $templateId = $this->insertTemplate((int) $owner->id, 45);
+
+        $this->expectConstraintViolation(fn (): int => $this->insertTemplateVersion(
+            (int) $owner->id,
+            $templateId,
+            1,
+            ['created_by' => $otherOwner->id],
+        ));
+
+        $versionId = $this->insertTemplateVersion((int) $owner->id, $templateId, 1);
+        $systemVersionId = $this->insertTemplateVersion(
+            (int) $owner->id,
+            $templateId,
+            2,
+            [
+                'effective_from' => '2026-09-01',
+                'created_by' => null,
+            ],
+        );
+
+        DB::transaction(fn (): int => DB::table('users')->where('id', $owner->id)->delete());
+
+        $this->assertFalse(DB::table('finance_recurring_invoice_template_versions')->where('id', $versionId)->exists());
+        $this->assertFalse(DB::table('finance_recurring_invoice_template_versions')->where('id', $systemVersionId)->exists());
+        $this->assertTrue(DB::table('users')->where('id', $otherOwner->id)->exists());
+    }
+
     public function test_current_version_and_runs_require_owner_matched_template_version_context(): void
     {
         $owner = User::factory()->create();
@@ -257,6 +288,11 @@ final class RecurringInvoiceSchemaTest extends TestCase
                 'claim_expires_at' => '2026-08-28 05:59:59',
             ],
             'blank error code' => ['last_error_code' => '', 'last_error_detail' => 'redacted'],
+            'oversized error detail' => [
+                'status' => 'failed',
+                'last_error_code' => 'draft_failed',
+                'last_error_detail' => str_repeat('x', 513),
+            ],
         ] as $index => $invalid) {
             $this->expectConstraintViolation(fn (): int => $this->insertRun(
                 (int) $owner->id,
@@ -289,6 +325,312 @@ final class RecurringInvoiceSchemaTest extends TestCase
             ],
         ));
         $this->assertGreaterThan(0, $claimedRunId);
+    }
+
+    public function test_run_status_safe_step_and_generated_targets_form_complete_valid_combinations(): void
+    {
+        $owner = User::factory()->create();
+        $templateId = $this->insertTemplate((int) $owner->id, 92);
+        $versionId = $this->insertTemplateVersion((int) $owner->id, $templateId, 1);
+        $invoiceId = $this->invoiceFixture((int) $owner->id, 93);
+        $deliveryId = $this->deliveryFixture((int) $owner->id, $invoiceId, 94);
+        $validStates = [
+            ['status' => 'pending'],
+            ['status' => 'creating_draft'],
+            [
+                'status' => 'draft_created',
+                'last_completed_step' => 'draft_created',
+                'invoice_id' => $invoiceId,
+            ],
+            [
+                'status' => 'finalizing',
+                'last_completed_step' => 'draft_created',
+                'invoice_id' => $invoiceId,
+            ],
+            [
+                'status' => 'finalized',
+                'last_completed_step' => 'finalized',
+                'invoice_id' => $invoiceId,
+            ],
+            [
+                'status' => 'sending',
+                'last_completed_step' => 'delivery_staged',
+                'invoice_id' => $invoiceId,
+                'delivery_id' => $deliveryId,
+            ],
+            [
+                'status' => 'sent',
+                'last_completed_step' => 'sent',
+                'invoice_id' => $invoiceId,
+                'delivery_id' => $deliveryId,
+            ],
+            [
+                'status' => 'failed',
+                'last_error_code' => 'draft_failed',
+            ],
+            [
+                'status' => 'failed',
+                'last_completed_step' => 'draft_created',
+                'invoice_id' => $invoiceId,
+                'last_error_code' => 'finalize_failed',
+            ],
+            [
+                'status' => 'failed',
+                'last_completed_step' => 'finalized',
+                'invoice_id' => $invoiceId,
+                'last_error_code' => 'delivery_stage_failed',
+            ],
+            [
+                'status' => 'failed',
+                'last_completed_step' => 'delivery_staged',
+                'invoice_id' => $invoiceId,
+                'delivery_id' => $deliveryId,
+                'last_error_code' => 'mail_failed',
+            ],
+        ];
+
+        foreach ($validStates as $index => $state) {
+            $day = $index + 1;
+            $this->assertGreaterThan(0, $this->insertRun(
+                (int) $owner->id,
+                $templateId,
+                $versionId,
+                200 + $index,
+                array_merge([
+                    'scheduled_for' => sprintf('2026-10-%02d 06:00:00', $day),
+                    'scheduled_local_date' => sprintf('2026-10-%02d', $day),
+                ], $state),
+            ));
+        }
+
+        $invalidStates = [
+            'pending with generated invoice' => ['status' => 'pending', 'invoice_id' => $invoiceId],
+            'draft without invoice' => [
+                'status' => 'draft_created',
+                'last_completed_step' => 'draft_created',
+            ],
+            'draft with delivery' => [
+                'status' => 'draft_created',
+                'last_completed_step' => 'draft_created',
+                'invoice_id' => $invoiceId,
+                'delivery_id' => $deliveryId,
+            ],
+            'finalizing after wrong step' => [
+                'status' => 'finalizing',
+                'last_completed_step' => 'finalized',
+                'invoice_id' => $invoiceId,
+            ],
+            'finalized before safe step' => [
+                'status' => 'finalized',
+                'last_completed_step' => 'draft_created',
+                'invoice_id' => $invoiceId,
+            ],
+            'sending without delivery' => [
+                'status' => 'sending',
+                'last_completed_step' => 'delivery_staged',
+                'invoice_id' => $invoiceId,
+            ],
+            'sending before delivery staged' => [
+                'status' => 'sending',
+                'last_completed_step' => 'finalized',
+                'invoice_id' => $invoiceId,
+                'delivery_id' => $deliveryId,
+            ],
+            'sent without generated targets' => [
+                'status' => 'sent',
+                'last_completed_step' => 'sent',
+            ],
+            'sent before terminal safe step' => [
+                'status' => 'sent',
+                'last_completed_step' => 'delivery_staged',
+                'invoice_id' => $invoiceId,
+                'delivery_id' => $deliveryId,
+            ],
+            'failed without error code' => ['status' => 'failed'],
+            'failed after impossible sent step' => [
+                'status' => 'failed',
+                'last_completed_step' => 'sent',
+                'invoice_id' => $invoiceId,
+                'delivery_id' => $deliveryId,
+                'last_error_code' => 'impossible_failure',
+            ],
+            'failed finalized step with delivery' => [
+                'status' => 'failed',
+                'last_completed_step' => 'finalized',
+                'invoice_id' => $invoiceId,
+                'delivery_id' => $deliveryId,
+                'last_error_code' => 'inconsistent_delivery',
+            ],
+            'active state retaining failure' => [
+                'status' => 'creating_draft',
+                'last_error_code' => 'stale_error',
+            ],
+        ];
+
+        foreach ($invalidStates as $label => $state) {
+            $suffix = 300 + count(DB::table('finance_recurring_invoice_runs')->get());
+            $day = ($suffix % 20) + 1;
+            $this->expectConstraintViolation(fn (): int => $this->insertRun(
+                (int) $owner->id,
+                $templateId,
+                $versionId,
+                $suffix,
+                array_merge([
+                    'scheduled_for' => sprintf('2026-11-%02d 07:00:00', $day),
+                    'scheduled_local_date' => sprintf('2026-11-%02d', $day),
+                ], $state),
+            ), $label);
+        }
+    }
+
+    public function test_run_updates_follow_each_safe_transition_without_skipping_steps(): void
+    {
+        $owner = User::factory()->create();
+        $templateId = $this->insertTemplate((int) $owner->id, 400);
+        $versionId = $this->insertTemplateVersion((int) $owner->id, $templateId, 1);
+        $invoiceId = $this->invoiceFixture((int) $owner->id, 401);
+        $deliveryId = $this->deliveryFixture((int) $owner->id, $invoiceId, 402);
+        $runId = $this->insertRun((int) $owner->id, $templateId, $versionId, 403);
+
+        $this->expectConstraintViolation(fn (): int => $this->updateRun($runId, [
+            'status' => 'finalizing',
+            'last_completed_step' => 'draft_created',
+            'invoice_id' => $invoiceId,
+        ]));
+        $this->expectConstraintViolation(fn (): int => $this->updateRun($runId, [
+            'status' => 'sending',
+            'last_completed_step' => 'delivery_staged',
+            'invoice_id' => $invoiceId,
+            'delivery_id' => $deliveryId,
+        ]));
+        $this->expectConstraintViolation(fn (): int => $this->updateRun($runId, [
+            'status' => 'draft_created',
+            'last_completed_step' => 'draft_created',
+            'invoice_id' => $invoiceId,
+        ]));
+
+        $this->updateRun($runId, ['status' => 'creating_draft', 'attempts' => 1]);
+        $this->expectConstraintViolation(fn (): int => $this->updateRun($runId, [
+            'status' => 'finalized',
+            'last_completed_step' => 'finalized',
+            'invoice_id' => $invoiceId,
+        ]));
+        $this->updateRun($runId, [
+            'status' => 'draft_created',
+            'last_completed_step' => 'draft_created',
+            'invoice_id' => $invoiceId,
+        ]);
+        $this->updateRun($runId, ['status' => 'finalizing']);
+        $this->expectConstraintViolation(fn (): int => $this->updateRun($runId, [
+            'status' => 'sending',
+            'last_completed_step' => 'delivery_staged',
+            'delivery_id' => $deliveryId,
+        ]));
+        $this->updateRun($runId, [
+            'status' => 'finalized',
+            'last_completed_step' => 'finalized',
+        ]);
+        $this->updateRun($runId, [
+            'status' => 'sending',
+            'last_completed_step' => 'delivery_staged',
+            'delivery_id' => $deliveryId,
+        ]);
+        $this->updateRun($runId, [
+            'status' => 'sent',
+            'last_completed_step' => 'sent',
+        ]);
+        $this->expectConstraintViolation(fn (): int => $this->updateRun($runId, [
+            'status' => 'failed',
+            'last_error_code' => 'late_failure',
+        ]));
+
+        $this->assertSame('sent', DB::table('finance_recurring_invoice_runs')->where('id', $runId)->value('status'));
+    }
+
+    public function test_failed_run_retry_preserves_safe_progress_and_reenters_only_the_next_step(): void
+    {
+        $owner = User::factory()->create();
+        $templateId = $this->insertTemplate((int) $owner->id, 410);
+        $versionId = $this->insertTemplateVersion((int) $owner->id, $templateId, 1);
+        $invoiceId = $this->invoiceFixture((int) $owner->id, 411);
+        $deliveryId = $this->deliveryFixture((int) $owner->id, $invoiceId, 412);
+        $failures = [
+            [
+                'state' => [],
+                'next' => ['status' => 'creating_draft'],
+            ],
+            [
+                'state' => [
+                    'last_completed_step' => 'draft_created',
+                    'invoice_id' => $invoiceId,
+                ],
+                'next' => ['status' => 'finalizing'],
+            ],
+            [
+                'state' => [
+                    'last_completed_step' => 'finalized',
+                    'invoice_id' => $invoiceId,
+                ],
+                'next' => [
+                    'status' => 'sending',
+                    'last_completed_step' => 'delivery_staged',
+                    'delivery_id' => $deliveryId,
+                ],
+            ],
+            [
+                'state' => [
+                    'last_completed_step' => 'delivery_staged',
+                    'invoice_id' => $invoiceId,
+                    'delivery_id' => $deliveryId,
+                ],
+                'next' => ['status' => 'sending'],
+            ],
+        ];
+
+        foreach ($failures as $index => $failure) {
+            $day = $index + 20;
+            $runId = $this->insertRun(
+                (int) $owner->id,
+                $templateId,
+                $versionId,
+                420 + $index,
+                array_merge([
+                    'scheduled_for' => sprintf('2026-11-%02d 07:00:00', $day),
+                    'scheduled_local_date' => sprintf('2026-11-%02d', $day),
+                    'status' => 'failed',
+                    'attempts' => 1,
+                    'next_retry_at' => '2026-08-28 07:00:00',
+                    'last_error_code' => 'retryable_failure',
+                    'last_error_detail' => 'redacted',
+                ], $failure['state']),
+            );
+            $persisted = (array) DB::table('finance_recurring_invoice_runs')->find($runId);
+
+            $invalidProgress = $persisted['last_completed_step'] === null
+                ? ['last_completed_step' => 'draft_created', 'invoice_id' => $invoiceId]
+                : ['last_completed_step' => 'sent'];
+            $this->expectConstraintViolation(fn (): int => $this->updateRun(
+                $runId,
+                array_merge([
+                    'status' => 'pending',
+                    'next_retry_at' => null,
+                    'last_error_code' => null,
+                    'last_error_detail' => null,
+                ], $invalidProgress),
+            ));
+
+            $this->updateRun($runId, [
+                'status' => 'pending',
+                'next_retry_at' => null,
+                'last_error_code' => null,
+                'last_error_detail' => null,
+            ]);
+            $this->updateRun($runId, $failure['next']);
+            $this->assertSame(
+                $failure['next']['status'],
+                DB::table('finance_recurring_invoice_runs')->where('id', $runId)->value('status'),
+            );
+        }
     }
 
     public function test_run_invoice_and_delivery_references_are_owner_matched_and_write_once(): void
@@ -327,13 +669,19 @@ final class RecurringInvoiceSchemaTest extends TestCase
             ],
         ));
 
-        DB::table('finance_recurring_invoice_runs')->where('id', $runId)->update([
+        $this->updateRun($runId, ['status' => 'creating_draft']);
+        $this->updateRun($runId, [
             'status' => 'draft_created',
             'last_completed_step' => 'draft_created',
             'invoice_id' => $invoiceId,
             'attempts' => 1,
         ]);
-        DB::table('finance_recurring_invoice_runs')->where('id', $runId)->update([
+        $this->updateRun($runId, ['status' => 'finalizing']);
+        $this->updateRun($runId, [
+            'status' => 'finalized',
+            'last_completed_step' => 'finalized',
+        ]);
+        $this->updateRun($runId, [
             'status' => 'sending',
             'last_completed_step' => 'delivery_staged',
             'delivery_id' => $deliveryId,
@@ -391,6 +739,8 @@ final class RecurringInvoiceSchemaTest extends TestCase
         $invoiceId = $this->invoiceFixture((int) $owner->id, 121);
         $deliveryId = $this->deliveryFixture((int) $owner->id, $invoiceId, 122);
         $this->insertRun((int) $owner->id, $templateId, $versionId, 123, [
+            'status' => 'sent',
+            'last_completed_step' => 'sent',
             'invoice_id' => $invoiceId,
             'delivery_id' => $deliveryId,
         ]);
@@ -601,6 +951,8 @@ final class RecurringInvoiceSchemaTest extends TestCase
             $runId = $this->insertRun(1, $templateId, $versionId, 141);
             $foreignTemplateId = $this->insertTemplate(2, 142);
             $foreignVersionId = $this->insertTemplateVersion(2, $foreignTemplateId, 1);
+            $invoiceId = $this->invoiceFixture(1, 145);
+            $deliveryId = $this->deliveryFixture(1, $invoiceId, 146);
 
             $this->expectConstraintViolation(fn (): int => $this->insertRun(
                 1,
@@ -612,12 +964,90 @@ final class RecurringInvoiceSchemaTest extends TestCase
                     'scheduled_local_date' => '2026-09-30',
                 ],
             ));
+            $this->expectConstraintViolation(fn (): int => $this->insertTemplateVersion(
+                1,
+                $templateId,
+                2,
+                ['created_by' => 2],
+            ));
+            $this->expectConstraintViolation(fn (): int => $this->insertRun(
+                1,
+                $templateId,
+                $versionId,
+                147,
+                [
+                    'scheduled_for' => '2026-10-31 07:00:00',
+                    'scheduled_local_date' => '2026-10-31',
+                    'status' => 'sent',
+                    'last_completed_step' => 'sent',
+                ],
+            ));
+            $this->expectConstraintViolation(fn (): int => $this->insertRun(
+                1,
+                $templateId,
+                $versionId,
+                148,
+                [
+                    'scheduled_for' => '2026-11-30 07:00:00',
+                    'scheduled_local_date' => '2026-11-30',
+                    'status' => 'failed',
+                    'last_error_code' => 'oversized_detail',
+                    'last_error_detail' => str_repeat('x', 513),
+                ],
+            ));
             $this->expectConstraintViolation(fn (): int => DB::table('finance_recurring_invoice_template_versions')
                 ->where('id', $versionId)
                 ->update(['draft_snapshot' => '{"mutated":true}']));
             $this->expectConstraintViolation(fn (): int => DB::table('finance_recurring_invoice_runs')
                 ->where('id', $runId)
                 ->delete());
+
+            $this->updateRun($runId, ['status' => 'creating_draft', 'attempts' => 1]);
+            $this->expectConstraintViolation(fn (): int => $this->updateRun($runId, [
+                'status' => 'finalized',
+                'last_completed_step' => 'finalized',
+                'invoice_id' => $invoiceId,
+            ]));
+            $this->updateRun($runId, [
+                'status' => 'draft_created',
+                'last_completed_step' => 'draft_created',
+                'invoice_id' => $invoiceId,
+            ]);
+            $this->updateRun($runId, ['status' => 'finalizing']);
+            $this->updateRun($runId, [
+                'status' => 'failed',
+                'last_error_code' => 'finalize_failed',
+                'last_error_detail' => 'redacted',
+                'next_retry_at' => '2026-08-28 08:00:00',
+            ]);
+            $this->expectConstraintViolation(fn (): int => $this->updateRun($runId, [
+                'status' => 'pending',
+                'last_completed_step' => 'finalized',
+                'last_error_code' => null,
+                'last_error_detail' => null,
+                'next_retry_at' => null,
+            ]));
+            $this->updateRun($runId, [
+                'status' => 'pending',
+                'last_error_code' => null,
+                'last_error_detail' => null,
+                'next_retry_at' => null,
+            ]);
+            $this->updateRun($runId, ['status' => 'finalizing']);
+            $this->updateRun($runId, [
+                'status' => 'finalized',
+                'last_completed_step' => 'finalized',
+            ]);
+            $this->updateRun($runId, [
+                'status' => 'sending',
+                'last_completed_step' => 'delivery_staged',
+                'delivery_id' => $deliveryId,
+            ]);
+            $this->updateRun($runId, [
+                'status' => 'sent',
+                'last_completed_step' => 'sent',
+            ]);
+            $this->assertSame('sent', DB::table('finance_recurring_invoice_runs')->where('id', $runId)->value('status'));
 
             DB::transaction(fn (): int => DB::table('users')->where('id', 1)->delete());
             $this->assertSame(0, DB::table('finance_recurring_invoice_templates')->where('user_id', 1)->count());
@@ -676,6 +1106,7 @@ final class RecurringInvoiceSchemaTest extends TestCase
 
         foreach ([
             'finance_recurring_versions_owner_template_foreign',
+            'finance_recurring_versions_creator_foreign',
             'finance_recurring_templates_current_version_foreign',
             'finance_recurring_runs_owner_version_foreign',
             'finance_recurring_runs_owner_invoice_foreign',
@@ -867,6 +1298,14 @@ final class RecurringInvoiceSchemaTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    /** @param array<string, mixed> $changes */
+    private function updateRun(int $runId, array $changes): int
+    {
+        return DB::table('finance_recurring_invoice_runs')
+            ->where('id', $runId)
+            ->update($changes);
     }
 
     /** @param array<string, mixed> $row */
