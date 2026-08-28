@@ -38,13 +38,21 @@ Observed failing tests before each corresponding production slice for:
 13. Arbitrary invoice line kinds.
 14. Missing partner/project fields in the read model.
 15. Source-draft deletion breaking idempotent replay.
+16. Same-key replay and existing-source/new-key return paths bypassing authoritative control-total validation.
 
 Negative coverage also pins stale/finalized deletion, foreign update/source references, float money rejection, absence of client workflow/number/PDF authority, cross-owner source results, and rollback after an injected database failure during idempotency completion.
+
+## Review round 1
+
+- Moved authoritative decimal parsing, exact server-side calculation, and control-total validation ahead of idempotency reservation. Invalid controls therefore fail before both the same-key replay return and the existing-source target return.
+- Control totals remain deliberately excluded from the source request hash. A valid retry with omitted controls still replays the original invoice, while any supplied mismatching control produces the stable `document_totals_mismatch` error.
+- Added regression coverage for a mismatching same-key replay and a mismatching new-key call against an existing source target. Both assert that the original invoice totals, revision/activity history, and completed idempotency record remain unchanged, with no second reservation.
+- TDD red evidence: both regressions initially failed because the old implementation returned before calculation; after the ordering fix, the focused three-test control-total slice passed with 15 assertions.
 
 ## Verification
 
 - `php artisan test tests/Feature/FinanceModule/InvoiceDraftApplicationTest.php tests/Feature/FinanceModule/InvoiceSourceContractTest.php tests/Feature/FinanceModule/FinanceInvoicePersistenceTest.php tests/Feature/FinanceModule/DocumentCoreSchemaTest.php tests/Feature/FinanceModule/InvoiceSchemaTest.php`
-  - PASS: 116 tests discovered, 113 passed, 596 assertions, 3 optional PostgreSQL skips.
+  - PASS: 118 tests discovered, 115 passed, 609 assertions, 3 optional PostgreSQL skips.
 - Pint over the exact Task 6 Application/repository/test allowlist
   - PASS.
 - PHPStan over the exact Task 6 Application/repository allowlist with `--memory-limit=1G --no-progress`

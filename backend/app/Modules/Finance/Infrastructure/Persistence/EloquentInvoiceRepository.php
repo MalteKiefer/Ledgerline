@@ -63,6 +63,7 @@ final class EloquentInvoiceRepository implements InvoiceRepository
         $requestHash = $this->sourceRequestHash($source);
 
         return DB::transaction(function () use ($ownerId, $source, $key, $requestHash): InvoiceView {
+            $calculated = $this->calculatedDraft($source->draft, $source, $requestHash);
             $reservation = $this->idempotency->reserve(
                 'invoice.create_from_source',
                 $key,
@@ -108,7 +109,6 @@ final class EloquentInvoiceRepository implements InvoiceRepository
 
                 $invoiceId = (int) $existing->id;
             } else {
-                $calculated = $this->calculatedDraft($source->draft, $source, $requestHash);
                 $invoiceId = $this->persistDraft(
                     $ownerId,
                     $source->draft,

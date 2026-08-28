@@ -203,6 +203,70 @@ final class InvoiceSourceContractTest extends TestCase
         $this->assertSame(1, DB::table('finance_invoices')->where('user_id', $owner->id)->count());
     }
 
+    public function test_same_operation_key_replay_rejects_wrong_control_totals_without_mutation(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $command = $this->app->make(CreateInvoiceDraftFromSource::class);
+        $source = $this->source();
+        $key = new IdempotencyKey('source-wrong-controls-same-key-77');
+        $created = $command->handle($source, $key);
+
+        try {
+            $command->handle($this->sourceWithWrongControls($source), $key);
+            $this->fail('A same-key replay bypassed authoritative control-total validation.');
+        } catch (DomainException $exception) {
+            $this->assertSame('document_totals_mismatch', $exception->getMessage());
+        }
+
+        $this->assertSame(1, DB::table('finance_invoices')->where('user_id', $owner->id)->count());
+        $this->assertSame(1, DB::table('finance_document_revisions')->where('user_id', $owner->id)->count());
+        $this->assertSame(1, DB::table('finance_document_activities')->where('user_id', $owner->id)->count());
+        $this->assertSame(1, DB::table('finance_idempotency_records')->where('user_id', $owner->id)->count());
+        $this->assertDatabaseHas('finance_document_revisions', [
+            'id' => DB::table('finance_invoices')->where('id', $created->id->value)->value('current_revision_id'),
+            'net_minor' => 25_000,
+            'vat_minor' => 4_750,
+            'gross_minor' => 29_750,
+        ]);
+        $this->assertDatabaseHas('finance_idempotency_records', [
+            'user_id' => $owner->id,
+            'operation' => 'invoice.create_from_source',
+            'key_hash' => $key->hash(),
+            'status' => 'completed',
+        ]);
+    }
+
+    public function test_existing_source_target_rejects_wrong_control_totals_before_a_new_reservation(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $command = $this->app->make(CreateInvoiceDraftFromSource::class);
+        $source = $this->source();
+        $created = $command->handle($source, new IdempotencyKey('source-wrong-controls-original-77'));
+
+        try {
+            $command->handle(
+                $this->sourceWithWrongControls($source),
+                new IdempotencyKey('source-wrong-controls-new-key-77'),
+            );
+            $this->fail('An existing source target bypassed authoritative control-total validation.');
+        } catch (DomainException $exception) {
+            $this->assertSame('document_totals_mismatch', $exception->getMessage());
+        }
+
+        $this->assertSame(1, DB::table('finance_invoices')->where('user_id', $owner->id)->count());
+        $this->assertSame(1, DB::table('finance_document_revisions')->where('user_id', $owner->id)->count());
+        $this->assertSame(1, DB::table('finance_document_activities')->where('user_id', $owner->id)->count());
+        $this->assertSame(1, DB::table('finance_idempotency_records')->where('user_id', $owner->id)->count());
+        $this->assertDatabaseHas('finance_document_revisions', [
+            'id' => DB::table('finance_invoices')->where('id', $created->id->value)->value('current_revision_id'),
+            'net_minor' => 25_000,
+            'vat_minor' => 4_750,
+            'gross_minor' => 29_750,
+        ]);
+    }
+
     public function test_source_creation_and_idempotency_completion_are_one_atomic_transaction(): void
     {
         $owner = User::factory()->create();
@@ -351,6 +415,27 @@ final class InvoiceSourceContractTest extends TestCase
             sourceRevisionId: 77,
             sourceSnapshotSha256: hash('sha256', 'immutable quote revision 77'),
             draft: $this->draft(),
+        );
+    }
+
+    private function sourceWithWrongControls(InvoiceDraftSource $source): InvoiceDraftSource
+    {
+        return new InvoiceDraftSource(
+            $source->sourceType,
+            $source->sourceKey,
+            $source->sourceRevisionId,
+            $source->sourceSnapshotSha256,
+            new InvoiceDraftData(
+                issueDate: new DateTimeImmutable('2026-08-28'),
+                dueDate: new DateTimeImmutable('2026-09-11'),
+                currency: 'EUR',
+                customer: ['name' => 'ACME'],
+                lines: [new InvoiceLineData('Work', '2.5000', 10_000, 1_900, 'h', null, 'service')],
+                discount: Discount::none('EUR'),
+                controlNetMinor: 24_999,
+                controlVatMinor: 4_750,
+                controlGrossMinor: 29_750,
+            ),
         );
     }
 
