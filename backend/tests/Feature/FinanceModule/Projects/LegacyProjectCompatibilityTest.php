@@ -34,13 +34,16 @@ final class LegacyProjectCompatibilityTest extends TestCase
         $childId = (int) $this->postJson(route('api.finance.projects.store'), [
             'name' => 'Child', 'kind' => 'private', 'parent_id' => $parentId,
         ])->assertCreated()->json('project.id');
+        $grandchildId = (int) $this->postJson(route('api.finance.projects.store'), [
+            'name' => 'Grandchild', 'kind' => 'private', 'parent_id' => $childId,
+        ])->assertCreated()->json('project.id');
 
         $this->putJson(route('api.finance.projects.update', $childId), [
             'name' => 'Renamed child', 'version' => 0,
         ])->assertOk()->assertJsonPath('project.version', 1);
 
         $this->assertSame($parentId, (int) FinanceProject::query()->findOrFail($childId)->parent_id);
-        $this->postJson(route('api.finance.projects.move', $parentId), ['parent_id' => $childId])
+        $this->postJson(route('api.finance.projects.move', $parentId), ['parent_id' => $grandchildId])
             ->assertStatus(422)
             ->assertJsonPath('error', 'cycle');
         $this->assertNull(FinanceProject::query()->findOrFail($parentId)->parent_id);
@@ -294,6 +297,61 @@ final class LegacyProjectCompatibilityTest extends TestCase
         $this->getJson(route('api.finance.data'))->assertOk()
             ->assertJsonPath('transactions.0.finance_project_id', $project->id)
             ->assertJsonPath('standaloneReceipts.0.finance_project_id', $project->id);
+    }
+
+    public function test_file_photo_receipt_and_transaction_reject_a_foreign_project_pointer_without_mutation(): void
+    {
+        $owner = $this->signIn();
+        $ownProject = $this->project(['name' => 'Owned project']);
+        $file = FileEntry::forceCreate([
+            'user_id' => $owner->id, 'finance_project_id' => $ownProject->id,
+            'name' => 'owned.pdf', 'storage_path' => 'files/'.Str::uuid(),
+            'mime' => 'application/pdf', 'size' => 12, 'sha256' => str_repeat('c', 64), 'version' => 0,
+        ]);
+        $photo = GalleryPhoto::forceCreate([
+            'user_id' => $owner->id, 'finance_project_id' => $ownProject->id,
+            'name' => 'owned.jpg', 'storage_path' => 'gallery/'.Str::uuid(),
+            'mime' => 'image/jpeg', 'size' => 34, 'sha256' => str_repeat('d', 64), 'version' => 0,
+        ]);
+        $method = PaymentMethod::create(['type' => 'bank', 'name' => 'Owned method']);
+        $transaction = BankTransaction::create([
+            'payment_method_id' => $method->id, 'date' => '2026-08-28', 'amount' => -10,
+            'finance_project_id' => $ownProject->id,
+        ]);
+        $receipt = FinanceReceipt::forceCreate([
+            'user_id' => $owner->id, 'finance_project_id' => $ownProject->id,
+            'blob_path' => 'invoices/foreign-project-reject', 'name' => 'owned-receipt.pdf',
+            'size' => 1, 'kind' => 'receipt', 'version' => 0,
+        ]);
+
+        app('auth')->forgetGuards();
+        $foreign = $this->signIn(User::factory()->create());
+        $foreignProject = $this->project(['name' => 'Foreign project']);
+        app('auth')->forgetGuards();
+        $this->signIn($owner);
+
+        $this->putJson(route('files.rel.update', $file), [
+            'finance_project_id' => $foreignProject->id, 'version' => 0,
+        ])->assertInvalid(['finance_project_id']);
+        $this->putJson(route('gallery.update', $photo), [
+            'finance_project_id' => $foreignProject->id, 'version' => 0,
+        ])->assertInvalid(['finance_project_id']);
+        $this->putJson(route('api.finance.transactions.update', $transaction), [
+            'finance_project_id' => $foreignProject->id, 'version' => 0,
+        ])->assertUnprocessable()->assertJsonValidationErrors('finance_project_id');
+        $this->putJson(route('api.finance.receipts.update', $receipt), [
+            'finance_project_id' => $foreignProject->id, 'version' => 0,
+        ])->assertUnprocessable()->assertJsonValidationErrors('finance_project_id');
+
+        $this->assertSame($ownProject->id, FileEntry::query()->findOrFail($file->id)->finance_project_id);
+        $this->assertSame(0, FileEntry::query()->findOrFail($file->id)->version);
+        $this->assertSame($ownProject->id, GalleryPhoto::query()->findOrFail($photo->id)->finance_project_id);
+        $this->assertSame(0, GalleryPhoto::query()->findOrFail($photo->id)->version);
+        $this->assertSame($ownProject->id, BankTransaction::query()->findOrFail($transaction->id)->finance_project_id);
+        $this->assertSame(0, BankTransaction::query()->findOrFail($transaction->id)->version);
+        $this->assertSame($ownProject->id, FinanceReceipt::query()->findOrFail($receipt->id)->finance_project_id);
+        $this->assertSame(0, FinanceReceipt::query()->findOrFail($receipt->id)->version);
+        $this->assertSame($foreign->id, $foreignProject->user_id);
     }
 
     public function test_foreign_project_graph_routes_resolve_as_not_found(): void
