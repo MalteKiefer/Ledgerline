@@ -9,11 +9,13 @@ use App\Modules\Finance\Application\Ports\DocumentRevisionRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectOperationRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectReferenceResolver;
 use App\Modules\Finance\Application\Ports\Projects\ProjectRepository;
+use App\Modules\Finance\Application\Ports\Quotes\QuoteNumberAllocator;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteOperationRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteReferenceResolver;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteSettings;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectReferenceResolver;
+use App\Modules\Finance\Infrastructure\Persistence\DatabaseQuoteNumberAllocator;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentDocumentRevisionRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectOperationRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectRepository;
@@ -37,6 +39,7 @@ final class FinanceServiceProvider extends ServiceProvider
             QuoteOperationRepository::class,
             EloquentQuoteOperationRepository::class,
         );
+        $this->app->bind(QuoteNumberAllocator::class, DatabaseQuoteNumberAllocator::class);
         $this->app->bind(
             QuoteReferenceResolver::class,
             EloquentQuoteReferenceResolver::class,

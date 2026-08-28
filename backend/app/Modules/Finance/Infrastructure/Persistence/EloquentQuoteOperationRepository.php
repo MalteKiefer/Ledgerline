@@ -69,6 +69,38 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
         $this->complete($reservation, 'succeeded', $result, null);
     }
 
+    public function checkpoint(OperationReservation $reservation, array $result): OperationReservation
+    {
+        return DB::transaction(function () use ($reservation, $result): OperationReservation {
+            $record = QuoteOperationRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_operations.user_id', $reservation->ownerId)
+                ->whereKey($reservation->recordId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (! hash_equals((string) $record->request_sha256, $reservation->requestSha256)) {
+                throw new DomainException('idempotency_key_reused');
+            }
+            if ((string) $record->state === 'succeeded') {
+                return $this->reservation($record, 'replay');
+            }
+            if ((string) $record->state === 'failed') {
+                return $this->reservation($record, 'failed');
+            }
+
+            $existing = $this->operationResult($record->getAttribute('result')) ?? [];
+            $record->forceFill([
+                'state' => 'running',
+                'result' => [...$existing, ...$result],
+                'error_code' => null,
+                'completed_at' => null,
+            ])->save();
+
+            return $this->reservation($record, 'in_progress');
+        }, 1);
+    }
+
     public function fail(OperationReservation $reservation, string $errorCode): void
     {
         $this->complete($reservation, 'failed', null, $errorCode);

@@ -18,6 +18,9 @@ interface QuoteOperationRepository
     ): OperationReservation;
 
     /** @param array<string, mixed> $result */
+    public function checkpoint(OperationReservation $reservation, array $result): OperationReservation;
+
+    /** @param array<string, mixed> $result */
     public function succeed(OperationReservation $reservation, array $result): void;
 
     public function fail(OperationReservation $reservation, string $errorCode): void;

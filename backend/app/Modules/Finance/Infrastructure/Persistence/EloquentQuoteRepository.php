@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Infrastructure\Persistence;
 
 use App\Models\FinancePartner;
+use App\Modules\Finance\Application\DTOs\DocumentRevisionId;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteId;
 use App\Modules\Finance\Application\DTOs\Quotes\QuotePage;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteRevisionRef;
@@ -34,6 +35,8 @@ use LogicException;
 
 final class EloquentQuoteRepository implements QuoteRepository
 {
+    private const int NUMBER_RETRY_ATTEMPTS = 3;
+
     public function __construct(
         private readonly Clock $clock,
         private readonly QuoteSettings $settings,
@@ -403,6 +406,356 @@ final class EloquentQuoteRepository implements QuoteRepository
         }, 1);
     }
 
+    public function startVersion(QuoteId $id, int $expectedVersion): QuoteView
+    {
+        return DB::transaction(function () use ($id, $expectedVersion): QuoteView {
+            $series = DocumentSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_series.user_id', $id->ownerId)
+                ->where('uuid', $id->uuid)
+                ->where('document_type', 'quote')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $quote = QuoteSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_series.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $currentRevision = $quote->current_revision_id !== null
+                ? DocumentRevisionRecord::query()
+                    ->withoutGlobalScope('owner')
+                    ->where('finance_document_revisions.user_id', $id->ownerId)
+                    ->where('document_series_id', $series->id)
+                    ->whereKey($quote->current_revision_id)
+                    ->lockForUpdate()
+                    ->firstOrFail()
+                : null;
+            $draft = QuoteDraftRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_drafts.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ((int) $quote->version !== $expectedVersion) {
+                return $this->viewForUuid($id);
+            }
+            if ((string) $series->status !== 'sent'
+                || $currentRevision === null
+                || (string) $currentRevision->status !== 'published'
+                || $currentRevision->published_at === null) {
+                throw new InvalidQuoteAction('quote_version_not_allowed');
+            }
+            if ($draft !== null) {
+                throw new InvalidQuoteAction('quote_draft_pending');
+            }
+
+            $snapshot = $currentRevision->getAttribute('snapshot');
+            if (! is_array($snapshot)) {
+                throw new LogicException('Quote revision snapshot must be an array.');
+            }
+
+            $updatedAt = $this->clock->now();
+            $newDraft = new QuoteDraftRecord;
+            $newDraft->forceFill([
+                'document_series_id' => $series->id,
+                'user_id' => $id->ownerId,
+                'based_on_revision_id' => $currentRevision->id,
+                'payload' => $snapshot,
+                'net_minor' => $currentRevision->net_minor,
+                'vat_minor' => $currentRevision->vat_minor,
+                'gross_minor' => $currentRevision->gross_minor,
+                'currency' => $currentRevision->currency,
+                'updated_by' => $id->ownerId,
+                'created_at' => $updatedAt,
+                'updated_at' => $updatedAt,
+            ]);
+            $newDraft->save();
+
+            DB::table('finance_quote_series')
+                ->where('user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('version', $expectedVersion)
+                ->update([
+                    'version' => $expectedVersion + 1,
+                    'updated_at' => $updatedAt,
+                ]);
+            DB::table('finance_document_series')
+                ->where('id', $series->id)
+                ->where('user_id', $id->ownerId)
+                ->where('document_type', 'quote')
+                ->update(['updated_at' => $updatedAt]);
+            $this->appendActivity(
+                $id->ownerId,
+                (int) $series->id,
+                'quote.version.started',
+                $expectedVersion + 1,
+                $updatedAt,
+                ['based_on_revision_id' => (int) $currentRevision->id],
+            );
+
+            return $this->viewForUuid($id);
+        }, 1);
+    }
+
+    public function preparePublication(
+        QuoteId $id,
+        int $expectedVersion,
+        int $operationId,
+        callable $allocateNumber,
+    ): QuoteView {
+        for ($attempt = 1; $attempt <= self::NUMBER_RETRY_ATTEMPTS; $attempt++) {
+            try {
+                return $this->preparePublicationTransaction(
+                    $id,
+                    $expectedVersion,
+                    $operationId,
+                    $allocateNumber,
+                );
+            } catch (UniqueConstraintViolationException $exception) {
+                if (! $this->isQuoteNumberCollision($exception)
+                    || $attempt === self::NUMBER_RETRY_ATTEMPTS) {
+                    throw $exception;
+                }
+            }
+        }
+
+        throw new LogicException('The quote number allocation retry loop ended unexpectedly.');
+    }
+
+    /**
+     * @param  callable(string): array{number: string, year: int, sequence: int}  $allocateNumber
+     */
+    private function preparePublicationTransaction(
+        QuoteId $id,
+        int $expectedVersion,
+        int $operationId,
+        callable $allocateNumber,
+    ): QuoteView {
+        return DB::transaction(function () use (
+            $id,
+            $expectedVersion,
+            $operationId,
+            $allocateNumber,
+        ): QuoteView {
+            $series = DocumentSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_series.user_id', $id->ownerId)
+                ->where('uuid', $id->uuid)
+                ->where('document_type', 'quote')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $quote = QuoteSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_series.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $currentRevision = $quote->current_revision_id !== null
+                ? DocumentRevisionRecord::query()
+                    ->withoutGlobalScope('owner')
+                    ->where('finance_document_revisions.user_id', $id->ownerId)
+                    ->where('document_series_id', $series->id)
+                    ->whereKey($quote->current_revision_id)
+                    ->lockForUpdate()
+                    ->firstOrFail()
+                : null;
+
+            $draft = QuoteDraftRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_drafts.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $operation = QuoteOperationRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_operations.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('operation', 'publish')
+                ->whereKey($operationId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $winningOperationId = QuoteOperationRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_operations.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('operation', 'publish')
+                ->whereIn('state', ['reserved', 'running'])
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->value('id');
+
+            if (! is_int($winningOperationId)
+                && (! is_string($winningOperationId) || ! ctype_digit($winningOperationId))) {
+                throw new LogicException('A quote publication operation could not be selected.');
+            }
+            $winningOperationId = is_int($winningOperationId)
+                ? $winningOperationId
+                : (int) $winningOperationId;
+
+            if ($winningOperationId !== (int) $operation->id) {
+                throw new InvalidQuoteAction('operation_in_progress');
+            }
+            if ((int) $quote->version !== $expectedVersion) {
+                throw new InvalidQuoteAction('version_conflict');
+            }
+            if (! in_array((string) $series->status, ['draft', 'sent'], true)) {
+                throw new InvalidQuoteAction('quote_publish_not_allowed');
+            }
+            if ((string) $series->status === 'sent'
+                && ($currentRevision === null
+                    || (string) $currentRevision->status !== 'published'
+                    || $currentRevision->published_at === null)) {
+                throw new InvalidQuoteAction('quote_publish_not_allowed');
+            }
+            if ((string) $series->status === 'sent'
+                && $quote->current_revision_id !== null
+                && (int) $draft->based_on_revision_id !== (int) $quote->current_revision_id) {
+                throw new InvalidQuoteAction('quote_draft_base_mismatch');
+            }
+
+            if ($quote->number === null) {
+                $payload = $draft->getAttribute('payload');
+                $issueDate = is_array($payload) ? ($payload['issue_date'] ?? null) : null;
+                if (! is_string($issueDate)) {
+                    throw new LogicException('Quote draft issue date is missing.');
+                }
+                $allocation = $allocateNumber($issueDate);
+                $updatedAt = $this->clock->now();
+                DB::table('finance_quote_series')
+                    ->where('user_id', $id->ownerId)
+                    ->where('document_series_id', $series->id)
+                    ->whereNull('number')
+                    ->update([
+                        'number' => $allocation['number'],
+                        'sequence_year' => $allocation['year'],
+                        'sequence_number' => $allocation['sequence'],
+                        'updated_at' => $updatedAt,
+                    ]);
+                DB::table('finance_document_series')
+                    ->where('id', $series->id)
+                    ->where('user_id', $id->ownerId)
+                    ->where('document_type', 'quote')
+                    ->update(['updated_at' => $updatedAt]);
+            }
+
+            return $this->viewForUuid($id);
+        }, 1);
+    }
+
+    public function finalizePublication(
+        QuoteId $id,
+        int $expectedVersion,
+        DocumentRevisionId $revisionId,
+    ): QuoteView {
+        return DB::transaction(function () use ($id, $expectedVersion, $revisionId): QuoteView {
+            $series = DocumentSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_series.user_id', $id->ownerId)
+                ->where('uuid', $id->uuid)
+                ->where('document_type', 'quote')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $quote = QuoteSeriesRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_series.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $previous = $quote->current_revision_id !== null
+                ? DocumentRevisionRecord::query()
+                    ->withoutGlobalScope('owner')
+                    ->where('finance_document_revisions.user_id', $id->ownerId)
+                    ->where('document_series_id', $series->id)
+                    ->whereKey($quote->current_revision_id)
+                    ->lockForUpdate()
+                    ->firstOrFail()
+                : null;
+            $draft = QuoteDraftRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_drafts.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ((int) $quote->current_revision_id === $revisionId->value
+                && (string) $series->status === 'sent'
+                && $draft === null) {
+                return $this->viewForUuid($id);
+            }
+            if ((int) $quote->version !== $expectedVersion) {
+                throw new InvalidQuoteAction('version_conflict');
+            }
+            if ($draft === null) {
+                throw new InvalidQuoteAction('quote_draft_missing');
+            }
+
+            $revision = DocumentRevisionRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_revisions.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($revisionId->value)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($revision->published_at === null || (string) $revision->status !== 'published') {
+                throw new InvalidQuoteAction('quote_revision_not_published');
+            }
+
+            $previousId = $previous !== null ? (int) $previous->id : null;
+            if (($revision->previous_revision_id !== null ? (int) $revision->previous_revision_id : null) !== $previousId
+                || ($draft->based_on_revision_id !== null ? (int) $draft->based_on_revision_id : null) !== $previousId) {
+                throw new InvalidQuoteAction('quote_revision_base_mismatch');
+            }
+
+            $updatedAt = $this->clock->now();
+            $publishedAt = $revision->getAttribute('published_at');
+            DB::table('finance_quote_series')
+                ->where('user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('version', $expectedVersion)
+                ->update([
+                    'current_revision_id' => $revision->id,
+                    'version' => $expectedVersion + 1,
+                    'published_at' => $publishedAt,
+                    'updated_at' => $updatedAt,
+                ]);
+            DB::table('finance_document_series')
+                ->where('id', $series->id)
+                ->where('user_id', $id->ownerId)
+                ->where('document_type', 'quote')
+                ->update([
+                    'status' => 'sent',
+                    'updated_at' => $updatedAt,
+                ]);
+            $draft->delete();
+            $this->appendActivity(
+                $id->ownerId,
+                (int) $series->id,
+                'quote.published',
+                $expectedVersion + 1,
+                $updatedAt,
+                ['revision_id' => (int) $revision->id],
+            );
+            if ($previousId !== null) {
+                $this->appendActivity(
+                    $id->ownerId,
+                    (int) $series->id,
+                    'quote.revision.superseded',
+                    $expectedVersion + 1,
+                    $updatedAt,
+                    [
+                        'previous_revision_id' => $previousId,
+                        'current_revision_id' => (int) $revision->id,
+                    ],
+                );
+            }
+
+            return $this->viewForUuid($id);
+        }, 1);
+    }
+
     private function assertOwnedPartner(int $ownerId, ?int $partnerId): void
     {
         if ($partnerId === null) {
@@ -433,6 +786,18 @@ final class EloquentQuoteRepository implements QuoteRepository
         if (preg_match('/\A[0-9a-f]{64}\z/D', $requestSha256) !== 1) {
             throw new InvalidArgumentException('Quote request hash must be canonical lowercase SHA-256 hex.');
         }
+    }
+
+    private function isQuoteNumberCollision(UniqueConstraintViolationException $exception): bool
+    {
+        return in_array($exception->index, [
+            'finance_quote_series_owner_number_unique',
+            'finance_quote_series_owner_sequence_unique',
+        ], true)
+            || in_array($exception->columns, [
+                ['user_id', 'number'],
+                ['user_id', 'sequence_year', 'sequence_number'],
+            ], true);
     }
 
     private function reserveCreateOperation(
@@ -509,12 +874,14 @@ final class EloquentQuoteRepository implements QuoteRepository
         return $this->viewForUuid(new QuoteId($ownerId, (string) $series->uuid));
     }
 
+    /** @param array<string, mixed> $payload */
     private function appendActivity(
         int $ownerId,
         int $seriesId,
         string $type,
         int $version,
         DateTimeInterface $createdAt,
+        array $payload = [],
     ): void {
         $activity = new DocumentActivityRecord;
         $activity->forceFill([
@@ -522,7 +889,7 @@ final class EloquentQuoteRepository implements QuoteRepository
             'document_series_id' => $seriesId,
             'document_revision_id' => null,
             'type' => $type,
-            'payload' => ['version' => $version],
+            'payload' => ['version' => $version, ...$payload],
             'created_by' => $ownerId,
             'created_at' => $createdAt,
         ]);

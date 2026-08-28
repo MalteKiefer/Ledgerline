@@ -21,6 +21,15 @@ interface DocumentRevisionRepository
         string $snapshotSha256,
     ): DocumentRevisionId;
 
+    /** @param array<array-key, mixed> $canonicalSnapshot */
+    public function createIdempotently(
+        CreateRevisionData $data,
+        DocumentTotals $totals,
+        array $canonicalSnapshot,
+        string $snapshotSha256,
+        string $creationKey,
+    ): DocumentRevisionId;
+
     /**
      * @param  Closure(string, array<array-key, mixed>): StoredDocument  $storePdf
      */

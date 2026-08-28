@@ -29,6 +29,39 @@ final class EloquentDocumentRevisionRepository implements DocumentRevisionReposi
         array $canonicalSnapshot,
         string $snapshotSha256,
     ): DocumentRevisionId {
+        return $this->createRevision(
+            $data,
+            $totals,
+            $canonicalSnapshot,
+            $snapshotSha256,
+            null,
+        );
+    }
+
+    public function createIdempotently(
+        CreateRevisionData $data,
+        DocumentTotals $totals,
+        array $canonicalSnapshot,
+        string $snapshotSha256,
+        string $creationKey,
+    ): DocumentRevisionId {
+        return $this->createRevision(
+            $data,
+            $totals,
+            $canonicalSnapshot,
+            $snapshotSha256,
+            hash('sha256', $creationKey),
+        );
+    }
+
+    /** @param array<array-key, mixed> $canonicalSnapshot */
+    private function createRevision(
+        CreateRevisionData $data,
+        DocumentTotals $totals,
+        array $canonicalSnapshot,
+        string $snapshotSha256,
+        ?string $creationKeySha256,
+    ): DocumentRevisionId {
         $ownerId = $this->authenticatedOwnerId();
 
         for ($attempt = 1; $attempt <= self::SEQUENCE_RETRY_ATTEMPTS; $attempt++) {
@@ -39,11 +72,33 @@ final class EloquentDocumentRevisionRepository implements DocumentRevisionReposi
                     $canonicalSnapshot,
                     $snapshotSha256,
                     $ownerId,
+                    $creationKeySha256,
                 ): DocumentRevisionId {
                     $series = DocumentSeriesRecord::query()
                         ->where('uuid', $data->seriesUuid)
                         ->lockForUpdate()
                         ->firstOrFail();
+                    $existing = $creationKeySha256 !== null
+                        ? $series->activities()
+                            ->where('type', 'revision.created')
+                            ->where('payload->creation_key_sha256', $creationKeySha256)
+                            ->lockForUpdate()
+                            ->first()
+                        : null;
+
+                    if ($existing !== null) {
+                        $payload = $existing->getAttribute('payload');
+
+                        if (! is_array($payload)
+                            || ! isset($payload['snapshot_sha256'])
+                            || ! is_string($payload['snapshot_sha256'])
+                            || ! hash_equals($payload['snapshot_sha256'], $snapshotSha256)) {
+                            throw new LogicException('revision_creation_key_reused');
+                        }
+
+                        return new DocumentRevisionId((int) $existing->document_revision_id);
+                    }
+
                     $previous = $series->revisions()
                         ->orderByDesc('revision_number')
                         ->lockForUpdate()
@@ -63,10 +118,14 @@ final class EloquentDocumentRevisionRepository implements DocumentRevisionReposi
                         'revision_number' => $revisionNumber,
                         'created_by' => $ownerId,
                     ])->save();
+                    $activityPayload = ['snapshot_sha256' => $snapshotSha256];
+                    if ($creationKeySha256 !== null) {
+                        $activityPayload['creation_key_sha256'] = $creationKeySha256;
+                    }
                     $series->activities()->create([
                         'document_revision_id' => $revision->id,
                         'type' => 'revision.created',
-                        'payload' => ['snapshot_sha256' => $snapshotSha256],
+                        'payload' => $activityPayload,
                         'created_by' => $ownerId,
                     ]);
 

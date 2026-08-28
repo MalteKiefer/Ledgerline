@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Finance\Application\Ports\Quotes;
 
+use App\Modules\Finance\Application\DTOs\DocumentRevisionId;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteId;
 use App\Modules\Finance\Application\DTOs\Quotes\QuotePage;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteRevisionRef;
@@ -52,4 +53,22 @@ interface QuoteRepository
     ): QuoteView;
 
     public function discardDraft(QuoteId $id, int $expectedVersion): QuoteView;
+
+    public function startVersion(QuoteId $id, int $expectedVersion): QuoteView;
+
+    /**
+     * @param  callable(string): array{number: string, year: int, sequence: int}  $allocateNumber
+     */
+    public function preparePublication(
+        QuoteId $id,
+        int $expectedVersion,
+        int $operationId,
+        callable $allocateNumber,
+    ): QuoteView;
+
+    public function finalizePublication(
+        QuoteId $id,
+        int $expectedVersion,
+        DocumentRevisionId $revisionId,
+    ): QuoteView;
 }
