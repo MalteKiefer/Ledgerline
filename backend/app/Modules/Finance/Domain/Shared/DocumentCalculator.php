@@ -141,7 +141,12 @@ final class DocumentCalculator
         }
 
         $remainder = $discountMinor - $allocated;
-        $orderedIndexes = array_keys($rawLines);
+        $orderedIndexes = array_values(array_filter(
+            array_keys($rawLines),
+            static fn (int $index): bool => $remainder > 0
+                ? $rawLines[$index]['net'] > 0
+                : $rawLines[$index]['net'] < 0,
+        ));
         usort($orderedIndexes, static function (int $left, int $right) use ($rawLines): int {
             return [$rawLines[$left]['taxRateBasisPoints'], $rawLines[$left]['position']]
                 <=> [$rawLines[$right]['taxRateBasisPoints'], $rawLines[$right]['position']];

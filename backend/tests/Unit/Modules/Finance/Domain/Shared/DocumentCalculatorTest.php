@@ -106,6 +106,47 @@ final class DocumentCalculatorTest extends TestCase
         $this->assertBreakdown($totals, 1, 1900, 100, 19, 119);
     }
 
+    public function test_it_does_not_assign_a_positive_remaining_discount_cent_to_a_zero_weight_line(): void
+    {
+        $totals = (new DocumentCalculator)->calculate([
+            $this->line('Zero weight', '1', '0.00', 0),
+            $this->line('First weighted line', '1', '0.02', 1900),
+            $this->line('Second weighted line', '1', '0.01', 1900),
+        ], Discount::fixed(Money::fromDecimal('0.01', 'EUR')));
+
+        $this->assertTotals($totals, 2, 0, 2, 1);
+        $this->assertBreakdown($totals, 0, 0, 0, 0, 0);
+        $this->assertBreakdown($totals, 1, 1900, 2, 0, 2);
+    }
+
+    public function test_it_assigns_a_positive_remaining_discount_cent_only_to_a_positive_weight(): void
+    {
+        $totals = (new DocumentCalculator)->calculate([
+            $this->line('Credit', '-1', '0.01', 0),
+            $this->line('Reduced', '1', '0.02', 700),
+            $this->line('Standard', '1', '0.02', 1900),
+        ], Discount::fixed(Money::fromDecimal('0.01', 'EUR')));
+
+        $this->assertTotals($totals, 2, 0, 2, 1);
+        $this->assertBreakdown($totals, 0, 0, -1, 0, -1);
+        $this->assertBreakdown($totals, 1, 700, 1, 0, 1);
+        $this->assertBreakdown($totals, 2, 1900, 2, 0, 2);
+    }
+
+    public function test_it_assigns_a_negative_remaining_discount_cent_only_to_a_negative_weight(): void
+    {
+        $totals = (new DocumentCalculator)->calculate([
+            $this->line('Positive', '1', '0.04', 0),
+            $this->line('Reduced credit', '-1', '0.01', 700),
+            $this->line('Standard credit', '-1', '0.01', 1900),
+        ], Discount::fixed(Money::fromDecimal('0.01', 'EUR')));
+
+        $this->assertTotals($totals, 1, 0, 1, 1);
+        $this->assertBreakdown($totals, 0, 0, 2, 0, 2);
+        $this->assertBreakdown($totals, 1, 700, 0, 0, 0);
+        $this->assertBreakdown($totals, 2, 1900, -1, 0, -1);
+    }
+
     public function test_it_allows_a_discount_equal_to_the_total_net(): void
     {
         $totals = (new DocumentCalculator)->calculate([
