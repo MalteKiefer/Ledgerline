@@ -53,6 +53,7 @@ docs/superpowers/
 
 # Subagent git worktrees (transient)
 .claude/
+.worktrees/
 
 # laravel-vue-i18n build artifacts (generated from lang/*.php)
 /lang/php_*.json
