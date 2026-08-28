@@ -108,8 +108,10 @@ integer-only arithmetic.
 Discount inputs are created with `Discount::none(currency)`,
 `Discount::percentBasisPoints(basisPoints, currency)`, or
 `Discount::fixed(Money)`. Percentage basis points must be in `0..10000`.
-The calculated discount must be in the inclusive range from zero through the
-document's raw net.
+For a non-negative raw document net, the calculated discount must be in the
+inclusive range from zero through that raw net. If the raw document net is
+negative, only a zero discount is accepted. Negative discounts are always
+rejected.
 
 Discount minor units are distributed proportionally by raw line net. Any
 remainder cents go only to non-zero lines with the remainder's sign, ordered by
@@ -140,7 +142,9 @@ $machine->assertCan(string $from, string $to): void;
 ```
 
 State names are preserved exactly; they are not trimmed, normalized, or given
-quote/invoice semantics by this shared class. Empty or malformed maps throw
+quote/invoice semantics by this shared class. An empty map is valid and produces
+a machine that allows no transitions. Malformed entries—an empty or non-string
+source/target state, or a non-array target list—throw
 `InvalidArgumentException`. A disallowed, reverse, self, or unknown transition
 causes `assertCan` to throw `InvalidTransition`, whose stable public properties
 are `from`, `to`, and string code `invalid_transition`.
