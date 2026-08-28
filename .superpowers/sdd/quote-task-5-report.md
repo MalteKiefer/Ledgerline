@@ -10,7 +10,7 @@ The implementation adds framework-free Quote input DTOs, an exact-decimal draft 
 
 The written Task 5 file list did not include the existing `QuoteRepository` port or `EloquentQuoteRepository`, but the same task requires persistent later-draft discard and atomic `quote.created`, `quote.draft.updated`, and `quote.draft.discarded` activities. Those behaviors cannot be implemented in the listed Application files without importing Laravel/Eloquent into Application.
 
-After explicit approval, the scope was minimally widened to those two existing Quote repository files. The port gained only `discardDraft(QuoteId, expectedVersion)`, while the adapter owns deletion, CAS, lock ordering, timestamps, and append-only activity persistence in its existing transactions. The existing provider binding already resolves the extended adapter, so `FinanceServiceProvider` remained untouched.
+After explicit approval, the scope was minimally widened to those two existing Quote repository files. The port owns draft discard and the create unit-of-work contract, while the adapter owns idempotency reservation/completion, deletion, CAS, lock ordering, timestamps, and append-only activity persistence in its transactions. The existing provider binding already resolves the extended adapter, so `FinanceServiceProvider` remained untouched.
 
 ## Behavior delivered
 
@@ -22,10 +22,11 @@ After explicit approval, the scope was minimally widened to those two existing Q
 - Client net/VAT/gross values are optional control checks only. A mismatch raises `control_totals_mismatch`; controls never enter the stored payload or replace calculated totals.
 - Stored payloads contain canonical decimal strings plus authoritative scaled quantities, minor-unit prices, basis-point rates, normalized discount data, integer totals, and integer tax breakdowns.
 - `PreviewQuoteTotals` returns the same authoritative totals/default dates without persistence.
-- `CreateQuote` hashes the canonical raw request (before time/settings defaults), reserves the owner-scoped `create` idempotency key, persists once, and replays the original UUID. The same key with changed input raises `idempotency_key_reused`; retries across owner midnight remain stable and do not revalidate references deleted after the successful original write.
+- `CreateQuote` hashes the canonical raw request (before time/settings defaults) and delegates one repository unit of work. Reservation, aggregate/draft/activity creation, binding the operation to the series, and successful completion share one physical transaction. A completion exception rolls everything back; retrying the same key creates exactly once and later replays the original UUID. The same key with changed input raises `idempotency_key_reused`; retries across owner midnight remain stable and do not revalidate references deleted after the successful original write.
 - `UpdateQuoteDraft` validates input and delegates the expected version to repository CAS. Only the winner changes payload/partner/version and emits `quote.draft.updated`; stale callers receive the current unchanged view.
 - `DiscardQuoteDraft` rejects the only initial draft with `initial_draft_cannot_be_discarded`. A later draft based on an immutable revision is removed under the established series → extension → current revision → draft lock order, increments the aggregate version/timestamps, and emits `quote.draft.discarded`. A stale retry returns the current no-draft view without another event.
 - Root/extension updates and each activity stay within the same repository transaction. Application DTOs, services, queries, and commands contain no Laravel, Eloquent, HTTP, legacy-model, or Infrastructure imports.
+- Quote settings reads no longer call `UserSetting::for()`. Missing settings return the established defaults without inserting a `user_settings` row, keeping preview strictly read-only.
 
 ## TDD evidence
 
@@ -35,6 +36,8 @@ After explicit approval, the scope was minimally widened to those two existing Q
 4. Idempotency-midnight RED: the same raw request/key raised `idempotency_key_reused` after the owner-local date rolled over because the hash included resolved defaults. GREEN: hashing the canonical raw request made the replay stable.
 5. Replay-reference RED: replay failed after the originally valid partner/product was soft-deleted. GREEN: reservation/replay now precedes reference recalculation; new writes still validate every live reference.
 6. PHPStan exposed an imprecise customer-array return type. The implementation now preserves and documents string keys without suppression or baseline changes.
+7. Review RED/GREEN (settings): previewing for an owner without settings inserted a `user_settings` row. The adapter now performs nullable reads and the regression test proves the row count remains zero.
+8. Review RED/GREEN (atomic idempotency): an injected failure during operation completion was not observed because completion lived outside aggregate persistence. The repository unit of work now updates the operation through the same outer transaction; the test proves zero durable operation/series/draft/activity rows after failure, then exactly one of each after same-key retry and replay.
 
 ## Verification
 
@@ -49,9 +52,22 @@ After explicit approval, the scope was minimally widened to those two existing Q
 - Pint over every Task 5 production/test file plus the two approved repository files
   - PASS after formatting; final `--test` recorded before commit.
 
-## Remaining concerns
+## Review round 1 verification
 
-Create reservation and aggregate creation intentionally cross two port calls and therefore are not one physical database transaction. A process crash after aggregate commit but before marking the operation successful can leave an `in_progress` reservation requiring operational recovery. Completed retries are exactly-once, and no duplicate is created for a completed key; fully resumable multi-checkpoint orchestration is explicitly introduced by the later publication workflow task.
+- `php artisan test tests/Feature/FinanceModule/Quotes/QuoteDraftApplicationTest.php`
+  - PASS: 11 tests, 70 assertions.
+- `php artisan test tests/Feature/FinanceModule/Quotes`
+  - PASS: 47 passed, one opt-in PostgreSQL test skipped, 332 assertions.
+- `php artisan test tests/Feature/FinanceModule/Quotes/QuoteDraftApplicationTest.php tests/Unit/Modules/Finance/Domain/Shared/DocumentCalculatorTest.php`
+  - PASS: 31 tests, 207 assertions.
+- `FILES_DISK=local php -d memory_limit=1G vendor/bin/phpunit tests/Feature/FinanceModule tests/Unit/Modules/Finance`
+  - PASS: 428 passed, six skipped, 2,077 assertions.
+- PHPStan over `app/Modules/Finance`
+  - PASS: zero errors.
+- Focused Pint `--test` over the five changed production/test files
+  - PASS.
+
+## Remaining concerns
 
 The PostgreSQL opt-in operation-conflict path belongs to Task 4 and remains locally skipped because no PostgreSQL test service/credentials were supplied. Task 5's calculator, input, command, CAS, and activity coverage ran on the configured in-memory SQLite database.
 

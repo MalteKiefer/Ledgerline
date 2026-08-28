@@ -28,6 +28,20 @@ interface QuoteRepository
         ?int $partnerId = null,
     ): QuoteView;
 
+    /**
+     * @param callable(): array{
+     *     partner_id: int|null,
+     *     payload: array<string, mixed>,
+     *     totals: DocumentTotals
+     * } $draft
+     */
+    public function createDraftIdempotently(
+        int $ownerId,
+        string $idempotencyKey,
+        string $requestSha256,
+        callable $draft,
+    ): QuoteView;
+
     /** @param array<array-key, mixed> $payload */
     public function updateDraft(
         QuoteId $id,

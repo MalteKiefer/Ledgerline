@@ -15,6 +15,7 @@ use App\Modules\Finance\Application\DTOs\Quotes\QuoteView;
 use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Queries\Quotes\PreviewQuoteTotals;
 use App\Modules\Finance\Domain\Quotes\Exception\InvalidQuoteAction;
+use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteOperationRecord;
 use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -56,6 +57,24 @@ final class QuoteDraftApplicationTest extends TestCase
         ]], $preview->taxBreakdowns);
         $this->assertSame('2026-08-29', $preview->issueDate);
         $this->assertSame('2026-09-28', $preview->validUntil);
+    }
+
+    public function test_preview_with_default_settings_is_read_only(): void
+    {
+        $owner = User::factory()->create();
+        $this->app->instance(Clock::class, $this->clockAt('2026-08-28 22:30:00 UTC'));
+        $this->actingAs($owner);
+
+        $this->assertSame(0, DB::table('user_settings')->where('user_id', $owner->id)->count());
+
+        $preview = $this->app->make(PreviewQuoteTotals::class)->handle(
+            (int) $owner->id,
+            $this->draft(issueDate: null, validUntil: null),
+        );
+
+        $this->assertSame('2026-08-28', $preview->issueDate);
+        $this->assertSame('2026-09-27', $preview->validUntil);
+        $this->assertSame(0, DB::table('user_settings')->where('user_id', $owner->id)->count());
     }
 
     public function test_input_rejects_json_numbers_invalid_scales_empty_or_excessive_lines_and_invalid_discounts(): void
@@ -193,6 +212,58 @@ final class QuoteDraftApplicationTest extends TestCase
         } catch (DomainException $exception) {
             $this->assertSame('idempotency_key_reused', $exception->getMessage());
         }
+    }
+
+    public function test_create_completion_failure_rolls_back_and_same_key_retry_creates_exactly_once(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $command = $this->app->make(CreateQuote::class);
+        $data = $this->draft();
+        QuoteOperationRecord::updating(static function (QuoteOperationRecord $operation): void {
+            if ($operation->operation === 'create'
+                && $operation->state === 'succeeded') {
+                throw new \RuntimeException('injected quote operation completion failure');
+            }
+        });
+
+        try {
+            $command->handle((int) $owner->id, 'retry-after-completion-failure', $data);
+            $this->fail('The injected operation completion failure was not observed.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('injected quote operation completion failure', $exception->getMessage());
+        } finally {
+            QuoteOperationRecord::flushEventListeners();
+        }
+
+        $this->assertSame(0, DB::table('finance_document_series')->where('user_id', $owner->id)->count());
+        $this->assertSame(0, DB::table('finance_quote_series')->where('user_id', $owner->id)->count());
+        $this->assertSame(0, DB::table('finance_quote_drafts')->where('user_id', $owner->id)->count());
+        $this->assertSame(0, DB::table('finance_document_activities')->where('user_id', $owner->id)->count());
+        $this->assertSame(0, DB::table('finance_quote_operations')->where('user_id', $owner->id)->count());
+
+        $retried = $command->handle((int) $owner->id, 'retry-after-completion-failure', $data);
+        $replayed = $command->handle((int) $owner->id, 'retry-after-completion-failure', $data);
+
+        $this->assertSame($retried->id->uuid, $replayed->id->uuid);
+        $this->assertSame(1, DB::table('finance_document_series')->where('user_id', $owner->id)->count());
+        $this->assertSame(1, DB::table('finance_quote_series')->where('user_id', $owner->id)->count());
+        $this->assertSame(1, DB::table('finance_quote_drafts')->where('user_id', $owner->id)->count());
+        $this->assertSame(1, DB::table('finance_document_activities')->where('user_id', $owner->id)->count());
+        $operation = QuoteOperationRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('user_id', $owner->id)
+            ->sole();
+        $this->assertSame('succeeded', $operation->state);
+        $operationSeriesId = $operation->getAttribute('document_series_id');
+        $this->assertIsInt($operationSeriesId);
+        $this->assertSame($this->seriesId($retried), $operationSeriesId);
+        $result = $operation->getAttribute('result');
+        $this->assertIsArray($result);
+        $this->assertSame(
+            ['quote_uuid' => $retried->id->uuid],
+            $result,
+        );
     }
 
     public function test_create_idempotency_hash_is_stable_when_default_dates_change_after_owner_midnight(): void

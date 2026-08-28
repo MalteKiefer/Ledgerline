@@ -18,12 +18,15 @@ use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteDraftRecord;
+use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteOperationRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteSeriesRecord;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use DomainException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -195,6 +198,60 @@ final class EloquentQuoteRepository implements QuoteRepository
         }, 1);
     }
 
+    public function createDraftIdempotently(
+        int $ownerId,
+        string $idempotencyKey,
+        string $requestSha256,
+        callable $draft,
+    ): QuoteView {
+        $this->validateCreateOperation($ownerId, $idempotencyKey, $requestSha256);
+
+        return DB::transaction(function () use (
+            $ownerId,
+            $idempotencyKey,
+            $requestSha256,
+            $draft,
+        ): QuoteView {
+            $operation = $this->reserveCreateOperation(
+                $ownerId,
+                $idempotencyKey,
+                $requestSha256,
+            );
+
+            if (! hash_equals((string) $operation->request_sha256, $requestSha256)) {
+                throw new DomainException('idempotency_key_reused');
+            }
+
+            if ((string) $operation->state === 'succeeded') {
+                return $this->replayCreatedQuote($ownerId, $operation);
+            }
+
+            if ($operation->document_series_id !== null) {
+                $quote = $this->viewForSeriesId($ownerId, (int) $operation->document_series_id);
+            } else {
+                $built = $draft();
+                $quote = $this->createDraft(
+                    $ownerId,
+                    $built['payload'],
+                    $built['totals'],
+                    $built['partner_id'],
+                );
+            }
+
+            $series = $this->seriesForUuid($quote->id);
+            $operation->forceFill([
+                'document_series_id' => $series->id,
+                'state' => 'succeeded',
+                'result' => ['quote_uuid' => $quote->id->uuid],
+                'error_code' => null,
+                'completed_at' => $this->clock->now(),
+            ]);
+            $operation->save();
+
+            return $quote;
+        }, 1);
+    }
+
     public function updateDraft(
         QuoteId $id,
         int $expectedVersion,
@@ -358,6 +415,98 @@ final class EloquentQuoteRepository implements QuoteRepository
             ->whereKey($partnerId)
             ->lockForUpdate()
             ->firstOrFail(['id']);
+    }
+
+    private function validateCreateOperation(
+        int $ownerId,
+        string $idempotencyKey,
+        string $requestSha256,
+    ): void {
+        if ($ownerId < 1) {
+            throw new InvalidArgumentException('Quote operation owner ID must be positive.');
+        }
+
+        if (trim($idempotencyKey) === '' || strlen($idempotencyKey) > 255) {
+            throw new InvalidArgumentException('Quote idempotency key must contain between 1 and 255 bytes.');
+        }
+
+        if (preg_match('/\A[0-9a-f]{64}\z/D', $requestSha256) !== 1) {
+            throw new InvalidArgumentException('Quote request hash must be canonical lowercase SHA-256 hex.');
+        }
+    }
+
+    private function reserveCreateOperation(
+        int $ownerId,
+        string $idempotencyKey,
+        string $requestSha256,
+    ): QuoteOperationRecord {
+        try {
+            $recordId = DB::transaction(fn (): int => (int) DB::table('finance_quote_operations')
+                ->insertGetId([
+                    'user_id' => $ownerId,
+                    'document_series_id' => null,
+                    'operation' => 'create',
+                    'idempotency_key' => $idempotencyKey,
+                    'request_sha256' => $requestSha256,
+                    'state' => 'reserved',
+                    'result' => null,
+                    'error_code' => null,
+                    'started_at' => $this->clock->now(),
+                    'completed_at' => null,
+                ]), 1);
+
+            return QuoteOperationRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_operations.user_id', $ownerId)
+                ->lockForUpdate()
+                ->findOrFail($recordId);
+        } catch (UniqueConstraintViolationException $exception) {
+            $operation = QuoteOperationRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_operations.user_id', $ownerId)
+                ->where('operation', 'create')
+                ->where('idempotency_key', $idempotencyKey)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $operation instanceof QuoteOperationRecord) {
+                throw $exception;
+            }
+
+            return $operation;
+        }
+    }
+
+    private function replayCreatedQuote(int $ownerId, QuoteOperationRecord $operation): QuoteView
+    {
+        $result = $operation->getAttribute('result');
+        $uuid = is_array($result) ? ($result['quote_uuid'] ?? null) : null;
+
+        if (! is_string($uuid) || $operation->document_series_id === null) {
+            throw new LogicException('Completed quote creation has no replay identity.');
+        }
+
+        $quote = $this->viewForUuid(new QuoteId($ownerId, $uuid));
+        $series = $this->seriesForUuid($quote->id);
+
+        if ((int) $operation->document_series_id !== (int) $series->id) {
+            throw new LogicException('Completed quote creation has an inconsistent replay identity.');
+        }
+
+        return $quote;
+    }
+
+    private function viewForSeriesId(int $ownerId, int $seriesId): QuoteView
+    {
+        $series = DocumentSeriesRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_document_series.user_id', $ownerId)
+            ->where('document_type', 'quote')
+            ->whereKey($seriesId)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        return $this->viewForUuid(new QuoteId($ownerId, (string) $series->uuid));
     }
 
     private function appendActivity(
