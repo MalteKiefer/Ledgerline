@@ -68,3 +68,26 @@ Legacy stock arithmetic no longer uses float casts or database `SUM`:
 SQLite migration storage was changed from numeric affinity to text so the full scale-4 range remains exact. Down validates every value before dropping an index or changing a column. SQLite table rebuilds explicitly preserve the existing partial live-SKU index and the partial invoice-sale idempotency index; repeated Up and lossy Down behaviors have dedicated regressions.
 
 Review TDD evidence included red reproductions for the kind bypasses, large positive and negative arithmetic, recompute precision, move/recompute overflow, large reorder comparison, invoice-adapter overflow, lossy Down index mutation, and SQLite partial-index loss during an idempotent Up. Each passed after its focused implementation change.
+
+## Review round 2
+
+The legacy stock endpoint now validates quantities at a maximum of four decimal places and passes the validated request string unchanged into `StockLedger`. The regression proves that `0.0001` is stored exactly, while `1.23456`, locale-comma input, and scientific notation all return 422 and append no movement.
+
+Both stock-hardening Down preflights now require values to satisfy both conditions of the former `NUMERIC(12,3)` columns: the fourth decimal must be zero and the absolute value must not exceed `999999999.999`. Positive and negative `999999999999.9990` reproductions prove rejection before the partial index, schema declarations, or stored values change. The exact positive/negative boundary passes Down/Up through both the fresh-install and compatibility migrations.
+
+The boundary test also exposed SQLite parent-table rebuild cascades that erased stock history. SQLite now changes only the validated column affinity declarations in place, without rebuilding the product parent. This preserves append-only movements and every foreign-key action; the regression verifies exact product/movement values, the partial invoice-sale index, `PRAGMA integrity_check`, and `PRAGMA foreign_key_check` after both round trips.
+
+Review-round-2 TDD evidence:
+
+- The stock endpoint test first returned 500 for `1.23456`; it passes after request-scale validation and removal of the controller float cast.
+- The overflow migration test first allowed the out-of-range value; it passes after exact string-based integer/range checks in both preflights.
+- The boundary round-trip initially lost the ledger movement through SQLite cascade behavior; the non-rebuilding affinity update preserves it.
+- Final focused verification: 34 product/finalization tests, 33 passed, 251 assertions, 1 PostgreSQL skip before the final integrity assertions were added; the final broad Finance verification is recorded below.
+
+Final review-round-2 verification:
+
+- Relevant Finance suite: 223 tests discovered, 219 passed, 1,181 assertions, 4 PostgreSQL/runtime skips.
+- Fresh SQLite migration completed successfully with the test `APP_KEY` and in-memory database.
+- PHPStan on the changed controller and both migrations: 0 errors with a 1 GB memory limit.
+- Pint on the five explicit review-round-2 files: passed.
+- PostgreSQL remains opt-in through `FINANCE_TEST_PGSQL_URL`; it was unavailable locally, so CI must execute the native `NUMERIC(12,3)` Down/Up path.

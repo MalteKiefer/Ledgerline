@@ -112,6 +112,91 @@ final class InvoiceFinalizationTest extends TestCase
         $this->assertSame('0.0001', (string) $hardware->fresh()?->stock_qty);
     }
 
+    public function test_both_stock_hardening_down_paths_reject_old_numeric_range_overflow_before_mutation(): void
+    {
+        $owner = User::factory()->create();
+        $hardware = $this->product((int) $owner->id, 'hardware', '0.0000', true);
+        $migrations = [
+            require database_path('migrations/2027_02_28_100100_guarantee_invoice_stock_idempotency.php'),
+            require database_path('migrations/2026_08_28_110050_harden_invoice_stock_idempotency.php'),
+        ];
+
+        foreach (array_map(null, $migrations, ['999999999999.9990', '-999999999999.9990']) as [$migration, $quantity]) {
+            $hardware->forceFill(['stock_qty' => $quantity])->save();
+
+            try {
+                $migration->down();
+                $this->fail("The old NUMERIC(12,3) range accepted {$quantity}.");
+            } catch (\LogicException $exception) {
+                $this->assertSame(
+                    'Invoice stock quantities cannot be safely narrowed to scale 3.',
+                    $exception->getMessage(),
+                );
+            }
+
+            $this->assertFourDecimalStockStorage();
+            $this->assertTrue(Schema::hasIndex(
+                'finance_stock_movements',
+                'finance_stock_movements_invoice_sale_unique',
+                'unique',
+            ));
+            $this->assertSame($quantity, (string) $hardware->fresh()?->stock_qty);
+        }
+    }
+
+    public function test_both_stock_hardening_down_paths_accept_the_old_numeric_range_boundary(): void
+    {
+        $owner = User::factory()->create();
+        $hardware = $this->product((int) $owner->id, 'hardware', '999999999.9990', true);
+        $hardware->forceFill(['stock_min' => '-999999999.9990'])->save();
+        DB::table('finance_stock_movements')->insert([
+            'user_id' => $owner->id,
+            'finance_product_id' => $hardware->id,
+            'qty' => '-999999999.9990',
+            'reason' => 'initial',
+            'occurred_at' => now(),
+            'created_at' => now(),
+        ]);
+        $freshInstallMigration = require database_path(
+            'migrations/2027_02_28_100100_guarantee_invoice_stock_idempotency.php',
+        );
+        $upgradeMigration = require database_path(
+            'migrations/2026_08_28_110050_harden_invoice_stock_idempotency.php',
+        );
+
+        $this->assertSame('-999999999.9990', (string) DB::table('finance_products')
+            ->where('id', $hardware->id)
+            ->value('stock_min'));
+        $freshInstallMigration->down();
+        $this->assertThreeDecimalStockStorage();
+        $freshInstallMigration->up();
+        $upgradeMigration->down();
+        $this->assertThreeDecimalStockStorage();
+        $upgradeMigration->up();
+
+        $this->assertFourDecimalStockStorage();
+        $freshHardware = $hardware->fresh();
+        $this->assertNotNull($freshHardware);
+        $this->assertSame('-999999999.9990', (string) $freshHardware->getRawOriginal('stock_min'));
+        $this->assertSame('999999999.9990', (string) $freshHardware->stock_qty);
+        $this->assertSame('-999999999.9990', (string) $freshHardware->stock_min);
+        $this->assertSame('-999999999.9990', (string) DB::table('finance_stock_movements')
+            ->where('finance_product_id', $hardware->id)
+            ->value('qty'));
+        $this->assertTrue(Schema::hasIndex(
+            'finance_stock_movements',
+            'finance_stock_movements_invoice_sale_unique',
+            'unique',
+        ));
+
+        if (DB::getDriverName() === 'sqlite') {
+            $integrity = DB::selectOne('PRAGMA integrity_check');
+            $this->assertIsObject($integrity);
+            $this->assertSame('ok', $integrity->integrity_check ?? null);
+            $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
+        }
+    }
+
     public function test_sqlite_stock_hardening_up_keeps_the_invoice_index_partial(): void
     {
         if (DB::getDriverName() !== 'sqlite') {
@@ -759,6 +844,28 @@ final class InvoiceFinalizationTest extends TestCase
                 ->first(static fn (object $item): bool => ($item->name ?? null) === $column);
             $this->assertNotNull($definition);
             $this->assertSame('text', strtolower((string) $definition->type));
+        }
+    }
+
+    private function assertThreeDecimalStockStorage(): void
+    {
+        if (DB::getDriverName() === 'pgsql') {
+            $this->assertSame(3, $this->numericScale('finance_products', 'stock_qty'));
+            $this->assertSame(3, $this->numericScale('finance_products', 'stock_min'));
+            $this->assertSame(3, $this->numericScale('finance_stock_movements', 'qty'));
+
+            return;
+        }
+
+        foreach ([
+            ['finance_products', 'stock_qty'],
+            ['finance_products', 'stock_min'],
+            ['finance_stock_movements', 'qty'],
+        ] as [$table, $column]) {
+            $definition = collect(DB::select("PRAGMA table_info('{$table}')"))
+                ->first(static fn (object $item): bool => ($item->name ?? null) === $column);
+            $this->assertNotNull($definition);
+            $this->assertSame('numeric', strtolower((string) $definition->type));
         }
     }
 

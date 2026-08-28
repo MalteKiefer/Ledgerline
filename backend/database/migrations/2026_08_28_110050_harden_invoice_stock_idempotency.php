@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -44,16 +43,8 @@ return new class extends Migration
             return;
         }
         if (DB::getDriverName() === 'sqlite') {
-            $this->dropSqliteProductSkuIndex();
-            Schema::table('finance_products', static function (Blueprint $table): void {
-                $table->text('stock_qty')->default('0.0000')->change();
-                $table->text('stock_min')->nullable()->change();
-            });
-            $this->createSqliteProductSkuIndex();
+            $this->changeSqliteQuantityDeclarations('numeric', 'text');
             DB::statement('DROP INDEX IF EXISTS finance_stock_movements_invoice_sale_unique');
-            Schema::table('finance_stock_movements', static function (Blueprint $table): void {
-                $table->text('qty')->change();
-            });
 
             return;
         }
@@ -71,15 +62,7 @@ return new class extends Migration
             return;
         }
         if (DB::getDriverName() === 'sqlite') {
-            $this->dropSqliteProductSkuIndex();
-            Schema::table('finance_products', static function (Blueprint $table): void {
-                $table->decimal('stock_qty', 12, 3)->default(0)->change();
-                $table->decimal('stock_min', 12, 3)->nullable()->change();
-            });
-            $this->createSqliteProductSkuIndex();
-            Schema::table('finance_stock_movements', static function (Blueprint $table): void {
-                $table->decimal('qty', 12, 3)->change();
-            });
+            $this->changeSqliteQuantityDeclarations('text', 'numeric');
 
             return;
         }
@@ -107,25 +90,74 @@ return new class extends Migration
     private function isScaleThree(mixed $value): bool
     {
         if (! is_string($value)
-            || preg_match('/\A-?\d+(?:\.(\d{1,4}))?\z/D', $value, $matches) !== 1) {
+            || preg_match('/\A-?(\d+)(?:\.(\d{1,4}))?\z/D', $value, $matches) !== 1) {
             return false;
         }
 
-        return str_pad($matches[1] ?? '', 4, '0')[3] === '0';
+        $fraction = str_pad($matches[2] ?? '', 4, '0');
+        $integer = ltrim($matches[1], '0') ?: '0';
+
+        return $fraction[3] === '0'
+            && (strlen($integer) < 9 || (strlen($integer) === 9 && strcmp($integer, '999999999') <= 0));
     }
 
-    private function dropSqliteProductSkuIndex(): void
+    private function changeSqliteQuantityDeclarations(string $from, string $to): void
     {
-        DB::statement('DROP INDEX IF EXISTS finance_products_sku_unique');
-    }
+        // A Laravel SQLite table rebuild drops the parent table and fires its
+        // cascades. Only the affinity declarations change here, so update the
+        // validated schema text in place and leave ledger rows/FKs untouched.
+        $updates = [];
+        foreach ([
+            'finance_products' => ['stock_qty', 'stock_min'],
+            'finance_stock_movements' => ['qty'],
+        ] as $table => $columns) {
+            $sql = DB::table('sqlite_master')
+                ->where('type', 'table')
+                ->where('name', $table)
+                ->value('sql');
+            if (! is_string($sql)) {
+                throw new LogicException("SQLite schema for {$table} is unavailable.");
+            }
 
-    private function createSqliteProductSkuIndex(): void
-    {
-        DB::statement(<<<'SQL'
-            CREATE UNIQUE INDEX finance_products_sku_unique
-            ON finance_products (user_id, sku)
-            WHERE sku IS NOT NULL AND deleted_at IS NULL
-            SQL);
+            foreach ($columns as $column) {
+                $prefix = '/("'.preg_quote($column, '/').'"\s+)';
+                $fromPattern = $prefix.preg_quote($from, '/').'(?=\s|,|\))/i';
+                $sql = preg_replace($fromPattern, '$1'.$to, $sql, 1, $count);
+                if ($sql === null) {
+                    throw new LogicException("SQLite {$table}.{$column} declaration is invalid.");
+                }
+                if ($count === 0
+                    && preg_match($prefix.preg_quote($to, '/').'(?=\s|,|\))/i', $sql) !== 1) {
+                    throw new LogicException("SQLite {$table}.{$column} is neither {$from} nor {$to}.");
+                }
+            }
+
+            $updates[$table] = $sql;
+        }
+
+        DB::statement('PRAGMA writable_schema = ON');
+
+        try {
+            foreach ($updates as $table => $sql) {
+                DB::table('sqlite_master')
+                    ->where('type', 'table')
+                    ->where('name', $table)
+                    ->update(['sql' => $sql]);
+            }
+
+            $versionRow = DB::selectOne('PRAGMA schema_version');
+            if (! is_object($versionRow) || ! property_exists($versionRow, 'schema_version')) {
+                throw new LogicException('SQLite schema version is unavailable.');
+            }
+            $versionValue = $versionRow->schema_version;
+            if (! is_int($versionValue) && (! is_string($versionValue) || ! ctype_digit($versionValue))) {
+                throw new LogicException('SQLite schema version is invalid.');
+            }
+            $version = (int) $versionValue;
+            DB::statement('PRAGMA schema_version = '.($version + 1));
+        } finally {
+            DB::statement('PRAGMA writable_schema = OFF');
+        }
     }
 
     private function stockTablesExist(): bool

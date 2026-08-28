@@ -59,6 +59,29 @@ class FinanceProductTest extends TestCase
         $this->postJson(route('api.finance.products.stock', $product), ['qty' => 0])->assertStatus(422);
     }
 
+    public function test_stock_endpoint_preserves_scale_four_strings_without_accepting_alternate_decimal_syntax(): void
+    {
+        $this->signIn();
+        $product = $this->article(['track_stock' => true]);
+
+        $this->postJson(route('api.finance.products.stock', $product), [
+            'qty' => '0.0001',
+            'reason' => 'purchase',
+        ])->assertCreated();
+        $this->assertSame('0.0001', (string) FinanceStockMovement::query()->sole()->qty);
+        $this->assertSame('0.0001', (string) $product->fresh()?->stock_qty);
+
+        foreach (['1.23456', '1,2345', '1e-4'] as $invalidQuantity) {
+            $this->postJson(route('api.finance.products.stock', $product), [
+                'qty' => $invalidQuantity,
+                'reason' => 'purchase',
+            ])->assertUnprocessable()->assertJsonValidationErrors('qty');
+        }
+
+        $this->assertSame(1, FinanceStockMovement::query()->count());
+        $this->assertSame('0.0001', (string) $product->fresh()?->stock_qty);
+    }
+
     public function test_the_update_path_cannot_set_the_stock_figure(): void
     {
         $this->signIn();
