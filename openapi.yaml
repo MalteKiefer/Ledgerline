@@ -5487,6 +5487,33 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /finance-v2/health:
+    get:
+      tags: [Finance]
+      operationId: financeV2Health
+      summary: Finance v2 module contract and schema version
+      description: >
+        Authenticated readiness contract for the isolated finance-v2 module.
+        Requires a Sanctum bearer with the `device` ability, completed mandatory
+        2FA enrollment, and the Finance module enabled for the account. Throttle:
+        120 requests/minute.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Finance v2 is enabled and reports its schema contract.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [module, schemaVersion]
+                properties:
+                  module: { type: string, enum: [finance] }
+                  schemaVersion: { type: integer, enum: [1] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /finance/data:
     get:
       tags: [Finance]

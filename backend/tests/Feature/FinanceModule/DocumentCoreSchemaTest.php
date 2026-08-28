@@ -72,6 +72,41 @@ final class DocumentCoreSchemaTest extends TestCase
         });
     }
 
+    public function test_series_source_type_and_id_must_be_both_null_or_both_set(): void
+    {
+        $owner = User::factory()->create();
+
+        $this->expectQueryException(function () use ($owner): void {
+            $this->insertSeries((int) $owner->id, '018f4ca3-224d-7d8d-9f00-111111111113', 'invoice', null);
+        });
+        $this->expectQueryException(function () use ($owner): void {
+            $this->insertSeries((int) $owner->id, '018f4ca3-224d-7d8d-9f00-111111111114', null, 44);
+        });
+
+        $withoutSourceId = $this->insertSeries(
+            (int) $owner->id,
+            '018f4ca3-224d-7d8d-9f00-111111111115',
+            null,
+            null,
+        );
+        $this->assertGreaterThan(0, $withoutSourceId);
+    }
+
+    public function test_series_source_pair_cannot_be_broken_by_update(): void
+    {
+        $owner = User::factory()->create();
+        $seriesId = $this->insertSeries(
+            (int) $owner->id,
+            '018f4ca3-224d-7d8d-9f00-111111111116',
+            'invoice',
+            46,
+        );
+
+        $this->expectQueryException(function () use ($seriesId): void {
+            DB::table('finance_document_series')->where('id', $seriesId)->update(['source_id' => null]);
+        });
+    }
+
     public function test_revision_number_and_previous_revision_are_protected_by_constraints(): void
     {
         $owner = User::factory()->create();
@@ -88,6 +123,41 @@ final class DocumentCoreSchemaTest extends TestCase
         });
 
         $this->assertSame(2, DB::table('finance_document_revisions')->whereIn('id', [$firstRevisionId, $secondRevisionId])->count());
+    }
+
+    public function test_revision_number_must_be_greater_than_zero(): void
+    {
+        $owner = User::factory()->create();
+        $seriesId = $this->insertSeries((int) $owner->id, '018f4ca3-224d-7d8d-9f00-333333333334', 'quote', 334);
+
+        $this->expectQueryException(function () use ($owner, $seriesId): void {
+            $this->insertRevision((int) $owner->id, $seriesId, 0);
+        });
+        $this->expectQueryException(function () use ($owner, $seriesId): void {
+            $this->insertRevision((int) $owner->id, $seriesId, -1);
+        });
+
+        $revisionId = $this->insertRevision((int) $owner->id, $seriesId, 1);
+        $this->expectQueryException(function () use ($revisionId): void {
+            DB::table('finance_document_revisions')->where('id', $revisionId)->update(['revision_number' => 0]);
+        });
+    }
+
+    public function test_revision_cannot_reference_itself_as_previous(): void
+    {
+        $owner = User::factory()->create();
+        $seriesId = $this->insertSeries((int) $owner->id, '018f4ca3-224d-7d8d-9f00-333333333335', 'quote', 335);
+        $revisionId = $this->insertRevision((int) $owner->id, $seriesId, 1);
+
+        $this->expectQueryException(function () use ($revisionId): void {
+            DB::table('finance_document_revisions')
+                ->where('id', $revisionId)
+                ->update(['previous_revision_id' => $revisionId]);
+        });
+
+        $this->expectQueryException(function () use ($owner, $seriesId): void {
+            $this->insertRevision((int) $owner->id, $seriesId, 2, 9001, 9001);
+        });
     }
 
     public function test_previous_revision_must_belong_to_the_same_series(): void
@@ -137,6 +207,38 @@ final class DocumentCoreSchemaTest extends TestCase
         });
     }
 
+    public function test_activity_revision_must_belong_to_the_same_owner_and_series(): void
+    {
+        [$ownerId, $seriesId, $otherSeriesRevisionId, $otherOwnerRevisionId] = $this->mismatchedRevisionFixture();
+
+        $this->expectQueryException(function () use ($ownerId, $seriesId, $otherSeriesRevisionId): void {
+            $this->insertActivity($ownerId, $seriesId, $otherSeriesRevisionId);
+        });
+        $this->expectQueryException(function () use ($ownerId, $seriesId, $otherOwnerRevisionId): void {
+            $this->insertActivity($ownerId, $seriesId, $otherOwnerRevisionId);
+        });
+
+        $matchingRevisionId = $this->insertRevision($ownerId, $seriesId, 1);
+        $this->insertActivity($ownerId, $seriesId, $matchingRevisionId);
+        $this->assertSame(1, DB::table('finance_document_activities')->count());
+    }
+
+    public function test_note_revision_must_belong_to_the_same_owner_and_series(): void
+    {
+        [$ownerId, $seriesId, $otherSeriesRevisionId, $otherOwnerRevisionId] = $this->mismatchedRevisionFixture();
+
+        $this->expectQueryException(function () use ($ownerId, $seriesId, $otherSeriesRevisionId): void {
+            $this->insertNote($ownerId, $seriesId, $otherSeriesRevisionId);
+        });
+        $this->expectQueryException(function () use ($ownerId, $seriesId, $otherOwnerRevisionId): void {
+            $this->insertNote($ownerId, $seriesId, $otherOwnerRevisionId);
+        });
+
+        $matchingRevisionId = $this->insertRevision($ownerId, $seriesId, 1);
+        $this->insertNote($ownerId, $seriesId, $matchingRevisionId);
+        $this->assertSame(1, DB::table('finance_document_notes')->count());
+    }
+
     public function test_series_deletion_is_restricted_by_revisions_while_activities_and_notes_cascade(): void
     {
         $owner = User::factory()->create();
@@ -147,7 +249,7 @@ final class DocumentCoreSchemaTest extends TestCase
         DB::table('finance_document_activities')->insert([
             'user_id' => $owner->id,
             'document_series_id' => $seriesId,
-            'document_revision_id' => $revisionId,
+            'document_revision_id' => null,
             'type' => 'created',
             'payload' => '{}',
             'created_by' => $owner->id,
@@ -156,7 +258,7 @@ final class DocumentCoreSchemaTest extends TestCase
         DB::table('finance_document_notes')->insert([
             'user_id' => $owner->id,
             'document_series_id' => $seriesId,
-            'document_revision_id' => $revisionId,
+            'document_revision_id' => null,
             'type' => 'comment',
             'visibility' => 'internal',
             'body' => 'Initial migration note',
@@ -199,8 +301,8 @@ final class DocumentCoreSchemaTest extends TestCase
     private function insertSeries(
         int $userId,
         string $uuid,
-        string $sourceType = 'quote',
-        int $sourceId = 1,
+        ?string $sourceType = 'quote',
+        ?int $sourceId = 1,
     ): int {
         $now = now();
 
@@ -217,9 +319,14 @@ final class DocumentCoreSchemaTest extends TestCase
         ]);
     }
 
-    private function insertRevision(int $userId, int $seriesId, int $revisionNumber, ?int $previousRevisionId = null): int
-    {
-        return (int) DB::table('finance_document_revisions')->insertGetId([
+    private function insertRevision(
+        int $userId,
+        int $seriesId,
+        int $revisionNumber,
+        ?int $previousRevisionId = null,
+        ?int $id = null,
+    ): int {
+        $attributes = [
             'user_id' => $userId,
             'document_series_id' => $seriesId,
             'revision_number' => $revisionNumber,
@@ -236,7 +343,57 @@ final class DocumentCoreSchemaTest extends TestCase
             'published_at' => null,
             'created_by' => $userId,
             'created_at' => now(),
+        ];
+        if ($id !== null) {
+            $attributes['id'] = $id;
+        }
+
+        return (int) DB::table('finance_document_revisions')->insertGetId($attributes);
+    }
+
+    private function insertActivity(int $userId, int $seriesId, ?int $revisionId): void
+    {
+        DB::table('finance_document_activities')->insert([
+            'user_id' => $userId,
+            'document_series_id' => $seriesId,
+            'document_revision_id' => $revisionId,
+            'type' => 'created',
+            'created_by' => $userId,
+            'created_at' => now(),
         ]);
+    }
+
+    private function insertNote(int $userId, int $seriesId, ?int $revisionId): void
+    {
+        $now = now();
+        DB::table('finance_document_notes')->insert([
+            'user_id' => $userId,
+            'document_series_id' => $seriesId,
+            'document_revision_id' => $revisionId,
+            'type' => 'comment',
+            'visibility' => 'internal',
+            'body' => 'Revision-bound note',
+            'created_by' => $userId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /** @return array{int, int, int, int} */
+    private function mismatchedRevisionFixture(): array
+    {
+        $owner = User::factory()->create();
+        $otherOwner = User::factory()->create();
+        $seriesId = $this->insertSeries((int) $owner->id, '018f4ca3-224d-7d8d-9f00-999999999991', 'quote', 991);
+        $otherSeriesId = $this->insertSeries((int) $owner->id, '018f4ca3-224d-7d8d-9f00-999999999992', 'quote', 992);
+        $otherOwnerSeriesId = $this->insertSeries((int) $otherOwner->id, '018f4ca3-224d-7d8d-9f00-999999999993', 'quote', 991);
+
+        return [
+            (int) $owner->id,
+            $seriesId,
+            $this->insertRevision((int) $owner->id, $otherSeriesId, 1),
+            $this->insertRevision((int) $otherOwner->id, $otherOwnerSeriesId, 1),
+        ];
     }
 
     /** @param callable(): void $operation */
