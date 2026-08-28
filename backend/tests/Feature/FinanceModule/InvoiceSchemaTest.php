@@ -6,6 +6,7 @@ namespace Tests\Feature\FinanceModule;
 
 use App\Models\User;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -451,10 +452,30 @@ final class InvoiceSchemaTest extends TestCase
     {
         $owner = User::factory()->create();
         [$seriesId, $revisionId] = $this->documentFixture((int) $owner->id, 501);
+        [$creditSeriesId, $creditRevisionId] = $this->documentFixture((int) $owner->id, 502);
         $invoiceId = $this->insertInvoice((int) $owner->id, $seriesId, $revisionId);
+        $creditInvoiceId = $this->insertInvoice((int) $owner->id, $creditSeriesId, $creditRevisionId, [
+            'uuid' => '018f4ca3-224d-7d8d-9f20-500000000002',
+            'kind' => 'credit_note',
+            'cancels_invoice_id' => $invoiceId,
+        ]);
         $this->insertSequence((int) $owner->id, 'invoice', 2026, 2);
         $this->insertDelivery((int) $owner->id, $invoiceId, $seriesId, $revisionId);
+        $this->insertDelivery((int) $owner->id, $creditInvoiceId, $creditSeriesId, $creditRevisionId, [
+            'uuid' => '018f4ca3-224d-7d8d-9f30-500000000002',
+            'message_id' => '<invoice-credit-delivery@example.test>',
+            'idempotency_key_hash' => hash('sha256', 'credit-delivery-key'),
+            'request_hash' => hash('sha256', 'credit-delivery-payload'),
+        ]);
         $this->insertIdempotencyRecord((int) $owner->id, 'invoice.finalize', hash('sha256', 'owner-delete'));
+
+        $this->assertSame(2, DB::table('finance_invoices')->where('user_id', $owner->id)->count());
+        $this->assertSame(2, DB::table('finance_document_revisions')->where('user_id', $owner->id)->count());
+        $this->assertSame(2, DB::table('finance_invoice_deliveries')->where('user_id', $owner->id)->count());
+        $this->assertSame(
+            $invoiceId,
+            (int) DB::table('finance_invoices')->where('id', $creditInvoiceId)->value('cancels_invoice_id'),
+        );
 
         $this->expectConstraintViolation(function () use ($invoiceId): int {
             return DB::table('finance_invoices')->where('id', $invoiceId)->delete();
@@ -462,8 +483,183 @@ final class InvoiceSchemaTest extends TestCase
 
         $owner->delete();
 
-        foreach (['finance_invoices', 'finance_invoice_sequences', 'finance_invoice_deliveries', 'finance_idempotency_records'] as $table) {
+        foreach ([
+            'finance_invoices',
+            'finance_invoice_sequences',
+            'finance_invoice_deliveries',
+            'finance_idempotency_records',
+            'finance_document_revisions',
+            'finance_document_series',
+        ] as $table) {
             $this->assertSame(0, DB::table($table)->count(), "Owner cascade left rows in {$table}");
+        }
+    }
+
+    public function test_postgresql_executes_owner_integrity_cascade_and_reapply_when_configured(): void
+    {
+        $postgresUrl = getenv('FINANCE_TEST_PGSQL_URL');
+
+        if (! extension_loaded('pdo_pgsql') || ! is_string($postgresUrl) || trim($postgresUrl) === '') {
+            $this->markTestSkipped(
+                'Set FINANCE_TEST_PGSQL_URL and install pdo_pgsql to run the PostgreSQL execution contract.',
+            );
+        }
+
+        $defaultConnection = DB::getDefaultConnection();
+        $postgresConnection = 'pgsql_invoice_execution';
+        $schema = 'finance_invoice_task2_'.bin2hex(random_bytes(8));
+        config([
+            "database.connections.{$postgresConnection}" => array_merge(
+                config('database.connections.pgsql'),
+                [
+                    'url' => $postgresUrl,
+                    'search_path' => 'public',
+                ],
+            ),
+        ]);
+        DB::purge($postgresConnection);
+        $connection = DB::connection($postgresConnection);
+        $schemaCreated = false;
+
+        try {
+            $connection->statement("CREATE SCHEMA \"{$schema}\"");
+            $schemaCreated = true;
+            $connection->statement("SET search_path TO \"{$schema}\"");
+            DB::setDefaultConnection($postgresConnection);
+            Schema::clearResolvedInstance('db.schema');
+
+            Schema::create('users', function (Blueprint $table): void {
+                $table->id();
+            });
+            $foundationMigration = require database_path('migrations/2026_08_28_100000_create_finance_document_core.php');
+            $invoiceMigration = require database_path('migrations/2026_08_28_110000_create_finance_invoices.php');
+            $foundationMigration->up();
+            $invoiceMigration->up();
+            DB::table('users')->insert([['id' => 1], ['id' => 2]]);
+
+            [$seriesId, $revisionId] = $this->documentFixture(1, 601);
+            [$foreignSeriesId, $foreignRevisionId] = $this->documentFixture(2, 602);
+            $invoiceId = $this->insertInvoice(1, $seriesId, $revisionId);
+
+            $this->expectConstraintViolation(fn (): int => $this->insertInvoice(
+                1,
+                $foreignSeriesId,
+                $foreignRevisionId,
+                ['uuid' => '018f4ca3-224d-7d8d-9f20-600000000002'],
+            ));
+            $this->expectConstraintViolation(fn (): int => $this->insertInvoice(
+                2,
+                $foreignSeriesId,
+                $foreignRevisionId,
+                [
+                    'uuid' => '018f4ca3-224d-7d8d-9f20-600000000003',
+                    'kind' => 'credit_note',
+                    'cancels_invoice_id' => $invoiceId,
+                ],
+            ));
+            $this->expectConstraintViolation(fn (): int => $this->insertDelivery(
+                2,
+                $invoiceId,
+                $seriesId,
+                $revisionId,
+                [
+                    'uuid' => '018f4ca3-224d-7d8d-9f30-600000000001',
+                    'message_id' => '<cross-owner-delivery@example.test>',
+                    'idempotency_key_hash' => hash('sha256', 'cross-owner-delivery'),
+                ],
+            ));
+
+            [$creditSeriesId, $creditRevisionId] = $this->documentFixture(1, 603);
+            $creditInvoiceId = $this->insertInvoice(1, $creditSeriesId, $creditRevisionId, [
+                'uuid' => '018f4ca3-224d-7d8d-9f20-600000000004',
+                'kind' => 'credit_note',
+                'cancels_invoice_id' => $invoiceId,
+            ]);
+            $this->insertDelivery(1, $invoiceId, $seriesId, $revisionId);
+            $this->insertDelivery(1, $creditInvoiceId, $creditSeriesId, $creditRevisionId, [
+                'uuid' => '018f4ca3-224d-7d8d-9f30-600000000002',
+                'message_id' => '<postgres-credit-delivery@example.test>',
+                'idempotency_key_hash' => hash('sha256', 'postgres-credit-delivery'),
+                'request_hash' => hash('sha256', 'postgres-credit-payload'),
+            ]);
+            $this->insertSequence(1, 'invoice', 2026, 2);
+            $this->insertIdempotencyRecord(1, 'invoice.finalize', hash('sha256', 'postgres-owner-delete'));
+
+            $this->assertSame(2, DB::table('finance_invoices')->where('user_id', 1)->count());
+            $this->assertSame(2, DB::table('finance_document_revisions')->where('user_id', 1)->count());
+            $this->assertSame(2, DB::table('finance_invoice_deliveries')->where('user_id', 1)->count());
+            $this->assertSame(
+                $invoiceId,
+                (int) DB::table('finance_invoices')->where('id', $creditInvoiceId)->value('cancels_invoice_id'),
+            );
+
+            $this->expectConstraintViolation(function () use ($invoiceId): int {
+                return DB::table('finance_invoices')->where('id', $invoiceId)->delete();
+            });
+
+            DB::transaction(function (): void {
+                DB::table('users')->where('id', 1)->delete();
+            });
+
+            foreach ([
+                'finance_invoices',
+                'finance_invoice_sequences',
+                'finance_invoice_deliveries',
+                'finance_idempotency_records',
+                'finance_document_revisions',
+                'finance_document_series',
+            ] as $table) {
+                $this->assertSame(
+                    0,
+                    DB::table($table)->where('user_id', 1)->count(),
+                    "PostgreSQL owner cascade left rows in {$table}",
+                );
+            }
+
+            $invoiceMigration->down();
+            $this->assertFalse(Schema::hasTable('finance_invoices'));
+            $this->assertFalse(Schema::hasTable('finance_invoice_sequences'));
+            $this->assertFalse(Schema::hasTable('finance_invoice_deliveries'));
+            $this->assertFalse(Schema::hasTable('finance_idempotency_records'));
+            $this->assertSame(
+                0,
+                DB::table('pg_catalog.pg_constraint as pc')
+                    ->join('pg_catalog.pg_namespace as pn', 'pn.oid', '=', 'pc.connamespace')
+                    ->where('pc.conname', 'finance_document_revisions_currency_check')
+                    ->where('pn.nspname', $schema)
+                    ->count(),
+            );
+
+            $invoiceMigration->up();
+            $this->assertTrue(Schema::hasTable('finance_invoices'));
+            $this->assertTrue(Schema::hasTable('finance_invoice_sequences'));
+            $this->assertTrue(Schema::hasTable('finance_invoice_deliveries'));
+            $this->assertTrue(Schema::hasTable('finance_idempotency_records'));
+            $this->assertSame(
+                1,
+                DB::table('pg_catalog.pg_constraint as pc')
+                    ->join('pg_catalog.pg_namespace as pn', 'pn.oid', '=', 'pc.connamespace')
+                    ->where('pc.conname', 'finance_document_revisions_currency_check')
+                    ->where('pn.nspname', $schema)
+                    ->count(),
+            );
+
+            $reappliedInvoiceId = $this->insertInvoice(2, $foreignSeriesId, $foreignRevisionId, [
+                'uuid' => '018f4ca3-224d-7d8d-9f20-600000000005',
+            ]);
+            $this->assertGreaterThan(0, $reappliedInvoiceId);
+        } finally {
+            DB::setDefaultConnection($defaultConnection);
+            Schema::clearResolvedInstance('db.schema');
+
+            try {
+                if ($schemaCreated) {
+                    $connection->statement('SET search_path TO public');
+                    $connection->statement("DROP SCHEMA IF EXISTS \"{$schema}\" CASCADE");
+                }
+            } finally {
+                DB::purge($postgresConnection);
+            }
         }
     }
 
