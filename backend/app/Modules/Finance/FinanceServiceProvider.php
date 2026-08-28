@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Finance;
 
 use App\Modules\Finance\Application\Ports\Clock;
+use App\Modules\Finance\Application\Ports\DocumentRenderer;
 use App\Modules\Finance\Application\Ports\DocumentRevisionRepository;
+use App\Modules\Finance\Application\Ports\DocumentStorage;
 use App\Modules\Finance\Application\Ports\Projects\ProjectFinancialSource;
 use App\Modules\Finance\Application\Ports\Projects\ProjectOperationRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectRateSource;
@@ -22,6 +24,8 @@ use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftFromTimeA
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectFinancialSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectRateSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectReferenceResolver;
+use App\Modules\Finance\Infrastructure\Pdf\BladeDocumentRenderer;
+use App\Modules\Finance\Infrastructure\Pdf\FlysystemDocumentStorage;
 use App\Modules\Finance\Infrastructure\Persistence\DatabaseQuoteNumberAllocator;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentDocumentRevisionRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectOperationRepository;
@@ -32,12 +36,23 @@ use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteReferenceResolve
 use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteRepository;
 use App\Modules\Finance\Infrastructure\Settings\EloquentQuoteSettings;
 use App\Modules\Finance\Infrastructure\Time\SystemClock;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
+use LogicException;
 
 final class FinanceServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(DocumentRenderer::class, BladeDocumentRenderer::class);
+        $this->app->bind(DocumentStorage::class, static function (): DocumentStorage {
+            $disk = config('files.disk');
+            if (! is_string($disk) || $disk === '') {
+                throw new LogicException('The document storage disk is not configured.');
+            }
+
+            return new FlysystemDocumentStorage(Storage::disk($disk));
+        });
         $this->app->bind(
             DocumentRevisionRepository::class,
             EloquentDocumentRevisionRepository::class,
