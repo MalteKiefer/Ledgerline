@@ -36,11 +36,14 @@ use App\Modules\Finance\Infrastructure\Persistence\Models\ProjectWorkItemRecord;
 use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 final class ProjectPersistenceTest extends TestCase
@@ -419,6 +422,58 @@ final class ProjectPersistenceTest extends TestCase
         $this->assertSame($owner->id, $lockQuery['bindings'][0] ?? null);
     }
 
+    public function test_postgresql_overlapping_opposite_moves_serialize_without_a_cycle_when_configured(): void
+    {
+        $this->withIsolatedPostgresProjectSchema(function (string $postgresUrl, string $schema): void {
+            $left = $this->storedPostgresProject(1, 'Left');
+            $right = $this->storedPostgresProject(1, 'Right');
+            $projects = app(ProjectRepository::class);
+            $process = null;
+            DB::beginTransaction();
+
+            try {
+                $first = $projects->move(new MoveProjectData(
+                    $left['id'],
+                    0,
+                    $right['id'],
+                    1,
+                    new DateTimeImmutable('2026-08-28 14:00:00'),
+                ));
+                $this->assertTrue($first->applied);
+
+                $process = $this->startPostgresProjectWorker($postgresUrl, $schema, [
+                    'FINANCE_TEST_PROJECT_WORKER_MODE' => 'opposite_move',
+                    'FINANCE_TEST_PROJECT_UUID' => $right['id']->uuid,
+                    'FINANCE_TEST_PROJECT_PARENT_UUID' => $left['id']->uuid,
+                ]);
+                $backendPid = $this->waitForPostgresWorker($process);
+                $activity = $this->waitForPostgresLock($process, $backendPid);
+                $this->assertStringContainsString('finance_project_records', strtolower($activity['query']));
+                $this->assertStringContainsString('order by "id" asc', strtolower($activity['query']));
+                $this->assertTrue($process->isRunning(), 'The opposite move did not wait for the hierarchy lock.');
+
+                DB::commit();
+                $process->wait();
+            } finally {
+                if (DB::transactionLevel() > 0) {
+                    DB::rollBack();
+                }
+                if ($process instanceof Process && $process->isRunning()) {
+                    $process->stop(1.0);
+                }
+            }
+
+            $this->assertInstanceOf(Process::class, $process);
+            $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput().$process->getOutput());
+            $this->assertStringContainsString('"error":"project_parent_cycle"', $process->getOutput());
+            $parents = DB::table('finance_project_records')->pluck('parent_project_id', 'id');
+            $leftParentId = $parents[$left['record_id']];
+            $this->assertIsInt($leftParentId);
+            $this->assertSame($right['record_id'], $leftParentId);
+            $this->assertNull($parents[$right['record_id']]);
+        });
+    }
+
     public function test_operation_reservations_are_owner_scoped_and_replay_only_the_same_request(): void
     {
         $owner = User::factory()->create();
@@ -489,6 +544,64 @@ final class ProjectPersistenceTest extends TestCase
 
         $sameTarget = $operations->reserve($owner->id, 'target-a', 'key-a', $hash, $first['id']);
         $this->assertSame('in_progress', $sameTarget->status);
+    }
+
+    public function test_postgresql_idempotency_contention_recovers_its_savepoint_and_replays_only_the_exact_target_when_configured(): void
+    {
+        $this->withIsolatedPostgresProjectSchema(function (string $postgresUrl, string $schema): void {
+            $project = $this->storedPostgresProject(1, 'Operation target');
+            $operations = app(ProjectOperationRepository::class);
+            $operation = 'postgres_contention';
+            $key = 'shared-key';
+            $hash = hash('sha256', '{"postgresql":true}');
+            $process = null;
+            DB::beginTransaction();
+
+            try {
+                $first = $operations->reserve(1, $operation, $key, $hash, null);
+                $operations->succeed($first, ['winner' => 'parent']);
+                $process = $this->startPostgresProjectWorker($postgresUrl, $schema, [
+                    'FINANCE_TEST_PROJECT_WORKER_MODE' => 'idempotency',
+                    'FINANCE_TEST_PROJECT_UUID' => $project['id']->uuid,
+                    'FINANCE_TEST_PROJECT_OPERATION' => $operation,
+                    'FINANCE_TEST_PROJECT_KEY' => $key,
+                    'FINANCE_TEST_PROJECT_HASH' => $hash,
+                    'FINANCE_TEST_PROJECT_RECORD_ID' => (string) $first->recordId,
+                ]);
+                $backendPid = $this->waitForPostgresWorker($process);
+                $activity = $this->waitForPostgresLock($process, $backendPid);
+                $this->assertStringContainsString(
+                    'insert into "finance_project_operations"',
+                    strtolower($activity['query']),
+                );
+                $this->assertTrue($process->isRunning(), 'The duplicate reservation did not wait on the unique key.');
+
+                DB::commit();
+                $process->wait();
+            } finally {
+                if (DB::transactionLevel() > 0) {
+                    DB::rollBack();
+                }
+                if ($process instanceof Process && $process->isRunning()) {
+                    $process->stop(1.0);
+                }
+            }
+
+            $this->assertInstanceOf(Process::class, $process);
+            $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput().$process->getOutput());
+            $this->assertStringContainsString('"status":"replay"', $process->getOutput());
+            $this->assertStringContainsString('"same_record":true', $process->getOutput());
+            $this->assertStringContainsString('"winner":"parent"', $process->getOutput());
+            $this->assertStringContainsString('"mismatch":"idempotency_key_reused"', $process->getOutput());
+            $this->assertStringContainsString('"probe":"new"', $process->getOutput());
+            $this->assertSame(2, DB::table('finance_project_operations')->count());
+            $this->assertNull(DB::table('finance_project_operations')->where('idempotency_key', $key)->value('project_id'));
+            $probeProjectId = DB::table('finance_project_operations')
+                ->where('idempotency_key', 'savepoint-probe')
+                ->value('project_id');
+            $this->assertIsInt($probeProjectId);
+            $this->assertSame($project['record_id'], $probeProjectId);
+        });
     }
 
     public function test_reference_resolver_accepts_only_owned_opaque_legacy_references(): void
@@ -588,7 +701,7 @@ final class ProjectPersistenceTest extends TestCase
 
         $note->forceFill(['body' => 'Changed']);
         $this->assertAppendOnlyMutation('project_note', static fn (): bool => $note->saveQuietly());
-        $this->assertAppendOnlyMutation('project_activity', static fn (): ?bool => $activity->deleteQuietly());
+        $this->assertAppendOnlyMutation('project_activity', static fn (): bool => $activity->deleteQuietly());
         $this->assertAppendOnlyMutation('project_note', static fn (): int => ProjectNoteRecord::query()
             ->withoutGlobalScopes()->whereKey($note->id)->update(['body' => 'Bulk changed']));
         $this->assertAppendOnlyMutation('project_activity', static fn (): mixed => ProjectActivityRecord::query()
@@ -612,7 +725,7 @@ final class ProjectPersistenceTest extends TestCase
         $this->assertTrue($first->saveQuietly());
         $first->forceFill(['source_reference' => 'file:retargeted']);
         $this->assertAppendOnlyMutation('project_document_link', static fn (): bool => $first->saveQuietly());
-        $this->assertAppendOnlyMutation('project_document_link', static fn (): ?bool => $first->deleteQuietly());
+        $this->assertAppendOnlyMutation('project_document_link', static fn (): bool => $first->deleteQuietly());
 
         $secondId = $this->storedDocumentLink($owner, $project['record_id'], 'file:second');
         $updated = ProjectDocumentLinkRecord::query()
@@ -641,8 +754,14 @@ final class ProjectPersistenceTest extends TestCase
      */
     private function storedProject(User $owner, array $overrides = []): array
     {
-        $uuid = (string) ($overrides['uuid'] ?? Str::uuid());
-        $now = (string) ($overrides['updated_at'] ?? '2026-08-28 09:00:00');
+        $uuidValue = $overrides['uuid'] ?? Str::uuid();
+        $updatedAtValue = $overrides['updated_at'] ?? '2026-08-28 09:00:00';
+        if ((! is_string($uuidValue) && ! $uuidValue instanceof \Stringable)
+            || ! is_string($updatedAtValue)) {
+            throw new InvalidArgumentException('Stored project fixture identifiers are invalid.');
+        }
+        $uuid = (string) $uuidValue;
+        $now = $updatedAtValue;
         $recordId = (int) DB::table('finance_project_records')->insertGetId([
             'user_id' => $owner->id,
             'uuid' => $uuid,
@@ -698,6 +817,276 @@ final class ProjectPersistenceTest extends TestCase
             'detached_by' => null,
             'detached_at' => null,
         ]);
+    }
+
+    /** @param callable(string, string): void $test */
+    private function withIsolatedPostgresProjectSchema(callable $test): void
+    {
+        $postgresUrl = getenv('FINANCE_TEST_PGSQL_URL');
+        if (! extension_loaded('pdo_pgsql') || ! is_string($postgresUrl) || trim($postgresUrl) === '') {
+            $this->markTestSkipped(
+                'Set FINANCE_TEST_PGSQL_URL and install pdo_pgsql to run Project PostgreSQL concurrency tests.',
+            );
+        }
+
+        $defaultConnection = DB::getDefaultConnection();
+        $postgresConnection = 'pgsql_project_concurrency';
+        $schema = 'finance_project_task4_'.bin2hex(random_bytes(8));
+        $postgresConfig = config('database.connections.pgsql');
+        if (! is_array($postgresConfig)) {
+            throw new \LogicException('PostgreSQL connection configuration is unavailable.');
+        }
+        config([
+            "database.connections.{$postgresConnection}" => array_merge(
+                $postgresConfig,
+                ['url' => $postgresUrl, 'search_path' => 'public'],
+            ),
+        ]);
+        DB::purge($postgresConnection);
+        $connection = DB::connection($postgresConnection);
+        $schemaCreated = false;
+
+        try {
+            $connection->statement("CREATE SCHEMA \"{$schema}\"");
+            $schemaCreated = true;
+            $connection->statement("SET search_path TO \"{$schema}\"");
+            DB::setDefaultConnection($postgresConnection);
+            Schema::clearResolvedInstance('db.schema');
+            Schema::create('users', static function (Blueprint $table): void {
+                $table->id();
+            });
+            $foundationMigration = require database_path('migrations/2026_08_28_100000_create_finance_document_core.php');
+            $projectMigration = require database_path('migrations/2027_03_04_100000_create_finance_project_workflow.php');
+            foreach ([$foundationMigration, $projectMigration] as $migration) {
+                if (! is_object($migration) || ! is_callable([$migration, 'up'])) {
+                    throw new \LogicException('Finance project migration is unavailable.');
+                }
+                call_user_func([$migration, 'up']);
+            }
+            DB::table('users')->insert(['id' => 1]);
+
+            $test($postgresUrl, $schema);
+        } finally {
+            while ($connection->transactionLevel() > 0) {
+                $connection->rollBack();
+            }
+            DB::setDefaultConnection($defaultConnection);
+            Schema::clearResolvedInstance('db.schema');
+
+            try {
+                if ($schemaCreated) {
+                    $connection->statement('SET search_path TO public');
+                    $connection->statement("DROP SCHEMA IF EXISTS \"{$schema}\" CASCADE");
+                }
+            } finally {
+                DB::purge($postgresConnection);
+            }
+        }
+    }
+
+    /** @return array{record_id: int, id: ProjectId} */
+    private function storedPostgresProject(int $ownerId, string $name): array
+    {
+        $uuid = (string) Str::uuid();
+        $recordId = (int) DB::table('finance_project_records')->insertGetId([
+            'user_id' => $ownerId,
+            'uuid' => $uuid,
+            'parent_project_id' => null,
+            'source_type' => null,
+            'source_id' => null,
+            'name' => $name,
+            'kind' => 'business',
+            'status' => 'planned',
+            'partner_reference' => null,
+            'starts_on' => null,
+            'due_on' => null,
+            'budget_minor' => null,
+            'currency' => 'EUR',
+            'version' => 0,
+            'archived_at' => null,
+            'created_by' => $ownerId,
+            'created_at' => '2026-08-28 13:00:00',
+            'updated_at' => '2026-08-28 13:00:00',
+        ]);
+
+        return ['record_id' => $recordId, 'id' => new ProjectId($ownerId, $uuid)];
+    }
+
+    /** @param array<string, string> $environment */
+    private function startPostgresProjectWorker(string $postgresUrl, string $schema, array $environment): Process
+    {
+        $script = <<<'PHP'
+            require getcwd().'/vendor/autoload.php';
+            $app = require getcwd().'/bootstrap/app.php';
+            $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+            $url = getenv('FINANCE_TEST_PGSQL_URL');
+            $schema = getenv('FINANCE_TEST_PGSQL_SCHEMA');
+            $mode = getenv('FINANCE_TEST_PROJECT_WORKER_MODE');
+            if (! is_string($url) || ! is_string($schema)
+                || preg_match('/\Afinance_project_task4_[0-9a-f]{16}\z/D', $schema) !== 1) {
+                fwrite(STDERR, 'invalid-postgres-worker-configuration');
+                exit(90);
+            }
+
+            $connectionName = 'pgsql_project_worker';
+            $base = config('database.connections.pgsql');
+            config([
+                "database.connections.{$connectionName}" => array_merge(
+                    is_array($base) ? $base : [],
+                    ['driver' => 'pgsql', 'url' => $url, 'search_path' => $schema],
+                ),
+            ]);
+            \Illuminate\Support\Facades\DB::purge($connectionName);
+            \Illuminate\Support\Facades\DB::setDefaultConnection($connectionName);
+            \Illuminate\Support\Facades\Schema::clearResolvedInstance('db.schema');
+            \Illuminate\Support\Facades\DB::statement('SET search_path TO "'.$schema.'"');
+            \Illuminate\Support\Facades\DB::statement("SET lock_timeout TO '8s'");
+            \Illuminate\Support\Facades\DB::statement("SET statement_timeout TO '15s'");
+            \Illuminate\Support\Facades\DB::beginTransaction();
+            $backendPid = \Illuminate\Support\Facades\DB::scalar('SELECT pg_backend_pid()');
+            echo 'ready='.$backendPid."\n";
+            flush();
+
+            try {
+                if ($mode === 'opposite_move') {
+                    $ownerId = 1;
+                    $projectId = new \App\Modules\Finance\Application\DTOs\Projects\ProjectId(
+                        $ownerId,
+                        (string) getenv('FINANCE_TEST_PROJECT_UUID'),
+                    );
+                    $parentId = new \App\Modules\Finance\Application\DTOs\Projects\ProjectId(
+                        $ownerId,
+                        (string) getenv('FINANCE_TEST_PROJECT_PARENT_UUID'),
+                    );
+                    try {
+                        $app->make(\App\Modules\Finance\Application\Ports\Projects\ProjectRepository::class)->move(
+                            new \App\Modules\Finance\Application\DTOs\Projects\MoveProjectData(
+                                $projectId,
+                                0,
+                                $parentId,
+                                $ownerId,
+                                new DateTimeImmutable('2026-08-28 14:00:00'),
+                            ),
+                        );
+                        throw new RuntimeException('opposite-move-was-applied');
+                    } catch (\App\Modules\Finance\Domain\Projects\Exception\InvalidProjectAction $exception) {
+                        \Illuminate\Support\Facades\DB::rollBack();
+                        echo json_encode(['error' => $exception->errorCode], JSON_THROW_ON_ERROR)."\n";
+                        exit($exception->errorCode === 'project_parent_cycle' ? 0 : 3);
+                    }
+                }
+
+                if ($mode === 'idempotency') {
+                    $ownerId = 1;
+                    $operation = (string) getenv('FINANCE_TEST_PROJECT_OPERATION');
+                    $key = (string) getenv('FINANCE_TEST_PROJECT_KEY');
+                    $hash = (string) getenv('FINANCE_TEST_PROJECT_HASH');
+                    $expectedRecordId = (int) getenv('FINANCE_TEST_PROJECT_RECORD_ID');
+                    $projectId = new \App\Modules\Finance\Application\DTOs\Projects\ProjectId(
+                        $ownerId,
+                        (string) getenv('FINANCE_TEST_PROJECT_UUID'),
+                    );
+                    $operations = $app->make(
+                        \App\Modules\Finance\Application\Ports\Projects\ProjectOperationRepository::class,
+                    );
+                    $replay = $operations->reserve($ownerId, $operation, $key, $hash, null);
+                    $mismatch = null;
+                    try {
+                        $operations->reserve($ownerId, $operation, $key, $hash, $projectId);
+                    } catch (DomainException $exception) {
+                        $mismatch = $exception->getMessage();
+                    }
+                    $probe = $operations->reserve(
+                        $ownerId,
+                        'savepoint_probe',
+                        'savepoint-probe',
+                        hash('sha256', 'probe'),
+                        $projectId,
+                    );
+                    \Illuminate\Support\Facades\DB::commit();
+                    echo json_encode([
+                        'status' => $replay->status,
+                        'same_record' => $replay->recordId === $expectedRecordId,
+                        'result' => $replay->result,
+                        'mismatch' => $mismatch,
+                        'probe' => $probe->status,
+                    ], JSON_THROW_ON_ERROR)."\n";
+                    exit(
+                        $replay->status === 'replay'
+                        && $replay->recordId === $expectedRecordId
+                        && $replay->result === ['winner' => 'parent']
+                        && $mismatch === 'idempotency_key_reused'
+                        && $probe->status === 'new'
+                            ? 0
+                            : 4,
+                    );
+                }
+
+                throw new RuntimeException('unknown-postgres-worker-mode');
+            } catch (Throwable $exception) {
+                if (\Illuminate\Support\Facades\DB::transactionLevel() > 0) {
+                    \Illuminate\Support\Facades\DB::rollBack();
+                }
+                fwrite(STDERR, $exception::class.':'.$exception->getMessage());
+                exit(91);
+            }
+            PHP;
+
+        $process = new Process(
+            [PHP_BINARY, '-r', $script],
+            base_path(),
+            [
+                'FINANCE_TEST_PGSQL_URL' => $postgresUrl,
+                'FINANCE_TEST_PGSQL_SCHEMA' => $schema,
+                ...$environment,
+            ],
+            null,
+            20,
+        );
+        $process->start();
+
+        return $process;
+    }
+
+    private function waitForPostgresWorker(Process $process): int
+    {
+        $deadline = microtime(true) + 5.0;
+        while (microtime(true) < $deadline) {
+            if (preg_match('/ready=(\d+)/', $process->getOutput(), $matches) === 1) {
+                return (int) $matches[1];
+            }
+            if (! $process->isRunning()) {
+                break;
+            }
+            usleep(20_000);
+        }
+
+        $this->fail('PostgreSQL worker did not become ready: '.$process->getErrorOutput().$process->getOutput());
+    }
+
+    /** @return array{query: string} */
+    private function waitForPostgresLock(Process $process, int $backendPid): array
+    {
+        $deadline = microtime(true) + 5.0;
+        while (microtime(true) < $deadline) {
+            $activity = DB::table('pg_catalog.pg_stat_activity')
+                ->where('pid', $backendPid)
+                ->first(['wait_event_type', 'wait_event', 'query']);
+            $values = is_object($activity) ? (array) $activity : [];
+            if (($values['wait_event_type'] ?? null) === 'Lock'
+                && is_string($values['query'] ?? null)) {
+                $this->addToAssertionCount(1);
+
+                return ['query' => $values['query']];
+            }
+            if (! $process->isRunning()) {
+                break;
+            }
+            usleep(20_000);
+        }
+
+        $this->fail('PostgreSQL worker did not wait on a database lock: '.$process->getErrorOutput().$process->getOutput());
     }
 
     private function assertAppendOnlyMutation(string $kind, callable $mutation): void
