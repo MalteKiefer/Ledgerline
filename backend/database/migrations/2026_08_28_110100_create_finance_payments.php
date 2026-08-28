@@ -135,6 +135,7 @@ return new class extends Migration
                 'finance_payment_allocations_owner_payment_created_index',
             );
         });
+        $this->addPrimaryKeyChecks();
         $this->addAllocationChecksAndGuards();
         $this->addSqliteReplaceGuards();
         $this->addAllocatedContextGuards();
@@ -481,9 +482,9 @@ return new class extends Migration
             CREATE TRIGGER finance_payments_insert_conflict_guard
             BEFORE INSERT ON finance_payments
             WHEN
-                (NEW.id > 0 AND EXISTS (
+                EXISTS (
                     SELECT 1 FROM finance_payments WHERE id = NEW.id
-                ))
+                )
                 OR EXISTS (
                     SELECT 1 FROM finance_payments
                     WHERE user_id = NEW.user_id AND uuid = NEW.uuid
@@ -506,9 +507,9 @@ return new class extends Migration
             CREATE TRIGGER finance_payment_batches_insert_conflict_guard
             BEFORE INSERT ON finance_payment_allocation_batches
             WHEN
-                (NEW.id > 0 AND EXISTS (
+                EXISTS (
                     SELECT 1 FROM finance_payment_allocation_batches WHERE id = NEW.id
-                ))
+                )
                 OR EXISTS (
                     SELECT 1 FROM finance_payment_allocation_batches
                     WHERE user_id = NEW.user_id
@@ -522,9 +523,9 @@ return new class extends Migration
             CREATE TRIGGER finance_payment_allocations_insert_conflict_guard
             BEFORE INSERT ON finance_payment_allocations
             WHEN
-                (NEW.id > 0 AND EXISTS (
+                EXISTS (
                     SELECT 1 FROM finance_payment_allocations WHERE id = NEW.id
-                ))
+                )
                 OR (
                     NEW.reverses_allocation_id IS NOT NULL
                     AND EXISTS (
@@ -536,6 +537,46 @@ return new class extends Migration
                 SELECT RAISE(ABORT, 'finance_payment_allocations_insert_conflict_guard');
             END
             SQL);
+    }
+
+    private function addPrimaryKeyChecks(): void
+    {
+        $driver = $this->assertSupportedDriver();
+        $tables = [
+            'finance_payments' => 'finance_payments_id_positive_check',
+            'finance_payment_allocation_batches' => 'finance_payment_batches_id_positive_check',
+            'finance_payment_allocations' => 'finance_payment_allocations_id_positive_check',
+        ];
+
+        if ($driver === 'pgsql') {
+            foreach ($tables as $table => $constraint) {
+                DB::statement(<<<SQL
+                    ALTER TABLE {$table}
+                    ADD CONSTRAINT {$constraint} CHECK (id > 0)
+                    SQL);
+            }
+
+            return;
+        }
+
+        foreach ($tables as $table => $constraint) {
+            DB::unprepared(<<<SQL
+                CREATE TRIGGER {$constraint}_insert
+                AFTER INSERT ON {$table}
+                WHEN NEW.id <= 0
+                BEGIN
+                    SELECT RAISE(ABORT, '{$constraint}');
+                END
+                SQL);
+            DB::unprepared(<<<SQL
+                CREATE TRIGGER {$constraint}_update
+                BEFORE UPDATE OF id ON {$table}
+                WHEN NEW.id <= 0
+                BEGIN
+                    SELECT RAISE(ABORT, '{$constraint}');
+                END
+                SQL);
+        }
     }
 
     private function addAllocatedContextGuards(): void

@@ -10,6 +10,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
@@ -454,6 +455,51 @@ final class PaymentSchemaTest extends TestCase
         $this->assertSame(2, DB::table('finance_payment_allocations')->count());
     }
 
+    #[DataProvider('ledgerTableAndNonPositiveIdProvider')]
+    public function test_ledger_primary_keys_reject_non_positive_values(
+        string $table,
+        int $invalidId,
+    ): void {
+        $row = $this->nonPositiveLedgerRow($table, $invalidId);
+
+        $this->expectConstraintViolation(fn (): bool => DB::table($table)->insert($row));
+
+        $this->assertFalse(DB::table($table)->where('id', $invalidId)->exists());
+    }
+
+    #[DataProvider('ledgerTableAndNonPositiveIdProvider')]
+    public function test_sqlite_replace_rejects_non_positive_ledger_primary_keys(
+        string $table,
+        int $invalidId,
+    ): void {
+        if (DB::getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('INSERT OR REPLACE is a SQLite-specific regression path.');
+        }
+
+        $row = $this->nonPositiveLedgerRow($table, $invalidId);
+
+        $this->expectConstraintViolation(fn () => $this->replaceRow($table, $row));
+
+        $this->assertFalse(DB::table($table)->where('id', $invalidId)->exists());
+    }
+
+    public function test_unallocated_payment_primary_key_cannot_be_updated_to_a_non_positive_value(): void
+    {
+        $owner = User::factory()->create();
+
+        foreach ([0, -1] as $index => $invalidId) {
+            $paymentId = $this->insertPayment((int) $owner->id, 100, [
+                'uuid' => sprintf('018f4ca3-224d-7d8d-9f40-%012d', 660 + $index),
+            ]);
+
+            $this->expectConstraintViolation(fn (): int => DB::table('finance_payments')
+                ->where('id', $paymentId)
+                ->update(['id' => $invalidId]));
+
+            $this->assertTrue(DB::table('finance_payments')->where('id', $paymentId)->exists());
+        }
+    }
+
     public function test_allocation_freezes_the_payment_and_invoice_currency_sign_context(): void
     {
         $owner = User::factory()->create();
@@ -633,6 +679,39 @@ final class PaymentSchemaTest extends TestCase
             $paymentId = $this->insertPayment(1, 11_900);
             $batchId = $this->insertBatch(1, $paymentId);
             $allocationId = $this->insertAllocation(1, $batchId, $paymentId, $invoiceId, 5_000);
+
+            foreach ([0, -1] as $invalidId) {
+                $payment = array_merge(
+                    (array) DB::table('finance_payments')->find($paymentId),
+                    [
+                        'id' => $invalidId,
+                        'uuid' => sprintf(
+                            '018f4ca3-224d-7d8d-9f40-%012d',
+                            $invalidId === 0 ? 810 : 811,
+                        ),
+                    ],
+                );
+                $batch = array_merge(
+                    (array) DB::table('finance_payment_allocation_batches')->find($batchId),
+                    [
+                        'id' => $invalidId,
+                        'idempotency_key_hash' => hash('sha256', "pgsql-invalid-batch-{$invalidId}"),
+                        'request_hash' => hash('sha256', "pgsql-invalid-request-{$invalidId}"),
+                    ],
+                );
+                $allocation = array_merge(
+                    (array) DB::table('finance_payment_allocations')->find($allocationId),
+                    ['id' => $invalidId],
+                );
+
+                foreach ([
+                    'finance_payments' => $payment,
+                    'finance_payment_allocation_batches' => $batch,
+                    'finance_payment_allocations' => $allocation,
+                ] as $table => $row) {
+                    $this->expectConstraintViolation(fn (): bool => DB::table($table)->insert($row));
+                }
+            }
 
             $this->expectConstraintViolation(fn (): int => $this->insertAllocation(
                 1,
@@ -842,6 +921,13 @@ final class PaymentSchemaTest extends TestCase
         $this->assertStringContainsString('finance_payments_amount_check', $ddl);
         $this->assertStringContainsString('finance_payments_currency_check', $ddl);
         $this->assertStringContainsString('finance_payment_allocations_amount_check', $ddl);
+        foreach ([
+            'finance_payments_id_positive_check',
+            'finance_payment_batches_id_positive_check',
+            'finance_payment_allocations_id_positive_check',
+        ] as $constraint) {
+            $this->assertStringContainsString($constraint, $ddl);
+        }
         $this->assertStringContainsString('finance_payment_allocation_guard', $ddl);
         $this->assertMatchesRegularExpression(
             '/finance_invoices as invoice.*for share.*finance_document_revisions.*for share.*finance_payments.*for share/s',
@@ -895,6 +981,19 @@ final class PaymentSchemaTest extends TestCase
         $this->assertTrue(Schema::hasTable('finance_payments'));
         $this->assertTrue(Schema::hasTable('finance_payment_allocation_batches'));
         $this->assertTrue(Schema::hasTable('finance_payment_allocations'));
+    }
+
+    /** @return array<string, array{string, int}> */
+    public static function ledgerTableAndNonPositiveIdProvider(): array
+    {
+        return [
+            'payment zero' => ['finance_payments', 0],
+            'payment negative' => ['finance_payments', -1],
+            'batch zero' => ['finance_payment_allocation_batches', 0],
+            'batch negative' => ['finance_payment_allocation_batches', -1],
+            'allocation zero' => ['finance_payment_allocations', 0],
+            'allocation negative' => ['finance_payment_allocations', -1],
+        ];
     }
 
     private function invoiceFixture(
@@ -1006,6 +1105,49 @@ final class PaymentSchemaTest extends TestCase
             'reverses_allocation_id' => $reversesAllocationId,
             'created_at' => now(),
         ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function nonPositiveLedgerRow(string $table, int $invalidId): array
+    {
+        $owner = User::factory()->create();
+        $paymentId = $this->insertPayment((int) $owner->id, 11_900);
+        $payment = (array) DB::table('finance_payments')->find($paymentId);
+
+        if ($table === 'finance_payments') {
+            return array_merge($payment, [
+                'id' => $invalidId,
+                'uuid' => sprintf(
+                    '018f4ca3-224d-7d8d-9f40-%012d',
+                    $invalidId === 0 ? 670 : 671,
+                ),
+            ]);
+        }
+
+        $batchId = $this->insertBatch((int) $owner->id, $paymentId);
+        $batch = (array) DB::table('finance_payment_allocation_batches')->find($batchId);
+
+        if ($table === 'finance_payment_allocation_batches') {
+            return array_merge($batch, [
+                'id' => $invalidId,
+                'idempotency_key_hash' => hash('sha256', "invalid-batch-{$invalidId}"),
+                'request_hash' => hash('sha256', "invalid-request-{$invalidId}"),
+            ]);
+        }
+
+        $invoiceId = $this->invoiceFixture((int) $owner->id, 672);
+        $allocationId = $this->insertAllocation(
+            (int) $owner->id,
+            $batchId,
+            $paymentId,
+            $invoiceId,
+            100,
+        );
+
+        return array_merge(
+            (array) DB::table('finance_payment_allocations')->find($allocationId),
+            ['id' => $invalidId],
+        );
     }
 
     /** @param array<string, mixed> $row */
