@@ -9,6 +9,7 @@ use App\Modules\Finance\Application\DTOs\DocumentRevisionId;
 use App\Modules\Finance\Application\Ports\DocumentRevisionRepository;
 use App\Modules\Finance\Application\Services\CanonicalDocumentSnapshot;
 use App\Modules\Finance\Domain\Shared\DocumentCalculator;
+use App\Modules\Finance\Domain\Shared\DocumentTotals;
 use InvalidArgumentException;
 
 final readonly class CreateDocumentRevision
@@ -33,9 +34,38 @@ final readonly class CreateDocumentRevision
         return $this->create($data, $creationKey);
     }
 
+    public function preflight(CreateRevisionData $data): DocumentTotals
+    {
+        $totals = $this->calculator->calculate($data->lines, $data->discount);
+        $this->snapshots->build($data, $totals);
+
+        return $totals;
+    }
+
+    public function handlePreparedIdempotently(
+        CreateRevisionData $data,
+        DocumentTotals $totals,
+        string $creationKey,
+    ): DocumentRevisionId {
+        if (trim($creationKey) === '' || strlen($creationKey) > 255) {
+            throw new InvalidArgumentException('Revision creation keys must contain between 1 and 255 bytes.');
+        }
+
+        return $this->persist($data, $totals, $creationKey);
+    }
+
     private function create(CreateRevisionData $data, ?string $creationKey): DocumentRevisionId
     {
         $totals = $this->calculator->calculate($data->lines, $data->discount);
+
+        return $this->persist($data, $totals, $creationKey);
+    }
+
+    private function persist(
+        CreateRevisionData $data,
+        DocumentTotals $totals,
+        ?string $creationKey,
+    ): DocumentRevisionId {
         $canonicalSnapshot = $this->snapshots->build($data, $totals);
         $canonicalJson = json_encode($canonicalSnapshot, JSON_THROW_ON_ERROR);
         $snapshotSha256 = hash('sha256', $canonicalJson);

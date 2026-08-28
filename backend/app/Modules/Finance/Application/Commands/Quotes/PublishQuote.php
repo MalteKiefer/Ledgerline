@@ -39,13 +39,28 @@ final readonly class PublishQuote
             'expected_version' => $data->expectedVersion,
             'quote_uuid' => $data->quoteId->uuid,
         ], JSON_THROW_ON_ERROR));
-        $operation = $this->operations->reserve(
+        $operation = $this->operations->existing(
             $data->quoteId->ownerId,
             'publish',
             $data->idempotencyKey,
             $requestSha256,
             $data->quoteId,
         );
+        $preflightTotals = null;
+
+        if ($operation === null) {
+            $candidate = $this->quotes->get($data->quoteId);
+            $preflightTotals = $this->createRevision->preflight(
+                $this->revisionData($candidate, $data->changeReason, 'VALIDATION-1'),
+            );
+            $operation = $this->operations->reserve(
+                $data->quoteId->ownerId,
+                'publish',
+                $data->idempotencyKey,
+                $requestSha256,
+                $data->quoteId,
+            );
+        }
 
         if ($operation->status === 'replay') {
             return $this->replay($data, $operation);
@@ -59,18 +74,27 @@ final readonly class PublishQuote
 
         if ($revisionId === null) {
             $candidate = $this->quotes->get($data->quoteId);
-            $this->revisionData($candidate, $data->changeReason, 'VALIDATION-1');
-            $prepared = $this->quotes->preparePublication(
-                $data->quoteId,
-                $data->expectedVersion,
-                $operation->recordId,
-                fn (string $issueDate): array => $this->numbers->allocate(
-                    $data->quoteId->ownerId,
-                    $issueDate,
-                ),
+            $preflightTotals ??= $this->createRevision->preflight(
+                $this->revisionData($candidate, $data->changeReason, 'VALIDATION-1'),
             );
-            $revisionId = $this->createRevision->handleIdempotently(
+            try {
+                $prepared = $this->quotes->preparePublication(
+                    $data->quoteId,
+                    $data->expectedVersion,
+                    $operation->recordId,
+                    fn (string $issueDate): array => $this->numbers->allocate(
+                        $data->quoteId->ownerId,
+                        $issueDate,
+                    ),
+                );
+            } catch (InvalidQuoteAction $exception) {
+                $this->operations->fail($operation, $exception->getMessage());
+
+                throw $exception;
+            }
+            $revisionId = $this->createRevision->handlePreparedIdempotently(
                 $this->revisionData($prepared, $data->changeReason),
+                $preflightTotals,
                 'quote-publish-operation-'.$operation->recordId,
             );
             $operation = $this->operations->checkpoint($operation, [

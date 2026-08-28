@@ -9,6 +9,14 @@ use App\Modules\Finance\Application\DTOs\Quotes\QuoteId;
 
 interface QuoteOperationRepository
 {
+    public function existing(
+        int $ownerId,
+        string $operation,
+        string $key,
+        string $requestSha256,
+        ?QuoteId $quoteId,
+    ): ?OperationReservation;
+
     public function reserve(
         int $ownerId,
         string $operation,

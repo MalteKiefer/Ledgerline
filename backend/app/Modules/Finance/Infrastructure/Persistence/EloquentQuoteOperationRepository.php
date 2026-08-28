@@ -8,6 +8,7 @@ use App\Modules\Finance\Application\DTOs\Quotes\OperationReservation;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteId;
 use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteOperationRepository;
+use App\Modules\Finance\Domain\Quotes\Exception\InvalidQuoteAction;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteOperationRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteSeriesRecord;
@@ -21,6 +22,46 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
 {
     public function __construct(private readonly Clock $clock) {}
 
+    public function existing(
+        int $ownerId,
+        string $operation,
+        string $key,
+        string $requestSha256,
+        ?QuoteId $quoteId,
+    ): ?OperationReservation {
+        $this->validateReservationInput($ownerId, $operation, $key, $requestSha256);
+        $seriesId = $this->resolveSeriesId($ownerId, $quoteId);
+
+        return DB::transaction(function () use (
+            $ownerId,
+            $operation,
+            $key,
+            $requestSha256,
+            $seriesId,
+        ): ?OperationReservation {
+            $this->lockTarget($ownerId, $seriesId);
+            $existing = QuoteOperationRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_operations.user_id', $ownerId)
+                ->where('operation', $operation)
+                ->where('idempotency_key', $key)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing instanceof QuoteOperationRecord) {
+                return $this->reservationForExistingRecord(
+                    $existing,
+                    $requestSha256,
+                    $seriesId,
+                );
+            }
+
+            $this->assertNoOtherActivePublication($ownerId, $operation, $seriesId);
+
+            return null;
+        }, 1);
+    }
+
     public function reserve(
         int $ownerId,
         string $operation,
@@ -32,8 +73,33 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
         $seriesId = $this->resolveSeriesId($ownerId, $quoteId);
 
         try {
-            $recordId = DB::transaction(fn (): int => (int) DB::table('finance_quote_operations')
-                ->insertGetId([
+            return DB::transaction(function () use (
+                $ownerId,
+                $operation,
+                $key,
+                $requestSha256,
+                $seriesId,
+            ): OperationReservation {
+                $this->lockTarget($ownerId, $seriesId);
+
+                $existing = QuoteOperationRecord::query()
+                    ->withoutGlobalScope('owner')
+                    ->where('finance_quote_operations.user_id', $ownerId)
+                    ->where('operation', $operation)
+                    ->where('idempotency_key', $key)
+                    ->lockForUpdate()
+                    ->first();
+                if ($existing instanceof QuoteOperationRecord) {
+                    return $this->reservationForExistingRecord(
+                        $existing,
+                        $requestSha256,
+                        $seriesId,
+                    );
+                }
+
+                $this->assertNoOtherActivePublication($ownerId, $operation, $seriesId);
+
+                $recordId = (int) DB::table('finance_quote_operations')->insertGetId([
                     'user_id' => $ownerId,
                     'document_series_id' => $seriesId,
                     'operation' => $operation,
@@ -44,14 +110,15 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
                     'error_code' => null,
                     'started_at' => $this->clock->now(),
                     'completed_at' => null,
-                ]), 1);
+                ]);
 
-            $record = QuoteOperationRecord::query()
-                ->withoutGlobalScope('owner')
-                ->where('finance_quote_operations.user_id', $ownerId)
-                ->findOrFail($recordId);
+                $record = QuoteOperationRecord::query()
+                    ->withoutGlobalScope('owner')
+                    ->where('finance_quote_operations.user_id', $ownerId)
+                    ->findOrFail($recordId);
 
-            return $this->reservation($record, 'new');
+                return $this->reservation($record, 'new');
+            }, 1);
         } catch (UniqueConstraintViolationException $exception) {
             return $this->existingReservation(
                 $ownerId,
@@ -128,6 +195,49 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
         return (int) $series->id;
     }
 
+    private function lockTarget(int $ownerId, ?int $seriesId): void
+    {
+        if ($seriesId === null) {
+            return;
+        }
+
+        DocumentSeriesRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_document_series.user_id', $ownerId)
+            ->whereKey($seriesId)
+            ->lockForUpdate()
+            ->firstOrFail(['id']);
+        QuoteSeriesRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_quote_series.user_id', $ownerId)
+            ->where('document_series_id', $seriesId)
+            ->lockForUpdate()
+            ->firstOrFail(['document_series_id']);
+    }
+
+    private function assertNoOtherActivePublication(
+        int $ownerId,
+        string $operation,
+        ?int $seriesId,
+    ): void {
+        if ($operation !== 'publish' || $seriesId === null) {
+            return;
+        }
+
+        $active = QuoteOperationRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_quote_operations.user_id', $ownerId)
+            ->where('document_series_id', $seriesId)
+            ->where('operation', 'publish')
+            ->whereIn('state', ['reserved', 'running'])
+            ->lockForUpdate()
+            ->first(['id']);
+
+        if ($active !== null) {
+            throw new InvalidQuoteAction('operation_in_progress');
+        }
+    }
+
     private function existingReservation(
         int $ownerId,
         string $operation,
@@ -147,6 +257,14 @@ final class EloquentQuoteOperationRepository implements QuoteOperationRepository
             throw $exception;
         }
 
+        return $this->reservationForExistingRecord($record, $requestSha256, $seriesId);
+    }
+
+    private function reservationForExistingRecord(
+        QuoteOperationRecord $record,
+        string $requestSha256,
+        ?int $seriesId,
+    ): OperationReservation {
         $recordSeriesId = $record->document_series_id !== null
             ? (int) $record->document_series_id
             : null;

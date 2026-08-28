@@ -8,12 +8,15 @@ use App\Models\User;
 use App\Models\UserSetting;
 use App\Modules\Finance\Application\Commands\CreateDocumentRevision;
 use App\Modules\Finance\Application\Commands\Quotes\CreateQuote;
+use App\Modules\Finance\Application\Commands\Quotes\DiscardQuoteDraft;
 use App\Modules\Finance\Application\Commands\Quotes\PublishQuote;
 use App\Modules\Finance\Application\Commands\Quotes\StartQuoteVersion;
 use App\Modules\Finance\Application\Commands\Quotes\UpdateQuoteDraft;
 use App\Modules\Finance\Application\DTOs\CreateRevisionData;
+use App\Modules\Finance\Application\DTOs\Quotes\OperationReservation;
 use App\Modules\Finance\Application\DTOs\Quotes\PublishQuoteData;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteDraftData;
+use App\Modules\Finance\Application\DTOs\Quotes\QuoteId;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteLineData;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteView;
 use App\Modules\Finance\Application\DTOs\StoredDocument;
@@ -34,6 +37,7 @@ use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteOperationRecord;
+use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -440,6 +444,10 @@ final class QuotePublicationTest extends TestCase
         $this->assertNull(DB::table('finance_quote_series')->where('document_series_id', $seriesId)->value('number'));
         $this->assertSame(0, DB::table('finance_quote_number_sequences')->count());
         $this->assertSame(0, DB::table('finance_document_revisions')->where('document_series_id', $seriesId)->count());
+        $this->assertSame(0, DB::table('finance_quote_operations')
+            ->where('document_series_id', $seriesId)
+            ->where('operation', 'publish')
+            ->count());
         DB::table('finance_quote_drafts')->where('document_series_id', $seriesId)->update([
             'payload' => json_encode($validPayload, JSON_THROW_ON_ERROR),
         ]);
@@ -481,6 +489,84 @@ final class QuotePublicationTest extends TestCase
         $this->assertSame(0, DB::table('finance_document_revisions')->where('document_series_id', $seriesId)->count());
     }
 
+    public function test_document_calculator_preflight_rejects_excess_discount_without_durable_publication_state(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $created = $this->app->make(CreateQuote::class)->handle(
+            (int) $owner->id,
+            'create-before-calculator-preflight',
+            $this->draft(),
+        );
+        $seriesId = $this->seriesId($created);
+        $payload = $created->draft;
+        $this->assertIsArray($payload);
+        $payload['discount'] = ['type' => 'fixed', 'minor' => 1_000_000];
+        DB::table('finance_quote_drafts')->where('document_series_id', $seriesId)->update([
+            'payload' => json_encode($payload, JSON_THROW_ON_ERROR),
+        ]);
+
+        try {
+            $this->app->make(PublishQuote::class)->handle(
+                new PublishQuoteData($created->id, 0, 'calculator-preflight-failure'),
+            );
+            $this->fail('An excessive discount reached number allocation.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertSame(
+                'The discount must be between zero and the document net.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertNull(DB::table('finance_quote_series')->where('document_series_id', $seriesId)->value('number'));
+        $this->assertSame(0, DB::table('finance_quote_number_sequences')->count());
+        $this->assertSame(0, DB::table('finance_document_revisions')->where('document_series_id', $seriesId)->count());
+        $this->assertSame(0, DB::table('finance_quote_operations')
+            ->where('document_series_id', $seriesId)
+            ->where('operation', 'publish')
+            ->count());
+    }
+
+    public function test_canonical_snapshot_preflight_rejects_float_metadata_without_durable_publication_state(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $created = $this->app->make(CreateQuote::class)->handle(
+            (int) $owner->id,
+            'create-before-snapshot-preflight',
+            $this->draft(),
+        );
+        $seriesId = $this->seriesId($created);
+        $payload = $created->draft;
+        $this->assertIsArray($payload);
+        $customer = $payload['customer'] ?? null;
+        $this->assertIsArray($customer);
+        $payload['customer'] = [...$customer, 'invalid_float' => 1.5];
+        DB::table('finance_quote_drafts')->where('document_series_id', $seriesId)->update([
+            'payload' => json_encode($payload, JSON_THROW_ON_ERROR),
+        ]);
+
+        try {
+            $this->app->make(PublishQuote::class)->handle(
+                new PublishQuoteData($created->id, 0, 'snapshot-preflight-failure'),
+            );
+            $this->fail('Floating-point snapshot metadata reached number allocation.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertSame(
+                'Document snapshots cannot contain floating-point values.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertNull(DB::table('finance_quote_series')->where('document_series_id', $seriesId)->value('number'));
+        $this->assertSame(0, DB::table('finance_quote_number_sequences')->count());
+        $this->assertSame(0, DB::table('finance_document_revisions')->where('document_series_id', $seriesId)->count());
+        $this->assertSame(0, DB::table('finance_quote_operations')
+            ->where('document_series_id', $seriesId)
+            ->where('operation', 'publish')
+            ->count());
+    }
+
     public function test_revision_creation_failure_keeps_the_number_and_retry_creates_one_revision(): void
     {
         $owner = User::factory()->create();
@@ -520,6 +606,213 @@ final class QuotePublicationTest extends TestCase
         $this->assertSame(1, DB::table('finance_document_revisions')->where('document_series_id', $seriesId)->count());
         $this->assertSame(1, $this->renderer->calls);
         $this->assertSame(1, $this->storage->puts);
+    }
+
+    public function test_active_publication_blocks_draft_update_and_same_key_resumes(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $created = $this->app->make(CreateQuote::class)->handle(
+            (int) $owner->id,
+            'create-before-blocked-update',
+            $this->draft(),
+        );
+        $seriesId = $this->seriesId($created);
+        $failure = new class
+        {
+            public bool $enabled = true;
+        };
+        DocumentRevisionRecord::creating(static function () use ($failure): void {
+            if ($failure->enabled) {
+                throw new RuntimeException('injected revision creation failure before update');
+            }
+        });
+        $publish = $this->app->make(PublishQuote::class);
+        $data = new PublishQuoteData($created->id, 0, 'resume-after-blocked-update');
+
+        try {
+            $publish->handle($data);
+            $this->fail('Injected revision creation failure was not observed.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('injected revision creation failure before update', $exception->getMessage());
+        }
+
+        try {
+            $this->app->make(UpdateQuoteDraft::class)->handle(
+                $created->id,
+                0,
+                $this->draft('Changed while publication is active'),
+            );
+            $this->fail('An active publication allowed its draft to be changed.');
+        } catch (InvalidQuoteAction $exception) {
+            $this->assertSame('quote_publication_in_progress', $exception->getMessage());
+        }
+
+        $this->assertSame(0, DB::table('finance_quote_series')->where('document_series_id', $seriesId)->value('version'));
+        $failure->enabled = false;
+
+        $published = $publish->handle($data);
+
+        $this->assertSame('sent', $published->status);
+        $this->assertSame(1, DB::table('finance_document_revisions')->where('document_series_id', $seriesId)->count());
+    }
+
+    public function test_active_later_publication_blocks_draft_discard_and_same_key_resumes(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $created = $this->app->make(CreateQuote::class)->handle(
+            (int) $owner->id,
+            'create-before-blocked-discard',
+            $this->draft(),
+        );
+        $publish = $this->app->make(PublishQuote::class);
+        $published = $publish->handle(new PublishQuoteData(
+            $created->id,
+            0,
+            'publish-before-blocked-discard',
+        ));
+        $started = $this->app->make(StartQuoteVersion::class)->handle($published->id, 1);
+        $this->renderer->failure = new RuntimeException('injected renderer failure before discard');
+        $data = new PublishQuoteData($started->id, 2, 'resume-after-blocked-discard');
+
+        try {
+            $publish->handle($data);
+            $this->fail('Injected renderer failure was not observed.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('injected renderer failure before discard', $exception->getMessage());
+        }
+
+        try {
+            $this->app->make(DiscardQuoteDraft::class)->handle($started->id, 2);
+            $this->fail('An active publication allowed its draft to be discarded.');
+        } catch (InvalidQuoteAction $exception) {
+            $this->assertSame('quote_publication_in_progress', $exception->getMessage());
+        }
+
+        $this->renderer->failure = null;
+        $resumed = $publish->handle($data);
+
+        $this->assertSame('sent', $resumed->status);
+        $this->assertSame(3, $resumed->version);
+        $this->assertNull($resumed->draft);
+    }
+
+    public function test_active_finalized_publication_blocks_new_version_and_new_key_until_same_key_completes(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $created = $this->app->make(CreateQuote::class)->handle(
+            (int) $owner->id,
+            'create-before-operation-completion-crash',
+            $this->draft(),
+        );
+        $seriesId = $this->seriesId($created);
+        $operations = new QuotePublicationFailingSucceedOperations(
+            $this->app->make(QuoteOperationRepository::class),
+        );
+        $this->app->instance(QuoteOperationRepository::class, $operations);
+        $publish = $this->app->make(PublishQuote::class);
+        $data = new PublishQuoteData($created->id, 0, 'resume-after-operation-completion-crash');
+
+        try {
+            $publish->handle($data);
+            $this->fail('Injected operation completion failure was not observed.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('injected operation completion failure', $exception->getMessage());
+        }
+
+        $finalized = $this->app->make(QuoteRepository::class)->get($created->id);
+        $this->assertSame('sent', $finalized->status);
+        $this->assertSame(1, $finalized->version);
+        $this->assertNull($finalized->draft);
+        $this->assertSame('running', DB::table('finance_quote_operations')
+            ->where('document_series_id', $seriesId)
+            ->where('operation', 'publish')
+            ->sole()
+            ->state);
+
+        try {
+            $this->app->make(StartQuoteVersion::class)->handle($created->id, 1);
+            $this->fail('An active finalized publication allowed a new draft version.');
+        } catch (InvalidQuoteAction $exception) {
+            $this->assertSame('quote_publication_in_progress', $exception->getMessage());
+        }
+
+        try {
+            $publish->handle(new PublishQuoteData($created->id, 1, 'different-key-during-active-publication'));
+            $this->fail('A second publication key was accepted while the first remained active.');
+        } catch (InvalidQuoteAction $exception) {
+            $this->assertSame('operation_in_progress', $exception->getMessage());
+        }
+        $this->assertSame(1, DB::table('finance_quote_operations')
+            ->where('document_series_id', $seriesId)
+            ->where('operation', 'publish')
+            ->count());
+
+        $operations->failSucceed = false;
+        $resumed = $publish->handle($data);
+        $started = $this->app->make(StartQuoteVersion::class)->handle($resumed->id, 1);
+
+        $this->assertSame('succeeded', DB::table('finance_quote_operations')
+            ->where('document_series_id', $seriesId)
+            ->where('operation', 'publish')
+            ->sole()
+            ->state);
+        $this->assertSame(2, $started->version);
+        $this->assertNotNull($started->draft);
+    }
+
+    public function test_version_change_between_preflight_and_reservation_terminalizes_the_stale_operation(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $created = $this->app->make(CreateQuote::class)->handle(
+            (int) $owner->id,
+            'create-before-preflight-reservation-race',
+            $this->draft(),
+        );
+        $seriesId = $this->seriesId($created);
+        $inner = $this->app->make(QuoteOperationRepository::class);
+        $operations = new QuotePublicationReserveInterleavingOperations(
+            $inner,
+            function () use ($created): void {
+                $this->app->make(UpdateQuoteDraft::class)->handle(
+                    $created->id,
+                    0,
+                    $this->draft('Changed between preflight and reservation'),
+                );
+            },
+        );
+        $this->app->instance(QuoteOperationRepository::class, $operations);
+
+        try {
+            $this->app->make(PublishQuote::class)->handle(
+                new PublishQuoteData($created->id, 0, 'stale-after-preflight'),
+            );
+            $this->fail('A stale preflight unexpectedly reached publication.');
+        } catch (InvalidQuoteAction $exception) {
+            $this->assertSame('version_conflict', $exception->getMessage());
+        }
+
+        $staleOperation = DB::table('finance_quote_operations')
+            ->where('document_series_id', $seriesId)
+            ->where('idempotency_key', 'stale-after-preflight')
+            ->sole();
+        $this->assertSame('failed', $staleOperation->state);
+        $this->assertSame('version_conflict', $staleOperation->error_code);
+        $this->assertSame(0, DB::table('finance_quote_operations')
+            ->where('document_series_id', $seriesId)
+            ->whereIn('state', ['reserved', 'running'])
+            ->count());
+
+        $this->app->instance(QuoteOperationRepository::class, $inner);
+        $published = $this->app->make(PublishQuote::class)->handle(
+            new PublishQuoteData($created->id, 1, 'publish-after-stale-preflight'),
+        );
+
+        $this->assertSame('sent', $published->status);
+        $this->assertSame('Changed between preflight and reservation', $published->currentRevision?->snapshot['title']);
     }
 
     public function test_revision_checkpoint_failure_rediscovers_the_same_revision_on_retry(): void
@@ -945,6 +1238,102 @@ final class QuotePublicationTest extends TestCase
             ->where('user_id', $quote->id->ownerId)
             ->where('uuid', $quote->id->uuid)
             ->value('id');
+    }
+}
+
+final class QuotePublicationFailingSucceedOperations implements QuoteOperationRepository
+{
+    public bool $failSucceed = true;
+
+    public function __construct(private readonly QuoteOperationRepository $inner) {}
+
+    public function existing(
+        int $ownerId,
+        string $operation,
+        string $key,
+        string $requestSha256,
+        ?QuoteId $quoteId,
+    ): ?OperationReservation {
+        return $this->inner->existing($ownerId, $operation, $key, $requestSha256, $quoteId);
+    }
+
+    public function reserve(
+        int $ownerId,
+        string $operation,
+        string $key,
+        string $requestSha256,
+        ?QuoteId $quoteId,
+    ): OperationReservation {
+        return $this->inner->reserve($ownerId, $operation, $key, $requestSha256, $quoteId);
+    }
+
+    public function checkpoint(OperationReservation $reservation, array $result): OperationReservation
+    {
+        return $this->inner->checkpoint($reservation, $result);
+    }
+
+    public function succeed(OperationReservation $reservation, array $result): void
+    {
+        if ($this->failSucceed) {
+            throw new RuntimeException('injected operation completion failure');
+        }
+
+        $this->inner->succeed($reservation, $result);
+    }
+
+    public function fail(OperationReservation $reservation, string $errorCode): void
+    {
+        $this->inner->fail($reservation, $errorCode);
+    }
+}
+
+final class QuotePublicationReserveInterleavingOperations implements QuoteOperationRepository
+{
+    private bool $interleaved = false;
+
+    public function __construct(
+        private readonly QuoteOperationRepository $inner,
+        private readonly Closure $beforeReserve,
+    ) {}
+
+    public function existing(
+        int $ownerId,
+        string $operation,
+        string $key,
+        string $requestSha256,
+        ?QuoteId $quoteId,
+    ): ?OperationReservation {
+        return $this->inner->existing($ownerId, $operation, $key, $requestSha256, $quoteId);
+    }
+
+    public function reserve(
+        int $ownerId,
+        string $operation,
+        string $key,
+        string $requestSha256,
+        ?QuoteId $quoteId,
+    ): OperationReservation {
+        if (! $this->interleaved) {
+            $this->interleaved = true;
+            ($this->beforeReserve)();
+        }
+
+        return $this->inner->reserve($ownerId, $operation, $key, $requestSha256, $quoteId);
+    }
+
+    public function checkpoint(OperationReservation $reservation, array $result): OperationReservation
+    {
+        return $this->inner->checkpoint($reservation, $result);
+    }
+
+    public function succeed(OperationReservation $reservation, array $result): void
+    {
+        $this->inner->succeed($reservation, $result);
+    }
+
+    public function fail(OperationReservation $reservation, string $errorCode): void
+    {
+        $this->inner->fail($reservation, $errorCode);
     }
 }
 

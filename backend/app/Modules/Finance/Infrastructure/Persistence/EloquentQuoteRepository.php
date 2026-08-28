@@ -298,6 +298,8 @@ final class EloquentQuoteRepository implements QuoteRepository
                 return $this->viewForUuid($id);
             }
 
+            $this->assertNoActivePublication($id->ownerId, (int) $series->id);
+
             $this->assertOwnedPartner($id->ownerId, $partnerId);
             $updatedAt = $this->clock->now();
 
@@ -372,6 +374,8 @@ final class EloquentQuoteRepository implements QuoteRepository
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            $this->assertNoActivePublication($id->ownerId, (int) $series->id);
+
             if ($draft->based_on_revision_id === null) {
                 throw new InvalidQuoteAction('initial_draft_cannot_be_discarded');
             }
@@ -441,6 +445,7 @@ final class EloquentQuoteRepository implements QuoteRepository
             if ((int) $quote->version !== $expectedVersion) {
                 return $this->viewForUuid($id);
             }
+            $this->assertNoActivePublication($id->ownerId, (int) $series->id);
             if ((string) $series->status !== 'sent'
                 || $currentRevision === null
                 || (string) $currentRevision->status !== 'published'
@@ -768,6 +773,22 @@ final class EloquentQuoteRepository implements QuoteRepository
             ->whereKey($partnerId)
             ->lockForUpdate()
             ->firstOrFail(['id']);
+    }
+
+    private function assertNoActivePublication(int $ownerId, int $seriesId): void
+    {
+        $active = QuoteOperationRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_quote_operations.user_id', $ownerId)
+            ->where('document_series_id', $seriesId)
+            ->where('operation', 'publish')
+            ->whereIn('state', ['reserved', 'running'])
+            ->lockForUpdate()
+            ->first(['id']);
+
+        if ($active !== null) {
+            throw new InvalidQuoteAction('quote_publication_in_progress');
+        }
     }
 
     private function validateCreateOperation(
