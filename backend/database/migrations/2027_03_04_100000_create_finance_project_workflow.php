@@ -26,6 +26,7 @@ return new class extends Migration
     public function down(): void
     {
         $this->removeDocumentNoteExtension();
+        $this->removeDocumentSourceGuards();
 
         Schema::dropIfExists('finance_project_operations');
         Schema::dropIfExists('finance_project_activities');
@@ -35,10 +36,6 @@ return new class extends Migration
         Schema::dropIfExists('finance_project_time_entries');
         Schema::dropIfExists('finance_project_work_items');
         Schema::dropIfExists('finance_project_records');
-
-        if (DB::getDriverName() === 'pgsql') {
-            DB::unprepared('DROP FUNCTION IF EXISTS finance_project_document_links_validate_source()');
-        }
 
         Schema::table('finance_document_revisions', function (Blueprint $table): void {
             $table->dropUnique('finance_document_revisions_owner_id_unique');
@@ -107,7 +104,7 @@ return new class extends Migration
             'finance_project_records_source_pair_check' => '(source_type IS NULL) = (source_id IS NULL)',
             'finance_project_records_parent_not_self_check' => 'parent_project_id IS NULL OR parent_project_id <> id',
             'finance_project_records_budget_nonnegative_check' => 'budget_minor IS NULL OR budget_minor >= 0',
-            'finance_project_records_currency_check' => 'length(currency) = 3 AND upper(currency) = currency',
+            'finance_project_records_currency_check' => $this->currencyCheckExpression(),
             'finance_project_records_version_nonnegative_check' => 'version >= 0',
             'finance_project_records_actor_owner_check' => 'created_by IS NULL OR created_by = user_id',
         ]);
@@ -234,7 +231,7 @@ return new class extends Migration
             'finance_project_time_entries_quantity_nonzero_check' => 'quantity_scaled <> 0',
             'finance_project_time_entries_rate_nonnegative_check' => 'hourly_rate_minor IS NULL OR hourly_rate_minor >= 0',
             'finance_project_time_entries_invoice_pair_check' => '(invoice_target_reference IS NULL) = (invoiced_at IS NULL)',
-            'finance_project_time_entries_currency_check' => 'length(currency) = 3 AND upper(currency) = currency',
+            'finance_project_time_entries_currency_check' => $this->currencyCheckExpression(),
             'finance_project_time_entries_version_nonnegative_check' => 'version >= 0',
             'finance_project_time_entries_actor_owner_check' => 'created_by IS NULL OR created_by = user_id',
         ]);
@@ -283,7 +280,7 @@ return new class extends Migration
 
         $this->addChecks('finance_project_ledger_entries', [
             'finance_project_ledger_entries_amount_positive_check' => 'amount_minor > 0',
-            'finance_project_ledger_entries_currency_check' => 'length(currency) = 3 AND upper(currency) = currency',
+            'finance_project_ledger_entries_currency_check' => $this->currencyCheckExpression(),
             'finance_project_ledger_entries_version_nonnegative_check' => 'version >= 0',
             'finance_project_ledger_entries_actor_owner_check' => 'created_by IS NULL OR created_by = user_id',
         ]);
@@ -502,6 +499,8 @@ return new class extends Migration
 
     private function extendDocumentNotes(): void
     {
+        $canonicalTypes = ['note', 'decision', 'call', 'email', 'meeting', 'correction'];
+
         Schema::table('finance_document_notes', function (Blueprint $table): void {
             $table->foreignId('supersedes_note_id')->nullable()->after('body');
             $table->unique(
@@ -509,8 +508,29 @@ return new class extends Migration
                 'finance_document_notes_owner_series_id_unique',
             );
         });
+        DB::statement("UPDATE finance_document_notes SET type = 'note' WHERE type = 'comment'");
+        if (DB::getDriverName() === 'sqlite'
+            && DB::table('finance_document_notes')->whereNotIn('type', $canonicalTypes)->exists()) {
+            throw new LogicException('finance_document_notes contains an unsupported legacy type.');
+        }
 
         if (DB::getDriverName() === 'pgsql') {
+            DB::unprepared(<<<'SQL'
+                CREATE FUNCTION finance_document_notes_normalize_type()
+                RETURNS trigger AS $$
+                BEGIN
+                    IF NEW.type = 'comment' THEN
+                        NEW.type := 'note';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql
+                SQL);
+            DB::statement(<<<'SQL'
+                CREATE TRIGGER finance_document_notes_normalize_type
+                BEFORE INSERT OR UPDATE OF type ON finance_document_notes
+                FOR EACH ROW EXECUTE FUNCTION finance_document_notes_normalize_type()
+                SQL);
             DB::statement(<<<'SQL'
                 ALTER TABLE finance_document_notes
                 ADD CONSTRAINT finance_document_notes_supersedes_foreign
@@ -520,13 +540,41 @@ return new class extends Migration
                 ADD CONSTRAINT finance_document_notes_correction_pair_check
                     CHECK ((type = 'correction') = (supersedes_note_id IS NOT NULL)),
                 ADD CONSTRAINT finance_document_notes_supersedes_not_self_check
-                    CHECK (supersedes_note_id IS NULL OR supersedes_note_id <> id)
+                    CHECK (supersedes_note_id IS NULL OR supersedes_note_id <> id),
+                ADD CONSTRAINT finance_document_notes_type_check
+                    CHECK (type IN ('note', 'decision', 'call', 'email', 'meeting', 'correction'))
                 SQL);
 
             return;
         }
 
         $this->assertSqlite();
+        foreach (['insert', 'update'] as $operation) {
+            DB::unprepared(<<<SQL
+                CREATE TRIGGER finance_document_notes_type_{$operation}_check
+                BEFORE {$operation} ON finance_document_notes
+                WHEN NEW.type NOT IN ('note', 'decision', 'call', 'email', 'meeting', 'correction', 'comment')
+                BEGIN
+                    SELECT RAISE(ABORT, 'finance_document_notes_type_check');
+                END
+                SQL);
+        }
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_document_notes_type_insert_normalize
+            AFTER INSERT ON finance_document_notes
+            WHEN NEW.type = 'comment'
+            BEGIN
+                UPDATE finance_document_notes SET type = 'note' WHERE id = NEW.id;
+            END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_document_notes_type_update_normalize
+            AFTER UPDATE OF type ON finance_document_notes
+            WHEN NEW.type = 'comment'
+            BEGIN
+                UPDATE finance_document_notes SET type = 'note' WHERE id = NEW.id;
+            END
+            SQL);
         foreach (['insert', 'update'] as $operation) {
             DB::unprepared(<<<SQL
                 CREATE TRIGGER finance_document_notes_correction_{$operation}_check
@@ -547,6 +595,41 @@ return new class extends Migration
                 END
                 SQL);
         }
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_document_notes_supersedes_parent_delete_restrict
+            BEFORE DELETE ON finance_document_notes
+            WHEN EXISTS (
+                SELECT 1 FROM finance_document_notes correction
+                WHERE correction.user_id = OLD.user_id
+                  AND correction.document_series_id = OLD.document_series_id
+                  AND correction.supersedes_note_id = OLD.id
+            )
+              AND EXISTS (SELECT 1 FROM users owner WHERE owner.id = OLD.user_id)
+              AND EXISTS (
+                SELECT 1 FROM finance_document_series series
+                WHERE series.user_id = OLD.user_id
+                  AND series.id = OLD.document_series_id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'finance_document_notes_supersedes_parent_delete_restrict');
+            END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_document_notes_supersedes_parent_update_restrict
+            BEFORE UPDATE OF id, user_id, document_series_id ON finance_document_notes
+            WHEN (NEW.id <> OLD.id
+                  OR NEW.user_id <> OLD.user_id
+                  OR NEW.document_series_id <> OLD.document_series_id)
+              AND EXISTS (
+                SELECT 1 FROM finance_document_notes correction
+                WHERE correction.user_id = OLD.user_id
+                  AND correction.document_series_id = OLD.document_series_id
+                  AND correction.supersedes_note_id = OLD.id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'finance_document_notes_supersedes_parent_update_restrict');
+            END
+            SQL);
     }
 
     private function removeDocumentNoteExtension(): void
@@ -554,16 +637,24 @@ return new class extends Migration
         $driver = DB::getDriverName();
 
         if ($driver === 'pgsql') {
+            DB::statement('DROP TRIGGER IF EXISTS finance_document_notes_normalize_type ON finance_document_notes');
+            DB::unprepared('DROP FUNCTION IF EXISTS finance_document_notes_normalize_type()');
             DB::statement(<<<'SQL'
                 ALTER TABLE finance_document_notes
                 DROP CONSTRAINT finance_document_notes_supersedes_foreign,
                 DROP CONSTRAINT finance_document_notes_correction_pair_check,
-                DROP CONSTRAINT finance_document_notes_supersedes_not_self_check
+                DROP CONSTRAINT finance_document_notes_supersedes_not_self_check,
+                DROP CONSTRAINT finance_document_notes_type_check
                 SQL);
         } elseif ($driver === 'sqlite') {
             foreach (['insert', 'update'] as $operation) {
                 DB::unprepared("DROP TRIGGER IF EXISTS finance_document_notes_correction_{$operation}_check");
+                DB::unprepared("DROP TRIGGER IF EXISTS finance_document_notes_type_{$operation}_check");
             }
+            DB::unprepared('DROP TRIGGER IF EXISTS finance_document_notes_type_insert_normalize');
+            DB::unprepared('DROP TRIGGER IF EXISTS finance_document_notes_type_update_normalize');
+            DB::unprepared('DROP TRIGGER IF EXISTS finance_document_notes_supersedes_parent_delete_restrict');
+            DB::unprepared('DROP TRIGGER IF EXISTS finance_document_notes_supersedes_parent_update_restrict');
         } else {
             throw new LogicException("Unsupported database driver: {$driver}");
         }
@@ -626,6 +717,15 @@ return new class extends Migration
         }
 
         return $expression;
+    }
+
+    private function currencyCheckExpression(): string
+    {
+        return match (DB::getDriverName()) {
+            'pgsql' => "currency ~ '^[A-Z]{3}$'",
+            'sqlite' => "currency GLOB '[A-Z][A-Z][A-Z]'",
+            default => throw new LogicException('Unsupported database driver: '.DB::getDriverName()),
+        };
     }
 
     private function addActiveDocumentLinkUniqueness(): void
@@ -702,6 +802,27 @@ return new class extends Migration
                 BEFORE INSERT OR UPDATE ON finance_project_document_links
                 FOR EACH ROW EXECUTE FUNCTION finance_project_document_links_validate_source()
                 SQL);
+            DB::unprepared(<<<'SQL'
+                CREATE FUNCTION finance_project_document_series_guard_uuid()
+                RETURNS trigger AS $$
+                BEGIN
+                    IF NEW.uuid IS DISTINCT FROM OLD.uuid AND EXISTS (
+                        SELECT 1 FROM finance_project_document_links link
+                        WHERE link.user_id = OLD.user_id
+                          AND link.document_series_id = OLD.id
+                    ) THEN
+                        RAISE EXCEPTION 'finance_project_document_series_uuid_referenced'
+                            USING ERRCODE = '23503';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql
+                SQL);
+            DB::statement(<<<'SQL'
+                CREATE TRIGGER finance_project_document_series_guard_uuid
+                BEFORE UPDATE OF uuid ON finance_document_series
+                FOR EACH ROW EXECUTE FUNCTION finance_project_document_series_guard_uuid()
+                SQL);
 
             return;
         }
@@ -722,6 +843,35 @@ return new class extends Migration
                 END
                 SQL);
         }
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER finance_project_document_series_guard_uuid
+            BEFORE UPDATE OF uuid ON finance_document_series
+            WHEN NEW.uuid <> OLD.uuid AND EXISTS (
+                SELECT 1 FROM finance_project_document_links link
+                WHERE link.user_id = OLD.user_id
+                  AND link.document_series_id = OLD.id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'finance_project_document_series_uuid_referenced');
+            END
+            SQL);
+    }
+
+    private function removeDocumentSourceGuards(): void
+    {
+        $driver = DB::getDriverName();
+
+        if ($driver === 'pgsql') {
+            DB::statement('DROP TRIGGER IF EXISTS finance_project_document_series_guard_uuid ON finance_document_series');
+            DB::unprepared('DROP FUNCTION IF EXISTS finance_project_document_series_guard_uuid()');
+            DB::statement('DROP TRIGGER IF EXISTS finance_project_document_links_validate_source ON finance_project_document_links');
+            DB::unprepared('DROP FUNCTION IF EXISTS finance_project_document_links_validate_source()');
+
+            return;
+        }
+
+        $this->assertSqlite();
+        DB::unprepared('DROP TRIGGER IF EXISTS finance_project_document_series_guard_uuid');
     }
 
     private function assertSqlite(): void

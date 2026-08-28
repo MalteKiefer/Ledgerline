@@ -110,6 +110,7 @@ final class ProjectSchemaTest extends TestCase
         $this->expectConstraint(fn () => $this->insertProject((int) $owner->id, ['status' => 'deleted']));
         $this->expectConstraint(fn () => $this->insertProject((int) $owner->id, ['budget_minor' => -1]));
         $this->expectConstraint(fn () => $this->insertProject((int) $owner->id, ['currency' => 'eur']));
+        $this->expectConstraint(fn () => $this->insertProject((int) $owner->id, ['currency' => 'ÄBC']));
     }
 
     public function test_parent_and_all_project_children_reject_cross_owner_references(): void
@@ -179,6 +180,8 @@ final class ProjectSchemaTest extends TestCase
         $this->expectConstraint(fn () => $this->insertTimeEntry((int) $owner->id, $projectId, ['work_item_id' => $foreignWorkId]));
         $this->expectConstraint(fn () => $this->insertTimeEntry((int) $owner->id, $projectId, ['quantity_scaled' => 0]));
         $this->expectConstraint(fn () => $this->insertTimeEntry((int) $owner->id, $projectId, ['hourly_rate_minor' => -1]));
+        $this->expectConstraint(fn () => $this->insertTimeEntry((int) $owner->id, $projectId, ['currency' => 'E1R']));
+        $this->expectConstraint(fn () => $this->insertTimeEntry((int) $owner->id, $projectId, ['currency' => 'ÄBC']));
         $this->expectConstraint(fn () => $this->insertTimeEntry((int) $owner->id, $projectId, ['invoice_target_reference' => 'invoice:1']));
         $this->expectConstraint(fn () => $this->insertTimeEntry((int) $owner->id, $projectId, ['invoiced_at' => now()]));
     }
@@ -193,6 +196,7 @@ final class ProjectSchemaTest extends TestCase
         $this->assertSame(0, DB::table('finance_project_ledger_entries')->where('id', $ledgerId)->value('version'));
         $this->expectConstraint(fn () => $this->insertLedgerEntry((int) $owner->id, $projectId, ['amount_minor' => 0]));
         $this->expectConstraint(fn () => $this->insertLedgerEntry((int) $owner->id, $projectId, ['direction' => 'transfer']));
+        $this->expectConstraint(fn () => $this->insertLedgerEntry((int) $owner->id, $projectId, ['currency' => '€UR']));
 
         $this->insertOperation((int) $owner->id, $projectId, ['operation' => 'attach', 'idempotency_key' => 'same-key']);
         $this->expectConstraint(fn () => $this->insertOperation((int) $owner->id, null, ['operation' => 'attach', 'idempotency_key' => 'same-key']));
@@ -302,6 +306,84 @@ final class ProjectSchemaTest extends TestCase
         $this->expectConstraint(fn () => DB::table('finance_document_notes')->where('id', $noteId)->update(['type' => 'correction', 'supersedes_note_id' => $noteId]));
     }
 
+    public function test_document_note_parent_delete_and_retarget_are_restricted_without_breaking_series_cascade(): void
+    {
+        $owner = User::factory()->create();
+        $seriesId = $this->insertSeries((int) $owner->id);
+        $otherSeriesId = $this->insertSeries((int) $owner->id);
+        $parentId = $this->insertDocumentNote((int) $owner->id, $seriesId);
+        $this->insertDocumentNote((int) $owner->id, $seriesId, [
+            'type' => 'correction',
+            'supersedes_note_id' => $parentId,
+        ]);
+
+        $this->expectConstraint(
+            fn () => DB::table('finance_document_notes')->where('id', $parentId)->delete(),
+        );
+        $this->expectConstraint(
+            fn () => DB::table('finance_document_notes')->where('id', $parentId)->update([
+                'document_series_id' => $otherSeriesId,
+            ]),
+        );
+
+        DB::table('finance_document_series')->where('id', $seriesId)->delete();
+
+        $this->assertSame(0, DB::table('finance_document_notes')->where('document_series_id', $seriesId)->count());
+    }
+
+    public function test_linked_finance_series_uuid_is_immutable_while_unlinked_uuid_can_change(): void
+    {
+        $owner = User::factory()->create();
+        $projectId = $this->insertProject((int) $owner->id);
+        $linkedUuid = $this->uuid(701);
+        $linkedSeriesId = $this->insertSeries((int) $owner->id, $linkedUuid);
+        $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'source_type' => 'finance_series',
+            'source_reference' => $linkedUuid,
+            'document_series_id' => $linkedSeriesId,
+            'role' => 'quote',
+        ]);
+
+        $this->expectConstraint(
+            fn () => DB::table('finance_document_series')->where('id', $linkedSeriesId)->update([
+                'uuid' => $this->uuid(702),
+            ]),
+        );
+
+        $unlinkedSeriesId = $this->insertSeries((int) $owner->id, $this->uuid(703));
+        DB::table('finance_document_series')->where('id', $unlinkedSeriesId)->update([
+            'uuid' => $this->uuid(704),
+        ]);
+        $this->assertSame(
+            $this->uuid(704),
+            DB::table('finance_document_series')->where('id', $unlinkedSeriesId)->value('uuid'),
+        );
+    }
+
+    public function test_document_note_types_are_canonical_and_legacy_comment_input_is_normalized(): void
+    {
+        $owner = User::factory()->create();
+        $seriesId = $this->insertSeries((int) $owner->id);
+        $legacyId = $this->insertDocumentNote((int) $owner->id, $seriesId, ['type' => 'comment']);
+
+        $this->assertSame(
+            'note',
+            DB::table('finance_document_notes')->where('id', $legacyId)->value('type'),
+        );
+
+        foreach (['decision', 'call', 'email', 'meeting'] as $type) {
+            $id = $this->insertDocumentNote((int) $owner->id, $seriesId, ['type' => $type]);
+            $this->assertSame($type, DB::table('finance_document_notes')->where('id', $id)->value('type'));
+        }
+
+        $this->expectConstraint(
+            fn () => $this->insertDocumentNote((int) $owner->id, $seriesId, ['type' => 'memo']),
+        );
+        $this->expectConstraint(
+            fn () => DB::table('finance_document_notes')->where('id', $legacyId)->update(['type' => 'memo']),
+        );
+    }
+
     public function test_direct_aggregate_deletes_are_restricted_while_owner_delete_cascades_everything(): void
     {
         $owner = User::factory()->create();
@@ -353,6 +435,8 @@ final class ProjectSchemaTest extends TestCase
 
     public function test_migration_down_and_up_round_trip_only_its_additive_surface(): void
     {
+        $owner = User::factory()->create();
+        $seriesId = $this->insertSeries((int) $owner->id);
         $migration = require database_path('migrations/2027_03_04_100000_create_finance_project_workflow.php');
         $migration->down();
 
@@ -362,12 +446,27 @@ final class ProjectSchemaTest extends TestCase
         $this->assertTrue(Schema::hasTable('finance_document_notes'));
         $this->assertFalse(Schema::hasColumn('finance_document_notes', 'supersedes_note_id'));
 
+        $now = now();
+        $legacyNoteId = (int) DB::table('finance_document_notes')->insertGetId([
+            'user_id' => $owner->id,
+            'document_series_id' => $seriesId,
+            'document_revision_id' => null,
+            'type' => 'comment',
+            'visibility' => 'internal',
+            'body' => 'Foundation compatibility',
+            'created_by' => $owner->id,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
         $migration->up();
 
         foreach ($this->projectTables() as $table) {
             $this->assertTrue(Schema::hasTable($table));
         }
         $this->assertTrue(Schema::hasColumn('finance_document_notes', 'supersedes_note_id'));
+        $this->assertSame('note', DB::table('finance_document_notes')->where('id', $legacyNoteId)->value('type'));
+        $this->assertNull(DB::table('finance_document_notes')->where('id', $legacyNoteId)->value('supersedes_note_id'));
     }
 
     public function test_postgresql_ddl_preserves_owner_cascades_and_defers_integrity_guards(): void
@@ -388,21 +487,29 @@ final class ProjectSchemaTest extends TestCase
                 $migration = require database_path('migrations/2027_03_04_100000_create_finance_project_workflow.php');
                 $migration->up();
             });
+            $downQueries = DB::connection()->pretend(function (): void {
+                $migration = require database_path('migrations/2027_03_04_100000_create_finance_project_workflow.php');
+                $migration->down();
+            });
         } finally {
             DB::setDefaultConnection($default);
             DB::purge($connection);
             Schema::clearResolvedInstance('db.schema');
         }
 
-        $ddl = preg_replace(
-            '/\s+/',
-            ' ',
-            strtolower(implode("\n", array_column($queries, 'query'))),
-        ) ?? '';
+        $statements = array_map(
+            static fn (array $query): string => preg_replace(
+                '/\s+/',
+                ' ',
+                strtolower($query['query']),
+            ) ?? '',
+            $queries,
+        );
+        $ddl = implode("\n", $statements);
 
         foreach ($this->projectTables() as $table) {
             $constraint = "{$table}_user_id_foreign";
-            $this->assertMatchesRegularExpression("/{$constraint}.*on delete cascade/", $ddl);
+            $this->assertPostgresConstraintContains($statements, $constraint, 'on delete cascade');
         }
         foreach ([
             'finance_project_records_owner_parent_foreign',
@@ -420,9 +527,46 @@ final class ProjectSchemaTest extends TestCase
             'finance_project_document_links_owner_revision_foreign',
             'finance_document_notes_supersedes_foreign',
         ] as $constraint) {
-            $this->assertMatchesRegularExpression(
-                "/{$constraint}.*on delete no action deferrable initially deferred/",
-                $ddl,
+            $this->assertPostgresConstraintContains(
+                $statements,
+                $constraint,
+                'on delete no action deferrable initially deferred',
+            );
+        }
+        $this->assertPostgresConstraintContains(
+            $statements,
+            'finance_project_records_source_pair_check',
+            'check ((source_type is null) = (source_id is null))',
+        );
+        $this->assertPostgresConstraintContains(
+            $statements,
+            'finance_project_time_entries_invoice_pair_check',
+            'check ((invoice_target_reference is null) = (invoiced_at is null))',
+        );
+        $this->assertPostgresConstraintContains(
+            $statements,
+            'finance_project_notes_correction_pair_check',
+            "check ((type = 'correction') = (supersedes_note_id is not null))",
+        );
+        $this->assertPostgresConstraintContains(
+            $statements,
+            'finance_document_notes_correction_pair_check',
+            "check ((type = 'correction') = (supersedes_note_id is not null))",
+        );
+        $this->assertPostgresConstraintContains(
+            $statements,
+            'finance_document_notes_type_check',
+            "check (type in ('note', 'decision', 'call', 'email', 'meeting', 'correction'))",
+        );
+        foreach ([
+            'finance_project_records_currency_check',
+            'finance_project_time_entries_currency_check',
+            'finance_project_ledger_entries_currency_check',
+        ] as $constraint) {
+            $this->assertPostgresConstraintContains(
+                $statements,
+                $constraint,
+                "check (currency ~ '^[a-z]{3}$')",
             );
         }
         $this->assertStringContainsString(
@@ -431,10 +575,28 @@ final class ProjectSchemaTest extends TestCase
         );
         $this->assertStringContainsString('where detached_at is null', $ddl);
         $this->assertStringContainsString('finance_project_document_links_validate_source', $ddl);
-        $this->assertStringContainsString('finance_project_records_source_pair_check', $ddl);
-        $this->assertStringContainsString('finance_project_time_entries_invoice_pair_check', $ddl);
-        $this->assertStringContainsString('finance_project_notes_correction_pair_check', $ddl);
-        $this->assertStringContainsString('finance_document_notes_correction_pair_check', $ddl);
+        $this->assertPostgresStatementContains(
+            $statements,
+            'create trigger finance_project_document_series_guard_uuid',
+            'before update of uuid on finance_document_series',
+        );
+        $this->assertPostgresStatementContains(
+            $statements,
+            'create function finance_project_document_series_guard_uuid()',
+            'link.document_series_id = old.id',
+        );
+        $this->assertPostgresStatementContains(
+            $statements,
+            'create trigger finance_document_notes_normalize_type',
+            'before insert or update of type on finance_document_notes',
+        );
+
+        $downDdl = strtolower(implode("\n", array_column($downQueries, 'query')));
+        $dropTrigger = 'drop trigger if exists finance_project_document_links_validate_source on finance_project_document_links';
+        $dropFunction = 'drop function if exists finance_project_document_links_validate_source()';
+        $this->assertStringContainsString($dropTrigger, $downDdl);
+        $this->assertStringContainsString($dropFunction, $downDdl);
+        $this->assertLessThan(strpos($downDdl, $dropFunction), strpos($downDdl, $dropTrigger));
     }
 
     /** @return list<string> */
@@ -612,5 +774,42 @@ final class ProjectSchemaTest extends TestCase
     private function uuid(int $suffix): string
     {
         return sprintf('018f4ca3-224d-7d8d-9f00-%012d', $suffix);
+    }
+
+    /** @param list<string> $statements */
+    private function assertPostgresConstraintContains(
+        array $statements,
+        string $constraint,
+        string $clause,
+    ): void {
+        $needle = "constraint {$constraint}";
+        $matches = array_values(array_filter(
+            array_map(static fn (string $statement): string => str_replace('"', '', $statement), $statements),
+            static fn (string $statement): bool => str_contains($statement, $needle),
+        ));
+        $this->assertCount(1, $matches, "Expected one PostgreSQL statement for {$constraint}.");
+
+        $segment = substr($matches[0], (int) strpos($matches[0], $needle));
+        $nextConstraint = strpos($segment, ', add constraint ', strlen($needle));
+        if ($nextConstraint !== false) {
+            $segment = substr($segment, 0, $nextConstraint);
+        }
+
+        $this->assertStringContainsString($clause, $segment, $constraint);
+    }
+
+    /** @param list<string> $statements */
+    private function assertPostgresStatementContains(
+        array $statements,
+        string $needle,
+        string $clause,
+    ): void {
+        $matches = array_values(array_filter(
+            $statements,
+            static fn (string $statement): bool => str_contains($statement, $needle),
+        ));
+
+        $this->assertCount(1, $matches, "Expected one PostgreSQL statement containing {$needle}.");
+        $this->assertStringContainsString($clause, $matches[0], $needle);
     }
 }
