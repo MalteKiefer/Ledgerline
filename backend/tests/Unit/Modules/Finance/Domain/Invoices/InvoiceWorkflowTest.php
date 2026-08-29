@@ -112,6 +112,32 @@ final class InvoiceWorkflowTest extends TestCase
         );
     }
 
+    public function test_zero_gross_balance_preserves_workflow_status_and_cancellation_precedence(): void
+    {
+        $finalized = new InvoiceBalance(0, 0, false, false);
+
+        $this->assertSame(0, $finalized->openMinor());
+        $this->assertSame(InvoiceStatus::Finalized, $finalized->effectiveStatus());
+        $this->assertSame(
+            InvoiceStatus::Sent,
+            (new InvoiceBalance(0, 0, true, false))->effectiveStatus(),
+        );
+        $this->assertSame(
+            InvoiceStatus::Cancelled,
+            (new InvoiceBalance(0, 0, true, true))->effectiveStatus(),
+        );
+    }
+
+    public function test_zero_gross_balance_rejects_nonzero_allocations(): void
+    {
+        try {
+            new InvoiceBalance(0, 1, true, false);
+            $this->fail('A zero-gross invoice accepted a non-zero allocation.');
+        } catch (InvalidInvoiceState $exception) {
+            $this->assertSame('invoice_allocation_sign_mismatch', $exception->getCode());
+        }
+    }
+
     public function test_negative_credit_balance_uses_the_same_signed_ledger_invariant(): void
     {
         $balance = new InvoiceBalance(-11_900, -5_000, true, false);

@@ -17,10 +17,6 @@ final readonly class InvoiceBalance
         private bool $cancelled,
         bool $allowOverpayment = false,
     ) {
-        if ($grossMinor === 0) {
-            throw new InvalidInvoiceState('invoice_gross_zero', InvoiceStatus::Finalized, 'calculate_balance');
-        }
-
         if ($allocatedMinor !== 0 && self::sign($allocatedMinor) !== self::sign($grossMinor)) {
             throw new InvalidInvoiceState(
                 'invoice_allocation_sign_mismatch',
