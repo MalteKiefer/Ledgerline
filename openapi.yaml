@@ -5559,6 +5559,52 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /finance-v2/invoices/{invoice}/revisions/{revision}/pdf:
+    get:
+      tags: [Finance]
+      operationId: financeV2InvoiceRevisionPdf
+      summary: Stream an immutable published invoice revision PDF
+      description: >
+        Streams server-rendered PDF bytes for one published revision belonging
+        to the authenticated owner. Foreign invoices, revisions from another
+        series, unsafe storage metadata, missing objects, non-PDF bytes, and
+        digest mismatches all return 404. Set `download=true` for attachment
+        disposition; otherwise the PDF is shown inline. Throttle: 120
+        requests/minute.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - name: invoice
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: revision
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: download
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Immutable invoice revision PDF bytes.
+          headers:
+            ETag:
+              description: Quoted SHA-256 digest of the exact response bytes.
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string, example: "private, max-age=31536000, immutable" }
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /finance/data:
     get:
       tags: [Finance]

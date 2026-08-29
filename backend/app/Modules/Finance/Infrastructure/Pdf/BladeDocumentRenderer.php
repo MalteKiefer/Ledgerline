@@ -18,13 +18,18 @@ final readonly class BladeDocumentRenderer implements DocumentRenderer
     /** @param array<array-key, mixed> $snapshot */
     public function render(array $snapshot): string
     {
-        $viewModel = QuotePdfViewModel::fromSnapshot($snapshot);
-        $html = $this->views->make('finance.quotes.pdf', $viewModel->viewData())->render();
+        [$view, $viewModel] = match ($snapshot['document_type'] ?? null) {
+            'quote' => ['finance.quotes.pdf', QuotePdfViewModel::fromSnapshot($snapshot)],
+            'invoice' => ['finance.invoices.pdf', InvoicePdfViewModel::fromSnapshot($snapshot)],
+            default => throw new \InvalidArgumentException('The PDF renderer accepts only allowlisted snapshots.'),
+        };
+        $html = $this->views->make($view, $viewModel->viewData())->render();
 
         $options = new Options;
         $options->setIsRemoteEnabled(false);
+        $options->setIsPhpEnabled(false);
         $options->setAllowedRemoteHosts([]);
-        $options->setChroot(resource_path('views/finance/quotes'));
+        $options->setChroot(resource_path('views/finance'));
         $options->setDefaultFont('DejaVu Sans');
 
         $pdf = new Dompdf($options);

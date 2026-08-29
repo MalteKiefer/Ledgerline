@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Infrastructure\Pdf;
 
 use App\Modules\Finance\Application\DTOs\DocumentStorageWrite;
+use DateTimeInterface;
+use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
 
@@ -93,6 +95,53 @@ final readonly class LocalAtomicDocumentObjectStore implements AtomicDocumentObj
                 throw new RuntimeException('The document ownership metadata could not be deleted.');
             }
         });
+    }
+
+    public function ownedBefore(DateTimeInterface $cutoff): iterable
+    {
+        $root = rtrim($this->root, '\\/');
+        $files = glob($root.DIRECTORY_SEPARATOR.'finance'.DIRECTORY_SEPARATOR
+            .'revisions'.DIRECTORY_SEPARATOR.'*'.DIRECTORY_SEPARATOR.'*.pdf') ?: [];
+        sort($files, SORT_STRING);
+
+        foreach ($files as $absolutePath) {
+            $modifiedAt = @filemtime($absolutePath);
+            if (! is_int($modifiedAt) || $modifiedAt >= $cutoff->getTimestamp()) {
+                continue;
+            }
+            $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($absolutePath, strlen($root) + 1));
+            if (preg_match('#\Afinance/revisions/([a-f0-9]{2})/([a-f0-9]{64})\.pdf\z#D', $relative, $matches) !== 1
+                || $matches[1] !== substr($matches[2], 0, 2)) {
+                continue;
+            }
+
+            $metadataJson = @file_get_contents($absolutePath.'.ledgerline-owner');
+            if (! is_string($metadataJson)) {
+                continue;
+            }
+            $metadata = json_decode($metadataJson, true);
+            if (! is_array($metadata)
+                || ! is_string($metadata['cleanup_proof'] ?? null)
+                || ! is_string($metadata['sha256'] ?? null)
+                || ! is_string($metadata['generation'] ?? null)) {
+                continue;
+            }
+
+            try {
+                $write = new DocumentStorageWrite(
+                    $matches[2],
+                    $metadata['cleanup_proof'],
+                    $metadata['sha256'],
+                );
+            } catch (InvalidArgumentException) {
+                continue;
+            }
+            if (! hash_equals($write->generation(), $metadata['generation'])) {
+                continue;
+            }
+
+            yield ['path' => $relative, 'write' => $write];
+        }
     }
 
     /** @param callable(): void $operation */

@@ -8,6 +8,7 @@ use App\Modules\Finance\Application\DTOs\DocumentStorageWrite;
 use Aws\Exception\AwsException;
 use Aws\S3\S3ClientInterface;
 use DateTimeInterface;
+use InvalidArgumentException;
 use LogicException;
 
 final readonly class S3AtomicDocumentObjectStore implements AtomicDocumentObjectStore
@@ -93,6 +94,79 @@ final readonly class S3AtomicDocumentObjectStore implements AtomicDocumentObject
         }
     }
 
+    public function ownedBefore(DateTimeInterface $cutoff): iterable
+    {
+        $continuationToken = null;
+
+        do {
+            $arguments = [
+                'Bucket' => $this->bucket,
+                'Prefix' => $this->financePrefix(),
+            ];
+            if ($continuationToken !== null) {
+                $arguments['ContinuationToken'] = $continuationToken;
+            }
+
+            $listing = $this->client->listObjectsV2($arguments);
+            $objects = $listing->get('Contents');
+            if (is_array($objects)) {
+                foreach ($objects as $object) {
+                    if (! is_array($object)
+                        || ! is_string($object['Key'] ?? null)
+                        || ! ($object['LastModified'] ?? null) instanceof DateTimeInterface
+                        || $object['LastModified'] >= $cutoff) {
+                        continue;
+                    }
+
+                    $path = $this->pathFromKey($object['Key']);
+                    if ($path === null) {
+                        continue;
+                    }
+
+                    try {
+                        $head = $this->client->headObject([
+                            'Bucket' => $this->bucket,
+                            'Key' => $object['Key'],
+                        ]);
+                    } catch (AwsException $exception) {
+                        if ($exception->getStatusCode() === 404) {
+                            continue;
+                        }
+
+                        throw $exception;
+                    }
+
+                    $metadata = $head->get('Metadata');
+                    if (! is_array($metadata)
+                        || ! is_string($metadata['ledgerline-proof'] ?? null)
+                        || ! is_string($metadata['ledgerline-sha256'] ?? null)
+                        || ! is_string($metadata['ledgerline-generation'] ?? null)) {
+                        continue;
+                    }
+
+                    try {
+                        $write = new DocumentStorageWrite(
+                            ownershipToken: pathinfo($path, PATHINFO_FILENAME),
+                            cleanupProof: $metadata['ledgerline-proof'],
+                            sha256: $metadata['ledgerline-sha256'],
+                        );
+                    } catch (InvalidArgumentException) {
+                        continue;
+                    }
+
+                    if (! hash_equals($write->generation(), $metadata['ledgerline-generation'])) {
+                        continue;
+                    }
+
+                    yield ['path' => $path, 'write' => $write];
+                }
+            }
+
+            $nextToken = $listing->get('NextContinuationToken');
+            $continuationToken = is_string($nextToken) && $nextToken !== '' ? $nextToken : null;
+        } while ($listing->get('IsTruncated') === true && $continuationToken !== null);
+    }
+
     /** @return array{ledgerline-proof: string, ledgerline-sha256: string, ledgerline-generation: string} */
     private function metadata(DocumentStorageWrite $write): array
     {
@@ -113,5 +187,29 @@ final readonly class S3AtomicDocumentObjectStore implements AtomicDocumentObject
         $prefix = trim($this->prefix, '/');
 
         return $prefix === '' ? $path : $prefix.'/'.$path;
+    }
+
+    private function financePrefix(): string
+    {
+        $prefix = trim($this->prefix, '/');
+
+        return ($prefix === '' ? '' : $prefix.'/').'finance/revisions/';
+    }
+
+    private function pathFromKey(string $key): ?string
+    {
+        $prefix = trim($this->prefix, '/');
+        $configuredPrefix = $prefix === '' ? '' : $prefix.'/';
+        if (! str_starts_with($key, $configuredPrefix)) {
+            return null;
+        }
+
+        $path = substr($key, strlen($configuredPrefix));
+        if (preg_match('#\Afinance/revisions/([a-f0-9]{2})/([a-f0-9]{64})\.pdf\z#D', $path, $matches) !== 1
+            || $matches[1] !== substr($matches[2], 0, 2)) {
+            return null;
+        }
+
+        return $path;
     }
 }
