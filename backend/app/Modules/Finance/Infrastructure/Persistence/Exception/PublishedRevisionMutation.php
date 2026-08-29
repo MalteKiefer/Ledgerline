@@ -17,4 +17,9 @@ final class PublishedRevisionMutation extends RuntimeException
     {
         return new self('Document activities are append-only.');
     }
+
+    public static function note(): self
+    {
+        return new self('Document notes are append-only.');
+    }
 }

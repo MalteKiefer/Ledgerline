@@ -584,6 +584,36 @@ final class DocumentPersistenceTest extends TestCase
         $activity->deleteQuietly();
     }
 
+    public function test_normal_quiet_and_bulk_helpers_cannot_mutate_document_notes(): void
+    {
+        $note = $this->createOwnedAggregate()[3];
+
+        foreach ([
+            fn () => $note->forceFill(['body' => 'normal'])->save(),
+            fn () => $note->forceFill(['body' => 'quiet'])->saveQuietly(),
+            fn () => DocumentNoteRecord::query()->whereKey($note->id)->update(['body' => 'bulk']),
+            fn () => DocumentNoteRecord::query()->updateOrInsert(['id' => $note->id], ['body' => 'upserted']),
+            fn () => DocumentNoteRecord::query()->upsert(
+                [['id' => $note->id, 'body' => 'upserted']],
+                ['id'],
+                ['body'],
+            ),
+            fn () => DocumentNoteRecord::query()->whereKey($note->id)->delete(),
+            fn () => DocumentNoteRecord::query()->truncate(),
+        ] as $mutation) {
+            try {
+                $mutation();
+                $this->fail('A document-note mutation bypassed the append-only guard.');
+            } catch (PublishedRevisionMutation $exception) {
+                $this->assertSame('Document notes are append-only.', $exception->getMessage());
+            }
+        }
+
+        $this->assertSame('Owner-visible note', DB::table('finance_document_notes')->where('id', $note->id)->value('body'));
+        $this->expectException(PublishedRevisionMutation::class);
+        $note->deleteQuietly();
+    }
+
     public function test_database_owner_cascade_can_remove_an_immutable_aggregate(): void
     {
         $owner = User::factory()->create();
