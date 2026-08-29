@@ -22,6 +22,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use LogicException;
@@ -54,6 +55,20 @@ final class SendInvoiceDeliveryJob implements ShouldBeUnique, ShouldQueue
     }
 
     public function handle(CompanyInvoiceMailer $mailer): void
+    {
+        $lease = Cache::lock('finance:invoice-delivery:'.$this->ownerId.':'.$this->deliveryId, 300);
+        if (! $lease->get()) {
+            return;
+        }
+
+        try {
+            $this->handleWithLease($mailer);
+        } finally {
+            $lease->release();
+        }
+    }
+
+    private function handleWithLease(CompanyInvoiceMailer $mailer): void
     {
         $attempt = $this->beginAttempt();
         if ($attempt === null) {

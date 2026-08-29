@@ -7,9 +7,12 @@ namespace Tests\Feature\FinanceModule;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Modules\Finance\Application\Commands\Invoices\QueueInvoiceReminder;
+use App\Modules\Finance\Application\Commands\Invoices\RetryInvoiceDelivery;
+use App\Modules\Finance\Application\DTOs\IdempotencyKey;
 use App\Modules\Finance\Application\DTOs\Invoices\DeliveryId;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
 use App\Modules\Finance\Application\Ports\InvoiceMailer;
+use App\Modules\Finance\Application\Ports\InvoiceRepository;
 use App\Modules\Finance\Application\Queries\InvoiceAgingQuery;
 use App\Modules\Finance\Infrastructure\Mail\CompanyInvoiceMailer;
 use App\Modules\Finance\Infrastructure\Mail\CompanyMailTransport;
@@ -50,6 +53,34 @@ final class InvoiceDunningTest extends TestCase
         $this->assertSame(11_900, $aging['totals']['days_1_30_minor']);
         $this->assertSame(8_100, $aging['totals']['days_31_60_minor']);
         $this->assertSame(20_000, $aging['totals']['open_minor']);
+    }
+
+    public function test_aging_bucket_boundaries_are_exact_at_30_31_60_and_61_days(): void
+    {
+        Storage::fake('invoice-dunning-pdfs');
+        config()->set('files.disk', 'invoice-dunning-pdfs');
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        UserSetting::for((int) $owner->id)->update(['timezone' => 'UTC']);
+        $day30 = $this->invoice($owner, 'sent', '2026-07-30', 1_000, 0, '000000000006');
+        $day31 = $this->invoice($owner, 'sent', '2026-07-29', 2_000, 0, '000000000007');
+        $day60 = $this->invoice($owner, 'sent', '2026-06-30', 3_000, 0, '000000000008');
+        $day61 = $this->invoice($owner, 'sent', '2026-06-29', 4_000, 0, '000000000009');
+
+        $aging = app(InvoiceAgingQuery::class)->handle(
+            new DateTimeImmutable('2026-08-29T12:00:00+00:00'),
+        );
+
+        $this->assertSame([$day30->value], array_column($aging['days_1_30'], 'invoice_id'));
+        $this->assertSame(
+            [$day60->value, $day31->value],
+            array_column($aging['days_31_60'], 'invoice_id'),
+        );
+        $this->assertSame([$day61->value], array_column($aging['days_61_plus'], 'invoice_id'));
+        $this->assertSame(1_000, $aging['totals']['days_1_30_minor']);
+        $this->assertSame(5_000, $aging['totals']['days_31_60_minor']);
+        $this->assertSame(4_000, $aging['totals']['days_61_plus_minor']);
+        $this->assertSame(10_000, $aging['totals']['open_minor']);
     }
 
     public function test_overdue_reminder_is_idempotent_per_level_and_records_one_successful_history_entry(): void
@@ -94,6 +125,38 @@ final class InvoiceDunningTest extends TestCase
             ->get();
         $this->assertCount(1, $activities);
         $this->assertStringContainsString('"level":1', (string) $activities->first()?->payload);
+    }
+
+    public function test_exact_reminder_replay_precedes_paid_pdf_smtp_and_aging_preflight_but_mismatch_conflicts(): void
+    {
+        Storage::fake('invoice-dunning-pdfs');
+        config()->set('files.disk', 'invoice-dunning-pdfs');
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        UserSetting::for((int) $owner->id)->update(['timezone' => 'UTC']);
+        $invoice = $this->invoice($owner, 'sent', '2026-08-01', 11_900, 0, '000000000011');
+        $mailer = new DunningRecordingMailer;
+        app()->instance(InvoiceMailer::class, $mailer);
+        $command = app(QueueInvoiceReminder::class);
+        $at = new DateTimeImmutable('2026-08-29T12:00:00+00:00');
+        $first = $command->handle($invoice, 1, 'customer@example.test', $at);
+        DB::table('finance_invoice_deliveries')->where('id', $first->value)->update([
+            'status' => 'sent', 'sent_at' => now(),
+        ]);
+        DB::table('finance_invoices')->where('id', $invoice->value)->update([
+            'allocated_minor' => 11_900, 'open_minor' => 0,
+        ]);
+        $mailer->configured = false;
+
+        $replay = $command->handle($invoice, 1, 'customer@example.test', $at);
+
+        $this->assertSame($first->value, $replay->value);
+        try {
+            $command->handle($invoice, 1, 'changed@example.test', $at);
+            $this->fail('A changed reminder occurrence payload was replayed.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('delivery_idempotency_conflict', $exception->getMessage());
+        }
     }
 
     public function test_reminder_rejects_future_due_finalized_and_paid_invoices_without_history(): void
@@ -165,6 +228,92 @@ final class InvoiceDunningTest extends TestCase
         ]);
     }
 
+    public function test_repository_rechecks_reminder_eligibility_inside_queue_transaction(): void
+    {
+        Storage::fake('invoice-dunning-pdfs');
+        config()->set('files.disk', 'invoice-dunning-pdfs');
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        UserSetting::for((int) $owner->id)->update(['timezone' => 'UTC']);
+        $invoice = $this->invoice($owner, 'sent', '2026-08-01', 11_900, 11_900, '000000000039');
+
+        try {
+            app(InvoiceRepository::class)->queueDelivery(
+                $invoice,
+                'reminder',
+                'customer@example.test',
+                new IdempotencyKey('repo-locked-reminder'),
+                ['level' => 1],
+                new DateTimeImmutable('2026-08-29T12:00:00+00:00'),
+            );
+            $this->fail('A paid invoice was queued directly through the repository.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('invoice_not_overdue', $exception->getMessage());
+        }
+
+        $this->assertDatabaseCount('finance_invoice_deliveries', 0);
+    }
+
+    public function test_reminder_retry_preserves_level_and_appends_complete_history(): void
+    {
+        Storage::fake('invoice-dunning-pdfs');
+        config()->set('files.disk', 'invoice-dunning-pdfs');
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        UserSetting::for((int) $owner->id)->update([
+            'timezone' => 'UTC',
+            'company_smtp_enabled' => true,
+            'company_smtp_host' => 'smtp.example.com',
+            'company_smtp_port' => 587,
+            'company_smtp_encryption' => 'tls',
+            'company_smtp_from_address' => 'billing@example.com',
+        ]);
+        $invoice = $this->invoice($owner, 'sent', '2026-08-01', 11_900, 0, '000000000040');
+        app()->instance(InvoiceMailer::class, new DunningRecordingMailer);
+        $source = app(QueueInvoiceReminder::class)->handle(
+            $invoice,
+            2,
+            null,
+            new DateTimeImmutable('2026-08-29T12:00:00+00:00'),
+        );
+        DB::table('finance_invoice_deliveries')->where('id', $source->value)->update([
+            'status' => 'unknown', 'attempts' => 1, 'last_error_code' => 'delivery_outcome_uncertain',
+        ]);
+
+        $retry = app(RetryInvoiceDelivery::class)->handle(
+            $source,
+            new IdempotencyKey('retry-reminder-level-two'),
+        );
+
+        $queued = DB::table('finance_document_activities')
+            ->where('type', 'invoice.reminder.queued')
+            ->get()
+            ->filter(static function (object $activity) use ($retry): bool {
+                $encoded = $activity->payload;
+                if (! is_string($encoded)) {
+                    return false;
+                }
+                $payload = json_decode($encoded, true);
+
+                return is_array($payload) && ($payload['delivery_id'] ?? null) === $retry->value;
+            });
+        $this->assertCount(1, $queued);
+        $queuedPayload = $queued->first()?->payload;
+        $this->assertIsString($queuedPayload);
+        $this->assertStringContainsString('"level":2', $queuedPayload);
+        $transport = new DunningTransport;
+        (new SendInvoiceDeliveryJob((int) $owner->id, $retry->value))
+            ->handle(new CompanyInvoiceMailer(new CompanySmtpMailer($transport)));
+        $this->assertSame(1, $transport->calls);
+        $sent = DB::table('finance_document_activities')
+            ->where('type', 'invoice.reminder.sent')
+            ->get();
+        $this->assertCount(1, $sent);
+        $sentPayload = $sent->first()?->payload;
+        $this->assertIsString($sentPayload);
+        $this->assertStringContainsString('"level":2', $sentPayload);
+    }
+
     private function invoice(
         User $owner,
         string $status,
@@ -210,7 +359,14 @@ final class InvoiceDunningTest extends TestCase
 
 final class DunningRecordingMailer implements InvoiceMailer
 {
-    public function assertConfigured(int $ownerId): void {}
+    public bool $configured = true;
+
+    public function assertConfigured(int $ownerId): void
+    {
+        if (! $this->configured) {
+            throw new \DomainException('delivery_smtp_unavailable');
+        }
+    }
 
     public function assertDocumentReady(string $path, string $sha256): void {}
 

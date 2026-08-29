@@ -47,6 +47,15 @@ interface InvoiceRepository
     /** @return array{recipient:string, pdf_path:string, pdf_sha256:string} */
     public function assertDeliveryReady(InvoiceId $id, ?string $recipient, string $kind): array;
 
+    /** @param array<string, int|string|bool|null> $context */
+    public function replayDelivery(
+        InvoiceId $id,
+        string $kind,
+        ?string $recipient,
+        IdempotencyKey $key,
+        array $context = [],
+    ): ?DeliveryId;
+
     /**
      * @param  array<string, int|string|bool|null>  $context
      * @return array{DeliveryId, bool}
@@ -57,6 +66,7 @@ interface InvoiceRepository
         string $recipient,
         IdempotencyKey $key,
         array $context = [],
+        ?DateTimeImmutable $eligibilityAt = null,
     ): array;
 
     /** @return array{DeliveryId, bool} */
@@ -64,4 +74,8 @@ interface InvoiceRepository
 
     /** @return array{invoice_id:int, kind:string, recipient:string, pdf_path:string, pdf_sha256:string} */
     public function assertDeliveryRetryReady(DeliveryId $failedDelivery): array;
+
+    public function replayDeliveryRetry(DeliveryId $failedDelivery, IdempotencyKey $key): ?DeliveryId;
+
+    public function deliveryNeedsDispatch(DeliveryId $delivery): bool;
 }

@@ -22,12 +22,16 @@ use App\Modules\Finance\Infrastructure\Mail\UncertainMailTransportFailure;
 use App\Modules\Finance\Infrastructure\Scheduling\SendInvoiceDeliveryJob;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\Jobs\FakeJob;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 final class InvoiceDeliveryTest extends TestCase
@@ -63,8 +67,9 @@ final class InvoiceDeliveryTest extends TestCase
             'recipient' => 'customer@example.test',
             'status' => 'pending',
         ]);
-        $this->assertCount(1, $mailer->dispatched);
+        $this->assertCount(2, $mailer->dispatched);
         $this->assertSame([(int) $owner->id, $first->value], $mailer->dispatched[0]);
+        $this->assertSame([(int) $owner->id, $first->value], $mailer->dispatched[1]);
         $serialized = serialize(new SendInvoiceDeliveryJob((int) $owner->id, $first->value));
         $this->assertStringNotContainsString('customer@example.test', $serialized);
         $this->assertStringNotContainsString('finance/revisions/', $serialized);
@@ -90,6 +95,76 @@ final class InvoiceDeliveryTest extends TestCase
 
         $this->assertDatabaseCount('finance_invoice_deliveries', 1);
         $this->assertCount(1, $mailer->dispatched);
+    }
+
+    public function test_exact_send_replay_precedes_mutable_invoice_pdf_and_smtp_preflight_but_mismatch_still_conflicts(): void
+    {
+        Storage::fake('invoice-delivery-pdfs');
+        config()->set('files.disk', 'invoice-delivery-pdfs');
+        [$owner, $invoiceId, $revisionId] = $this->finalizedInvoice();
+        $this->actingAs($owner);
+        $mailer = new RecordingInvoiceMailer;
+        app()->instance(InvoiceMailer::class, $mailer);
+        $command = app(QueueInvoiceDelivery::class);
+        $key = new IdempotencyKey('immutable-replay-before-preflight');
+        $first = $command->handle($invoiceId, 'customer@example.test', $key);
+        DB::table('finance_invoice_deliveries')->where('id', $first->value)->update([
+            'status' => 'sent',
+            'sent_at' => now(),
+        ]);
+        DB::table('finance_invoices')->where('id', $invoiceId->value)->update([
+            'workflow_status' => 'sent',
+            'sent_at' => now(),
+            'allocated_minor' => 11_900,
+            'open_minor' => 0,
+        ]);
+        DB::table('finance_document_revisions')->where('id', $revisionId)->update([
+            'pdf_path' => null,
+            'pdf_sha256' => null,
+        ]);
+        $mailer->configured = false;
+
+        $replay = $command->handle($invoiceId, 'customer@example.test', $key);
+
+        $this->assertSame($first->value, $replay->value);
+        $this->assertCount(1, $mailer->dispatched);
+        try {
+            $command->handle($invoiceId, 'changed@example.test', $key);
+            $this->fail('A changed replay payload was accepted after invoice state changed.');
+        } catch (DomainException $exception) {
+            $this->assertSame('delivery_idempotency_conflict', $exception->getMessage());
+        }
+    }
+
+    public function test_dispatch_failure_after_committed_pending_delivery_is_recovered_by_exact_replay(): void
+    {
+        Storage::fake('invoice-delivery-pdfs');
+        config()->set('files.disk', 'invoice-delivery-pdfs');
+        [$owner, $invoiceId] = $this->finalizedInvoice();
+        $this->actingAs($owner);
+        $mailer = new RecordingInvoiceMailer;
+        $mailer->dispatchFailuresRemaining = 1;
+        app()->instance(InvoiceMailer::class, $mailer);
+        $command = app(QueueInvoiceDelivery::class);
+        $key = new IdempotencyKey('recover-committed-pending-dispatch');
+
+        try {
+            $command->handle($invoiceId, null, $key);
+            $this->fail('The injected queue dispatch failure did not occur.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('injected_invoice_dispatch_failure', $exception->getMessage());
+        }
+        $deliveryId = (int) DB::table('finance_invoice_deliveries')->value('id');
+        $this->assertGreaterThan(0, $deliveryId);
+        $this->assertDatabaseHas('finance_invoice_deliveries', [
+            'id' => $deliveryId, 'status' => 'pending', 'attempts' => 0,
+        ]);
+
+        $recovered = $command->handle($invoiceId, null, $key);
+
+        $this->assertSame($deliveryId, $recovered->value);
+        $this->assertDatabaseCount('finance_invoice_deliveries', 1);
+        $this->assertCount(2, $mailer->dispatched);
     }
 
     public function test_delivery_lookup_is_owner_scoped_and_does_not_reveal_foreign_invoice_state(): void
@@ -326,7 +401,7 @@ final class InvoiceDeliveryTest extends TestCase
         $this->assertSame('pending', $retried->status);
         $this->assertSame(0, $retried->attempts);
         $this->assertNotSame($original->uuid, $retried->uuid);
-        $this->assertCount(2, $dispatch->dispatched);
+        $this->assertCount(3, $dispatch->dispatched);
     }
 
     public function test_persistence_failure_after_transport_acceptance_becomes_unknown_before_any_resend(): void
@@ -378,6 +453,46 @@ final class InvoiceDeliveryTest extends TestCase
         ]);
     }
 
+    public function test_overlapping_worker_leaves_active_sending_attempt_untouched_but_stale_attempt_becomes_unknown(): void
+    {
+        Storage::fake('invoice-delivery-pdfs');
+        config()->set('files.disk', 'invoice-delivery-pdfs');
+        [$owner, $invoiceId] = $this->finalizedInvoice();
+        $this->actingAs($owner);
+        $this->configureSmtp((int) $owner->id);
+        app()->instance(InvoiceMailer::class, new RecordingInvoiceMailer);
+        $delivery = app(QueueInvoiceDelivery::class)->handle(
+            $invoiceId,
+            null,
+            new IdempotencyKey('overlapping-worker'),
+        );
+        DB::table('finance_invoice_deliveries')->where('id', $delivery->value)->update([
+            'status' => 'sending', 'attempts' => 1, 'last_attempt_at' => now(),
+        ]);
+        $lease = Cache::lock('finance:invoice-delivery:'.$owner->id.':'.$delivery->value, 300);
+        $this->assertTrue($lease->get());
+        $transport = new RecordingCompanyTransport;
+
+        try {
+            (new SendInvoiceDeliveryJob((int) $owner->id, $delivery->value))
+                ->handle(new CompanyInvoiceMailer(new CompanySmtpMailer($transport)));
+            $this->assertDatabaseHas('finance_invoice_deliveries', [
+                'id' => $delivery->value, 'status' => 'sending', 'attempts' => 1,
+            ]);
+        } finally {
+            $lease->release();
+        }
+
+        (new SendInvoiceDeliveryJob((int) $owner->id, $delivery->value))
+            ->handle(new CompanyInvoiceMailer(new CompanySmtpMailer($transport)));
+        $this->assertSame(0, $transport->calls);
+        $this->assertDatabaseHas('finance_invoice_deliveries', [
+            'id' => $delivery->value,
+            'status' => 'unknown',
+            'last_error_code' => 'delivery_outcome_uncertain',
+        ]);
+    }
+
     public function test_explicit_retry_revalidates_the_same_immutable_pdf_before_creating_a_new_attempt(): void
     {
         Storage::fake('invoice-delivery-pdfs');
@@ -411,6 +526,125 @@ final class InvoiceDeliveryTest extends TestCase
             $this->assertSame('delivery_pdf_unavailable', $exception->getMessage());
         }
         $this->assertDatabaseCount('finance_invoice_deliveries', 1);
+    }
+
+    public function test_exact_retry_replay_precedes_source_state_pdf_and_smtp_preflight(): void
+    {
+        Storage::fake('invoice-delivery-pdfs');
+        config()->set('files.disk', 'invoice-delivery-pdfs');
+        [$owner, $invoiceId, $revisionId] = $this->finalizedInvoice();
+        $this->actingAs($owner);
+        $this->configureSmtp((int) $owner->id);
+        $mailer = new RecordingInvoiceMailer;
+        app()->instance(InvoiceMailer::class, $mailer);
+        $first = app(QueueInvoiceDelivery::class)->handle(
+            $invoiceId,
+            null,
+            new IdempotencyKey('retry-replay-source'),
+        );
+        DB::table('finance_invoice_deliveries')->where('id', $first->value)->update([
+            'status' => 'unknown', 'attempts' => 1, 'last_error_code' => 'delivery_outcome_uncertain',
+        ]);
+        $key = new IdempotencyKey('retry-replay-key');
+        $retry = app(RetryInvoiceDelivery::class)->handle($first, $key);
+        DB::table('finance_invoice_deliveries')->where('id', $retry->value)->update([
+            'status' => 'sent', 'sent_at' => now(),
+        ]);
+        DB::table('finance_invoices')->where('id', $invoiceId->value)->update([
+            'workflow_status' => 'sent', 'sent_at' => now(), 'allocated_minor' => 11_900, 'open_minor' => 0,
+        ]);
+        DB::table('finance_document_revisions')->where('id', $revisionId)->update([
+            'pdf_path' => null, 'pdf_sha256' => null,
+        ]);
+        $mailer->configured = false;
+
+        $replay = app(RetryInvoiceDelivery::class)->handle($first, $key);
+
+        $this->assertSame($retry->value, $replay->value);
+        $this->assertCount(2, $mailer->dispatched);
+        $this->assertDatabaseCount('finance_invoice_deliveries', 2);
+    }
+
+    public function test_postgresql_serializes_same_key_delivery_creation_when_configured(): void
+    {
+        $this->withIsolatedPostgresSchema(function (string $postgresUrl, string $schema): void {
+            $now = now();
+            $seriesId = DB::table('finance_document_series')->insertGetId([
+                'user_id' => 1,
+                'uuid' => '018f4ca3-224d-7d8d-9f00-123456789abe',
+                'document_type' => 'invoice',
+                'status' => 'finalized',
+                'created_by' => 1,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            $revisionId = DB::table('finance_document_revisions')->insertGetId([
+                'user_id' => 1,
+                'document_series_id' => $seriesId,
+                'revision_number' => 1,
+                'status' => 'published',
+                'snapshot' => json_encode([
+                    'document_number' => 'RE-2026-0043',
+                    'customer' => ['email' => 'customer@example.test'],
+                ], JSON_THROW_ON_ERROR),
+                'net_minor' => 10_000,
+                'vat_minor' => 1_900,
+                'gross_minor' => 11_900,
+                'currency' => 'EUR',
+                'pdf_path' => 'finance/revisions/aa/'.str_repeat('a', 64).'.pdf',
+                'pdf_sha256' => str_repeat('a', 64),
+                'published_at' => $now,
+                'created_by' => 1,
+                'created_at' => $now,
+            ]);
+            $invoiceId = DB::table('finance_invoices')->insertGetId([
+                'user_id' => 1,
+                'uuid' => '018f4ca3-224d-7d8d-9f00-123456789abe',
+                'document_series_id' => $seriesId,
+                'current_revision_id' => $revisionId,
+                'kind' => 'invoice',
+                'number' => 'RE-2026-0043',
+                'year' => 2026,
+                'sequence' => 43,
+                'issue_date' => '2026-08-01',
+                'due_date' => '2026-08-20',
+                'workflow_status' => 'finalized',
+                'finalized_at' => $now,
+                'allocated_minor' => 0,
+                'open_minor' => 11_900,
+                'version' => 1,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            Schema::create('finance_task9_delivery_barrier', static function (Blueprint $table): void {
+                $table->string('worker')->primary();
+            });
+
+            $workers = [
+                $this->startPostgresDeliveryWorker($postgresUrl, $schema, 'first', $invoiceId),
+                $this->startPostgresDeliveryWorker($postgresUrl, $schema, 'second', $invoiceId),
+            ];
+            foreach ($workers as $worker) {
+                $worker->wait();
+                $this->assertTrue($worker->isSuccessful(), $worker->getErrorOutput());
+            }
+            $results = [];
+            foreach ($workers as $worker) {
+                $decoded = json_decode($worker->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+                $this->assertIsArray($decoded);
+                $deliveryId = $decoded['delivery_id'] ?? null;
+                $created = $decoded['created'] ?? null;
+                $this->assertIsInt($deliveryId);
+                $this->assertIsBool($created);
+                $results[] = ['delivery_id' => $deliveryId, 'created' => $created];
+            }
+
+            $this->assertSame($results[0]['delivery_id'], $results[1]['delivery_id']);
+            $createdFlags = array_column($results, 'created');
+            $this->assertContains(false, $createdFlags);
+            $this->assertContains(true, $createdFlags);
+            $this->assertSame(1, DB::table('finance_invoice_deliveries')->count());
+        });
     }
 
     private function assertDeliveryError(
@@ -506,6 +740,136 @@ final class InvoiceDeliveryTest extends TestCase
             'company_smtp_from_name' => 'Ledgerline GmbH',
         ]);
     }
+
+    /** @param callable(string, string): void $test */
+    private function withIsolatedPostgresSchema(callable $test): void
+    {
+        $postgresUrl = getenv('FINANCE_TEST_PGSQL_URL');
+        if (! extension_loaded('pdo_pgsql') || ! is_string($postgresUrl) || trim($postgresUrl) === '') {
+            $this->markTestSkipped(
+                'Set FINANCE_TEST_PGSQL_URL and install pdo_pgsql to run invoice delivery concurrency.',
+            );
+        }
+        $postgres = config('database.connections.pgsql');
+        if (! is_array($postgres)) {
+            throw new \LogicException('PostgreSQL connection configuration is unavailable.');
+        }
+        $default = DB::getDefaultConnection();
+        $connectionName = 'pgsql_invoice_delivery';
+        $schema = 'finance_invoice_task9_'.bin2hex(random_bytes(8));
+        config(["database.connections.{$connectionName}" => array_merge($postgres, [
+            'url' => $postgresUrl,
+            'search_path' => 'public',
+        ])]);
+        DB::purge($connectionName);
+        $connection = DB::connection($connectionName);
+        $created = false;
+
+        try {
+            $connection->statement("CREATE SCHEMA \"{$schema}\"");
+            $created = true;
+            $connection->statement("SET search_path TO \"{$schema}\"");
+            DB::setDefaultConnection($connectionName);
+            Schema::clearResolvedInstance('db.schema');
+            Schema::create('users', static function (Blueprint $table): void {
+                $table->id();
+            });
+            foreach ([
+                '2026_08_28_100000_create_finance_document_core.php',
+                '2026_08_28_110000_create_finance_invoices.php',
+            ] as $migrationFile) {
+                $migration = require database_path('migrations/'.$migrationFile);
+                if (! is_object($migration) || ! is_callable([$migration, 'up'])) {
+                    throw new \LogicException("Finance migration {$migrationFile} is unavailable.");
+                }
+                $migration->up();
+            }
+            DB::table('users')->insert(['id' => 1]);
+            $test($postgresUrl, $schema);
+        } finally {
+            DB::setDefaultConnection($default);
+            Schema::clearResolvedInstance('db.schema');
+            try {
+                if ($created) {
+                    $connection->statement('SET search_path TO public');
+                    $connection->statement("DROP SCHEMA IF EXISTS \"{$schema}\" CASCADE");
+                }
+            } finally {
+                DB::purge($connectionName);
+            }
+        }
+    }
+
+    private function startPostgresDeliveryWorker(
+        string $postgresUrl,
+        string $schema,
+        string $worker,
+        int $invoiceId,
+    ): Process {
+        $script = <<<'PHP'
+            require getcwd().'/vendor/autoload.php';
+            $app = require getcwd().'/bootstrap/app.php';
+            $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            $url = getenv('FINANCE_TEST_PGSQL_URL');
+            $schema = getenv('FINANCE_TEST_PGSQL_SCHEMA');
+            if (! is_string($url) || ! is_string($schema)
+                || preg_match('/\Afinance_invoice_task9_[0-9a-f]{16}\z/D', $schema) !== 1) {
+                exit(90);
+            }
+            $base = config('database.connections.pgsql');
+            foreach (['pgsql_task9_worker', 'pgsql_task9_barrier'] as $name) {
+                config(["database.connections.{$name}" => array_merge(is_array($base) ? $base : [], [
+                    'driver' => 'pgsql', 'url' => $url, 'search_path' => $schema,
+                ])]);
+                \Illuminate\Support\Facades\DB::purge($name);
+                \Illuminate\Support\Facades\DB::connection($name)
+                    ->statement('SET search_path TO "'.$schema.'"');
+            }
+            \Illuminate\Support\Facades\DB::setDefaultConnection('pgsql_task9_worker');
+            \Illuminate\Support\Facades\Schema::clearResolvedInstance('db.schema');
+            \Illuminate\Support\Facades\DB::statement("SET lock_timeout TO '10s'");
+            $barrier = \Illuminate\Support\Facades\DB::connection('pgsql_task9_barrier');
+            $barrier->table('finance_task9_delivery_barrier')->insert(['worker' => getenv('FINANCE_TEST_WORKER')]);
+            $deadline = microtime(true) + 10;
+            while ($barrier->table('finance_task9_delivery_barrier')->count() < 2) {
+                if (microtime(true) >= $deadline) {
+                    exit(91);
+                }
+                usleep(20_000);
+            }
+            $owner = new \App\Models\User;
+            $owner->forceFill(['id' => 1]);
+            \Illuminate\Support\Facades\Auth::setUser($owner);
+            $clock = new \App\Modules\Finance\Infrastructure\SystemClock;
+            $repository = new \App\Modules\Finance\Infrastructure\Persistence\EloquentInvoiceRepository(
+                new \App\Modules\Finance\Infrastructure\Persistence\EloquentIdempotencyStore($clock),
+                $clock,
+            );
+            try {
+                [$delivery, $created] = $repository->queueDelivery(
+                    new \App\Modules\Finance\Application\DTOs\Invoices\InvoiceId((int) getenv('FINANCE_TEST_INVOICE_ID')),
+                    'invoice',
+                    'customer@example.test',
+                    new \App\Modules\Finance\Application\DTOs\IdempotencyKey('pgsql-same-delivery-key'),
+                );
+                echo json_encode(['delivery_id' => $delivery->value, 'created' => $created], JSON_THROW_ON_ERROR);
+                exit(0);
+            } catch (Throwable $exception) {
+                fwrite(STDERR, $exception::class.':'.$exception->getMessage());
+                exit(92);
+            }
+            PHP;
+
+        $process = new Process([PHP_BINARY, '-r', $script], base_path(), [
+            'FINANCE_TEST_PGSQL_URL' => $postgresUrl,
+            'FINANCE_TEST_PGSQL_SCHEMA' => $schema,
+            'FINANCE_TEST_WORKER' => $worker,
+            'FINANCE_TEST_INVOICE_ID' => (string) $invoiceId,
+        ], null, 25);
+        $process->start();
+
+        return $process;
+    }
 }
 
 final class RecordingCompanyTransport implements CompanyMailTransport
@@ -532,6 +896,8 @@ final class RecordingInvoiceMailer implements InvoiceMailer
 {
     public bool $configured = true;
 
+    public int $dispatchFailuresRemaining = 0;
+
     /** @var list<array{int, int}> */
     public array $dispatched = [];
 
@@ -545,6 +911,10 @@ final class RecordingInvoiceMailer implements InvoiceMailer
     public function dispatch(int $ownerId, DeliveryId $deliveryId): void
     {
         $this->dispatched[] = [$ownerId, $deliveryId->value];
+        if ($this->dispatchFailuresRemaining > 0) {
+            $this->dispatchFailuresRemaining--;
+            throw new \RuntimeException('injected_invoice_dispatch_failure');
+        }
     }
 
     public function assertDocumentReady(string $path, string $sha256): void {}

@@ -33,13 +33,29 @@ final readonly class QueueInvoiceReminder
         if ($level < 1 || $level > 3) {
             throw new InvalidArgumentException('Invoice reminder levels must be between 1 and 3.');
         }
-        if (! $this->aging->contains($invoiceId->value, $asOf)) {
-            throw new DomainException('invoice_not_overdue');
-        }
         $ownerId = Auth::id();
         if (! is_int($ownerId) || $ownerId < 1) {
             throw new LogicException('Invoice reminder requires an authenticated owner.');
         }
+        $occurrenceKey = new IdempotencyKey('invoice-reminder:'.$invoiceId->value.':'.$level);
+        $replay = $this->invoices->replayDelivery(
+            $invoiceId,
+            'reminder',
+            $recipient,
+            $occurrenceKey,
+            ['level' => $level],
+        );
+        if ($replay !== null) {
+            if ($this->invoices->deliveryNeedsDispatch($replay)) {
+                $this->mailer->dispatch($ownerId, $replay);
+            }
+
+            return $replay;
+        }
+        if (! $this->aging->contains($invoiceId->value, $asOf)) {
+            throw new DomainException('invoice_not_overdue');
+        }
+        $eligibilityAt = $asOf ?? new DateTimeImmutable;
         $candidate = $this->invoices->assertDeliveryReady($invoiceId, $recipient, 'reminder');
         $this->mailer->assertConfigured($ownerId);
         $this->mailer->assertDocumentReady($candidate['pdf_path'], $candidate['pdf_sha256']);
@@ -47,8 +63,9 @@ final readonly class QueueInvoiceReminder
             $invoiceId,
             'reminder',
             $candidate['recipient'],
-            new IdempotencyKey('invoice-reminder:'.$invoiceId->value.':'.$level),
+            $occurrenceKey,
             ['level' => $level],
+            $eligibilityAt,
         );
         if ($created) {
             $this->mailer->dispatch($ownerId, $delivery);

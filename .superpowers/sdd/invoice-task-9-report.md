@@ -40,3 +40,24 @@ Important regression evidence:
 - No migration, route, controller, OpenAPI, push, tag, or deployment change was made for Task 9.
 - No recipient address, SMTP secret, PDF path, or PDF bytes are serialized into jobs or written into activity payloads.
 - Production requires a queue worker for `SendInvoiceDeliveryJob`; synchronous development/test queues still honor `afterCommit`.
+
+## Review round 1 hardening (2026-08-29)
+
+All requested review findings were implemented with focused RED/GREEN regressions:
+
+- Exact same-key/same-payload send, retry, and reminder replays now resolve the original delivery before invoice state, PDF, SMTP, balance, due-date, or aging preflight. A changed recipient or reminder level still produces `delivery_idempotency_conflict`.
+- A delivery row committed as `pending` with zero attempts is a durable dispatch checkpoint. If dispatch throws before the worker starts, exact replay dispatches that same delivery again; no second delivery or Message-ID is created. Queue uniqueness plus the worker execution lease prevent duplicate accepted transport execution.
+- Reminder retries copy the immutable reminder level from the source `invoice.reminder.queued` activity, append a new queued activity linked to the retry, and complete with exactly one level-preserving `invoice.reminder.sent` activity.
+- Repository writes now lock in the common order document series, invoice, revision, delivery. Reminder due date, positive balance, sent status, and owner timezone are rechecked inside the queue/retry transaction using the command's exact `asOf` instant.
+- Workers use an owner-and-delivery scoped five-minute cache lease. An overlapping worker leaves an active `sending` attempt untouched; after the lease is gone, a persisted `sending` row is treated as stale/uncertain without another SMTP call.
+- Aging boundaries are covered exactly at 30, 31, 60, and 61 owner-local calendar days.
+- An isolated PostgreSQL concurrency test creates two simultaneous same-key delivery workers behind a barrier and asserts one delivery, one creator, and one replay. It safely skips unless `pdo_pgsql` and `FINANCE_TEST_PGSQL_URL` are available.
+
+Review verification:
+
+- Delivery, dunning, provider, invoice PDF, and reused Quote SMTP suite with 1 GB: 59 tests, 56 passed, 336 assertions, 3 environment-dependent skips.
+- Focused delivery/dunning/provider suite: 25 tests, 24 passed, 124 assertions, 1 PostgreSQL skip.
+- Task-scoped Pint: passed.
+- Production Task 9 PHPStan scope: passed with zero findings.
+- The default 128 MB combined suite still exhausts memory in Dompdf; the identical suite passes with a 1 GB PHP memory limit.
+- `FinanceServiceProvider` was preserved unchanged in this review commit. No push, tag, or deployment was performed.

@@ -28,6 +28,14 @@ final readonly class QueueInvoiceDelivery
         if (! is_int($ownerId) || $ownerId < 1) {
             throw new LogicException('Invoice delivery requires an authenticated owner.');
         }
+        $replay = $this->invoices->replayDelivery($invoiceId, 'invoice', $recipient, $key);
+        if ($replay !== null) {
+            if ($this->invoices->deliveryNeedsDispatch($replay)) {
+                $this->mailer->dispatch($ownerId, $replay);
+            }
+
+            return $replay;
+        }
 
         $candidate = $this->invoices->assertDeliveryReady($invoiceId, $recipient, 'invoice');
         $this->mailer->assertConfigured($ownerId);

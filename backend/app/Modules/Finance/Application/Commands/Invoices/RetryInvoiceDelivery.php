@@ -24,6 +24,14 @@ final readonly class RetryInvoiceDelivery
         if (! is_int($ownerId) || $ownerId < 1) {
             throw new LogicException('Invoice delivery retry requires an authenticated owner.');
         }
+        $replay = $this->invoices->replayDeliveryRetry($failedDelivery, $key);
+        if ($replay !== null) {
+            if ($this->invoices->deliveryNeedsDispatch($replay)) {
+                $this->mailer->dispatch($ownerId, $replay);
+            }
+
+            return $replay;
+        }
         $candidate = $this->invoices->assertDeliveryRetryReady($failedDelivery);
         $this->mailer->assertConfigured($ownerId);
         $this->mailer->assertDocumentReady($candidate['pdf_path'], $candidate['pdf_sha256']);

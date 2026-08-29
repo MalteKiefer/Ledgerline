@@ -616,23 +616,75 @@ final class EloquentInvoiceRepository implements InvoiceRepository
     }
 
     /** @param array<string, int|string|bool|null> $context */
+    public function replayDelivery(
+        InvoiceId $id,
+        string $kind,
+        ?string $recipient,
+        IdempotencyKey $key,
+        array $context = [],
+    ): ?DeliveryId {
+        $ownerId = $this->ownerId();
+        $existing = InvoiceDeliveryRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->where('kind', $kind)
+            ->where('idempotency_key_hash', $key->hash())
+            ->first();
+        if ($existing === null) {
+            return null;
+        }
+        $normalizedRecipient = $recipient === null ? (string) $existing->recipient : trim($recipient);
+        if ($normalizedRecipient === '' || filter_var($normalizedRecipient, FILTER_VALIDATE_EMAIL) === false) {
+            throw new DomainException('delivery_idempotency_conflict');
+        }
+        $requestHash = $this->deliveryRequestHash(
+            $id->value,
+            (int) $existing->document_revision_id,
+            $kind,
+            $normalizedRecipient,
+            $context,
+        );
+        if ((int) $existing->invoice_id !== $id->value
+            || ! hash_equals((string) $existing->request_hash, $requestHash)) {
+            throw new DomainException('delivery_idempotency_conflict');
+        }
+
+        return new DeliveryId((int) $existing->id, (string) $existing->uuid);
+    }
+
+    /** @param array<string, int|string|bool|null> $context */
     public function queueDelivery(
         InvoiceId $id,
         string $kind,
         string $recipient,
         IdempotencyKey $key,
         array $context = [],
+        ?DateTimeImmutable $eligibilityAt = null,
     ): array {
         $ownerId = $this->ownerId();
         $keyHash = $key->hash();
 
-        return DB::transaction(function () use ($id, $kind, $recipient, $keyHash, $ownerId, $context): array {
+        return DB::transaction(function () use ($id, $kind, $recipient, $keyHash, $ownerId, $context, $eligibilityAt): array {
+            $locator = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($id->value)
+                ->firstOrFail(['document_series_id']);
+            DocumentSeriesRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($locator->document_series_id)
+                ->lockForUpdate()
+                ->firstOrFail(['id']);
             $invoice = InvoiceRecord::query()
                 ->withoutGlobalScopes()
                 ->where('user_id', $ownerId)
                 ->whereKey($id->value)
                 ->lockForUpdate()
                 ->firstOrFail();
+            if ($kind === 'reminder') {
+                $this->assertReminderOverdueAt($invoice, $eligibilityAt ?? new DateTimeImmutable);
+            }
             $revision = DocumentRevisionRecord::query()
                 ->withoutGlobalScopes()
                 ->where('user_id', $ownerId)
@@ -640,13 +692,13 @@ final class EloquentInvoiceRepository implements InvoiceRepository
                 ->whereKey($invoice->current_revision_id)
                 ->lockForUpdate()
                 ->firstOrFail();
-            $requestHash = hash('sha256', json_encode([
-                'invoice_id' => (int) $invoice->id,
-                'revision_id' => (int) $revision->id,
-                'kind' => $kind,
-                'recipient' => $recipient,
-                'context' => $this->canonicalize($context),
-            ], JSON_THROW_ON_ERROR));
+            $requestHash = $this->deliveryRequestHash(
+                (int) $invoice->id,
+                (int) $revision->id,
+                $kind,
+                $recipient,
+                $context,
+            );
             $existing = InvoiceDeliveryRecord::query()
                 ->withoutGlobalScopes()
                 ->where('user_id', $ownerId)
@@ -713,6 +765,30 @@ final class EloquentInvoiceRepository implements InvoiceRepository
         $keyHash = $key->hash();
 
         return DB::transaction(function () use ($failedDelivery, $keyHash, $ownerId): array {
+            $locator = InvoiceDeliveryRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($failedDelivery->value)
+                ->firstOrFail(['invoice_id', 'document_series_id', 'document_revision_id']);
+            DocumentSeriesRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($locator->document_series_id)
+                ->lockForUpdate()
+                ->firstOrFail(['id']);
+            $invoice = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($locator->invoice_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            DocumentRevisionRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $locator->document_series_id)
+                ->whereKey($locator->document_revision_id)
+                ->lockForUpdate()
+                ->firstOrFail(['id']);
             $source = InvoiceDeliveryRecord::query()
                 ->withoutGlobalScopes()
                 ->where('user_id', $ownerId)
@@ -722,13 +798,7 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             if (! in_array((string) $source->status, ['failed', 'unknown'], true)) {
                 throw new DomainException('delivery_retry_not_allowed');
             }
-            $invoice = InvoiceRecord::query()
-                ->withoutGlobalScopes()
-                ->where('user_id', $ownerId)
-                ->whereKey($source->invoice_id)
-                ->lockForUpdate()
-                ->firstOrFail();
-            if ((int) $invoice->current_revision_id !== (int) $source->document_revision_id) {
+            if ((int) $invoice->current_revision_id !== (int) $locator->document_revision_id) {
                 throw new DomainException('delivery_revision_stale');
             }
             if ((string) $source->kind === 'reminder') {
@@ -740,13 +810,10 @@ final class EloquentInvoiceRepository implements InvoiceRepository
                 (string) $source->kind,
             );
             $recipient = $candidate['recipient'];
-            $requestHash = hash('sha256', json_encode([
-                'retry_of' => (int) $source->id,
-                'invoice_id' => (int) $invoice->id,
-                'revision_id' => (int) $source->document_revision_id,
-                'kind' => (string) $source->kind,
-                'recipient' => $recipient,
-            ], JSON_THROW_ON_ERROR));
+            $reminderLevel = (string) $source->kind === 'reminder'
+                ? $this->reminderLevelForDelivery($source)
+                : null;
+            $requestHash = $this->deliveryRetryRequestHash($source, $reminderLevel);
             $existing = InvoiceDeliveryRecord::query()
                 ->withoutGlobalScopes()
                 ->where('user_id', $ownerId)
@@ -783,6 +850,22 @@ final class EloquentInvoiceRepository implements InvoiceRepository
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
+            if ($reminderLevel !== null) {
+                $activity = new DocumentActivityRecord;
+                $activity->forceFill([
+                    'user_id' => $ownerId,
+                    'document_series_id' => $source->document_series_id,
+                    'document_revision_id' => $source->document_revision_id,
+                    'type' => 'invoice.reminder.queued',
+                    'payload' => [
+                        'delivery_id' => $id,
+                        'level' => $reminderLevel,
+                        'retry_of_delivery_id' => (int) $source->id,
+                    ],
+                    'created_by' => $ownerId,
+                    'created_at' => $now,
+                ])->save();
+            }
 
             return [new DeliveryId($id, $uuid), true];
         }, 1);
@@ -823,7 +906,98 @@ final class EloquentInvoiceRepository implements InvoiceRepository
         ];
     }
 
+    public function replayDeliveryRetry(DeliveryId $failedDelivery, IdempotencyKey $key): ?DeliveryId
+    {
+        $ownerId = $this->ownerId();
+        $source = InvoiceDeliveryRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->whereKey($failedDelivery->value)
+            ->firstOrFail();
+        $existing = InvoiceDeliveryRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->where('kind', $source->kind)
+            ->where('idempotency_key_hash', $key->hash())
+            ->first();
+        if ($existing === null) {
+            return null;
+        }
+        $reminderLevel = (string) $source->kind === 'reminder'
+            ? $this->reminderLevelForDelivery($source)
+            : null;
+        $requestHash = $this->deliveryRetryRequestHash($source, $reminderLevel);
+        if (! hash_equals((string) $existing->request_hash, $requestHash)) {
+            throw new DomainException('delivery_idempotency_conflict');
+        }
+
+        return new DeliveryId((int) $existing->id, (string) $existing->uuid);
+    }
+
+    public function deliveryNeedsDispatch(DeliveryId $delivery): bool
+    {
+        return InvoiceDeliveryRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->whereKey($delivery->value)
+            ->where('status', 'pending')
+            ->where('attempts', 0)
+            ->exists();
+    }
+
+    /** @param array<string, int|string|bool|null> $context */
+    private function deliveryRequestHash(
+        int $invoiceId,
+        int $revisionId,
+        string $kind,
+        string $recipient,
+        array $context,
+    ): string {
+        return hash('sha256', json_encode([
+            'invoice_id' => $invoiceId,
+            'revision_id' => $revisionId,
+            'kind' => $kind,
+            'recipient' => $recipient,
+            'context' => $this->canonicalize($context),
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    private function deliveryRetryRequestHash(InvoiceDeliveryRecord $source, ?int $reminderLevel): string
+    {
+        return hash('sha256', json_encode([
+            'retry_of' => (int) $source->id,
+            'invoice_id' => (int) $source->invoice_id,
+            'revision_id' => (int) $source->document_revision_id,
+            'kind' => (string) $source->kind,
+            'recipient' => (string) $source->recipient,
+            'reminder_level' => $reminderLevel,
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    private function reminderLevelForDelivery(InvoiceDeliveryRecord $delivery): int
+    {
+        $activity = DocumentActivityRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->where('document_series_id', $delivery->document_series_id)
+            ->where('type', 'invoice.reminder.queued')
+            ->where('payload->delivery_id', (int) $delivery->id)
+            ->first();
+        $payload = $activity?->getAttribute('payload');
+        $level = is_array($payload) ? ($payload['level'] ?? null) : null;
+        if (! is_int($level) || $level < 1 || $level > 3) {
+            throw new DomainException('delivery_reminder_history_missing');
+        }
+
+        return $level;
+    }
+
     private function assertReminderOverdue(InvoiceRecord $invoice): void
+    {
+        $this->assertReminderOverdueAt($invoice, new DateTimeImmutable);
+    }
+
+    private function assertReminderOverdueAt(InvoiceRecord $invoice, DateTimeImmutable $asOf): void
     {
         $configured = UserSetting::query()->find($this->ownerId())?->getAttribute('timezone');
         $fallback = config('app.timezone', 'UTC');
@@ -839,7 +1013,7 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             $this->date($invoice->getAttribute('due_date'))->format('Y-m-d'),
             $zone,
         );
-        $today = (new DateTimeImmutable('now', $zone))->setTime(0, 0);
+        $today = $asOf->setTimezone($zone)->setTime(0, 0);
         if ((string) $invoice->workflow_status !== 'sent'
             || (int) $invoice->open_minor <= 0
             || $dueDate >= $today) {
