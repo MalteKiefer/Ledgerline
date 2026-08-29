@@ -2784,6 +2784,129 @@ components:
         created_at: { type: [string, "null"], format: date-time }
       required: [id, level, event]
 
+    FinanceV2Money:
+      type: object
+      additionalProperties: false
+      required: [net_minor, vat_minor, gross_minor, currency]
+      properties:
+        net_minor: { type: integer, format: int64 }
+        vat_minor: { type: integer, format: int64 }
+        gross_minor: { type: integer, format: int64 }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+
+    FinanceV2QuoteLineInput:
+      type: object
+      additionalProperties: false
+      required: [description, quantity, unit, unit_price, tax_rate, kind]
+      properties:
+        description: { type: string, maxLength: 1000 }
+        quantity: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,4})?$", description: "Exact scale-4 decimal string; JSON numbers are rejected." }
+        unit: { type: string, maxLength: 50 }
+        unit_price: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact currency decimal string; JSON numbers are rejected." }
+        tax_rate: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact percentage decimal string; JSON numbers are rejected." }
+        kind: { type: string, enum: [service, hardware, expense] }
+        product_id: { type: [integer, "null"], minimum: 1 }
+
+    FinanceV2QuoteDraftInput:
+      type: object
+      additionalProperties: false
+      required: [title, customer, currency, lines, discount_type]
+      properties:
+        title: { type: string, maxLength: 255 }
+        partner_id: { type: [integer, "null"], minimum: 1 }
+        customer:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string, maxLength: 255 }
+            email: { type: [string, "null"], format: email }
+          additionalProperties: true
+        issue_date: { type: [string, "null"], format: date }
+        valid_until: { type: [string, "null"], format: date }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        lines: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/FinanceV2QuoteLineInput' } }
+        discount_type: { type: string, enum: [none, percent, fixed] }
+        discount_value: { type: [string, "null"], pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$" }
+        intro_text: { type: [string, "null"] }
+        outro_text: { type: [string, "null"] }
+        internal_note: { type: [string, "null"] }
+        version: { type: integer, minimum: 0, description: "Required only for draft update." }
+        control_net_minor: { type: [integer, "null"], format: int64, description: "Optional assertion only; never authoritative." }
+        control_vat_minor: { type: [integer, "null"], format: int64, description: "Optional assertion only; never authoritative." }
+        control_gross_minor: { type: [integer, "null"], format: int64, description: "Optional assertion only; never authoritative." }
+
+    FinanceV2QuoteRevision:
+      type: object
+      additionalProperties: false
+      required: [id, revision_number, status, snapshot, totals, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        revision_number: { type: integer, minimum: 1 }
+        previous_revision_id: { type: [integer, "null"], format: int64 }
+        status: { type: string, enum: [draft, published] }
+        snapshot: { type: object, additionalProperties: true }
+        totals: { $ref: '#/components/schemas/FinanceV2Money' }
+        pdf_sha256: { type: [string, "null"], pattern: "^[a-f0-9]{64}$" }
+        pdf_url: { type: [string, "null"], format: uri }
+        pdf_download_url: { type: [string, "null"], format: uri }
+        published_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+
+    FinanceV2QuoteDelivery:
+      type: object
+      additionalProperties: false
+      required: [uuid, revision_id, state, attempts, queued_at]
+      properties:
+        uuid: { type: string, format: uuid }
+        revision_id: { type: integer, format: int64 }
+        state: { type: string, enum: [queued, sending, sent, failed] }
+        attempts: { type: integer, minimum: 0 }
+        last_error_code: { type: [string, "null"] }
+        queued_at: { type: string, format: date-time }
+        sent_at: { type: [string, "null"], format: date-time }
+        failed_at: { type: [string, "null"], format: date-time }
+
+    FinanceV2Quote:
+      type: object
+      additionalProperties: false
+      required: [id, status, effective_status, version, has_pending_draft, totals, conversions, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [draft, sent, accepted, declined, converted] }
+        effective_status: { type: string, enum: [draft, sent, accepted, declined, converted, expired] }
+        partner_id: { type: [integer, "null"] }
+        number: { type: [string, "null"] }
+        version: { type: integer, minimum: 0 }
+        has_pending_draft: { type: boolean }
+        current_revision: { anyOf: [{ $ref: '#/components/schemas/FinanceV2QuoteRevision' }, { type: "null" }] }
+        draft: { type: [object, "null"], additionalProperties: true }
+        totals: { $ref: '#/components/schemas/FinanceV2Money' }
+        conversions: { type: array, items: { type: object, additionalProperties: false, properties: { source_revision_id: { type: integer }, target_type: { type: string, enum: [invoice] }, target_reference: { type: string }, target_id: { type: [integer, "null"] }, created_at: { type: string, format: date-time } }, required: [source_revision_id, target_type, target_reference, created_at] } }
+        delivery: { anyOf: [{ $ref: '#/components/schemas/FinanceV2QuoteDelivery' }, { type: "null" }] }
+        published_at: { type: [string, "null"], format: date-time }
+        accepted_at: { type: [string, "null"], format: date-time }
+        declined_at: { type: [string, "null"], format: date-time }
+        converted_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    FinanceV2QuotePage:
+      type: object
+      additionalProperties: false
+      required: [data, links, meta]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/FinanceV2Quote' } }
+        links: { type: object, additionalProperties: false, properties: { first: { type: string, format: uri }, last: { type: string, format: uri }, prev: { type: [string, "null"], format: uri }, next: { type: [string, "null"], format: uri } }, required: [first, last] }
+        meta: { type: object, additionalProperties: false, properties: { current_page: { type: integer }, per_page: { type: integer }, total: { type: integer }, last_page: { type: integer } }, required: [current_page, per_page, total, last_page] }
+
+    FinanceV2QuoteConflict:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [version_conflict, idempotency_key_reused, operation_in_progress, quote_locked, quote_revision_stale, quote_revision_replaced, quote_draft_pending, quote_publication_in_progress, quote_delivery_in_progress] }
+        current: { $ref: '#/components/schemas/FinanceV2Quote' }
+
 paths:
 
   /auth/login:
@@ -5512,6 +5635,252 @@ paths:
                   schemaVersion: { type: integer, enum: [1] }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes:
+    get:
+      tags: [Finance]
+      operationId: financeV2QuotesIndex
+      summary: List owner-scoped quotes with stable pagination
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 255 } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, sent, accepted, declined, converted] } }
+        - { name: effective_status, in: query, schema: { type: string, enum: [draft, sent, accepted, declined, converted, expired] } }
+        - { name: published_from, in: query, schema: { type: string, format: date } }
+        - { name: published_to, in: query, schema: { type: string, format: date } }
+        - { name: sort, in: query, schema: { type: string, enum: [published_at] } }
+        - { name: direction, in: query, schema: { type: string, enum: [desc] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: Quote page., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuotePage' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Finance]
+      operationId: financeV2QuotesCreate
+      summary: Create an idempotent server-calculated quote draft
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteDraftInput' } } }
+      responses:
+        "201": { description: Draft created., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/preview:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuotesPreview
+      summary: Calculate quote totals without writing state
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteDraftInput' } } }
+      responses:
+        "200": { description: Server-authoritative totals., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}:
+    get:
+      tags: [Finance]
+      operationId: financeV2QuotesShow
+      summary: Read one owner-scoped quote aggregate
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Quote aggregate., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/revisions:
+    get:
+      tags: [Finance]
+      operationId: financeV2QuoteRevisionsIndex
+      summary: List immutable quote revision history newest first
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Revision history., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FinanceV2QuoteRevision' } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/draft:
+    put:
+      tags: [Finance]
+      operationId: financeV2QuoteDraftUpdate
+      summary: Update a quote draft using optimistic version CAS
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/FinanceV2QuoteDraftInput' }
+                - { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } }
+      responses:
+        "200": { description: Draft updated., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Finance]
+      operationId: financeV2QuoteDraftDiscard
+      summary: Discard a later-version draft using optimistic version CAS
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "200": { description: Draft discarded., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/versions:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteVersionCreate
+      summary: Start a later quote version
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "201": { description: Draft version started., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/publish:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuotePublish
+      summary: Publish the current draft as an immutable revision
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 }, change_reason: { type: [string, "null"], maxLength: 1000 } } } } } }
+      responses:
+        "200": { description: Published or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/send:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteSend
+      summary: Publish when needed and queue immutable quote delivery
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 }, recipient: { type: [string, "null"], format: email }, change_reason: { type: [string, "null"], maxLength: 1000 } } } } } }
+      responses:
+        "200": { description: Existing idempotent result replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "202": { description: Immutable revision delivery queued., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/accept:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteAccept
+      summary: Accept the exact current quote revision
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version, expected_revision_id], properties: { version: { type: integer, minimum: 0 }, expected_revision_id: { type: integer, minimum: 1 } } } } } }
+      responses:
+        "200": { description: Accepted or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, revision, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/decline:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteDecline
+      summary: Decline the exact current quote revision
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version, expected_revision_id], properties: { version: { type: integer, minimum: 0 }, expected_revision_id: { type: integer, minimum: 1 } } } } } }
+      responses:
+        "200": { description: Declined or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, revision, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/duplicate:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteDuplicate
+      summary: Duplicate an exact quote draft or immutable revision into a new draft
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 }, source_revision_id: { type: [integer, "null"], minimum: 1 } } } } } }
+      responses:
+        "201": { description: Duplicate draft created., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/conversions/invoice:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteConvertInvoice
+      summary: Convert an accepted exact immutable quote revision to an invoice draft
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version, expected_revision_id], properties: { version: { type: integer, minimum: 0 }, expected_revision_id: { type: integer, minimum: 1 } } } } } }
+      responses:
+        "201": { description: Invoice draft target created., content: { application/json: { schema: { type: object, required: [target_reference], properties: { target_reference: { type: string }, target_id: { type: [integer, "null"] } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, revision, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}/revisions/{revision}/pdf:

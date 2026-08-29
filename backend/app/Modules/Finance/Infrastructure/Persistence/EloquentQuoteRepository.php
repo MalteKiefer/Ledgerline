@@ -111,8 +111,17 @@ final class EloquentQuoteRepository implements QuoteRepository
             ->orderByDesc('finance_quote_series.document_series_id')
             ->limit($perPage)
             ->offset(($page - 1) * $perPage)
-            ->get()
-            ->map(fn (QuoteSeriesRecord $quote): QuoteView => $this->viewFromRecord($ownerId, $quote));
+            ->get();
+        [$conversions, $deliveries] = $this->apiSummaries(
+            $ownerId,
+            $quotes->map(static fn (QuoteSeriesRecord $quote): int => (int) $quote->document_series_id)->values()->all(),
+        );
+        $quotes = $quotes->map(fn (QuoteSeriesRecord $quote): QuoteView => $this->viewFromRecord(
+            $ownerId,
+            $quote,
+            $conversions[(int) $quote->document_series_id] ?? [],
+            $deliveries[(int) $quote->document_series_id] ?? null,
+        ));
 
         return new QuotePage(
             array_values($quotes->all()),
@@ -1521,11 +1530,26 @@ final class EloquentQuoteRepository implements QuoteRepository
             ->where('document_series_id', $series->id)
             ->firstOrFail();
 
-        return $this->viewFromRecord($id->ownerId, $quote);
+        [$conversions, $deliveries] = $this->apiSummaries($id->ownerId, [(int) $quote->document_series_id]);
+
+        return $this->viewFromRecord(
+            $id->ownerId,
+            $quote,
+            $conversions[(int) $quote->document_series_id] ?? [],
+            $deliveries[(int) $quote->document_series_id] ?? null,
+        );
     }
 
-    private function viewFromRecord(int $ownerId, QuoteSeriesRecord $quote): QuoteView
-    {
+    /**
+     * @param  list<array{source_revision_id: int, target_type: string, target_reference: string, target_id: int|null, created_at: string}>  $conversions
+     * @param  array{uuid: string, revision_id: int, state: string, attempts: int, last_error_code: string|null, queued_at: string, sent_at: string|null, failed_at: string|null}|null  $latestDelivery
+     */
+    private function viewFromRecord(
+        int $ownerId,
+        QuoteSeriesRecord $quote,
+        array $conversions = [],
+        ?array $latestDelivery = null,
+    ): QuoteView {
         $series = $quote->series;
 
         if (! $series instanceof DocumentSeriesRecord
@@ -1563,7 +1587,66 @@ final class EloquentQuoteRepository implements QuoteRepository
             $this->date($quote->converted_at),
             $this->requiredDate($series->created_at),
             $this->requiredDate($series->updated_at),
+            $conversions,
+            $latestDelivery,
         );
+    }
+
+    /**
+     * @param  array<int, int>  $seriesIds
+     * @return array{
+     *     array<int, list<array{source_revision_id: int, target_type: string, target_reference: string, target_id: int|null, created_at: string}>>,
+     *     array<int, array{uuid: string, revision_id: int, state: string, attempts: int, last_error_code: string|null, queued_at: string, sent_at: string|null, failed_at: string|null}>
+     * }
+     */
+    private function apiSummaries(int $ownerId, array $seriesIds): array
+    {
+        if ($seriesIds === []) {
+            return [[], []];
+        }
+
+        $conversions = [];
+        foreach (QuoteConversionRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('user_id', $ownerId)
+            ->whereIn('document_series_id', $seriesIds)
+            ->orderBy('id')
+            ->get() as $conversion) {
+            $seriesId = (int) $conversion->document_series_id;
+            $conversions[$seriesId][] = [
+                'source_revision_id' => (int) $conversion->source_revision_id,
+                'target_type' => (string) $conversion->target_type,
+                'target_reference' => (string) $conversion->target_reference,
+                'target_id' => $conversion->target_id === null ? null : (int) $conversion->target_id,
+                'created_at' => $this->requiredDate($conversion->created_at)->format(DATE_ATOM),
+            ];
+        }
+
+        $deliveries = [];
+        foreach (QuoteDeliveryRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('user_id', $ownerId)
+            ->whereIn('document_series_id', $seriesIds)
+            ->orderByDesc('queued_at')
+            ->orderByDesc('id')
+            ->get() as $delivery) {
+            $seriesId = (int) $delivery->document_series_id;
+            if (isset($deliveries[$seriesId])) {
+                continue;
+            }
+            $deliveries[$seriesId] = [
+                'uuid' => (string) $delivery->uuid,
+                'revision_id' => (int) $delivery->document_revision_id,
+                'state' => (string) $delivery->state,
+                'attempts' => (int) $delivery->attempts,
+                'last_error_code' => is_string($delivery->last_error_code) ? $delivery->last_error_code : null,
+                'queued_at' => $this->requiredDate($delivery->queued_at)->format(DATE_ATOM),
+                'sent_at' => $this->date($delivery->sent_at)?->format(DATE_ATOM),
+                'failed_at' => $this->date($delivery->failed_at)?->format(DATE_ATOM),
+            ];
+        }
+
+        return [$conversions, $deliveries];
     }
 
     /**

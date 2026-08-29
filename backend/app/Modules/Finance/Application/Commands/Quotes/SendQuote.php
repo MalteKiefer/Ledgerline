@@ -8,6 +8,7 @@ use App\Modules\Finance\Application\DTOs\Quotes\OperationReservation;
 use App\Modules\Finance\Application\DTOs\Quotes\PublishQuoteData;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteView;
 use App\Modules\Finance\Application\DTOs\Quotes\SendQuoteData;
+use App\Modules\Finance\Application\DTOs\Quotes\SendQuoteResult;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteMailer;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteOperationRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
@@ -24,6 +25,11 @@ final readonly class SendQuote
     ) {}
 
     public function handle(SendQuoteData $data): QuoteView
+    {
+        return $this->handleResult($data)->quote;
+    }
+
+    public function handleResult(SendQuoteData $data): SendQuoteResult
     {
         $candidate = $this->quotes->get($data->quoteId);
         $recipient = $this->recipient($data, $candidate);
@@ -48,7 +54,7 @@ final readonly class SendQuote
         );
 
         if ($operation->status === 'replay') {
-            return $this->quotes->get($data->quoteId);
+            return new SendQuoteResult($this->quotes->get($data->quoteId), true);
         }
         if ($operation->status === 'failed') {
             throw new InvalidQuoteAction($operation->errorCode ?? 'quote_send_failed');
@@ -94,7 +100,7 @@ final readonly class SendQuote
             'delivery_id' => $deliveryId,
         ]);
 
-        return $this->quotes->get($data->quoteId);
+        return new SendQuoteResult($this->quotes->get($data->quoteId), false);
     }
 
     private function publishedQuote(SendQuoteData $data, QuoteView $candidate): QuoteView
