@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Application\Commands\Projects;
 
 use App\Modules\Finance\Application\DTOs\Projects\ProjectId;
+use App\Modules\Finance\Application\DTOs\Projects\WorkItemView;
 use App\Modules\Finance\Application\Ports\Projects\ProjectRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectWorkRepository;
 use App\Modules\Finance\Application\Services\Projects\ProjectDataValidator;
@@ -20,7 +21,10 @@ final readonly class ReorderWorkItems
         private ProjectWorkflow $workflow,
     ) {}
 
-    /** @param list<string> $orderedUuids */
+    /**
+     * @param  list<string>  $orderedUuids
+     * @return list<WorkItemView>
+     */
     public function handle(ProjectId $projectId, array $orderedUuids, int $actorId, DateTimeImmutable $occurredAt): array
     {
         $this->validator->actor($projectId, $actorId);
