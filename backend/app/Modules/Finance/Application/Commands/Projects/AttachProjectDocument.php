@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Finance\Application\Commands\Projects;
 
+use App\Modules\Finance\Application\DTOs\Projects\OperationReservation;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourceRef;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentView;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectId;
@@ -23,13 +24,19 @@ final readonly class AttachProjectDocument
         $hash = hash('sha256', json_encode(['project' => strtolower($projectId->uuid), 'source_type' => $source->sourceType, 'source_reference' => $source->sourceReference, 'pinned_revision_id' => $source->pinnedRevisionId, 'role' => $role, 'actor_id' => $actorId, 'occurred_at' => $at->format(DATE_ATOM)], JSON_THROW_ON_ERROR));
         $reservation = $this->operations->reserve($projectId->ownerId, 'project.document.attach', $idempotencyKey, $hash, $projectId);
         if ($reservation->status === 'replay') {
-            return $this->documents->get($projectId, $this->replayLinkId($reservation->result));
+            return $this->documents->get($projectId, $this->replayLinkId($reservation->result), $this->catalog);
         }
         if ($reservation->status === 'in_progress') {
-            throw new DomainException('operation_in_progress');
+            return $this->recover($reservation, $projectId, $source, $role);
         }
         if ($reservation->status === 'failed') {
             $reservation = $this->operations->retryFailed($reservation);
+            $recovered = $this->documents->findActive($projectId, $source, $role, $this->catalog);
+            if ($recovered !== null) {
+                $this->operations->succeed($reservation, ['link_id' => $recovered->linkId]);
+
+                return $recovered;
+            }
         }
         try {
             $metadata = $this->catalog->resolve($projectId->ownerId, $source);
@@ -52,5 +59,16 @@ final readonly class AttachProjectDocument
         }
 
         return $linkId;
+    }
+
+    private function recover(OperationReservation $reservation, ProjectId $projectId, ProjectDocumentSourceRef $source, string $role): ProjectDocumentView
+    {
+        $recovered = $this->documents->findActive($projectId, $source, $role, $this->catalog);
+        if ($recovered === null) {
+            throw new DomainException('operation_in_progress');
+        }
+        $this->operations->succeed($reservation, ['link_id' => $recovered->linkId]);
+
+        return $recovered;
     }
 }

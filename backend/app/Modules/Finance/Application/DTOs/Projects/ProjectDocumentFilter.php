@@ -24,7 +24,7 @@ final readonly class ProjectDocumentFilter
         public array $availabilities = [],
         public ?DateTimeImmutable $from = null,
         public ?DateTimeImmutable $to = null,
-        public bool $includeDetached = false,
+        public string $state = 'active',
         public int $page = 1,
         public int $perPage = 50,
     ) {
@@ -35,6 +35,7 @@ final readonly class ProjectDocumentFilter
             || array_diff($roles, ['source_quote', 'quote', 'invoice', 'payment', 'receipt', 'file', 'photo', 'other']) !== []
             || array_diff($mimeGroups, ['pdf', 'image', 'other']) !== []
             || array_diff($availabilities, ['available', 'deleted', 'missing']) !== []
+            || ! in_array($state, ['active', 'detached', 'all'], true)
             || ($q !== null && mb_strlen(trim($q)) > 255)) {
             throw new InvalidArgumentException('Project document filter values are invalid.');
         }

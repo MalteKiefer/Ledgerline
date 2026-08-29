@@ -29,7 +29,7 @@ final readonly class ProjectDocumentSourceFilter
             || array_diff($mimeGroups, ['pdf', 'image', 'other']) !== []
             || ($from !== null && $to !== null && $from > $to)
             || ($q !== null && mb_strlen(trim($q)) > 255)
-            || ($cursor !== null && strlen($cursor) > 512)) {
+            || ($cursor !== null && strlen($cursor) > 4096)) {
             throw new InvalidArgumentException('Project document source filter is invalid.');
         }
     }

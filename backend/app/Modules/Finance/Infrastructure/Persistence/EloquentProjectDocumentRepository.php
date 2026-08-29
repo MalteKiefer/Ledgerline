@@ -86,21 +86,45 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
         }, 3);
     }
 
-    public function get(ProjectId $projectId, int $linkId): ProjectDocumentView
+    public function get(ProjectId $projectId, int $linkId, ?ProjectDocumentSource $catalog = null): ProjectDocumentView
     {
         $project = $this->project($projectId);
         $link = ProjectDocumentLinkRecord::query()->withoutGlobalScopes()->where('user_id', $projectId->ownerId)
             ->where('project_id', $project->id)->findOrFail($linkId);
 
-        return $this->view($projectId, $link, null);
+        if ($catalog === null) {
+            return $this->view($projectId, $link, null);
+        }
+
+        return $this->resolvedView($projectId, $link, $catalog);
+    }
+
+    public function findActive(ProjectId $projectId, ProjectDocumentSourceRef $source, string $role, ProjectDocumentSource $catalog): ?ProjectDocumentView
+    {
+        $project = $this->project($projectId);
+        $query = ProjectDocumentLinkRecord::query()->withoutGlobalScopes()
+            ->where('user_id', $projectId->ownerId)
+            ->where('project_id', $project->id)
+            ->where('source_type', $source->sourceType)
+            ->where('source_reference', $source->sourceReference)
+            ->where('role', $role)
+            ->whereNull('detached_at');
+        if ($source->pinnedRevisionId !== null) {
+            $query->where('pinned_revision_id', $source->pinnedRevisionId);
+        }
+        $link = $query->first();
+
+        return $link instanceof ProjectDocumentLinkRecord ? $this->resolvedView($projectId, $link, $catalog) : null;
     }
 
     public function page(ProjectDocumentFilter $filter, ProjectDocumentSource $catalog): ProjectDocumentPage
     {
         $project = $this->project($filter->projectId);
         $query = ProjectDocumentLinkRecord::query()->withoutGlobalScopes()->where('user_id', $filter->projectId->ownerId)->where('project_id', $project->id);
-        if (! $filter->includeDetached) {
+        if ($filter->state === 'active') {
             $query->whereNull('detached_at');
+        } elseif ($filter->state === 'detached') {
+            $query->whereNotNull('detached_at');
         }
         if ($filter->sourceTypes !== []) {
             $query->whereIn('source_type', $filter->sourceTypes);
@@ -116,15 +140,7 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
         }
         $views = [];
         foreach ($query->orderByDesc('attached_at')->orderByDesc('id')->get() as $link) {
-            try {
-                $resolved = $catalog->resolve($filter->projectId->ownerId, $this->ref($link));
-                $current = $resolved->availability === 'available' ? $resolved : null;
-                $availability = $resolved->availability;
-            } catch (ModelNotFoundException) {
-                $current = null;
-                $availability = 'missing';
-            }
-            $view = $this->view($filter->projectId, $link, $current, $availability);
+            $view = $this->resolvedView($filter->projectId, $link, $catalog);
             if (! $this->matches($view, $filter)) {
                 continue;
             }
@@ -200,6 +216,20 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
             $link->detached_at !== null ? $this->date($link->detached_at) : null);
     }
 
+    private function resolvedView(ProjectId $projectId, ProjectDocumentLinkRecord $link, ProjectDocumentSource $catalog): ProjectDocumentView
+    {
+        try {
+            $resolved = $catalog->resolve($projectId->ownerId, $this->ref($link));
+            $current = $resolved->availability === 'available' ? $resolved : null;
+            $availability = $resolved->availability;
+        } catch (ModelNotFoundException) {
+            $current = null;
+            $availability = 'missing';
+        }
+
+        return $this->view($projectId, $link, $current, $availability);
+    }
+
     private function matches(ProjectDocumentView $view, ProjectDocumentFilter $filter): bool
     {
         if ($filter->availabilities !== [] && ! in_array($view->availability, $filter->availabilities, true)) {
@@ -230,12 +260,15 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
         if (! is_array($value)) {
             throw new \LogicException('Project document snapshot is invalid.');
         }
+        $allowed = ['source_type', 'source_reference', 'title', 'mime', 'size', 'sha256', 'document_type', 'document_label', 'occurred_at'];
         $snapshot = [];
         foreach ($value as $key => $item) {
             if (! is_string($key)) {
                 throw new \LogicException('Project document snapshot keys are invalid.');
             }
-            $snapshot[$key] = $item;
+            if (in_array($key, $allowed, true) && (is_scalar($item) || $item === null)) {
+                $snapshot[$key] = $item;
+            }
         }
 
         return $snapshot;

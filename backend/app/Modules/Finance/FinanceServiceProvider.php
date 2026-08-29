@@ -8,6 +8,9 @@ use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\DocumentRenderer;
 use App\Modules\Finance\Application\Ports\DocumentRevisionRepository;
 use App\Modules\Finance\Application\Ports\DocumentStorage;
+use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentCatalog;
+use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentRepository;
+use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentSource;
 use App\Modules\Finance\Application\Ports\Projects\ProjectFinancialSource;
 use App\Modules\Finance\Application\Ports\Projects\ProjectFromQuoteTarget;
 use App\Modules\Finance\Application\Ports\Projects\ProjectOperationRepository;
@@ -22,6 +25,14 @@ use App\Modules\Finance\Application\Ports\Quotes\QuoteOperationRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteReferenceResolver;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteSettings;
+use App\Modules\Finance\Infrastructure\Catalog\CompositeProjectDocumentCatalog;
+use App\Modules\Finance\Infrastructure\Compatibility\FinanceSeriesDocumentSource;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyBankReceiptDocumentSource;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyBankTransactionDocumentSource;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyFileDocumentSource;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyFinanceReceiptDocumentSource;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyGalleryPhotoDocumentSource;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDocumentSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftFromTimeAdapter;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectFinancialSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectRateSource;
@@ -36,6 +47,7 @@ use App\Modules\Finance\Infrastructure\Pdf\LocalAtomicDocumentObjectStore;
 use App\Modules\Finance\Infrastructure\Pdf\S3AtomicDocumentObjectStore;
 use App\Modules\Finance\Infrastructure\Persistence\DatabaseQuoteNumberAllocator;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentDocumentRevisionRepository;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectDocumentRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectOperationRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectWorkRepository;
@@ -117,6 +129,17 @@ final class FinanceServiceProvider extends ServiceProvider
         $this->app->bind(QuoteRepository::class, EloquentQuoteRepository::class);
         $this->app->bind(QuoteSettings::class, EloquentQuoteSettings::class);
         $this->app->bind(ProjectRepository::class, EloquentProjectRepository::class);
+        $this->app->bind(ProjectDocumentRepository::class, EloquentProjectDocumentRepository::class);
+        $this->app->singleton(ProjectDocumentCatalog::class, static fn (): ProjectDocumentCatalog => new CompositeProjectDocumentCatalog([
+            new FinanceSeriesDocumentSource,
+            new LegacyInvoiceDocumentSource,
+            new LegacyFileDocumentSource,
+            new LegacyGalleryPhotoDocumentSource,
+            new LegacyFinanceReceiptDocumentSource,
+            new LegacyBankTransactionDocumentSource,
+            new LegacyBankReceiptDocumentSource,
+        ]));
+        $this->app->alias(ProjectDocumentCatalog::class, ProjectDocumentSource::class);
         $this->app->bind(
             ProjectOperationRepository::class,
             EloquentProjectOperationRepository::class,

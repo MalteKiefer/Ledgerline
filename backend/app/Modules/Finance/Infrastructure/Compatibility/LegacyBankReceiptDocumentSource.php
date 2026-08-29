@@ -56,49 +56,97 @@ final class LegacyBankReceiptDocumentSource implements ProjectDocumentSource
         if ($ownerId !== $filter->ownerId || ($filter->sourceTypes !== [] && ! in_array('bank_transaction_receipt', $filter->sourceTypes, true))) {
             return new ProjectDocumentSourcePage([], null);
         }
-        $all = [];
-        $transactions = BankTransaction::query()->withoutGlobalScopes()->where('user_id', $ownerId)->whereNull('deleted_at')->whereNotNull('receipts')->orderByDesc('date')->orderByDesc('id')->limit(100)->get(['id', 'receipts']);
-        foreach ($transactions as $transaction) {
-            foreach ((array) $transaction->receipts as $receipt) {
-                if (! is_array($receipt) || ! isset($receipt['id']) || ! is_string($receipt['id'])
-                    || preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/Di', $receipt['id']) !== 1) {
-                    continue;
-                }$ref = new ProjectDocumentSourceRef('bank_transaction_receipt', 'bank-transaction-receipt:'.$transaction->id.':'.$receipt['id']);
-                $item = $this->resolve($ownerId, $ref);
-                if ($this->matches($item, $filter)) {
-                    $all[] = $item;
+        [$transactionOffset, $receiptOffset] = $this->position($filter->cursor);
+        $items = [];
+        $positions = [];
+        $exhausted = false;
+        while (count($items) <= $filter->perPage && ! $exhausted) {
+            $transactions = BankTransaction::query()->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereNull('deleted_at')
+                ->whereNotNull('receipts')
+                ->orderByDesc('date')
+                ->orderBy('id')
+                ->offset($transactionOffset)
+                ->limit(50)
+                ->get(['id', 'receipts']);
+            if ($transactions->isEmpty()) {
+                $exhausted = true;
+                break;
+            }
+            foreach ($transactions as $transaction) {
+                $receipts = array_values(array_filter(
+                    (array) $transaction->receipts,
+                    static fn (mixed $receipt): bool => is_array($receipt)
+                        && isset($receipt['id'])
+                        && is_string($receipt['id'])
+                        && preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/Di', $receipt['id']) === 1,
+                ));
+                usort($receipts, static fn (array $a, array $b): int => strtolower((string) $a['id']) <=> strtolower((string) $b['id']));
+                for ($index = $receiptOffset; $index < count($receipts); $index++) {
+                    $receiptId = (string) $receipts[$index]['id'];
+                    $ref = new ProjectDocumentSourceRef('bank_transaction_receipt', 'bank-transaction-receipt:'.$transaction->id.':'.$receiptId);
+                    $item = $this->resolve($ownerId, $ref);
+                    $nextPosition = $index + 1 < count($receipts)
+                        ? [$transactionOffset, $index + 1]
+                        : [$transactionOffset + 1, 0];
+                    if ($this->matches($item, $filter)) {
+                        $items[] = $item;
+                        $positions[] = $nextPosition;
+                        if (count($items) > $filter->perPage) {
+                            break 3;
+                        }
+                    }
                 }
+                $transactionOffset++;
+                $receiptOffset = 0;
+            }
+            if ($transactions->count() < 50) {
+                $exhausted = true;
             }
         }
-        usort($all, static fn ($a, $b) => (($b->occurredAt?->getTimestamp() ?? 0) <=> ($a->occurredAt?->getTimestamp() ?? 0)) ?: ($a->source->sourceReference <=> $b->source->sourceReference));
-        $offset = $this->offset($filter->cursor);
 
-        return new ProjectDocumentSourcePage(array_slice($all, $offset, $filter->perPage), count($all) > $offset + $filter->perPage ? base64_encode((string) ($offset + $filter->perPage)) : null);
+        $hasMore = count($items) > $filter->perPage;
+        $pageItems = array_slice($items, 0, $filter->perPage);
+        $nextPosition = $positions[$filter->perPage - 1] ?? null;
+
+        return new ProjectDocumentSourcePage($pageItems, $hasMore && is_array($nextPosition) ? $this->cursor($nextPosition[0], $nextPosition[1]) : null);
     }
 
     private function matches(ProjectDocumentMetadata $i, ProjectDocumentSourceFilter $f): bool
     {
         if ($f->q !== null && trim($f->q) !== '' && ! str_contains(mb_strtolower($i->title), mb_strtolower(trim($f->q)))) {
             return false;
-        }$g = $i->mime === 'application/pdf' ? 'pdf' : (is_string($i->mime) && str_starts_with($i->mime, 'image/') ? 'image' : 'other');
+        }
+        $g = $i->mime === 'application/pdf' ? 'pdf' : (is_string($i->mime) && str_starts_with($i->mime, 'image/') ? 'image' : 'other');
         if ($f->mimeGroups !== [] && ! in_array($g, $f->mimeGroups, true)) {
             return false;
-        }if ($f->from !== null && ($i->occurredAt === null || $i->occurredAt < $f->from)) {
+        }
+        if ($f->from !== null && ($i->occurredAt === null || $i->occurredAt < $f->from)) {
             return false;
         }
 
         return $f->to === null || ($i->occurredAt !== null && $i->occurredAt <= $f->to);
     }
 
-    private function offset(?string $c): int
+    /** @return array{int, int} */
+    private function position(?string $cursor): array
     {
-        if ($c === null) {
-            return 0;
-        }$v = base64_decode($c, true);
-        if (! is_string($v) || ! ctype_digit($v)) {
+        if ($cursor === null) {
+            return [0, 0];
+        }
+        $json = base64_decode($cursor, true);
+        $position = is_string($json) ? json_decode($json, true) : null;
+        if (! is_array($position) || ! is_int($position['transaction_offset'] ?? null) || ! is_int($position['receipt_offset'] ?? null)
+            || $position['transaction_offset'] < 0 || $position['receipt_offset'] < 0) {
             throw new InvalidArgumentException('Invalid source cursor.');
         }
 
-        return (int) $v;
+        return [$position['transaction_offset'], $position['receipt_offset']];
+    }
+
+    private function cursor(int $transactionOffset, int $receiptOffset): string
+    {
+        return base64_encode(json_encode(['transaction_offset' => $transactionOffset, 'receipt_offset' => $receiptOffset], JSON_THROW_ON_ERROR));
     }
 }

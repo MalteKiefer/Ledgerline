@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Finance\Application\Commands\Projects;
 
+use App\Modules\Finance\Application\DTOs\Projects\OperationReservation;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentView;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectId;
 use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentRepository;
+use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentSource;
 use App\Modules\Finance\Application\Ports\Projects\ProjectOperationRepository;
 use DateTimeImmutable;
 use DomainException;
@@ -14,23 +16,30 @@ use Throwable;
 
 final readonly class DetachProjectDocument
 {
-    public function __construct(private ProjectDocumentRepository $documents, private ProjectOperationRepository $operations) {}
+    public function __construct(private ProjectDocumentRepository $documents, private ProjectOperationRepository $operations, private ProjectDocumentSource $catalog) {}
 
     public function handle(ProjectId $projectId, int $linkId, int $actorId, DateTimeImmutable $at, string $idempotencyKey): ProjectDocumentView
     {
         $hash = hash('sha256', json_encode(['project' => strtolower($projectId->uuid), 'link_id' => $linkId, 'actor_id' => $actorId, 'occurred_at' => $at->format(DATE_ATOM)], JSON_THROW_ON_ERROR));
         $reservation = $this->operations->reserve($projectId->ownerId, 'project.document.detach', $idempotencyKey, $hash, $projectId);
         if ($reservation->status === 'replay') {
-            return $this->documents->get($projectId, $this->replayLinkId($reservation->result));
+            return $this->documents->get($projectId, $this->replayLinkId($reservation->result), $this->catalog);
         }
         if ($reservation->status === 'in_progress') {
-            throw new DomainException('operation_in_progress');
+            return $this->recover($reservation, $projectId, $linkId);
         }
         if ($reservation->status === 'failed') {
             $reservation = $this->operations->retryFailed($reservation);
+            $existing = $this->documents->get($projectId, $linkId, $this->catalog);
+            if ($existing->detachedAt !== null) {
+                $this->operations->succeed($reservation, ['link_id' => $existing->linkId]);
+
+                return $existing;
+            }
         }
         try {
-            $view = $this->documents->detach($projectId, $linkId, $actorId, $at);
+            $this->documents->detach($projectId, $linkId, $actorId, $at);
+            $view = $this->documents->get($projectId, $linkId, $this->catalog);
             $this->operations->succeed($reservation, ['link_id' => $view->linkId]);
 
             return $view;
@@ -49,5 +58,16 @@ final readonly class DetachProjectDocument
         }
 
         return $linkId;
+    }
+
+    private function recover(OperationReservation $reservation, ProjectId $projectId, int $linkId): ProjectDocumentView
+    {
+        $existing = $this->documents->get($projectId, $linkId, $this->catalog);
+        if ($existing->detachedAt === null) {
+            throw new DomainException('operation_in_progress');
+        }
+        $this->operations->succeed($reservation, ['link_id' => $existing->linkId]);
+
+        return $existing;
     }
 }

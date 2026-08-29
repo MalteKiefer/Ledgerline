@@ -16,28 +16,24 @@ Task 8 ist als owner-validierter, read-only Source Catalog mit append-only Proje
 - Idempotenz bindet den Schlüssel an den vollständigen kanonischen Command-Input einschließlich Project, Quelle/Revision, Rolle, Actor und Zeitpunkt. Replay lädt exakt das gespeicherte Link-Ergebnis; Key-Reuse mit anderem Input wird vom Project-Operation-Repository abgewiesen.
 - Link-Listen sind owner- und project-begrenzt, sortieren nach `attached_at DESC, id DESC` und zeigen bei gelöschten/fehlenden Quellen weiterhin den historischen Snapshot. Source-Suche ist pro Adapter begrenzt; der Composite Catalog führt deterministisch nach Ereigniszeit, Typ und Referenz zusammen.
 
-## Erforderliche Container-Bindings (bewusst nicht eingetragen)
+## Review-Runde 1
 
-`FinanceServiceProvider.php` wurde gemäß Auftrag weder geändert noch gestaged. Für die spätere Integration sind erforderlich:
-
-1. `ProjectDocumentRepository::class` auf `EloquentProjectDocumentRepository::class` binden.
-2. `ProjectDocumentCatalog::class` als Singleton mit `CompositeProjectDocumentCatalog` registrieren und genau diese sieben Adapter übergeben:
-   - `FinanceSeriesDocumentSource`
-   - `LegacyInvoiceDocumentSource`
-   - `LegacyFileDocumentSource`
-   - `LegacyGalleryPhotoDocumentSource`
-   - `LegacyFinanceReceiptDocumentSource`
-   - `LegacyBankTransactionDocumentSource`
-   - `LegacyBankReceiptDocumentSource`
-3. `ProjectDocumentSource::class` auf dasselbe `ProjectDocumentCatalog`-Singleton aliasen/binden, damit Commands und Queries denselben vollständigen Katalog erhalten.
+- `FinanceServiceProvider` bindet `ProjectDocumentRepository` und genau einen geteilten `CompositeProjectDocumentCatalog` mit allen sieben Adaptern; `ProjectDocumentCatalog` und `ProjectDocumentSource` zeigen auf dieselbe Singleton-Instanz. Bestehende Bindings bleiben erhalten.
+- Attach/Detach besitzen einen dauerhaften resumierbaren Checkpoint: Falls der Prozess nach Link+Activity, aber vor Operation-Completion ausfällt, findet nur der identische reservierte/fehlgeschlagene Request seine exakte Historienzeile, schließt die Operation ab und gibt denselben Link zurück. Neue Idempotency Keys behalten Duplicate-/Already-detached-Semantik.
+- Replay und Detach liefern wieder aufgelöste `current`-Metadaten und korrekte `available|deleted|missing`-Availability; der historische Snapshot bleibt unverändert.
+- Linkfilter verwenden explizit `state=active|detached|all`. Auch historische/migrierte Snapshot-JSON-Werte werden beim Lesen strikt auf die öffentliche Allowlist und skalare Werte reduziert.
+- UUID-basierte Series- und eingebettete Receipt-Referenzen werden vor Validierung, Hashing und Speicherung kleingeschrieben.
+- Der Composite Catalog verwendet einen filtergebundenen k-way Cursor mit unabhängiger Adapterposition statt eines globalen Offsets. Dadurch gibt es keine 100er-Grenze oder Wiederholungen; auch eingebettete Bankbelege streamen über beliebig viele Transaktionen.
+- Finance-Series veröffentlichen PDF-Capabilities nur für tatsächlich registrierte Routen. Die Invoice-Route lautet exakt `api.finance-v2.invoices.revisions.pdf`; bei fehlender Route bleiben Capability und Parameter leer.
+- Ein opt-in PostgreSQL-Zweiprozess-Test prüft die Serialisierung gleicher und verschiedener Idempotency Keys auf genau einen aktiven Link.
 
 ## Verifikation
 
-- `ProjectDocumentsTest + FinanceRelationalTest + FilesRelationalTest`: **56 Tests, 362 Assertions, grün**.
+- `ProjectDocumentsTest + FinanceRelationalTest + FilesRelationalTest`: **69 Tests, 68 bestanden, 455 Assertions, grün**; der PostgreSQL-Concurrency-Test ist ohne `FINANCE_TEST_PGSQL_URL` erwartungsgemäß übersprungen.
 - Task-8-Pint im Check-Modus: **grün**.
 - PHPStan auf allen Task-8-Produktionsdateien mit 1 GiB: **0 Fehler**.
 - Gesamter Project-Testordner: nicht vollständig ausführbar, weil `phpunit.xml` beim Application-Reboot wieder auf 128 MiB begrenzt und bereits beim Laden von `routes/web.php` erschöpft. Ein separater Baseline-Lauf zeigte zusätzlich den unabhängigen bestehenden Legacy-Gallery/S3-Konfigurationsfehler (fehlender Bucket). Der fokussierte Task-8- und relationale Satz ist davon nicht betroffen.
 
 ## Scope
 
-Keine Änderungen an Provider, HTTP-Workflow, Quote-Workflow, Migrationen oder Quellmodellen. Fremde parallele Quote/PDF-Dateien im gemeinsamen Worktree wurden nicht bearbeitet und werden nicht committed.
+Keine Änderungen an HTTP-Workflow, Quote-Workflow, Migrationen oder Quellmodellen. Der Provider wurde ausschließlich additiv um Project-Document-Bindings ergänzt. Fremde parallele Quote/Invoice-Dateien im gemeinsamen Worktree wurden nicht bearbeitet und werden nicht committed.

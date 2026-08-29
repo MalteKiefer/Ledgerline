@@ -10,13 +10,24 @@ use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourcePage;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourceRef;
 use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentSource;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
+use Closure;
 use DateTimeImmutable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
 
 final class FinanceSeriesDocumentSource implements ProjectDocumentSource
 {
+    /** @var Closure(string): bool */
+    private readonly Closure $routeExists;
+
+    /** @param (Closure(string): bool)|null $routeExists */
+    public function __construct(?Closure $routeExists = null)
+    {
+        $this->routeExists = $routeExists ?? static fn (string $route): bool => Route::has($route);
+    }
+
     public function supports(string $sourceType): bool
     {
         return $sourceType === 'finance_series';
@@ -49,12 +60,18 @@ final class FinanceSeriesDocumentSource implements ProjectDocumentSource
         $title = ucfirst($type).($number !== null && $number !== '' ? ' '.$number : ' revision '.$revisionNumber);
         $published = $row->published_at !== null;
         $occurredAt = is_string($row->published_at) ? $row->published_at : $row->created_at;
+        $route = match ($type) {
+            'quote' => 'api.finance-v2.quotes.revisions.pdf',
+            'invoice' => 'api.finance-v2.invoices.revisions.pdf',
+            default => null,
+        };
+        $routeAvailable = $published && $route !== null && ($this->routeExists)($route);
 
         return new ProjectDocumentMetadata($ref, $title, $published ? 'application/pdf' : null, null,
             is_string($row->pdf_sha256) ? $row->pdf_sha256 : null, $type, 'Revision '.$revisionNumber,
             new DateTimeImmutable($occurredAt), 'available',
-            $published ? 'api.finance-v2.'.$type.'s.revisions.pdf' : null,
-            $published ? [$type => $uuid, 'revision' => $revisionNumber] : []);
+            $routeAvailable ? $route : null,
+            $routeAvailable ? [$type => $uuid, 'revision' => $revisionNumber] : []);
     }
 
     public function search(int $ownerId, ProjectDocumentSourceFilter $filter): ProjectDocumentSourcePage
