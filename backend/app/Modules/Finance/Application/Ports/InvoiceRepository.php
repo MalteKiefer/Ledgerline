@@ -23,6 +23,15 @@ interface InvoiceRepository
 
     public function createDraftFromSource(InvoiceDraftSource $source, IdempotencyKey $key): InvoiceView;
 
+    /**
+     * @param  Closure(InvoiceView, int, string): InvoiceDraftSource  $buildSource
+     */
+    public function createCancellationDraft(
+        InvoiceId $originalId,
+        IdempotencyKey $key,
+        Closure $buildSource,
+    ): InvoiceId;
+
     public function updateDraft(InvoiceId $id, InvoiceDraftData $data, int $expectedVersion): InvoiceView;
 
     public function deleteDraft(InvoiceId $id, int $expectedVersion): void;

@@ -132,6 +132,135 @@ final class EloquentInvoiceRepository implements InvoiceRepository
         }, 1);
     }
 
+    public function createCancellationDraft(
+        InvoiceId $originalId,
+        IdempotencyKey $key,
+        Closure $buildSource,
+    ): InvoiceId {
+        $ownerId = $this->ownerId();
+        $requestHash = hash('sha256', "invoice.cancel:{$originalId->value}");
+
+        return DB::transaction(function () use (
+            $ownerId,
+            $originalId,
+            $key,
+            $buildSource,
+            $requestHash,
+        ): InvoiceId {
+            try {
+                $reservation = $this->idempotency->reserve('invoice.cancel', $key, $requestHash);
+            } catch (DomainException $exception) {
+                if ($exception->getMessage() !== 'idempotency_key_reused') {
+                    throw $exception;
+                }
+
+                throw new DomainException('idempotency_conflict', previous: $exception);
+            }
+            if ($reservation['status'] === 'replay') {
+                $invoiceId = $reservation['response_payload']['invoice_id'] ?? null;
+                if (! is_int($invoiceId)) {
+                    throw new LogicException('Stored invoice cancellation result is incomplete.');
+                }
+
+                return new InvoiceId($invoiceId);
+            }
+            if ($reservation['status'] !== 'new') {
+                throw new DomainException('idempotency_'.$reservation['status']);
+            }
+
+            $locator = $this->ownedInvoice($originalId);
+            $series = DocumentSeriesRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($locator->document_series_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $original = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($originalId->value)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $revision = DocumentRevisionRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($original->current_revision_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $snapshot = $this->snapshot($revision->getAttribute('snapshot'));
+            $snapshotSha256 = hash('sha256', json_encode(
+                $this->canonicalize($snapshot),
+                JSON_THROW_ON_ERROR,
+            ));
+            $existing = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('cancels_invoice_id', $originalId->value)
+                ->lockForUpdate()
+                ->first();
+            if ($existing instanceof InvoiceRecord) {
+                if ((string) $existing->kind !== 'credit_note'
+                    || (string) $existing->source_type !== 'cancellation'
+                    || (string) $existing->source_key !== (string) $original->uuid
+                    || (int) $existing->source_revision_id !== (int) $revision->id
+                    || ! hash_equals((string) $existing->source_snapshot_sha256, $snapshotSha256)) {
+                    throw new DomainException('cancellation_source_conflict');
+                }
+                $cancellationId = (int) $existing->id;
+            } else {
+                if ((string) $original->kind === 'credit_note') {
+                    throw new DomainException('credit_note_cannot_be_cancelled');
+                }
+                if (! in_array((string) $original->workflow_status, ['finalized', 'sent'], true)
+                    || (string) $series->status !== 'finalized'
+                    || (string) $revision->status !== 'published'
+                    || $revision->published_at === null) {
+                    throw new DomainException('invoice_not_cancellable');
+                }
+                $source = $buildSource(
+                    $this->view($original),
+                    (int) $revision->id,
+                    $snapshotSha256,
+                );
+                if (! $source instanceof InvoiceDraftSource
+                    || $source->sourceType !== 'cancellation'
+                    || $source->sourceKey !== (string) $original->uuid
+                    || $source->sourceRevisionId !== (int) $revision->id
+                    || ! hash_equals($source->sourceSnapshotSha256, $snapshotSha256)) {
+                    throw new DomainException('cancellation_source_conflict');
+                }
+                $calculated = $this->calculatedDraft(
+                    $source->draft,
+                    $source,
+                    $this->sourceRequestHash($source),
+                );
+                $cancellationId = $this->persistDraft(
+                    $ownerId,
+                    $source->draft,
+                    $calculated,
+                    $source,
+                    'credit_note',
+                    $originalId->value,
+                )->value;
+                $this->appendActivity(
+                    $ownerId,
+                    (int) $series->id,
+                    (int) $revision->id,
+                    'invoice.cancellation.requested',
+                    (int) $original->version,
+                );
+            }
+
+            $this->idempotency->complete($reservation['record_id'], 201, [
+                'invoice_id' => $cancellationId,
+            ]);
+
+            return new InvoiceId($cancellationId);
+        }, 1);
+    }
+
     public function updateDraft(InvoiceId $id, InvoiceDraftData $data, int $expectedVersion): InvoiceView
     {
         if ($expectedVersion < 0) {
@@ -156,6 +285,9 @@ final class EloquentInvoiceRepository implements InvoiceRepository
 
             if ((string) $invoice->workflow_status !== 'draft') {
                 throw new DomainException('invoice_not_editable');
+            }
+            if ((string) $invoice->source_type === 'cancellation') {
+                throw new DomainException('cancellation_draft_not_editable');
             }
             if ((int) $invoice->version !== $expectedVersion) {
                 throw new DomainException('invoice_version_conflict');
@@ -1513,6 +1645,8 @@ final class EloquentInvoiceRepository implements InvoiceRepository
         InvoiceDraftData $data,
         array $calculated,
         ?InvoiceDraftSource $source = null,
+        string $kind = 'invoice',
+        ?int $cancelsInvoiceId = null,
     ): InvoiceId {
         $this->assertOwnedReferences($ownerId, $data);
         $series = new DocumentSeriesRecord;
@@ -1541,7 +1675,7 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             'uuid' => (string) Str::uuid(),
             'document_series_id' => $series->id,
             'current_revision_id' => $revision->id,
-            'kind' => 'invoice',
+            'kind' => $kind,
             'issue_date' => $data->issueDate->format('Y-m-d'),
             'due_date' => $data->dueDate->format('Y-m-d'),
             'partner_id' => $data->partnerId,
@@ -1550,6 +1684,7 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             'source_key' => $source?->sourceKey,
             'source_revision_id' => $source?->sourceRevisionId,
             'source_snapshot_sha256' => $source?->sourceSnapshotSha256,
+            'cancels_invoice_id' => $cancelsInvoiceId,
             'workflow_status' => 'draft',
             'allocated_minor' => 0,
             'open_minor' => $calculated['gross'],

@@ -111,7 +111,9 @@ final class DocumentCalculator
             $discountMinor = $discount->fixedMinor();
         }
 
-        if ($discountMinor < 0 || ($discountMinor > 0 && $discountMinor > $totalNet)) {
+        if (($totalNet > 0 && ($discountMinor < 0 || $discountMinor > $totalNet))
+            || ($totalNet < 0 && ($discountMinor > 0 || $discountMinor < $totalNet))
+            || ($totalNet === 0 && $discountMinor !== 0)) {
             throw new InvalidDocument('The discount must be between zero and the document net.');
         }
 
@@ -184,8 +186,11 @@ final class DocumentCalculator
 
     private function multiplyDivideTowardZero(int $left, int $right, int $denominator): int
     {
-        $negative = ($left < 0) !== ($right < 0);
-        $quotient = $this->floorMultiplyDivide(abs($left), abs($right), $denominator);
+        if ($denominator === 0 || $left === PHP_INT_MIN || $right === PHP_INT_MIN || $denominator === PHP_INT_MIN) {
+            throw new InvalidDocument('A proportional discount share exceeds the supported money range.');
+        }
+        $negative = (($left < 0) !== ($right < 0)) !== ($denominator < 0);
+        $quotient = $this->floorMultiplyDivide(abs($left), abs($right), abs($denominator));
 
         return $negative ? -$quotient : $quotient;
     }
