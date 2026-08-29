@@ -16,6 +16,8 @@ use Throwable;
 
 final class QuoteRevisionPdfController
 {
+    private const string MAX_REVISION_ID = '9223372036854775807';
+
     public function __invoke(
         QuoteRevisionPdfRequest $request,
         string $quote,
@@ -129,10 +131,10 @@ final class QuoteRevisionPdfController
 
     private function revisionId(string $value): int
     {
-        $maximum = (string) PHP_INT_MAX;
         if (preg_match('/\A[1-9][0-9]*\z/D', $value) !== 1
-            || strlen($value) > strlen($maximum)
-            || (strlen($value) === strlen($maximum) && strcmp($value, $maximum) > 0)) {
+            || strlen($value) > strlen(self::MAX_REVISION_ID)
+            || (strlen($value) === strlen(self::MAX_REVISION_ID)
+                && strcmp($value, self::MAX_REVISION_ID) > 0)) {
             abort(404);
         }
 

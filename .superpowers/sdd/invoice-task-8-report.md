@@ -49,20 +49,40 @@ Die wesentlichen Rot-Grün-Schritte wurden beobachtet:
 
 ## Provider-Integration
 
-`FinanceServiceProvider` wurde gemäß Aufgabenabgrenzung nicht verändert oder gestaged.
+In Review-Runde 1 wurde das zunächst reservierte Provider-Fenster nach dem isolierten Project-Commit `b7ccc724` freigegeben. Die Invoice-/Storage-Bindings wurden danach ausschließlich additiv auf diesen Stand gesetzt; alle Project- und Quote-Bindings bleiben erhalten.
 
-Bereits vorhanden und für Task 8 ausreichend:
+Produktiv gebunden und per echter Container-Auflösung geprüft sind:
 
 - `DocumentRenderer::class => BladeDocumentRenderer::class`
-- `DocumentStorage` als `FlysystemDocumentStorage` mit atomarem Local- oder S3-Store
+- `AtomicDocumentObjectStore` über die bestehende fail-closed Local-/S3-Factory
+- `DocumentStorage` als `FlysystemDocumentStorage` über denselben atomaren Store-Vertrag
+- `OrphanDocumentReconciler` über den atomaren Store und die sichere Standard-Grace-Period
+- `IdempotencyStore::class => EloquentIdempotencyStore::class`
+- `InvoiceRepository::class => EloquentInvoiceRepository::class`
+- `InvoiceNumberAllocator::class => LockedInvoiceNumberAllocator::class`
+- `InventoryMovementPort::class => LegacyStockLedgerAdapter::class`
 
-Für eine geplante Scheduler-/Command-Auflösung des neuen Reconciler-Dienstes muss der Integrationsschritt den aktuell gewählten `AtomicDocumentObjectStore` als eigenen Container-Vertrag verfügbar machen und daraus `OrphanDocumentReconciler` mit der gewünschten Grace Period bauen. Der Reconciler wird in Task 8 bewusst nicht automatisch geplant, weil weder Zeitplan noch Laufumgebung Teil des Tasks sind.
+Damit sind sowohl `FinalizeInvoice` als auch `OrphanDocumentReconciler` direkt über den Laravel-Container auflösbar. Der Reconciler wird weiterhin nicht automatisch geplant, weil weder Zeitplan noch Laufumgebung Teil des Tasks sind.
 
-Die schon aus Invoice Task 7 gemeldeten Bindings für `InvoiceRepository`, `InvoiceNumberAllocator` und `InventoryMovementPort` bleiben ebenfalls Voraussetzung für eine containeraufgelöste `FinalizeInvoice`-Ausführung; die Task-8-Tests verwenden explizite Produktionsadapter.
+## Review-Runde 1
+
+- Beide PDF-Controller nehmen die Revision nun als String entgegen und wandeln erst nach strikter Prüfung auf eine positive, kanonische Ganzzahl innerhalb des PostgreSQL-`BIGINT`-Maximums um. Null, führende Nullwerte und übergroße 64-/100-stellige IDs ergeben 404 statt `TypeError`/500. Der OpenAPI-Vertrag nennt `int64`, Minimum 1 und Maximum `9223372036854775807`.
+- `AtomicDocumentObjectStore::deleteIfOwned` liefert jetzt `true` ausschließlich nach einer tatsächlich bestätigten, generationsgebundenen Löschung. Fehlende Objekte, Proof-/Digest-/Generationsabweichungen und S3-404/409/412 liefern `false`; unerwartete Backend-Fehler bleiben Exceptions.
+- `OrphanDocumentReconciler` erhöht seinen Zähler nur bei `true`. Reale AWS-SDK-Command-Tests reproduzierten sowohl einen Generationstausch zwischen Discovery und Delete als auch einen bedingten 412-Konflikt; beide werden nicht mehr als gelöscht gezählt.
+- Der lokale Store beweist direkt `false` für einen veralteten Proof, `true` für die eigene Generation und erneut `false` nach bereits erfolgter Löschung.
+- Der Container-Test war vor dem Provider-Fenster rot (`IdempotencyStore` nicht instanziierbar) und löst nach den additiven Bindings alle Ports, `FinalizeInvoice` und den Reconciler produktiv auf.
+- Nicht-Provider-Review-Commit: `5d250e69` (`fix(finance): harden document cleanup and routes`).
+
+Finale Review-Verifikation:
+
+- Invoice-/Quote-PDF-Suiten: 36 Tests entdeckt, 35 bestanden, 170 Assertions, 1 optionaler `pdftotext`-Skip.
+- Provider-, PDF-, Draft-, Source-, Finalization-, Revision-, Project-Provider- und OpenAPI-Suiten gemeinsam: 123 Tests entdeckt, 120 bestanden, 700 Assertions, 3 opt-in Skips.
+- Task-8-Provider- und Produktionspfade mit PHPStan: 0 Fehler; der vollständige Finance-Lauf enthält weiterhin ausschließlich die zwei oben genannten, taskfremden Project-Work-Typfindings.
+- Pint auf allen Review-Pfaden einschließlich Provider und Provider-Test: bestanden.
 
 ## Verbleibende Bedenken
 
 - `pdftotext` ist auf dem lokalen Windows-Host nicht installiert. Der Testpfad ist vorhanden und läuft automatisch, sobald Poppler verfügbar ist; lokale Sichtbarkeit/escaping wird zusätzlich direkt an der gerenderten allowlisteten HTML-View geprüft.
 - Der Stream prüft den vollständigen SHA-256-Digest vor Ausgabe und hält dafür die PDF-Bytes im Speicher. Das ist für Rechnungs-PDFs sicher und vertretbar; sehr große zukünftige Dokumentklassen bräuchten eine verifizierte Streamingstrategie.
 - Die S3-Tests laufen gegen das echte AWS-SDK-Command-Modell mit Mock-Transport. Der eingesetzte S3/R2-kompatible Dienst muss die bereits vom gemeinsamen Storage-Vertrag geforderten bedingten Delete-Parameter unterstützen; bei fehlender Unterstützung schlägt Cleanup geschlossen fehl.
-- Kein Provider-Change, Push, Tag oder Deployment ist enthalten.
+- Kein Push, Tag oder Deployment ist enthalten.

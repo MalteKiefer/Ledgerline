@@ -337,7 +337,7 @@ final class QuotePdfTest extends TestCase
         [$owner, $quoteUuid] = $this->publishedQuote();
         $token = $owner->createToken('device', ['device'])->plainTextToken;
 
-        foreach (['0', '9223372036854775808', str_repeat('9', 100)] as $revision) {
+        foreach (['0', '00', '9223372036854775808', str_repeat('9', 100)] as $revision) {
             $this->withHeader('Authorization', 'Bearer '.$token)
                 ->get(route('api.finance-v2.quotes.revisions.pdf', [$quoteUuid, $revision]))
                 ->assertNotFound();
