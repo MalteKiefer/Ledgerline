@@ -37,8 +37,12 @@ return new class extends Migration
 
         Schema::table('finance_quote_deliveries', function (Blueprint $table): void {
             $table->uuid('uuid')->nullable(false)->change();
+            if (DB::getDriverName() === 'sqlite') {
+                $table->enum('state', ['queued', 'sending', 'sent', 'failed'])->change();
+            }
             $table->unique(['user_id', 'uuid'], 'finance_quote_deliveries_owner_uuid_unique');
         });
+        $this->restoreSqliteDeliveryChecks();
     }
 
     public function down(): void
@@ -46,6 +50,29 @@ return new class extends Migration
         Schema::table('finance_quote_deliveries', function (Blueprint $table): void {
             $table->dropUnique('finance_quote_deliveries_owner_uuid_unique');
             $table->dropColumn('uuid');
+            if (DB::getDriverName() === 'sqlite') {
+                $table->enum('state', ['queued', 'sending', 'sent', 'failed'])->change();
+            }
         });
+        $this->restoreSqliteDeliveryChecks();
+    }
+
+    private function restoreSqliteDeliveryChecks(): void
+    {
+        if (DB::getDriverName() !== 'sqlite') {
+            return;
+        }
+
+        foreach (['insert', 'update'] as $operation) {
+            DB::unprepared("DROP TRIGGER IF EXISTS finance_quote_deliveries_attempts_{$operation}_check");
+            DB::unprepared(<<<SQL
+                CREATE TRIGGER finance_quote_deliveries_attempts_{$operation}_check
+                BEFORE {$operation} ON finance_quote_deliveries
+                WHEN NEW.attempts < 0
+                BEGIN
+                    SELECT RAISE(ABORT, 'finance_quote_deliveries_attempts_check');
+                END
+                SQL);
+        }
     }
 };

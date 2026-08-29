@@ -39,7 +39,7 @@ final class QuoteSchemaTest extends TestCase
                 'completed_at',
             ],
             'finance_quote_deliveries' => [
-                'id', 'user_id', 'document_series_id', 'document_revision_id',
+                'id', 'uuid', 'user_id', 'document_series_id', 'document_revision_id',
                 'recipient', 'recipient_domain', 'message_id', 'state', 'attempts',
                 'last_error_code', 'queued_at', 'sent_at', 'failed_at',
             ],
@@ -648,13 +648,19 @@ final class QuoteSchemaTest extends TestCase
         string $messageId,
         array $overrides = [],
     ): void {
+        $hex = hash('sha256', $messageId);
+        $hex[12] = '4';
+        $hex[16] = 'a';
+        $uuid = substr($hex, 0, 8).'-'.substr($hex, 8, 4).'-'.substr($hex, 12, 4)
+            .'-'.substr($hex, 16, 4).'-'.substr($hex, 20, 12);
         DB::table('finance_quote_deliveries')->insert(array_merge([
+            'uuid' => $uuid,
             'user_id' => $userId,
             'document_series_id' => $seriesId,
             'document_revision_id' => $revisionId,
             'recipient' => 'billing@example.com',
             'recipient_domain' => 'example.com',
-            'message_id' => $messageId,
+            'message_id' => '<'.$uuid.'@quotes.ledgerline>',
             'state' => 'queued',
             'attempts' => 0,
             'last_error_code' => null,

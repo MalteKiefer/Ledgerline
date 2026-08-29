@@ -28,6 +28,8 @@ interface QuoteRepository
         array $payload,
         DocumentTotals $totals,
         ?int $partnerId = null,
+        ?string $sourceType = null,
+        ?int $sourceId = null,
     ): QuoteView;
 
     /**

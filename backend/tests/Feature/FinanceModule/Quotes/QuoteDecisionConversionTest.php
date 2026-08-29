@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\FinanceModule\Quotes;
 
+use App\Models\FinanceProduct;
+use App\Models\FinanceStockMovement;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Models\UserSetting;
@@ -26,7 +28,11 @@ use App\Modules\Finance\Application\Ports\Quotes\QuoteOperationRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteToInvoicePort;
 use App\Modules\Finance\Domain\Quotes\Exception\InvalidQuoteAction;
+use App\Modules\Finance\Domain\Shared\DocumentTotals;
+use App\Modules\Finance\Domain\Shared\Money;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftAdapter;
+use App\Services\Finance\FinanceReports;
+use App\Services\Finance\StockLedger;
 use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -189,6 +195,51 @@ final class QuoteDecisionConversionTest extends TestCase
         $this->assertSame('Intro', $first->draft['intro_text']);
         $this->assertSame('Outro', $first->draft['outro_text']);
         $this->assertSame('Internal only', $first->draft['internal_note']);
+
+        $firstSource = DB::table('finance_document_series')
+            ->where('user_id', $owner->id)
+            ->where('uuid', $first->id->uuid)
+            ->first(['source_type', 'source_id']);
+        $secondSource = DB::table('finance_document_series')
+            ->where('user_id', $owner->id)
+            ->where('uuid', $second->id->uuid)
+            ->first(['source_type', 'source_id']);
+        $this->assertSame('quote_duplicate_operation', $firstSource?->source_type);
+        $this->assertIsInt($firstSource?->source_id);
+        $this->assertSame('quote_duplicate_operation', $secondSource?->source_type);
+        $this->assertNotSame($firstSource?->source_id, $secondSource?->source_id);
+        $this->assertSame($this->seriesId($source), (int) DB::table('finance_quote_operations')
+            ->where('user_id', $owner->id)
+            ->where('id', $firstSource?->source_id)
+            ->value('document_series_id'));
+
+        $otherOwner = User::factory()->create();
+        $foreignOperationId = (int) DB::table('finance_quote_operations')->insertGetId([
+            'user_id' => $otherOwner->id,
+            'document_series_id' => null,
+            'operation' => 'duplicate',
+            'idempotency_key' => 'foreign-provenance',
+            'request_sha256' => str_repeat('a', 64),
+            'state' => 'reserved',
+            'result' => null,
+            'error_code' => null,
+            'started_at' => now(),
+            'completed_at' => null,
+        ]);
+        $this->assertModelNotFound(fn () => $this->repository()->createDraft(
+            (int) $owner->id,
+            $first->draft,
+            new DocumentTotals(
+                Money::fromMinor($first->netMinor, $first->currency),
+                Money::fromMinor($first->vatMinor, $first->currency),
+                Money::fromMinor($first->grossMinor, $first->currency),
+                Money::fromMinor(0, $first->currency),
+                [],
+            ),
+            $first->partnerId,
+            'quote_duplicate_operation',
+            $foreignOperationId,
+        ));
     }
 
     public function test_initial_draft_can_be_duplicated_but_wrong_selected_revision_cannot(): void
@@ -383,17 +434,46 @@ final class QuoteDecisionConversionTest extends TestCase
         ));
     }
 
-    public function test_legacy_adapter_creates_owner_scoped_invoice_draft_from_immutable_snapshot(): void
+    public function test_legacy_adapter_maps_snapshot_to_editor_reporting_print_and_stock_contracts(): void
     {
         $owner = User::factory()->create();
+        $this->actingAs($owner);
         UserSetting::for((int) $owner->id)->forceFill([
             'timezone' => 'Europe/Berlin',
             'invoice_payment_terms_days' => 21,
         ])->save();
-        $quote = $this->publishedQuote($owner, '2026-09-27');
+
+        $product = new FinanceProduct;
+        $product->fill([
+            'kind' => 'hardware',
+            'sku' => 'SW-24',
+            'name' => 'Managed Switch',
+            'unit' => 'piece',
+            'price_net' => '100.00',
+            'vat_rate' => '19.00',
+            'track_stock' => true,
+        ]);
+        $product->save();
+        StockLedger::move($product, '10.0000', 'purchase');
+
+        $draft = $this->draft(
+            issueDate: '2026-08-28',
+            validUntil: '2026-09-27',
+            lines: [new QuoteLineData(
+                'Managed Switch', '2.5000', 'piece', '100.00', '19.00', 'hardware', (int) $product->id,
+            )],
+            discountType: 'fixed',
+            discountValue: '20.00',
+        );
+        $quote = $this->publishedQuote($owner, '2026-09-27', 'legacy-contract', $draft);
+        $this->app->make(AcceptQuote::class)->handle(new DecideQuoteData(
+            $quote->id, 0, $quote->currentRevision->id, 'accept-legacy-contract',
+        ));
         $adapter = $this->app->make(LegacyInvoiceDraftAdapter::class);
 
-        $target = $adapter->createDraft((int) $owner->id, $quote->currentRevision, $quote->currentRevision->snapshot);
+        $target = $this->convertCommand($adapter)->handle(new ConvertQuoteToInvoiceData(
+            $quote->id, 1, $quote->currentRevision->id, 'convert-legacy-contract',
+        ));
         $invoice = Invoice::query()->withoutGlobalScope('owner')->findOrFail($target->targetId);
 
         $this->assertSame('legacy-invoice:'.$invoice->id, $target->targetReference);
@@ -403,12 +483,71 @@ final class QuoteDecisionConversionTest extends TestCase
         $this->assertNull($invoice->number);
         $this->assertSame('2026-09-27', $invoice->issue_date?->format('Y-m-d'));
         $this->assertSame('2026-10-18', $invoice->due_date?->format('Y-m-d'));
-        $this->assertSame('225.00', $invoice->net);
-        $this->assertSame('42.75', $invoice->vat);
-        $this->assertSame('267.75', $invoice->gross);
+        $this->assertSame('230.00', $invoice->net);
+        $this->assertSame('43.70', $invoice->vat);
+        $this->assertSame('273.70', $invoice->gross);
         $this->assertSame($quote->currentRevision->snapshot['customer'], $invoice->customer);
-        $this->assertSame($quote->currentRevision->snapshot['lines'], $invoice->lines);
+        $this->assertSame([[
+            'desc' => 'Managed Switch',
+            'qty' => '2.5000',
+            'unit' => 'piece',
+            'unitPrice' => '100.00',
+            'vatRate' => '19.00',
+            'kind' => 'hardware',
+            'productId' => (int) $product->id,
+        ]], $invoice->lines);
+        $this->assertSame('amount', $invoice->discount_type);
+        $this->assertSame('20.00', $invoice->discount_value);
+
+        $reported = $this->app->make(FinanceReports::class)->invoiceTotals($invoice);
+        $this->assertEqualsWithDelta(230.00, $reported['net'], 0.001);
+        $this->assertEqualsWithDelta(43.70, $reported['vat'], 0.001);
+        $this->assertEqualsWithDelta(273.70, $reported['gross'], 0.001);
+
+        $this->getJson(route('api.finance.data'))
+            ->assertOk()
+            ->assertJsonPath('invoices.0.lines.0.desc', 'Managed Switch')
+            ->assertJsonPath('invoices.0.lines.0.qty', '2.5000')
+            ->assertJsonPath('invoices.0.lines.0.unitPrice', '100.00')
+            ->assertJsonPath('invoices.0.lines.0.vatRate', '19.00')
+            ->assertJsonPath('invoices.0.lines.0.productId', (int) $product->id)
+            ->assertJsonMissingPath('invoices.0.lines.0.description')
+            ->assertJsonMissingPath('invoices.0.lines.0.unit_price');
+
+        $this->assertSame(1, FinanceStockMovement::query()->count());
+        $this->postJson(route('api.finance.invoices.finalize', $invoice))->assertOk();
+        $this->assertSame('7.5000', (string) $product->fresh()?->stock_qty);
+        $sale = FinanceStockMovement::query()->where('reason', 'sale')->sole();
+        $this->assertSame('-2.5000', (string) $sale->qty);
+        $this->assertSame('invoice', $sale->ref_type);
+        $this->assertSame((string) $invoice->id, $sale->ref_id);
         $this->assertSame(0, DB::table('finance_payments')->count());
+    }
+
+    public function test_legacy_adapter_maps_no_discount_to_legacy_nulls(): void
+    {
+        $owner = User::factory()->create();
+        $quote = $this->publishedQuote(
+            $owner,
+            '2026-09-27',
+            'legacy-no-discount',
+            $this->draft(
+                issueDate: '2026-08-28',
+                validUntil: '2026-09-27',
+                discountType: 'none',
+                discountValue: null,
+            ),
+        );
+
+        $target = $this->app->make(LegacyInvoiceDraftAdapter::class)->createDraft(
+            (int) $owner->id,
+            $quote->currentRevision,
+            $quote->currentRevision->snapshot,
+        );
+        $invoice = Invoice::query()->withoutGlobalScope('owner')->findOrFail($target->targetId);
+
+        $this->assertNull($invoice->discount_type);
+        $this->assertNull($invoice->discount_value);
     }
 
     public function test_legacy_adapter_rejects_foreign_partner_references(): void
@@ -504,12 +643,16 @@ final class QuoteDecisionConversionTest extends TestCase
         );
     }
 
-    private function publishedQuote(User $owner, string $validUntil, string $suffix = 'quote'): QuoteView
-    {
+    private function publishedQuote(
+        User $owner,
+        string $validUntil,
+        string $suffix = 'quote',
+        ?QuoteDraftData $draft = null,
+    ): QuoteView {
         $created = $this->app->make(CreateQuote::class)->handle(
             (int) $owner->id,
             'create-'.$suffix.'-'.$owner->id,
-            $this->draft(issueDate: '2026-08-28', validUntil: $validUntil),
+            $draft ?? $this->draft(issueDate: '2026-08-28', validUntil: $validUntil),
         );
         $seriesId = $this->seriesId($created);
         $snapshot = [
@@ -564,13 +707,19 @@ final class QuoteDecisionConversionTest extends TestCase
         return [$this->repository()->get($quote->id), $oldId];
     }
 
-    private function draft(string $issueDate, string $validUntil): QuoteDraftData
-    {
+    /** @param list<QuoteLineData>|null $lines */
+    private function draft(
+        string $issueDate,
+        string $validUntil,
+        ?array $lines = null,
+        string $discountType = 'percent',
+        ?string $discountValue = '10.00',
+    ): QuoteDraftData {
         return new QuoteDraftData(
             'Network refresh', null, ['name' => 'Ada GmbH', 'email' => 'billing@example.com'],
-            $issueDate, $validUntil, 'EUR', [new QuoteLineData(
+            $issueDate, $validUntil, 'EUR', $lines ?? [new QuoteLineData(
                 'Consulting', '2.5000', 'hour', '100.00', '19.00', 'service', null,
-            )], 'percent', '10.00', 'Intro', 'Outro', 'Internal only',
+            )], $discountType, $discountValue, 'Intro', 'Outro', 'Internal only',
         );
     }
 

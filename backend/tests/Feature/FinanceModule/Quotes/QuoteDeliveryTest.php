@@ -29,6 +29,7 @@ use App\Modules\Finance\Infrastructure\Mail\SafePreAcceptMailFailure;
 use App\Modules\Finance\Infrastructure\Mail\UncertainMailTransportFailure;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Attachment;
@@ -142,6 +143,8 @@ final class QuoteDeliveryTest extends TestCase
         $this->configureSmtp((int) $owner->id);
         $quote = app(CreateQuote::class)->handle((int) $owner->id, 'create-uuid-migration', $this->draft());
         app(SendQuote::class)->handle(new SendQuoteData($quote->id, $quote->version, 'send-uuid-migration'));
+        $storedBefore = DB::table('finance_quote_deliveries')->first();
+        $this->assertNotNull($storedBefore);
         $messageId = $this->deliveryRow()->messageId;
         $migration = require database_path(
             'migrations/2027_03_04_120000_add_uuid_to_finance_quote_deliveries.php',
@@ -152,14 +155,51 @@ final class QuoteDeliveryTest extends TestCase
             throw new RuntimeException('Quote delivery UUID migration is unavailable.');
         }
 
+        $this->assertInvalidDeliveryStateIsRejected();
         $migration->down();
         $this->assertFalse(Schema::hasColumn('finance_quote_deliveries', 'uuid'));
+        $this->assertSame($messageId, DB::table('finance_quote_deliveries')->value('message_id'));
+        $this->assertSame($storedBefore->recipient, DB::table('finance_quote_deliveries')->value('recipient'));
+        $this->assertInvalidDeliveryStateIsRejected();
         $migration->up();
 
         $this->assertTrue(Schema::hasColumn('finance_quote_deliveries', 'uuid'));
         $uuid = DB::table('finance_quote_deliveries')->value('uuid');
         $this->assertIsString($uuid);
         $this->assertSame(substr($messageId, 1, 36), $uuid);
+        $this->assertSame($storedBefore->recipient, DB::table('finance_quote_deliveries')->value('recipient'));
+        $this->assertInvalidDeliveryStateIsRejected();
+    }
+
+    private function assertInvalidDeliveryStateIsRejected(): void
+    {
+        $existing = DB::table('finance_quote_deliveries')->first();
+        $this->assertNotNull($existing);
+        $uuid = 'ffffffff-ffff-4fff-afff-ffffffffffff';
+        $row = [
+            'user_id' => $existing->user_id,
+            'document_series_id' => $existing->document_series_id,
+            'document_revision_id' => $existing->document_revision_id,
+            'recipient' => 'invalid-state@example.com',
+            'recipient_domain' => 'example.com',
+            'message_id' => '<'.$uuid.'@quotes.ledgerline>',
+            'state' => 'delivered',
+            'attempts' => 0,
+            'last_error_code' => null,
+            'queued_at' => now(),
+            'sent_at' => null,
+            'failed_at' => null,
+        ];
+        if (Schema::hasColumn('finance_quote_deliveries', 'uuid')) {
+            $row['uuid'] = $uuid;
+        }
+
+        try {
+            DB::table('finance_quote_deliveries')->insert($row);
+            $this->fail('The delivery state constraint must survive UUID migration table rebuilds.');
+        } catch (QueryException) {
+            $this->addToAssertionCount(1);
+        }
     }
 
     public function test_retry_resumes_after_publication_completed_before_the_send_checkpoint(): void

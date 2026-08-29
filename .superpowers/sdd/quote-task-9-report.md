@@ -2,41 +2,45 @@
 
 ## Status
 
-Implemented Task 9 with test-first coverage for decisions, derived expiry, duplication, and the quote-to-invoice boundary. `FinanceServiceProvider` was intentionally not changed, as directed.
+Implemented Task 9 and review round 1 with test-first coverage for decisions, derived expiry, duplication provenance, and the quote-to-invoice boundary. `FinanceServiceProvider` was intentionally not changed, as directed.
 
 ## Behavior delivered
 
 - Accept and decline operate on the exact current published revision, enforce CAS version, pending-draft, replaced/stale, transition, and owner-local end-of-day validity rules.
 - Decision status, timestamp, aggregate version, activity, and idempotency completion are written in one database transaction. Same-key retries replay the stored aggregate.
 - Expiry remains derived; persisted status is unchanged. An accepted quote that passes `valid_until` now also reports `effective_status=expired` and is excluded from the non-expired accepted filter.
-- Duplicate copies either the initial draft or the selected current immutable revision into an independent UUID with no number or revision state. Dates are reset through owner settings and totals/references are rebuilt by `QuoteDraftFactory`; client/stored totals are not trusted.
+- Duplicate copies either the initial draft or the selected current immutable revision into an independent UUID with no number or revision state. Dates are reset through owner settings and totals/references are rebuilt by `QuoteDraftFactory`; client/stored totals are not trusted. Every target series now persists `source_type=quote_duplicate_operation` and its owner-validated duplicate operation ID as `source_id`. Following that durable operation identifies the exact owner-scoped source aggregate while allowing a new idempotency key to create another intentional copy without violating the foundation source uniqueness constraint.
 - Conversion accepts only an accepted, current, non-expired revision without a pending draft. The immutable snapshot and revision identity cross the framework-free `QuoteToInvoicePort` boundary.
 - Series/revision locks plus the unique conversion row make different-key conversion races converge on one target. Operation completion, conversion row, status/timestamp, and activity are atomic. Target failure rolls back and the same key resumes.
-- `LegacyInvoiceDraftAdapter` is the only new class importing the legacy `Invoice`; it creates an owner-scoped unnumbered draft with exact decimal strings, owner-validated partner reference, immutable customer/line data, and payment terms from settings.
+- `LegacyInvoiceDraftAdapter` is the only new class importing the legacy `Invoice`; it creates an owner-scoped unnumbered draft with exact decimal strings, owner-validated partner reference, immutable customer data, and payment terms from settings. Canonical line fields are explicitly translated to the legacy `desc`, `qty`, `unit`, `unitPrice`, `vatRate`, `kind`, and `productId` contract. Quote discounts map as `none -> null/null`, `percent -> percent/value`, and `fixed -> amount/value`.
+- The end-to-end compatibility regression proves that the stored API/editor/print shape feeds legacy reporting totals correctly and that finalizing a converted hardware invoice books the expected stock movement exactly once.
+- Review exposed a Task-8 SQLite migration rebuild regression after fixing the required delivery UUID fixture. The UUID migration now restores the delivery state enum and attempts check after both `up()` and `down()` rebuilds, with existing message identity and recipient data preserved. PostgreSQL behavior is unchanged.
 
 ## TDD evidence
 
 - Initial RED: the new feature suite failed because `QuoteToInvoicePort` did not exist.
-- Incremental GREEN: decision, duplicate, conversion, rollback/retry, foreign-owner/foreign-target, idempotency-reuse, derived-expiry, and adapter tests were added and passed.
+- Incremental GREEN: decision, duplicate, conversion, rollback/retry, foreign-owner/foreign-target, idempotency-reuse, derived-expiry, adapter, provenance, legacy reporting/editor/stock, and migration round-trip tests were added and passed.
+- Review RED: canonical quote line keys produced zero legacy report totals and no stock booking; `none` remained a literal legacy discount type; duplicate target `source_type/source_id` were null; corrected delivery fixtures exposed that SQLite's UUID table rebuild had dropped state/attempt checks.
+- Review GREEN: all four failures are covered by focused regressions, including invalid delivery state before `down()`, after `down()`, and after reapplying `up()` without historical row loss.
 - An opt-in PostgreSQL test (`FINANCE_TEST_PGSQL_URL`) runs two different conversion keys concurrently and verifies the second worker waits on the aggregate lock and replays the one committed invoice target. It is skipped when PostgreSQL is not configured.
 
 ## Verification
 
-- `php artisan test tests/Feature/FinanceModule/Quotes/QuoteDecisionConversionTest.php tests/Feature/FinanceQuoteTest.php tests/Feature/FinanceModule/LegacyFinanceBaselineTest.php`
-- `vendor/bin/phpstan analyse` on all changed Task 9 production files with `--memory-limit=1G`
-- `vendor/bin/pint` on all changed Task 9 PHP files
+- `php artisan test tests/Feature/FinanceModule/Quotes/QuoteDecisionConversionTest.php tests/Feature/FinanceModule/Quotes/QuoteSchemaTest.php tests/Feature/FinanceModule/Quotes/QuoteDeliveryTest.php tests/Feature/FinanceQuoteTest.php tests/Feature/FinanceModule/LegacyFinanceBaselineTest.php`
+- `php -d memory_limit=1G vendor/bin/phpunit tests/Feature/FinanceModule/Quotes tests/Unit/Modules/Finance`
+- `vendor/bin/phpstan analyse` on all changed production and migration files with `--memory-limit=1G`
+- `vendor/bin/pint` on all changed PHP files
 - `git diff --check`
 
 Final scoped verification:
 
-- Focused Task 9, legacy baseline, legacy quote, and Quote workflow: 79 tests, 78 passed, 328 assertions, 1 environment-gated PostgreSQL concurrency test skipped.
-- PHPStan: 0 errors across every changed Task 9 production file.
-- Pint `--test`: passed across every changed Task 9 PHP file.
+- Focused Task 9/Task 8 schema-delivery review, legacy baseline, and legacy quote: 72 tests, 70 passed, 547 assertions, 2 environment-gated PostgreSQL concurrency tests skipped.
+- Broad modular Quote feature and Finance unit suite: 286 tests, 283 passed, 1,233 assertions, 3 environment-gated PostgreSQL tests skipped.
+- PHPStan: 0 errors across every changed production and migration file.
+- Pint: passed after formatting every changed PHP file.
 - `git diff --check`: passed.
 
 Commit SHA is recorded in the handoff after commit creation.
-
-The broader `tests/Feature/FinanceModule/Quotes tests/Unit/Modules/Finance` run reached 278 passing tests and 1,163 assertions, with three PostgreSQL tests skipped, but it is not fully green: two pre-existing `QuoteSchemaTest` inserts omit the required Task-8 `finance_quote_deliveries.uuid` column and fail before Task-9 behavior is involved. The Task-9 scope does not permit changing that Task-8 schema test. A separate Dompdf process initially exhausted the default 128 MB limit; invoking PHPUnit directly with a 1 GB limit resolves that resource-only failure.
 
 ## Binding intentionally deferred
 
@@ -52,3 +56,4 @@ No `FinanceServiceProvider` changes are part of this commit.
 
 - The PostgreSQL concurrency path is executable but environment-gated; the local SQLite run validates transactional rollback, replay, owner constraints, and sequential different-key convergence.
 - The legacy adapter is deliberately temporary. The later invoice module should replace the one port binding without changing Quote application commands.
+- Provenance intentionally points at the durable duplicate operation rather than directly at the source series: the foundation uniqueness constraint permits only one `(owner, source_type, source_id)` target, while Task 9 explicitly permits multiple intentional duplicates of the same source under different keys. The operation owns the source-series reference and makes each copy both unique and traceable.

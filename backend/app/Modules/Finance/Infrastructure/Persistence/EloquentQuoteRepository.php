@@ -147,13 +147,28 @@ final class EloquentQuoteRepository implements QuoteRepository
         array $payload,
         DocumentTotals $totals,
         ?int $partnerId = null,
+        ?string $sourceType = null,
+        ?int $sourceId = null,
     ): QuoteView {
         if ($ownerId < 1) {
             throw new LogicException('Quote drafts require a positive owner ID.');
         }
+        if (($sourceType === null) !== ($sourceId === null)
+            || ($sourceType !== null && (trim($sourceType) === '' || strlen($sourceType) > 64))
+            || ($sourceId !== null && $sourceId < 1)) {
+            throw new LogicException('Quote draft provenance must be a valid source pair.');
+        }
 
-        return DB::transaction(function () use ($ownerId, $payload, $totals, $partnerId): QuoteView {
+        return DB::transaction(function () use (
+            $ownerId,
+            $payload,
+            $totals,
+            $partnerId,
+            $sourceType,
+            $sourceId,
+        ): QuoteView {
             $this->assertOwnedPartner($ownerId, $partnerId);
+            $this->assertOwnedDraftSource($ownerId, $sourceType, $sourceId);
             $createdAt = $this->clock->now();
 
             $series = new DocumentSeriesRecord;
@@ -162,8 +177,8 @@ final class EloquentQuoteRepository implements QuoteRepository
                 'uuid' => (string) Str::uuid(),
                 'document_type' => 'quote',
                 'status' => 'draft',
-                'source_type' => null,
-                'source_id' => null,
+                'source_type' => $sourceType,
+                'source_id' => $sourceId,
                 'created_by' => $ownerId,
                 'created_at' => $createdAt,
                 'updated_at' => $createdAt,
@@ -991,6 +1006,8 @@ final class EloquentQuoteRepository implements QuoteRepository
                 $built['payload'],
                 $built['totals'],
                 $built['partner_id'],
+                'quote_duplicate_operation',
+                $operationId,
             );
             $completedAt = $this->clock->now();
             $this->appendActivity(
@@ -1315,6 +1332,24 @@ final class EloquentQuoteRepository implements QuoteRepository
             ->withoutGlobalScope('owner')
             ->where('finance_partners.user_id', $ownerId)
             ->whereKey($partnerId)
+            ->lockForUpdate()
+            ->firstOrFail(['id']);
+    }
+
+    private function assertOwnedDraftSource(int $ownerId, ?string $sourceType, ?int $sourceId): void
+    {
+        if ($sourceType === null || $sourceId === null) {
+            return;
+        }
+        if ($sourceType !== 'quote_duplicate_operation') {
+            throw new LogicException('Quote draft provenance type is unsupported.');
+        }
+
+        QuoteOperationRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_quote_operations.user_id', $ownerId)
+            ->whereKey($sourceId)
+            ->where('operation', 'duplicate')
             ->lockForUpdate()
             ->firstOrFail(['id']);
     }
