@@ -59,15 +59,16 @@ final class FinanceSeriesDocumentSource implements ProjectDocumentSource
         $uuid = $row->uuid;
         $title = ucfirst($type).($number !== null && $number !== '' ? ' '.$number : ' revision '.$revisionNumber);
         $published = $row->published_at !== null;
+        $hasPdf = $published && is_string($row->pdf_path) && trim($row->pdf_path) !== '';
         $occurredAt = is_string($row->published_at) ? $row->published_at : $row->created_at;
         $route = match ($type) {
             'quote' => 'api.finance-v2.quotes.revisions.pdf',
             'invoice' => 'api.finance-v2.invoices.revisions.pdf',
             default => null,
         };
-        $routeAvailable = $published && $route !== null && ($this->routeExists)($route);
+        $routeAvailable = $hasPdf && $route !== null && ($this->routeExists)($route);
 
-        return new ProjectDocumentMetadata($ref, $title, $published ? 'application/pdf' : null, null,
+        return new ProjectDocumentMetadata($ref, $title, $hasPdf ? 'application/pdf' : null, null,
             is_string($row->pdf_sha256) ? $row->pdf_sha256 : null, $type, 'Revision '.$revisionNumber,
             new DateTimeImmutable($occurredAt), 'available',
             $routeAvailable ? $route : null,

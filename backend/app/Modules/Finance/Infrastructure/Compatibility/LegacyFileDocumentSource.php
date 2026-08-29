@@ -40,7 +40,7 @@ final class LegacyFileDocumentSource implements ProjectDocumentSource
         }
         $this->dates($query, $filter);
         $offset = $this->offset($filter->cursor);
-        $rows = $query->orderByDesc('created_at')->orderByDesc('id')->offset($offset)->limit($filter->perPage + 1)
+        $rows = $query->orderByDesc('created_at')->orderBy('id')->offset($offset)->limit($filter->perPage + 1)
             ->get(['id', 'name', 'mime', 'size', 'sha256', 'created_at', 'deleted_at']);
         $items = array_values($rows->take($filter->perPage)->map(fn (FileEntry $row): ProjectDocumentMetadata => $this->metadata($row, new ProjectDocumentSourceRef('file', 'file:'.$row->id)))->all());
 
@@ -60,7 +60,7 @@ final class LegacyFileDocumentSource implements ProjectDocumentSource
     {
         return new ProjectDocumentMetadata($ref, (string) $row->name, is_string($row->mime) ? $row->mime : null, (int) $row->size,
             is_string($row->sha256) ? $row->sha256 : null, 'file', null,
-            $row->created_at !== null ? new DateTimeImmutable($row->created_at->toAtomString()) : null,
+            $row->created_at !== null ? new DateTimeImmutable($row->created_at->format('Y-m-d\TH:i:s.uP')) : null,
             $row->deleted_at === null ? 'available' : 'deleted', $row->deleted_at === null ? 'files.rel.raw' : null,
             $row->deleted_at === null ? ['file' => (int) $row->id] : []);
     }
@@ -69,15 +69,15 @@ final class LegacyFileDocumentSource implements ProjectDocumentSource
     private function dates(Builder $query, ProjectDocumentSourceFilter $filter): void
     {
         if ($filter->from !== null) {
-            $query->where('created_at', '>=', $filter->from);
+            $query->where('created_at', '>=', $filter->from->format('Y-m-d H:i:s.u'));
         }
         if ($filter->to !== null) {
-            $query->where('created_at', '<=', $filter->to);
+            $query->where('created_at', '<=', $filter->to->format('Y-m-d H:i:s.u'));
         }
         if ($filter->mimeGroups !== []) {
             $query->where(function (Builder $q) use ($filter): void {
                 foreach ($filter->mimeGroups as $group) {
-                    $group === 'pdf' ? $q->orWhere('mime', 'application/pdf') : ($group === 'image' ? $q->orWhere('mime', 'like', 'image/%') : $q->orWhere(fn (Builder $x) => $x->where('mime', 'not like', 'image/%')->where('mime', '!=', 'application/pdf')));
+                    $group === 'pdf' ? $q->orWhere('mime', 'application/pdf') : ($group === 'image' ? $q->orWhere('mime', 'like', 'image/%') : $q->orWhere(fn (Builder $x) => $x->whereNull('mime')->orWhere(fn (Builder $known) => $known->where('mime', 'not like', 'image/%')->where('mime', '!=', 'application/pdf'))));
                 }
             });
         }

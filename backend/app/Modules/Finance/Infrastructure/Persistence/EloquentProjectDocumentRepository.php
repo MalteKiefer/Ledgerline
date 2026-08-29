@@ -28,15 +28,15 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
 {
     private const array ROLES = ['source_quote', 'quote', 'invoice', 'payment', 'receipt', 'file', 'photo', 'other'];
 
-    public function attach(ProjectId $projectId, ProjectDocumentMetadata $metadata, string $role, int $actorId, DateTimeImmutable $at): ProjectDocumentView
+    public function attach(ProjectId $projectId, ProjectDocumentMetadata $metadata, string $role, int $actorId, DateTimeImmutable $at, ?int $operationId = null): ProjectDocumentView
     {
-        if (! in_array($role, self::ROLES, true) || $actorId !== $projectId->ownerId || $metadata->availability !== 'available') {
+        if (! in_array($role, self::ROLES, true) || $actorId !== $projectId->ownerId || $metadata->availability !== 'available' || ($operationId !== null && $operationId < 1)) {
             throw new InvalidArgumentException('Project document attachment is invalid.');
         }
         $this->assertRole($role, $metadata);
 
         try {
-            return DB::transaction(function () use ($projectId, $metadata, $role, $actorId, $at): ProjectDocumentView {
+            return DB::transaction(function () use ($projectId, $metadata, $role, $actorId, $at, $operationId): ProjectDocumentView {
                 $project = $this->project($projectId, true);
                 $existing = ProjectDocumentLinkRecord::query()->withoutGlobalScopes()
                     ->where('user_id', $projectId->ownerId)->where('project_id', $project->id)
@@ -53,9 +53,11 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
                     'source_type' => $metadata->source->sourceType, 'source_reference' => $metadata->source->sourceReference,
                     'document_series_id' => $seriesId, 'pinned_revision_id' => $revisionId, 'role' => $role,
                     'metadata_snapshot' => json_encode($metadata->snapshot(), JSON_THROW_ON_ERROR),
+                    'attached_operation_id' => $operationId,
                     'attached_by' => $actorId, 'attached_at' => $timestamp, 'detached_by' => null, 'detached_at' => null,
+                    'detached_operation_id' => null,
                 ]);
-                $this->activity((int) $project->id, $projectId->ownerId, 'project.document_attached', ['link_id' => $id, 'source_type' => $metadata->source->sourceType, 'source_reference' => $metadata->source->sourceReference, 'role' => $role], $actorId, $timestamp);
+                $this->activity((int) $project->id, $projectId->ownerId, 'project.document_attached', ['link_id' => $id, 'source_type' => $metadata->source->sourceType, 'source_reference' => $metadata->source->sourceReference, 'role' => $role, 'operation_id' => $operationId], $actorId, $timestamp);
 
                 return $this->view($projectId, ProjectDocumentLinkRecord::query()->withoutGlobalScopes()->findOrFail($id), $metadata);
             }, 3);
@@ -64,13 +66,13 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
         }
     }
 
-    public function detach(ProjectId $projectId, int $linkId, int $actorId, DateTimeImmutable $at): ProjectDocumentView
+    public function detach(ProjectId $projectId, int $linkId, int $actorId, DateTimeImmutable $at, ?int $operationId = null): ProjectDocumentView
     {
-        if ($linkId < 1 || $actorId !== $projectId->ownerId) {
+        if ($linkId < 1 || $actorId !== $projectId->ownerId || ($operationId !== null && $operationId < 1)) {
             throw new InvalidArgumentException('Project document detachment is invalid.');
         }
 
-        return DB::transaction(function () use ($projectId, $linkId, $actorId, $at): ProjectDocumentView {
+        return DB::transaction(function () use ($projectId, $linkId, $actorId, $at, $operationId): ProjectDocumentView {
             $project = $this->project($projectId, true);
             $link = ProjectDocumentLinkRecord::query()->withoutGlobalScopes()->where('user_id', $projectId->ownerId)
                 ->where('project_id', $project->id)->whereKey($linkId)->lockForUpdate()->firstOrFail();
@@ -78,9 +80,9 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
                 throw new DomainException('document_already_detached');
             }
             $timestamp = $at->format('Y-m-d H:i:s.u');
-            $link->forceFill(['detached_by' => $actorId, 'detached_at' => $timestamp]);
+            $link->forceFill(['detached_by' => $actorId, 'detached_at' => $timestamp, 'detached_operation_id' => $operationId]);
             $link->save();
-            $this->activity((int) $project->id, $projectId->ownerId, 'project.document_detached', ['link_id' => $linkId], $actorId, $timestamp);
+            $this->activity((int) $project->id, $projectId->ownerId, 'project.document_detached', ['link_id' => $linkId, 'operation_id' => $operationId], $actorId, $timestamp);
 
             return $this->view($projectId, $link->refresh(), null);
         }, 3);
@@ -113,6 +115,37 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
             $query->where('pinned_revision_id', $source->pinnedRevisionId);
         }
         $link = $query->first();
+
+        return $link instanceof ProjectDocumentLinkRecord ? $this->resolvedView($projectId, $link, $catalog) : null;
+    }
+
+    public function findAttachedByOperation(ProjectId $projectId, int $operationId, ProjectDocumentSource $catalog): ?ProjectDocumentView
+    {
+        if ($operationId < 1) {
+            throw new InvalidArgumentException('Project document operation identity is invalid.');
+        }
+        $project = $this->project($projectId);
+        $link = ProjectDocumentLinkRecord::query()->withoutGlobalScopes()
+            ->where('user_id', $projectId->ownerId)
+            ->where('project_id', $project->id)
+            ->where('attached_operation_id', $operationId)
+            ->first();
+
+        return $link instanceof ProjectDocumentLinkRecord ? $this->resolvedView($projectId, $link, $catalog) : null;
+    }
+
+    public function findDetachedByOperation(ProjectId $projectId, int $operationId, ProjectDocumentSource $catalog): ?ProjectDocumentView
+    {
+        if ($operationId < 1) {
+            throw new InvalidArgumentException('Project document operation identity is invalid.');
+        }
+        $project = $this->project($projectId);
+        $link = ProjectDocumentLinkRecord::query()->withoutGlobalScopes()
+            ->where('user_id', $projectId->ownerId)
+            ->where('project_id', $project->id)
+            ->where('detached_operation_id', $operationId)
+            ->whereNotNull('detached_at')
+            ->first();
 
         return $link instanceof ProjectDocumentLinkRecord ? $this->resolvedView($projectId, $link, $catalog) : null;
     }
@@ -277,7 +310,7 @@ final class EloquentProjectDocumentRepository implements ProjectDocumentReposito
     private function date(mixed $value): DateTimeImmutable
     {
         if ($value instanceof DateTimeInterface) {
-            return new DateTimeImmutable($value->format(DATE_ATOM));
+            return new DateTimeImmutable($value->format('Y-m-d\TH:i:s.uP'));
         }
         if (is_string($value)) {
             return new DateTimeImmutable($value);

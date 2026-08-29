@@ -17,6 +17,8 @@ final class ProjectDocumentLinkRecord extends Model
 
     public $timestamps = false;
 
+    protected $dateFormat = 'Y-m-d H:i:s.u';
+
     protected $table = 'finance_project_document_links';
 
     protected $fillable = [];
@@ -26,9 +28,9 @@ final class ProjectDocumentLinkRecord extends Model
         return [
             'user_id' => 'integer', 'project_id' => 'integer',
             'document_series_id' => 'integer', 'pinned_revision_id' => 'integer',
-            'metadata_snapshot' => 'array', 'attached_by' => 'integer',
+            'metadata_snapshot' => 'array', 'attached_operation_id' => 'integer', 'attached_by' => 'integer',
             'attached_at' => 'immutable_datetime', 'detached_by' => 'integer',
-            'detached_at' => 'immutable_datetime',
+            'detached_at' => 'immutable_datetime', 'detached_operation_id' => 'integer',
         ];
     }
 
@@ -95,7 +97,7 @@ final class ProjectDocumentLinkRecord extends Model
         $keys = array_keys($values);
         if (! array_key_exists('detached_at', $values)
             || $values['detached_at'] === null
-            || array_diff($keys, ['detached_by', 'detached_at']) !== []) {
+            || array_diff($keys, ['detached_by', 'detached_at', 'detached_operation_id']) !== []) {
             throw AppendOnlyRecordMutation::projectDocumentLink();
         }
     }

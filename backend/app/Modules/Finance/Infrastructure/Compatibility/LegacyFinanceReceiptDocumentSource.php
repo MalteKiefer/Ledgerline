@@ -37,7 +37,7 @@ final class LegacyFinanceReceiptDocumentSource implements ProjectDocumentSource
 
         return new ProjectDocumentMetadata($ref, (string) $row->name, is_string($row->mime) ? $row->mime : null, (int) $row->size, $digest,
             'receipt', is_string($row->doc_number) ? $row->doc_number : (is_string($row->kind) ? $row->kind : null),
-            new DateTimeImmutable($occurredAt->toAtomString()), $deleted ? 'deleted' : 'available',
+            new DateTimeImmutable($occurredAt->format('Y-m-d\TH:i:s.uP')), $deleted ? 'deleted' : 'available',
             $deleted ? null : 'finance.receipts.raw', $deleted ? [] : ['receipt' => (int) $row->id]);
     }
 
@@ -52,18 +52,18 @@ final class LegacyFinanceReceiptDocumentSource implements ProjectDocumentSource
             $q->where(fn ($x) => $x->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower(trim($filter->q)).'%'])->orWhere('doc_number', 'like', '%'.trim($filter->q).'%')->orWhere('order_ref', 'like', '%'.trim($filter->q).'%'));
         }
         if ($filter->from !== null) {
-            $q->whereRaw('COALESCE(date, created_at) >= ?', [$filter->from]);
+            $q->whereRaw('COALESCE(date, created_at) >= ?', [$filter->from->format('Y-m-d H:i:s.u')]);
         } if ($filter->to !== null) {
-            $q->whereRaw('COALESCE(date, created_at) <= ?', [$filter->to]);
+            $q->whereRaw('COALESCE(date, created_at) <= ?', [$filter->to->format('Y-m-d H:i:s.u')]);
         }
         if ($filter->mimeGroups !== []) {
             $q->where(function ($x) use ($filter) {
                 foreach ($filter->mimeGroups as $g) {
-                    $g === 'pdf' ? $x->orWhere('mime', 'application/pdf') : ($g === 'image' ? $x->orWhere('mime', 'like', 'image/%') : $x->orWhere(fn ($z) => $z->where('mime', 'not like', 'image/%')->where('mime', '!=', 'application/pdf')));
+                    $g === 'pdf' ? $x->orWhere('mime', 'application/pdf') : ($g === 'image' ? $x->orWhere('mime', 'like', 'image/%') : $x->orWhere(fn ($z) => $z->whereNull('mime')->orWhere(fn ($known) => $known->where('mime', 'not like', 'image/%')->where('mime', '!=', 'application/pdf'))));
                 }
             });
         }
-        $rows = $q->orderByDesc(DB::raw('COALESCE(date, created_at)'))->orderByDesc('id')->offset($offset)->limit($filter->perPage + 1)->get(['id']);
+        $rows = $q->orderByDesc(DB::raw('COALESCE(date, created_at)'))->orderBy('id')->offset($offset)->limit($filter->perPage + 1)->get(['id']);
         $items = array_values($rows->take($filter->perPage)->map(fn ($r) => $this->resolve($ownerId, new ProjectDocumentSourceRef('finance_receipt', 'finance-receipt:'.$r->id)))->all());
 
         return new ProjectDocumentSourcePage($items, $rows->count() > $filter->perPage ? base64_encode((string) ($offset + $filter->perPage)) : null);

@@ -21,7 +21,7 @@ final readonly class AttachProjectDocument
 
     public function handle(ProjectId $projectId, ProjectDocumentSourceRef $source, string $role, int $actorId, DateTimeImmutable $at, string $idempotencyKey): ProjectDocumentView
     {
-        $hash = hash('sha256', json_encode(['project' => strtolower($projectId->uuid), 'source_type' => $source->sourceType, 'source_reference' => $source->sourceReference, 'pinned_revision_id' => $source->pinnedRevisionId, 'role' => $role, 'actor_id' => $actorId, 'occurred_at' => $at->format(DATE_ATOM)], JSON_THROW_ON_ERROR));
+        $hash = hash('sha256', json_encode(['project' => strtolower($projectId->uuid), 'source_type' => $source->sourceType, 'source_reference' => $source->sourceReference, 'pinned_revision_id' => $source->pinnedRevisionId, 'role' => $role, 'actor_id' => $actorId, 'occurred_at' => $at->format('Y-m-d\TH:i:s.uP')], JSON_THROW_ON_ERROR));
         $reservation = $this->operations->reserve($projectId->ownerId, 'project.document.attach', $idempotencyKey, $hash, $projectId);
         if ($reservation->status === 'replay') {
             return $this->documents->get($projectId, $this->replayLinkId($reservation->result), $this->catalog);
@@ -31,7 +31,7 @@ final readonly class AttachProjectDocument
         }
         if ($reservation->status === 'failed') {
             $reservation = $this->operations->retryFailed($reservation);
-            $recovered = $this->documents->findActive($projectId, $source, $role, $this->catalog);
+            $recovered = $this->documents->findAttachedByOperation($projectId, $reservation->recordId, $this->catalog);
             if ($recovered !== null) {
                 $this->operations->succeed($reservation, ['link_id' => $recovered->linkId]);
 
@@ -40,7 +40,7 @@ final readonly class AttachProjectDocument
         }
         try {
             $metadata = $this->catalog->resolve($projectId->ownerId, $source);
-            $view = $this->documents->attach($projectId, $metadata, $role, $actorId, $at);
+            $view = $this->documents->attach($projectId, $metadata, $role, $actorId, $at, $reservation->recordId);
             $this->operations->succeed($reservation, ['link_id' => $view->linkId]);
 
             return $view;
@@ -63,7 +63,7 @@ final readonly class AttachProjectDocument
 
     private function recover(OperationReservation $reservation, ProjectId $projectId, ProjectDocumentSourceRef $source, string $role): ProjectDocumentView
     {
-        $recovered = $this->documents->findActive($projectId, $source, $role, $this->catalog);
+        $recovered = $this->documents->findAttachedByOperation($projectId, $reservation->recordId, $this->catalog);
         if ($recovered === null) {
             throw new DomainException('operation_in_progress');
         }

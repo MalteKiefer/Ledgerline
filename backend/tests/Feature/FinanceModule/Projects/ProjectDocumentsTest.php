@@ -11,9 +11,11 @@ use App\Modules\Finance\Application\Commands\Projects\DetachProjectDocument;
 use App\Modules\Finance\Application\DTOs\Projects\OperationReservation;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentFilter;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentMetadata;
+use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentPage;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourceFilter;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourcePage;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourceRef;
+use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentView;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectId;
 use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentCatalog;
 use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentRepository;
@@ -32,6 +34,7 @@ use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectDocumentReposi
 use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -150,6 +153,32 @@ final class ProjectDocumentsTest extends TestCase
         $this->assertCount(250, array_unique($seen));
     }
 
+    public function test_composite_catalog_orders_by_full_microseconds_then_type_across_cursor_pages(): void
+    {
+        $catalog = new CompositeProjectDocumentCatalog([
+            $this->singleItemSource('file', 'file:2', '2026-08-29 09:00:00.000001'),
+            $this->singleItemSource('legacy_invoice', 'legacy-invoice:10', '2026-08-29 09:00:00.000002'),
+            $this->singleItemSource('gallery_photo', 'gallery-photo:3', '2026-08-29 09:00:00.000001'),
+        ]);
+        $cursor = null;
+        $references = [];
+
+        do {
+            $page = $catalog->search(1, new ProjectDocumentSourceFilter(
+                1,
+                sourceTypes: ['file', 'legacy_invoice', 'gallery_photo'],
+                cursor: $cursor,
+                perPage: 1,
+            ));
+            foreach ($page->items as $item) {
+                $references[] = $item->source->sourceReference;
+            }
+            $cursor = $page->nextCursor;
+        } while ($cursor !== null);
+
+        $this->assertSame(['legacy-invoice:10', 'file:2', 'gallery-photo:3'], $references);
+    }
+
     public function test_full_catalog_has_exactly_one_owner_scoped_adapter_for_every_supported_type(): void
     {
         $owner = User::factory()->create();
@@ -196,6 +225,22 @@ final class ProjectDocumentsTest extends TestCase
                 $this->addToAssertionCount(1);
             }
         }
+    }
+
+    public function test_finance_series_requires_a_real_pdf_object_before_exposing_pdf_metadata_or_capability(): void
+    {
+        $owner = User::factory()->create();
+        [$uuid, $revisionId] = $this->financeSeries($owner, 'invoice', 'INV-NO-PDF');
+        DB::table('finance_document_revisions')->where('id', $revisionId)->update(['pdf_path' => null]);
+
+        $metadata = (new FinanceSeriesDocumentSource)->resolve(
+            (int) $owner->id,
+            new ProjectDocumentSourceRef('finance_series', $uuid, $revisionId),
+        );
+
+        $this->assertNull($metadata->mime);
+        $this->assertNull($metadata->capabilityRoute);
+        $this->assertSame([], $metadata->capabilityParameters);
     }
 
     public function test_embedded_bank_receipt_parses_canonical_reference_without_leaking_blob_and_is_owner_scoped(): void
@@ -262,6 +307,41 @@ final class ProjectDocumentsTest extends TestCase
         $this->assertCount(101, array_unique($references));
     }
 
+    public function test_embedded_receipt_search_scans_only_one_fixed_transaction_batch_per_call(): void
+    {
+        $owner = User::factory()->create();
+        $paymentMethodId = (int) DB::table('payment_methods')->insertGetId([
+            'user_id' => $owner->id, 'type' => 'bank', 'name' => 'Bounded account', 'business' => true,
+            'version' => 0, 'created_at' => '2026-08-29 08:00:00', 'updated_at' => '2026-08-29 08:00:00',
+        ]);
+        $rows = [];
+        for ($index = 0; $index < 120; $index++) {
+            $rows[] = [
+                'user_id' => $owner->id, 'payment_method_id' => $paymentMethodId, 'date' => '2026-08-28',
+                'amount' => '1.00', 'counterparty' => 'Bounded supplier',
+                'receipts' => json_encode([['id' => (string) Str::uuid(), 'name' => 'Receipt '.$index]], JSON_THROW_ON_ERROR),
+                'version' => 0, 'created_at' => '2026-08-29 08:00:00', 'updated_at' => '2026-08-29 08:00:00',
+            ];
+        }
+        DB::table('bank_transactions')->insert($rows);
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $page = (new CompositeProjectDocumentCatalog([new LegacyBankReceiptDocumentSource]))->search(
+            (int) $owner->id,
+            new ProjectDocumentSourceFilter((int) $owner->id, q: 'does-not-match', sourceTypes: ['bank_transaction_receipt'], perPage: 100),
+        );
+        $transactionReads = array_values(array_filter(
+            DB::getQueryLog(),
+            static fn (array $query): bool => str_contains(strtolower((string) $query['query']), 'bank_transactions'),
+        ));
+        DB::disableQueryLog();
+
+        $this->assertSame([], $page->items);
+        $this->assertNotNull($page->nextCursor);
+        $this->assertCount(1, $transactionReads);
+    }
+
     public function test_legacy_invoice_gallery_finance_receipt_and_bank_transaction_are_owner_scoped_and_deleted_aware(): void
     {
         $owner = User::factory()->create();
@@ -325,6 +405,122 @@ final class ProjectDocumentsTest extends TestCase
         }
     }
 
+    public function test_all_seven_adapters_use_the_same_natural_reference_tie_breaker(): void
+    {
+        $owner = User::factory()->create();
+        $at = '2026-08-29 08:00:00.123456';
+        [$seriesA] = $this->financeSeries($owner, 'quote', 'Q-A');
+        [$seriesB] = $this->financeSeries($owner, 'quote', 'Q-B');
+        $fileA = $this->file($owner, 'A.pdf');
+        $fileB = $this->file($owner, 'B.pdf');
+        DB::table('files')->whereIn('id', [$fileA->id, $fileB->id])->update(['created_at' => $at]);
+        $invoiceIds = [];
+        $photoIds = [];
+        $receiptIds = [];
+        foreach (['A', 'B'] as $suffix) {
+            $invoiceIds[] = (int) DB::table('invoices')->insertGetId([
+                'user_id' => $owner->id, 'number' => 'INV-'.$suffix, 'status' => 'draft', 'currency' => 'EUR',
+                'issue_date' => null, 'pdf_path' => null, 'imported' => false, 'version_seq' => 0, 'version' => 0,
+                'created_at' => $at, 'updated_at' => $at,
+            ]);
+            $photoIds[] = (int) DB::table('gallery_photos')->insertGetId([
+                'user_id' => $owner->id, 'name' => 'Photo '.$suffix, 'mime' => 'image/jpeg', 'size' => 1,
+                'storage_path' => 'private/photo-'.$suffix, 'favorite' => false, 'version' => 0,
+                'created_at' => $at, 'updated_at' => $at,
+            ]);
+            $receiptIds[] = (int) DB::table('finance_receipts')->insertGetId([
+                'user_id' => $owner->id, 'blob_path' => 'private/receipt-'.$suffix, 'name' => 'Receipt '.$suffix,
+                'mime' => 'application/pdf', 'size' => 1, 'kind' => 'receipt', 'version' => 0,
+                'created_at' => $at, 'updated_at' => $at,
+            ]);
+        }
+        $paymentMethodId = (int) DB::table('payment_methods')->insertGetId([
+            'user_id' => $owner->id, 'type' => 'bank', 'name' => 'Tie account', 'business' => true,
+            'version' => 0, 'created_at' => $at, 'updated_at' => $at,
+        ]);
+        $transactionIds = [];
+        $receiptUuids = [];
+        foreach (['A', 'B'] as $suffix) {
+            $receiptUuid = strtolower((string) Str::uuid());
+            $receiptUuids[] = $receiptUuid;
+            $transactionIds[] = (int) DB::table('bank_transactions')->insertGetId([
+                'user_id' => $owner->id, 'payment_method_id' => $paymentMethodId, 'date' => '2026-08-29',
+                'amount' => '1.00', 'counterparty' => 'Tie '.$suffix,
+                'receipts' => json_encode([['id' => $receiptUuid, 'name' => 'Embedded '.$suffix]], JSON_THROW_ON_ERROR),
+                'version' => 0, 'created_at' => $at, 'updated_at' => $at,
+            ]);
+        }
+        $seriesRefs = [$seriesA, $seriesB];
+        sort($seriesRefs);
+        $cases = [
+            [new FinanceSeriesDocumentSource, 'finance_series', $seriesRefs],
+            [new LegacyInvoiceDocumentSource, 'legacy_invoice', array_map(static fn (int $id): string => 'legacy-invoice:'.$id, $invoiceIds)],
+            [new LegacyFileDocumentSource, 'file', ['file:'.$fileA->id, 'file:'.$fileB->id]],
+            [new LegacyGalleryPhotoDocumentSource, 'gallery_photo', array_map(static fn (int $id): string => 'gallery-photo:'.$id, $photoIds)],
+            [new LegacyFinanceReceiptDocumentSource, 'finance_receipt', array_map(static fn (int $id): string => 'finance-receipt:'.$id, $receiptIds)],
+            [new LegacyBankTransactionDocumentSource, 'bank_transaction', array_map(static fn (int $id): string => 'bank-transaction:'.$id, $transactionIds)],
+            [new LegacyBankReceiptDocumentSource, 'bank_transaction_receipt', [
+                'bank-transaction-receipt:'.$transactionIds[0].':'.$receiptUuids[0],
+                'bank-transaction-receipt:'.$transactionIds[1].':'.$receiptUuids[1],
+            ]],
+        ];
+
+        foreach ($cases as [$source, $type, $expected]) {
+            $this->assertSame(
+                $expected,
+                $this->sourceReferences($source, (int) $owner->id, $type),
+                'Unexpected canonical order for '.$type,
+            );
+        }
+        $firstFile = (new LegacyFileDocumentSource)->resolve((int) $owner->id, new ProjectDocumentSourceRef('file', 'file:'.$fileA->id));
+        $this->assertSame('123456', $firstFile->occurredAt?->format('u'));
+    }
+
+    public function test_invoice_search_uses_pdf_path_and_issue_date_fallback_and_null_mime_is_other(): void
+    {
+        $owner = User::factory()->create();
+        $withoutPdf = (int) DB::table('invoices')->insertGetId([
+            'user_id' => $owner->id, 'number' => 'INV-OTHER', 'status' => 'draft', 'currency' => 'EUR',
+            'issue_date' => null, 'pdf_path' => null, 'imported' => false, 'version_seq' => 0, 'version' => 0,
+            'created_at' => '2026-08-29 08:00:00.123456', 'updated_at' => '2026-08-29 08:00:00.123456',
+        ]);
+        $withPdf = (int) DB::table('invoices')->insertGetId([
+            'user_id' => $owner->id, 'number' => 'INV-PDF', 'status' => 'final', 'currency' => 'EUR',
+            'issue_date' => null, 'pdf_path' => 'private/invoice.pdf', 'imported' => false, 'version_seq' => 0, 'version' => 0,
+            'created_at' => '2026-08-29 08:00:00.654321', 'updated_at' => '2026-08-29 08:00:00.654321',
+        ]);
+        DB::table('files')->insert([
+            'user_id' => $owner->id, 'name' => 'Unknown file', 'mime' => null, 'size' => 1,
+            'storage_path' => 'private/unknown', 'favorite' => false, 'version' => 0,
+            'created_at' => '2026-08-29 08:00:00', 'updated_at' => '2026-08-29 08:00:00',
+        ]);
+        DB::table('finance_receipts')->insert([
+            'user_id' => $owner->id, 'blob_path' => 'private/unknown-receipt', 'name' => 'Unknown receipt',
+            'mime' => null, 'size' => 1, 'kind' => 'receipt', 'version' => 0,
+            'created_at' => '2026-08-29 08:00:00', 'updated_at' => '2026-08-29 08:00:00',
+        ]);
+        $invoices = new LegacyInvoiceDocumentSource;
+
+        $other = $invoices->search((int) $owner->id, new ProjectDocumentSourceFilter(
+            (int) $owner->id,
+            sourceTypes: ['legacy_invoice'],
+            mimeGroups: ['other'],
+            from: new DateTimeImmutable('2026-08-29 08:00:00.100000'),
+            to: new DateTimeImmutable('2026-08-29 08:00:00.200000'),
+        ));
+        $pdf = $invoices->search((int) $owner->id, new ProjectDocumentSourceFilter(
+            (int) $owner->id,
+            sourceTypes: ['legacy_invoice'],
+            mimeGroups: ['pdf'],
+        ));
+
+        $this->assertSame(['legacy-invoice:'.$withoutPdf], array_map(static fn (ProjectDocumentMetadata $item): string => $item->source->sourceReference, $other->items));
+        $this->assertNull($other->items[0]->mime);
+        $this->assertSame(['legacy-invoice:'.$withPdf], array_map(static fn (ProjectDocumentMetadata $item): string => $item->source->sourceReference, $pdf->items));
+        $this->assertCount(1, (new LegacyFileDocumentSource)->search((int) $owner->id, new ProjectDocumentSourceFilter((int) $owner->id, sourceTypes: ['file'], mimeGroups: ['other']))->items);
+        $this->assertCount(1, (new LegacyFinanceReceiptDocumentSource)->search((int) $owner->id, new ProjectDocumentSourceFilter((int) $owner->id, sourceTypes: ['finance_receipt'], mimeGroups: ['other']))->items);
+    }
+
     public function test_attach_replay_is_stable_and_a_different_key_cannot_duplicate_an_active_link(): void
     {
         $owner = User::factory()->create();
@@ -351,6 +547,22 @@ final class ProjectDocumentsTest extends TestCase
         } catch (DomainException $exception) {
             $this->assertSame('document_already_attached', $exception->getMessage());
         }
+    }
+
+    public function test_attach_idempotency_digest_and_result_preserve_microseconds(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->project($owner);
+        $file = $this->file($owner, 'Microseconds.pdf');
+        $command = new AttachProjectDocument(new LegacyFileDocumentSource, new EloquentProjectDocumentRepository, app(ProjectOperationRepository::class));
+        $ref = new ProjectDocumentSourceRef('file', 'file:'.$file->id);
+
+        $first = $command->handle($project, $ref, 'file', (int) $owner->id, new DateTimeImmutable('2026-08-29 09:00:00.123456'), 'attach-microseconds');
+        $this->assertSame('123456', $first->attachedAt->format('u'));
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('idempotency_key_reused');
+        $command->handle($project, $ref, 'file', (int) $owner->id, new DateTimeImmutable('2026-08-29 09:00:00.654321'), 'attach-microseconds');
     }
 
     public function test_attachment_roles_reject_every_incompatible_source_kind_before_writing(): void
@@ -423,6 +635,92 @@ final class ProjectDocumentsTest extends TestCase
         $this->assertSame(1, DB::table('finance_project_document_links')->count());
         $this->assertSame(1, DB::table('finance_project_activities')->where('type', 'project.document_attached')->count());
         $this->assertSame('succeeded', DB::table('finance_project_operations')->where('idempotency_key', 'attach-crash')->value('state'));
+        $operationId = (int) DB::table('finance_project_operations')->where('idempotency_key', 'attach-crash')->value('id');
+        $this->assertSame($operationId, (int) DB::table('finance_project_document_links')->value('attached_operation_id'));
+    }
+
+    public function test_attach_retry_never_adopts_a_link_created_by_another_operation(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->project($owner);
+        $file = $this->file($owner, 'Owned-checkpoint.pdf');
+        $source = new LegacyFileDocumentSource;
+        $repository = new EloquentProjectDocumentRepository;
+        $operations = app(ProjectOperationRepository::class);
+        $at = new DateTimeImmutable('2026-08-29 09:00:00.123456');
+        $ref = new ProjectDocumentSourceRef('file', "file:{$file->id}");
+        $crashing = new AttachProjectDocument($source, $repository, $this->crashAfterReservation($operations));
+
+        try {
+            $crashing->handle($project, $ref, 'file', (int) $owner->id, $at, 'attach-operation-a');
+            $this->fail('Simulated pre-mutation crash was not raised.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('simulated_pre_mutation_crash', $exception->getMessage());
+        }
+
+        $winner = (new AttachProjectDocument($source, $repository, $operations))->handle(
+            $project,
+            $ref,
+            'file',
+            (int) $owner->id,
+            $at,
+            'attach-operation-b',
+        );
+
+        try {
+            (new AttachProjectDocument($source, $repository, $operations))->handle(
+                $project,
+                $ref,
+                'file',
+                (int) $owner->id,
+                $at,
+                'attach-operation-a',
+            );
+            $this->fail('The abandoned operation adopted another operation\'s link.');
+        } catch (DomainException $exception) {
+            $this->assertSame('operation_in_progress', $exception->getMessage());
+        }
+
+        $winnerOperationId = (int) DB::table('finance_project_operations')->where('idempotency_key', 'attach-operation-b')->value('id');
+        $this->assertSame($winner->linkId, (int) DB::table('finance_project_document_links')->value('id'));
+        $this->assertSame($winnerOperationId, (int) DB::table('finance_project_document_links')->value('attached_operation_id'));
+        $this->assertNull(DB::table('finance_project_operations')->where('idempotency_key', 'attach-operation-a')->value('result'));
+    }
+
+    public function test_failed_attach_retry_keeps_duplicate_semantics_when_another_operation_wins(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->project($owner);
+        $file = $this->file($owner, 'Failed-attach-checkpoint.pdf');
+        $realSource = new LegacyFileDocumentSource;
+        $operations = app(ProjectOperationRepository::class);
+        $repository = new EloquentProjectDocumentRepository;
+        $failingSource = $this->failFirstResolveSource($realSource);
+        $ref = new ProjectDocumentSourceRef('file', 'file:'.$file->id);
+        $at = new DateTimeImmutable('2026-08-29 09:00:00.123456');
+
+        try {
+            (new AttachProjectDocument($failingSource, $repository, $operations))->handle(
+                $project, $ref, 'file', (int) $owner->id, $at, 'failed-attach-operation-a',
+            );
+            $this->fail('The injected pre-mutation failure was not raised.');
+        } catch (DomainException $exception) {
+            $this->assertSame('source_temporarily_unavailable', $exception->getMessage());
+        }
+        (new AttachProjectDocument($realSource, $repository, $operations))->handle(
+            $project, $ref, 'file', (int) $owner->id, $at, 'failed-attach-operation-b',
+        );
+
+        try {
+            (new AttachProjectDocument($failingSource, $repository, $operations))->handle(
+                $project, $ref, 'file', (int) $owner->id, $at, 'failed-attach-operation-a',
+            );
+            $this->fail('The failed operation adopted another operation\'s link.');
+        } catch (DomainException $exception) {
+            $this->assertSame('document_already_attached', $exception->getMessage());
+        }
+        $this->assertSame('failed', DB::table('finance_project_operations')->where('idempotency_key', 'failed-attach-operation-a')->value('state'));
+        $this->assertSame(1, DB::table('finance_project_document_links')->count());
     }
 
     public function test_detach_recovers_the_same_history_row_after_crash_before_operation_completion(): void
@@ -454,6 +752,197 @@ final class ProjectDocumentsTest extends TestCase
         $this->assertSame(1, DB::table('finance_project_document_links')->count());
         $this->assertSame(1, DB::table('finance_project_activities')->where('type', 'project.document_detached')->count());
         $this->assertSame('succeeded', DB::table('finance_project_operations')->where('idempotency_key', 'detach-crash')->value('state'));
+        $operationId = (int) DB::table('finance_project_operations')->where('idempotency_key', 'detach-crash')->value('id');
+        $this->assertSame($operationId, (int) DB::table('finance_project_document_links')->value('detached_operation_id'));
+    }
+
+    public function test_detach_retry_never_adopts_a_detach_created_by_another_operation(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->project($owner);
+        $file = $this->file($owner, 'Detach-owned-checkpoint.pdf');
+        $source = new LegacyFileDocumentSource;
+        $repository = new EloquentProjectDocumentRepository;
+        $operations = app(ProjectOperationRepository::class);
+        $at = new DateTimeImmutable('2026-08-29 09:00:00.123456');
+        $linked = (new AttachProjectDocument($source, $repository, $operations))->handle(
+            $project,
+            new ProjectDocumentSourceRef('file', "file:{$file->id}"),
+            'file',
+            (int) $owner->id,
+            $at,
+            'detach-operation-setup',
+        );
+        $crashing = new DetachProjectDocument($repository, $this->crashAfterReservation($operations), $source);
+
+        try {
+            $crashing->handle($project, $linked->linkId, (int) $owner->id, $at->modify('+1 second'), 'detach-operation-a');
+            $this->fail('Simulated pre-mutation crash was not raised.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('simulated_pre_mutation_crash', $exception->getMessage());
+        }
+
+        $winner = (new DetachProjectDocument($repository, $operations, $source))->handle(
+            $project,
+            $linked->linkId,
+            (int) $owner->id,
+            $at->modify('+1 second'),
+            'detach-operation-b',
+        );
+
+        try {
+            (new DetachProjectDocument($repository, $operations, $source))->handle(
+                $project,
+                $linked->linkId,
+                (int) $owner->id,
+                $at->modify('+1 second'),
+                'detach-operation-a',
+            );
+            $this->fail('The abandoned operation adopted another operation\'s detach.');
+        } catch (DomainException $exception) {
+            $this->assertSame('operation_in_progress', $exception->getMessage());
+        }
+
+        $winnerOperationId = (int) DB::table('finance_project_operations')->where('idempotency_key', 'detach-operation-b')->value('id');
+        $this->assertSame($winner->linkId, $linked->linkId);
+        $this->assertSame($winnerOperationId, (int) DB::table('finance_project_document_links')->value('detached_operation_id'));
+        $this->assertNull(DB::table('finance_project_operations')->where('idempotency_key', 'detach-operation-a')->value('result'));
+    }
+
+    public function test_failed_detach_retry_keeps_already_detached_semantics_when_another_operation_wins(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->project($owner);
+        $file = $this->file($owner, 'Failed-detach-checkpoint.pdf');
+        $source = new LegacyFileDocumentSource;
+        $operations = app(ProjectOperationRepository::class);
+        $repository = new EloquentProjectDocumentRepository;
+        $linked = (new AttachProjectDocument($source, $repository, $operations))->handle(
+            $project,
+            new ProjectDocumentSourceRef('file', 'file:'.$file->id),
+            'file',
+            (int) $owner->id,
+            new DateTimeImmutable('2026-08-29 09:00:00'),
+            'failed-detach-setup',
+        );
+        $failingRepository = $this->failFirstDetachRepository($repository);
+        $at = new DateTimeImmutable('2026-08-29 09:01:00.123456');
+
+        try {
+            (new DetachProjectDocument($failingRepository, $operations, $source))->handle(
+                $project, $linked->linkId, (int) $owner->id, $at, 'failed-detach-operation-a',
+            );
+            $this->fail('The injected pre-mutation failure was not raised.');
+        } catch (DomainException $exception) {
+            $this->assertSame('detach_temporarily_unavailable', $exception->getMessage());
+        }
+        (new DetachProjectDocument($repository, $operations, $source))->handle(
+            $project, $linked->linkId, (int) $owner->id, $at, 'failed-detach-operation-b',
+        );
+
+        try {
+            (new DetachProjectDocument($failingRepository, $operations, $source))->handle(
+                $project, $linked->linkId, (int) $owner->id, $at, 'failed-detach-operation-a',
+            );
+            $this->fail('The failed operation adopted another operation\'s detach.');
+        } catch (DomainException $exception) {
+            $this->assertSame('document_already_detached', $exception->getMessage());
+        }
+        $this->assertSame('failed', DB::table('finance_project_operations')->where('idempotency_key', 'failed-detach-operation-a')->value('state'));
+        $this->assertSame(1, DB::table('finance_project_activities')->where('type', 'project.document_detached')->count());
+    }
+
+    public function test_operation_identity_migration_is_reversible_and_owner_composite_constraints_reject_foreign_operations(): void
+    {
+        $migration = require database_path('migrations/2027_03_04_130000_add_operation_identity_to_project_document_links.php');
+
+        $this->assertTrue(Schema::hasColumns('finance_project_document_links', ['attached_operation_id', 'detached_operation_id']));
+        $migration->down();
+        $this->assertFalse(Schema::hasColumn('finance_project_document_links', 'attached_operation_id'));
+        $this->assertFalse(Schema::hasColumn('finance_project_document_links', 'detached_operation_id'));
+        $migration->up();
+
+        $owner = User::factory()->create();
+        $foreign = User::factory()->create();
+        $project = $this->project($owner);
+        $file = $this->file($owner, 'Foreign-operation.pdf');
+        $foreignProject = $this->project($foreign);
+        $foreignReservation = app(ProjectOperationRepository::class)->reserve(
+            (int) $foreign->id,
+            'project.document.attach',
+            'foreign-operation',
+            str_repeat('a', 64),
+            $foreignProject,
+        );
+        $projectRecordId = (int) DB::table('finance_project_records')->where('uuid', $project->uuid)->value('id');
+
+        try {
+            DB::table('finance_project_document_links')->insert([
+                'user_id' => $owner->id,
+                'project_id' => $projectRecordId,
+                'source_type' => 'file',
+                'source_reference' => 'file:'.$file->id,
+                'document_series_id' => null,
+                'pinned_revision_id' => null,
+                'role' => 'file',
+                'metadata_snapshot' => json_encode(['title' => 'Foreign operation'], JSON_THROW_ON_ERROR),
+                'attached_operation_id' => $foreignReservation->recordId,
+                'detached_operation_id' => null,
+                'attached_by' => $owner->id,
+                'attached_at' => '2026-08-29 09:00:00.123456',
+                'detached_by' => null,
+                'detached_at' => null,
+            ]);
+            $this->fail('A foreign owner operation was accepted as attach identity.');
+        } catch (QueryException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $linked = app(AttachProjectDocument::class)->handle(
+            $project,
+            new ProjectDocumentSourceRef('file', 'file:'.$file->id),
+            'file',
+            (int) $owner->id,
+            new DateTimeImmutable('2026-08-29 09:00:00.123456'),
+            'owner-operation-link',
+        );
+        try {
+            DB::table('finance_project_document_links')->where('id', $linked->linkId)->update([
+                'detached_by' => $owner->id,
+                'detached_at' => '2026-08-29 09:01:00.123456',
+                'detached_operation_id' => $foreignReservation->recordId,
+            ]);
+            $this->fail('A foreign owner operation was accepted as detach identity.');
+        } catch (QueryException) {
+            $this->addToAssertionCount(1);
+        }
+    }
+
+    public function test_operation_identity_preserves_link_history_but_owner_deletion_cascades_the_whole_graph(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->project($owner);
+        $file = $this->file($owner, 'Cascade-history.pdf');
+        $linked = app(AttachProjectDocument::class)->handle(
+            $project,
+            new ProjectDocumentSourceRef('file', 'file:'.$file->id),
+            'file',
+            (int) $owner->id,
+            new DateTimeImmutable('2026-08-29 09:00:00.123456'),
+            'cascade-history-attach',
+        );
+        $operationId = (int) DB::table('finance_project_document_links')->where('id', $linked->linkId)->value('attached_operation_id');
+
+        try {
+            DB::table('finance_project_operations')->where('id', $operationId)->delete();
+            $this->fail('An operation referenced by immutable link history was deleted.');
+        } catch (QueryException) {
+            $this->addToAssertionCount(1);
+        }
+
+        DB::table('users')->where('id', $owner->id)->delete();
+        $this->assertSame(0, DB::table('finance_project_document_links')->where('user_id', $owner->id)->count());
+        $this->assertSame(0, DB::table('finance_project_operations')->where('user_id', $owner->id)->count());
     }
 
     public function test_postgresql_concurrent_same_and_different_keys_serialize_to_one_active_link_when_configured(): void
@@ -532,6 +1021,32 @@ final class ProjectDocumentsTest extends TestCase
         $this->assertSame($detached->linkId, $replay->linkId);
         $this->assertNotSame($linked->linkId, $replacement->linkId);
         $this->assertSame(2, DB::table('finance_project_document_links')->count());
+    }
+
+    public function test_detach_idempotency_digest_and_result_preserve_microseconds(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->project($owner);
+        $file = $this->file($owner, 'Detach-microseconds.pdf');
+        $source = new LegacyFileDocumentSource;
+        $repository = new EloquentProjectDocumentRepository;
+        $operations = app(ProjectOperationRepository::class);
+        $linked = (new AttachProjectDocument($source, $repository, $operations))->handle(
+            $project,
+            new ProjectDocumentSourceRef('file', 'file:'.$file->id),
+            'file',
+            (int) $owner->id,
+            new DateTimeImmutable('2026-08-29 09:00:00'),
+            'detach-microseconds-setup',
+        );
+        $command = new DetachProjectDocument($repository, $operations, $source);
+
+        $first = $command->handle($project, $linked->linkId, (int) $owner->id, new DateTimeImmutable('2026-08-29 09:01:00.123456'), 'detach-microseconds');
+        $this->assertSame('123456', $first->detachedAt?->format('u'));
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('idempotency_key_reused');
+        $command->handle($project, $linked->linkId, (int) $owner->id, new DateTimeImmutable('2026-08-29 09:01:00.654321'), 'detach-microseconds');
     }
 
     public function test_list_uses_historical_snapshot_when_the_owned_source_was_deleted(): void
@@ -686,6 +1201,122 @@ final class ProjectDocumentsTest extends TestCase
         };
     }
 
+    private function crashAfterReservation(ProjectOperationRepository $inner): ProjectOperationRepository
+    {
+        return new class($inner) implements ProjectOperationRepository
+        {
+            private bool $crash = true;
+
+            public function __construct(private readonly ProjectOperationRepository $inner) {}
+
+            public function reserve(int $ownerId, string $operation, string $key, string $requestSha256, ?ProjectId $projectId): OperationReservation
+            {
+                $reservation = $this->inner->reserve($ownerId, $operation, $key, $requestSha256, $projectId);
+                if ($this->crash) {
+                    $this->crash = false;
+                    throw new RuntimeException('simulated_pre_mutation_crash');
+                }
+
+                return $reservation;
+            }
+
+            public function succeed(OperationReservation $reservation, array $result): void
+            {
+                $this->inner->succeed($reservation, $result);
+            }
+
+            public function fail(OperationReservation $reservation, string $errorCode): void
+            {
+                $this->inner->fail($reservation, $errorCode);
+            }
+
+            public function retryFailed(OperationReservation $reservation): OperationReservation
+            {
+                return $this->inner->retryFailed($reservation);
+            }
+        };
+    }
+
+    private function failFirstResolveSource(ProjectDocumentSource $inner): ProjectDocumentSource
+    {
+        return new class($inner) implements ProjectDocumentSource
+        {
+            private bool $fail = true;
+
+            public function __construct(private readonly ProjectDocumentSource $inner) {}
+
+            public function supports(string $sourceType): bool
+            {
+                return $this->inner->supports($sourceType);
+            }
+
+            public function resolve(int $ownerId, ProjectDocumentSourceRef $ref): ProjectDocumentMetadata
+            {
+                if ($this->fail) {
+                    $this->fail = false;
+                    throw new DomainException('source_temporarily_unavailable');
+                }
+
+                return $this->inner->resolve($ownerId, $ref);
+            }
+
+            public function search(int $ownerId, ProjectDocumentSourceFilter $filter): ProjectDocumentSourcePage
+            {
+                return $this->inner->search($ownerId, $filter);
+            }
+        };
+    }
+
+    private function failFirstDetachRepository(ProjectDocumentRepository $inner): ProjectDocumentRepository
+    {
+        return new class($inner) implements ProjectDocumentRepository
+        {
+            private bool $fail = true;
+
+            public function __construct(private readonly ProjectDocumentRepository $inner) {}
+
+            public function attach(ProjectId $projectId, ProjectDocumentMetadata $metadata, string $role, int $actorId, DateTimeImmutable $at, ?int $operationId = null): ProjectDocumentView
+            {
+                return $this->inner->attach($projectId, $metadata, $role, $actorId, $at, $operationId);
+            }
+
+            public function detach(ProjectId $projectId, int $linkId, int $actorId, DateTimeImmutable $at, ?int $operationId = null): ProjectDocumentView
+            {
+                if ($this->fail) {
+                    $this->fail = false;
+                    throw new DomainException('detach_temporarily_unavailable');
+                }
+
+                return $this->inner->detach($projectId, $linkId, $actorId, $at, $operationId);
+            }
+
+            public function get(ProjectId $projectId, int $linkId, ?ProjectDocumentSource $catalog = null): ProjectDocumentView
+            {
+                return $this->inner->get($projectId, $linkId, $catalog);
+            }
+
+            public function findActive(ProjectId $projectId, ProjectDocumentSourceRef $source, string $role, ProjectDocumentSource $catalog): ?ProjectDocumentView
+            {
+                return $this->inner->findActive($projectId, $source, $role, $catalog);
+            }
+
+            public function findAttachedByOperation(ProjectId $projectId, int $operationId, ProjectDocumentSource $catalog): ?ProjectDocumentView
+            {
+                return $this->inner->findAttachedByOperation($projectId, $operationId, $catalog);
+            }
+
+            public function findDetachedByOperation(ProjectId $projectId, int $operationId, ProjectDocumentSource $catalog): ?ProjectDocumentView
+            {
+                return $this->inner->findDetachedByOperation($projectId, $operationId, $catalog);
+            }
+
+            public function page(ProjectDocumentFilter $filter, ProjectDocumentSource $catalog): ProjectDocumentPage
+            {
+                return $this->inner->page($filter, $catalog);
+            }
+        };
+    }
+
     /** @return array{string, int} */
     private function financeSeries(User $owner, string $type, string $number): array
     {
@@ -741,6 +1372,69 @@ final class ProjectDocumentsTest extends TestCase
         };
     }
 
+    private function singleItemSource(string $type, string $reference, string $occurredAt): ProjectDocumentSource
+    {
+        return new class($type, $reference, $occurredAt) implements ProjectDocumentSource
+        {
+            public function __construct(
+                private readonly string $type,
+                private readonly string $reference,
+                private readonly string $occurredAt,
+            ) {}
+
+            public function supports(string $sourceType): bool
+            {
+                return $sourceType === $this->type;
+            }
+
+            public function resolve(int $ownerId, ProjectDocumentSourceRef $ref): ProjectDocumentMetadata
+            {
+                return new ProjectDocumentMetadata(
+                    $ref,
+                    $this->reference,
+                    null,
+                    null,
+                    null,
+                    $this->type,
+                    null,
+                    new DateTimeImmutable($this->occurredAt),
+                );
+            }
+
+            public function search(int $ownerId, ProjectDocumentSourceFilter $filter): ProjectDocumentSourcePage
+            {
+                if ($filter->cursor !== null) {
+                    return new ProjectDocumentSourcePage([], null);
+                }
+
+                return new ProjectDocumentSourcePage([
+                    $this->resolve($ownerId, new ProjectDocumentSourceRef($this->type, $this->reference)),
+                ], base64_encode('1'));
+            }
+        };
+    }
+
+    /** @return list<string> */
+    private function sourceReferences(ProjectDocumentSource $source, int $ownerId, string $type): array
+    {
+        $cursor = null;
+        $references = [];
+        $hops = 0;
+        do {
+            $page = $source->search($ownerId, new ProjectDocumentSourceFilter($ownerId, sourceTypes: [$type], cursor: $cursor, perPage: 1));
+            foreach ($page->items as $item) {
+                $references[] = $item->source->sourceReference;
+            }
+            $cursor = $page->nextCursor;
+            $hops++;
+            if ($hops > 20) {
+                $this->fail('Source cursor did not terminate for '.$type);
+            }
+        } while ($cursor !== null);
+
+        return $references;
+    }
+
     /** @param callable(string, string): void $test */
     private function withIsolatedPostgresDocumentSchema(callable $test): void
     {
@@ -770,6 +1464,7 @@ final class ProjectDocumentsTest extends TestCase
             foreach ([
                 require database_path('migrations/2026_08_28_100000_create_finance_document_core.php'),
                 require database_path('migrations/2027_03_04_100000_create_finance_project_workflow.php'),
+                require database_path('migrations/2027_03_04_130000_add_operation_identity_to_project_document_links.php'),
             ] as $migration) {
                 $migration->up();
             }

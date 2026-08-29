@@ -51,7 +51,7 @@ final readonly class ProjectDocumentMetadata
             'sha256' => $this->sha256 !== null ? strtolower($this->sha256) : null,
             'document_type' => $this->documentType,
             'document_label' => $this->documentLabel,
-            'occurred_at' => $this->occurredAt?->format(DATE_ATOM),
+            'occurred_at' => $this->occurredAt?->format('Y-m-d\TH:i:s.uP'),
         ];
     }
 }

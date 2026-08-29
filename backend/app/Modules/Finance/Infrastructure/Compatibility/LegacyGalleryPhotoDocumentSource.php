@@ -35,7 +35,7 @@ final class LegacyGalleryPhotoDocumentSource implements ProjectDocumentSource
         }
 
         return new ProjectDocumentMetadata($ref, (string) $row->name, is_string($row->mime) ? $row->mime : null, (int) $row->size, is_string($row->sha256) ? $row->sha256 : null,
-            'photo', null, new DateTimeImmutable($occurredAt->toAtomString()), $deleted ? 'deleted' : 'available', $deleted ? null : 'gallery.raw', $deleted ? [] : ['photo' => (int) $row->id]);
+            'photo', null, new DateTimeImmutable($occurredAt->format('Y-m-d\TH:i:s.uP')), $deleted ? 'deleted' : 'available', $deleted ? null : 'gallery.raw', $deleted ? [] : ['photo' => (int) $row->id]);
     }
 
     public function search(int $ownerId, ProjectDocumentSourceFilter $filter): ProjectDocumentSourcePage
@@ -49,11 +49,11 @@ final class LegacyGalleryPhotoDocumentSource implements ProjectDocumentSource
             $q->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower(trim($filter->q)).'%']);
         }
         if ($filter->from !== null) {
-            $q->whereRaw('COALESCE(taken_at, created_at) >= ?', [$filter->from]);
+            $q->whereRaw('COALESCE(taken_at, created_at) >= ?', [$filter->from->format('Y-m-d H:i:s.u')]);
         } if ($filter->to !== null) {
-            $q->whereRaw('COALESCE(taken_at, created_at) <= ?', [$filter->to]);
+            $q->whereRaw('COALESCE(taken_at, created_at) <= ?', [$filter->to->format('Y-m-d H:i:s.u')]);
         }
-        $rows = $q->orderByDesc(DB::raw('COALESCE(taken_at, created_at)'))->orderByDesc('id')->offset($offset)->limit($filter->perPage + 1)->get(['id']);
+        $rows = $q->orderByDesc(DB::raw('COALESCE(taken_at, created_at)'))->orderBy('id')->offset($offset)->limit($filter->perPage + 1)->get(['id']);
         $items = array_values($rows->take($filter->perPage)->map(fn ($r) => $this->resolve($ownerId, new ProjectDocumentSourceRef('gallery_photo', 'gallery-photo:'.$r->id)))->all());
 
         return new ProjectDocumentSourcePage($items, $rows->count() > $filter->perPage ? base64_encode((string) ($offset + $filter->perPage)) : null);

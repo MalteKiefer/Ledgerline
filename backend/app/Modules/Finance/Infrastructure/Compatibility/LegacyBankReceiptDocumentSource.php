@@ -12,10 +12,13 @@ use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourceRef;
 use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentSource;
 use DateTimeImmutable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 final class LegacyBankReceiptDocumentSource implements ProjectDocumentSource
 {
+    private const int TRANSACTION_BATCH_SIZE = 50;
+
     public function supports(string $sourceType): bool
     {
         return $sourceType === 'bank_transaction_receipt';
@@ -38,6 +41,13 @@ final class LegacyBankReceiptDocumentSource implements ProjectDocumentSource
         if ($receipt === null) {
             throw (new ModelNotFoundException)->setModel(BankTransaction::class, [$receiptId]);
         }
+
+        return $this->metadata($transaction, $ref, $receipt);
+    }
+
+    /** @param array<string, mixed> $receipt */
+    private function metadata(BankTransaction $transaction, ProjectDocumentSourceRef $ref, array $receipt): ProjectDocumentMetadata
+    {
         $deleted = $transaction->deleted_at !== null;
         $mime = isset($receipt['mime']) && is_string($receipt['mime']) ? $receipt['mime'] : null;
         $size = isset($receipt['size']) && is_numeric($receipt['size']) ? (int) $receipt['size'] : null;
@@ -48,7 +58,12 @@ final class LegacyBankReceiptDocumentSource implements ProjectDocumentSource
             throw new \LogicException('Transaction receipt occurrence is missing.');
         }
 
-        return new ProjectDocumentMetadata($ref, isset($receipt['name']) && is_string($receipt['name']) && trim($receipt['name']) !== '' ? $receipt['name'] : 'Receipt '.$receiptId, $mime, $size, $sha, 'receipt', isset($receipt['kind']) && is_string($receipt['kind']) ? $receipt['kind'] : null, new DateTimeImmutable($occurredAt->toAtomString()), $deleted ? 'deleted' : 'available', $deleted ? null : 'finance.transactions.receipts.raw', $deleted ? [] : ['transaction' => (int) $transaction->id, 'receipt' => $receiptId]);
+        $receiptId = $receipt['id'] ?? null;
+        if (! is_string($receiptId)) {
+            throw new \LogicException('Transaction receipt identity is missing.');
+        }
+
+        return new ProjectDocumentMetadata($ref, isset($receipt['name']) && is_string($receipt['name']) && trim($receipt['name']) !== '' ? $receipt['name'] : 'Receipt '.$receiptId, $mime, $size, $sha, 'receipt', isset($receipt['kind']) && is_string($receipt['kind']) ? $receipt['kind'] : null, new DateTimeImmutable($occurredAt->format('Y-m-d\TH:i:s.uP')), $deleted ? 'deleted' : 'available', $deleted ? null : 'finance.transactions.receipts.raw', $deleted ? [] : ['transaction' => (int) $transaction->id, 'receipt' => $receiptId]);
     }
 
     public function search(int $ownerId, ProjectDocumentSourceFilter $filter): ProjectDocumentSourcePage
@@ -58,59 +73,53 @@ final class LegacyBankReceiptDocumentSource implements ProjectDocumentSource
         }
         [$transactionOffset, $receiptOffset] = $this->position($filter->cursor);
         $items = [];
-        $positions = [];
-        $exhausted = false;
-        while (count($items) <= $filter->perPage && ! $exhausted) {
-            $transactions = BankTransaction::query()->withoutGlobalScopes()
-                ->where('user_id', $ownerId)
-                ->whereNull('deleted_at')
-                ->whereNotNull('receipts')
-                ->orderByDesc('date')
-                ->orderBy('id')
-                ->offset($transactionOffset)
-                ->limit(50)
-                ->get(['id', 'receipts']);
-            if ($transactions->isEmpty()) {
-                $exhausted = true;
-                break;
-            }
-            foreach ($transactions as $transaction) {
-                $receipts = array_values(array_filter(
-                    (array) $transaction->receipts,
-                    static fn (mixed $receipt): bool => is_array($receipt)
-                        && isset($receipt['id'])
-                        && is_string($receipt['id'])
-                        && preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/Di', $receipt['id']) === 1,
-                ));
-                usort($receipts, static fn (array $a, array $b): int => strtolower((string) $a['id']) <=> strtolower((string) $b['id']));
-                for ($index = $receiptOffset; $index < count($receipts); $index++) {
-                    $receiptId = (string) $receipts[$index]['id'];
-                    $ref = new ProjectDocumentSourceRef('bank_transaction_receipt', 'bank-transaction-receipt:'.$transaction->id.':'.$receiptId);
-                    $item = $this->resolve($ownerId, $ref);
-                    $nextPosition = $index + 1 < count($receipts)
-                        ? [$transactionOffset, $index + 1]
-                        : [$transactionOffset + 1, 0];
-                    if ($this->matches($item, $filter)) {
-                        $items[] = $item;
-                        $positions[] = $nextPosition;
-                        if (count($items) > $filter->perPage) {
-                            break 3;
-                        }
+        $transactions = BankTransaction::query()->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->whereNull('deleted_at')
+            ->whereNotNull('receipts')
+            ->orderByDesc(DB::raw('COALESCE(date, created_at)'))
+            ->orderBy('id')
+            ->offset($transactionOffset)
+            ->limit(self::TRANSACTION_BATCH_SIZE)
+            ->get(['id', 'date', 'created_at', 'deleted_at', 'receipts']);
+        foreach ($transactions as $batchIndex => $transaction) {
+            $receipts = array_values(array_filter(
+                (array) $transaction->receipts,
+                static fn (mixed $receipt): bool => is_array($receipt)
+                    && isset($receipt['id'])
+                    && is_string($receipt['id'])
+                    && preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/Di', $receipt['id']) === 1,
+            ));
+            usort($receipts, static fn (array $a, array $b): int => strtolower((string) $a['id']) <=> strtolower((string) $b['id']));
+            for ($index = $receiptOffset; $index < count($receipts); $index++) {
+                $receiptId = (string) $receipts[$index]['id'];
+                $ref = new ProjectDocumentSourceRef('bank_transaction_receipt', 'bank-transaction-receipt:'.$transaction->id.':'.$receiptId);
+                $item = $this->metadata($transaction, $ref, $receipts[$index]);
+                $nextPosition = $index + 1 < count($receipts)
+                    ? [$transactionOffset, $index + 1]
+                    : [$transactionOffset + 1, 0];
+                if ($this->matches($item, $filter)) {
+                    $items[] = $item;
+                    if (count($items) === $filter->perPage) {
+                        $hasMore = $index + 1 < count($receipts)
+                            || $batchIndex + 1 < $transactions->count()
+                            || $transactions->count() === self::TRANSACTION_BATCH_SIZE;
+
+                        return new ProjectDocumentSourcePage(
+                            $items,
+                            $hasMore ? $this->cursor($nextPosition[0], $nextPosition[1]) : null,
+                        );
                     }
                 }
-                $transactionOffset++;
-                $receiptOffset = 0;
             }
-            if ($transactions->count() < 50) {
-                $exhausted = true;
-            }
+            $transactionOffset++;
+            $receiptOffset = 0;
         }
 
-        $hasMore = count($items) > $filter->perPage;
-        $pageItems = array_slice($items, 0, $filter->perPage);
-        $nextPosition = $positions[$filter->perPage - 1] ?? null;
-
-        return new ProjectDocumentSourcePage($pageItems, $hasMore && is_array($nextPosition) ? $this->cursor($nextPosition[0], $nextPosition[1]) : null);
+        return new ProjectDocumentSourcePage(
+            $items,
+            $transactions->count() === self::TRANSACTION_BATCH_SIZE ? $this->cursor($transactionOffset, 0) : null,
+        );
     }
 
     private function matches(ProjectDocumentMetadata $i, ProjectDocumentSourceFilter $f): bool

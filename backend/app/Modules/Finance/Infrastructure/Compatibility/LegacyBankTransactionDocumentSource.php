@@ -35,7 +35,7 @@ final class LegacyBankTransactionDocumentSource implements ProjectDocumentSource
             throw new \LogicException('Bank transaction occurrence is missing.');
         }
 
-        return new ProjectDocumentMetadata($ref, $title, null, null, null, 'payment', is_string($row->invoice_number) ? $row->invoice_number : null, new DateTimeImmutable($occurredAt->toAtomString()), $deleted ? 'deleted' : 'available', $deleted ? null : 'finance.index', $deleted ? [] : ['transaction' => (int) $row->id]);
+        return new ProjectDocumentMetadata($ref, $title, null, null, null, 'payment', is_string($row->invoice_number) ? $row->invoice_number : null, new DateTimeImmutable($occurredAt->format('Y-m-d\TH:i:s.uP')), $deleted ? 'deleted' : 'available', $deleted ? null : 'finance.index', $deleted ? [] : ['transaction' => (int) $row->id]);
     }
 
     public function search(int $ownerId, ProjectDocumentSourceFilter $filter): ProjectDocumentSourcePage
@@ -50,11 +50,11 @@ final class LegacyBankTransactionDocumentSource implements ProjectDocumentSource
             $q->where(fn ($x) => $x->whereRaw('LOWER(counterparty) LIKE ?', [$n])->orWhereRaw('LOWER(purpose) LIKE ?', [$n])->orWhereRaw('LOWER(booking_text) LIKE ?', [$n])->orWhere('invoice_number', 'like', '%'.trim($filter->q).'%'));
         }
         if ($filter->from !== null) {
-            $q->whereRaw('COALESCE(date, created_at) >= ?', [$filter->from]);
+            $q->whereRaw('COALESCE(date, created_at) >= ?', [$filter->from->format('Y-m-d H:i:s.u')]);
         }if ($filter->to !== null) {
-            $q->whereRaw('COALESCE(date, created_at) <= ?', [$filter->to]);
+            $q->whereRaw('COALESCE(date, created_at) <= ?', [$filter->to->format('Y-m-d H:i:s.u')]);
         }
-        $rows = $q->orderByDesc(DB::raw('COALESCE(date, created_at)'))->orderByDesc('id')->offset($offset)->limit($filter->perPage + 1)->get(['id']);
+        $rows = $q->orderByDesc(DB::raw('COALESCE(date, created_at)'))->orderBy('id')->offset($offset)->limit($filter->perPage + 1)->get(['id']);
         $items = $rows->take($filter->perPage)->map(fn ($r) => $this->resolve($ownerId, new ProjectDocumentSourceRef('bank_transaction', 'bank-transaction:'.$r->id)))->values()->all();
 
         return new ProjectDocumentSourcePage(array_values($items), $rows->count() > $filter->perPage ? base64_encode((string) ($offset + $filter->perPage)) : null);

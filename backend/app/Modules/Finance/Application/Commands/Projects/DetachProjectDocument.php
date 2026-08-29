@@ -20,7 +20,7 @@ final readonly class DetachProjectDocument
 
     public function handle(ProjectId $projectId, int $linkId, int $actorId, DateTimeImmutable $at, string $idempotencyKey): ProjectDocumentView
     {
-        $hash = hash('sha256', json_encode(['project' => strtolower($projectId->uuid), 'link_id' => $linkId, 'actor_id' => $actorId, 'occurred_at' => $at->format(DATE_ATOM)], JSON_THROW_ON_ERROR));
+        $hash = hash('sha256', json_encode(['project' => strtolower($projectId->uuid), 'link_id' => $linkId, 'actor_id' => $actorId, 'occurred_at' => $at->format('Y-m-d\TH:i:s.uP')], JSON_THROW_ON_ERROR));
         $reservation = $this->operations->reserve($projectId->ownerId, 'project.document.detach', $idempotencyKey, $hash, $projectId);
         if ($reservation->status === 'replay') {
             return $this->documents->get($projectId, $this->replayLinkId($reservation->result), $this->catalog);
@@ -30,15 +30,15 @@ final readonly class DetachProjectDocument
         }
         if ($reservation->status === 'failed') {
             $reservation = $this->operations->retryFailed($reservation);
-            $existing = $this->documents->get($projectId, $linkId, $this->catalog);
-            if ($existing->detachedAt !== null) {
+            $existing = $this->documents->findDetachedByOperation($projectId, $reservation->recordId, $this->catalog);
+            if ($existing !== null) {
                 $this->operations->succeed($reservation, ['link_id' => $existing->linkId]);
 
                 return $existing;
             }
         }
         try {
-            $this->documents->detach($projectId, $linkId, $actorId, $at);
+            $this->documents->detach($projectId, $linkId, $actorId, $at, $reservation->recordId);
             $view = $this->documents->get($projectId, $linkId, $this->catalog);
             $this->operations->succeed($reservation, ['link_id' => $view->linkId]);
 
@@ -62,8 +62,8 @@ final readonly class DetachProjectDocument
 
     private function recover(OperationReservation $reservation, ProjectId $projectId, int $linkId): ProjectDocumentView
     {
-        $existing = $this->documents->get($projectId, $linkId, $this->catalog);
-        if ($existing->detachedAt === null) {
+        $existing = $this->documents->findDetachedByOperation($projectId, $reservation->recordId, $this->catalog);
+        if ($existing === null) {
             throw new DomainException('operation_in_progress');
         }
         $this->operations->succeed($reservation, ['link_id' => $existing->linkId]);
