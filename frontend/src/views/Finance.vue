@@ -2305,7 +2305,7 @@ import {
   type PrintInvoice, type PrintCompany, type PrintLine,
   computeTotals as printComputeTotals, vatRatesOf as printVatRatesOf,
   lineNet, fmtMoney as pmoney, fmtQty, hasDiscount, skontoDate,
-  epcQrDataUrl, renderInvoicePdfBlob, ensureInvoiceFonts,
+  epcQrDataUrl, renderInvoicePdfBlob, ensureInvoiceFonts, legacyPrintTerms,
 } from '@spa/shared/invoice-print';
 
 const f = useFinanceStore();
@@ -5069,7 +5069,8 @@ function buildPrintInvoice(src: Partial<Invoice>, lineRows: (InvoiceLine & { uni
     imported: !!src.imported,
     gross: src.gross ?? null,
     vatRate: src.vat_rate ?? null,
-    discountType: null, discountValue: null, skontoPercent: null, skontoDays: null,
+    ...legacyPrintTerms(src),
+    skontoPercent: null, skontoDays: null,
   };
 }
 

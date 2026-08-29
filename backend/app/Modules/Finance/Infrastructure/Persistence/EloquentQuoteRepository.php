@@ -999,8 +999,12 @@ final class EloquentQuoteRepository implements QuoteRepository
             if (! is_array($sourcePayload)) {
                 throw new LogicException('Quote duplication source must be an array.');
             }
+            $sourcePartnerId = $sourcePayload['partner_id'] ?? null;
+            if ($sourcePartnerId !== null && (! is_int($sourcePartnerId) || $sourcePartnerId < 1)) {
+                throw new LogicException('Quote duplication source partner is invalid.');
+            }
 
-            $built = $draft($sourcePayload, $quote->partner_id !== null ? (int) $quote->partner_id : null);
+            $built = $draft($sourcePayload, $sourcePartnerId);
             $copy = $this->createDraft(
                 $sourceId->ownerId,
                 $built['payload'],

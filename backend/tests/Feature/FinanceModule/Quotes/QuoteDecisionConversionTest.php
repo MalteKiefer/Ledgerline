@@ -13,7 +13,10 @@ use App\Modules\Finance\Application\Commands\Quotes\AcceptQuote;
 use App\Modules\Finance\Application\Commands\Quotes\ConvertQuoteToInvoice;
 use App\Modules\Finance\Application\Commands\Quotes\CreateQuote;
 use App\Modules\Finance\Application\Commands\Quotes\DeclineQuote;
+use App\Modules\Finance\Application\Commands\Quotes\DiscardQuoteDraft;
 use App\Modules\Finance\Application\Commands\Quotes\DuplicateQuote;
+use App\Modules\Finance\Application\Commands\Quotes\StartQuoteVersion;
+use App\Modules\Finance\Application\Commands\Quotes\UpdateQuoteDraft;
 use App\Modules\Finance\Application\DTOs\Quotes\ConvertQuoteToInvoiceData;
 use App\Modules\Finance\Application\DTOs\Quotes\DecideQuoteData;
 use App\Modules\Finance\Application\DTOs\Quotes\DuplicateQuoteData;
@@ -259,6 +262,41 @@ final class QuoteDecisionConversionTest extends TestCase
         $this->expectQuoteError('quote_revision_stale', fn () => $this->app->make(DuplicateQuote::class)->handle(
             new DuplicateQuoteData($source->id, 0, 99_999, 'duplicate-invalid'),
         ));
+    }
+
+    public function test_duplicate_uses_the_selected_revision_partner_after_a_later_draft_changed_and_discarded_it(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $oldPartnerId = $this->insertPartner((int) $owner->id, 'Original partner');
+        $laterPartnerId = $this->insertPartner((int) $owner->id, 'Later draft partner');
+        $source = $this->publishedQuote(
+            $owner,
+            '2026-09-27',
+            'partner-history',
+            $this->draft('2026-08-28', '2026-09-27', partnerId: $oldPartnerId),
+        );
+
+        $started = $this->app->make(StartQuoteVersion::class)->handle($source->id, 0);
+        $changed = $this->app->make(UpdateQuoteDraft::class)->handle(
+            id: $source->id,
+            expectedVersion: $started->version,
+            data: $this->draft('2026-08-28', '2026-09-27', partnerId: $laterPartnerId),
+        );
+        $discarded = $this->app->make(DiscardQuoteDraft::class)->handle($source->id, $changed->version);
+        $this->assertSame($laterPartnerId, $discarded->partnerId);
+        $this->assertNull($discarded->draft);
+
+        $copy = $this->app->make(DuplicateQuote::class)->handle(new DuplicateQuoteData(
+            $source->id,
+            $discarded->version,
+            $source->currentRevision->id,
+            'duplicate-selected-revision-partner',
+        ));
+
+        $this->assertSame($oldPartnerId, $source->currentRevision->snapshot['partner_id']);
+        $this->assertSame($oldPartnerId, $copy->partnerId);
+        $this->assertSame($oldPartnerId, $copy->draft['partner_id']);
     }
 
     public function test_conversion_requires_accepted_current_nonexpired_revision_and_replays_one_target(): void
@@ -714,13 +752,25 @@ final class QuoteDecisionConversionTest extends TestCase
         ?array $lines = null,
         string $discountType = 'percent',
         ?string $discountValue = '10.00',
+        ?int $partnerId = null,
     ): QuoteDraftData {
         return new QuoteDraftData(
-            'Network refresh', null, ['name' => 'Ada GmbH', 'email' => 'billing@example.com'],
+            'Network refresh', $partnerId, ['name' => 'Ada GmbH', 'email' => 'billing@example.com'],
             $issueDate, $validUntil, 'EUR', $lines ?? [new QuoteLineData(
                 'Consulting', '2.5000', 'hour', '100.00', '19.00', 'service', null,
             )], $discountType, $discountValue, 'Intro', 'Outro', 'Internal only',
         );
+    }
+
+    private function insertPartner(int $ownerId, string $name): int
+    {
+        return (int) DB::table('finance_partners')->insertGetId([
+            'user_id' => $ownerId,
+            'name' => $name,
+            'version' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function repository(): QuoteRepository

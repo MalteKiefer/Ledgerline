@@ -88,6 +88,20 @@ export interface InvoiceTotals {
   discountAmount: number;
 }
 
+interface LegacyDiscountSource {
+  discount_type?: 'percent' | 'amount' | null;
+  discount_value?: number | string | null;
+}
+
+export function legacyPrintTerms(source: LegacyDiscountSource): Pick<PrintInvoice, 'discountType' | 'discountValue'> {
+  const value = source.discount_value == null ? null : Number(source.discount_value);
+
+  return {
+    discountType: source.discount_type ?? null,
+    discountValue: value !== null && Number.isFinite(value) ? value : null,
+  };
+}
+
 const round2 = (n: number): number => Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
 
 export function lineNet(l: PrintLine): number {
