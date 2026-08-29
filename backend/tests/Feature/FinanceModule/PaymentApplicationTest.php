@@ -66,6 +66,109 @@ final class PaymentApplicationTest extends TestCase
         $this->assertDatabaseCount('finance_payments', 1);
     }
 
+    public function test_same_source_and_canonical_payload_replay_with_a_new_transport_key(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $data = new RecordPaymentData(
+            15_000,
+            'EUR',
+            new DateTimeImmutable('2026-08-29T10:15:00+00:00'),
+            'RE-2026-0042',
+            'Customer GmbH',
+            sourceType: 'bank_import',
+            sourceKey: 'statement-17:row-5',
+        );
+
+        $first = app(RecordPayment::class)->handle(
+            $data,
+            new IdempotencyKey('transport-attempt-one'),
+        );
+        $replay = app(RecordPayment::class)->handle(
+            $data,
+            new IdempotencyKey('transport-attempt-two'),
+        );
+
+        $this->assertSame($first->id->value, $replay->id->value);
+        $this->assertDatabaseCount('finance_payments', 1);
+        $this->assertSame(2, DB::table('finance_idempotency_records')
+            ->where('operation', 'payment.record')
+            ->where('status', 'completed')
+            ->count());
+    }
+
+    public function test_source_replay_canonicalizes_equivalent_received_at_offsets(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $first = app(RecordPayment::class)->handle(new RecordPaymentData(
+            15_000,
+            'EUR',
+            new DateTimeImmutable('2026-08-29T10:15:00+00:00'),
+            'RE-2026-0042',
+            'Customer GmbH',
+            sourceType: 'bank_import',
+            sourceKey: 'statement-17:row-7',
+        ), new IdempotencyKey('source-offset-first'));
+
+        $replay = app(RecordPayment::class)->handle(new RecordPaymentData(
+            15_000,
+            'EUR',
+            new DateTimeImmutable('2026-08-29T12:15:00+02:00'),
+            'RE-2026-0042',
+            'Customer GmbH',
+            sourceType: 'bank_import',
+            sourceKey: 'statement-17:row-7',
+        ), new IdempotencyKey('source-offset-retry'));
+
+        $this->assertSame($first->id->value, $replay->id->value);
+        $this->assertDatabaseCount('finance_payments', 1);
+    }
+
+    public function test_same_source_with_changed_canonical_payment_payload_conflicts_stably(): void
+    {
+        $owner = User::factory()->create();
+        $firstMethod = $this->paymentMethod($owner, 'First import account');
+        $secondMethod = $this->paymentMethod($owner, 'Second import account');
+        $this->actingAs($owner);
+        $sourceType = 'bank_import';
+        $sourceKey = 'statement-17:row-6';
+        $base = new RecordPaymentData(
+            15_000,
+            'EUR',
+            new DateTimeImmutable('2026-08-29T10:15:00+00:00'),
+            'RE-2026-0042',
+            'Customer GmbH',
+            $firstMethod,
+            $sourceType,
+            $sourceKey,
+        );
+        app(RecordPayment::class)->handle($base, new IdempotencyKey('source-payload-original'));
+        $changedPayloads = [
+            'amount' => new RecordPaymentData(15_001, 'EUR', $base->receivedAt, $base->reference, $base->counterparty, $firstMethod, $sourceType, $sourceKey),
+            'currency' => new RecordPaymentData(15_000, 'USD', $base->receivedAt, $base->reference, $base->counterparty, $firstMethod, $sourceType, $sourceKey),
+            'date' => new RecordPaymentData(15_000, 'EUR', new DateTimeImmutable('2026-08-29T10:15:01+00:00'), $base->reference, $base->counterparty, $firstMethod, $sourceType, $sourceKey),
+            'reference' => new RecordPaymentData(15_000, 'EUR', $base->receivedAt, 'RE-2026-0043', $base->counterparty, $firstMethod, $sourceType, $sourceKey),
+            'counterparty' => new RecordPaymentData(15_000, 'EUR', $base->receivedAt, $base->reference, 'Other GmbH', $firstMethod, $sourceType, $sourceKey),
+            'payment_method' => new RecordPaymentData(15_000, 'EUR', $base->receivedAt, $base->reference, $base->counterparty, $secondMethod, $sourceType, $sourceKey),
+        ];
+
+        foreach ($changedPayloads as $field => $changed) {
+            try {
+                app(RecordPayment::class)->handle(
+                    $changed,
+                    new IdempotencyKey('source-payload-changed-'.$field),
+                );
+                $this->fail("A changed {$field} was accepted for an existing payment source.");
+            } catch (DomainException $exception) {
+                $this->assertSame('payment_source_conflict', $exception->getMessage());
+            }
+        }
+
+        $this->assertDatabaseCount('finance_payments', 1);
+        $this->assertDatabaseCount('finance_idempotency_records', 1);
+    }
+
     public function test_record_payment_rejects_zero_minor_units_before_persistence(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -661,6 +764,19 @@ final class PaymentApplicationTest extends TestCase
             'payment-reference',
             'Customer GmbH',
         ), new IdempotencyKey('record-'.$key))->id;
+    }
+
+    private function paymentMethod(User $owner, string $name): int
+    {
+        return (int) DB::table('payment_methods')->insertGetId([
+            'user_id' => $owner->id,
+            'type' => 'bank',
+            'name' => $name,
+            'business' => true,
+            'version' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function assertAllocationCode(

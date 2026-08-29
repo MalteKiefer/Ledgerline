@@ -606,15 +606,12 @@ final class FinanceInvoicePersistenceTest extends TestCase
             $this->assertSame('idempotency_key_reused', $exception->getMessage());
         }
 
-        try {
-            $repository->record($data, new IdempotencyKey('payment-record-other-key'));
-            $this->fail('A payment source was recorded twice under different idempotency keys.');
-        } catch (DomainException $exception) {
-            $this->assertSame('payment_source_conflict', $exception->getMessage());
-        }
+        $sourceReplay = $repository->record($data, new IdempotencyKey('payment-record-other-key'));
+        $this->assertSame($first->id->value, $sourceReplay->id->value);
         $this->assertSame(1, DB::table('finance_payments')->where('user_id', $owner->id)->count());
-        $this->assertDatabaseMissing('finance_idempotency_records', [
+        $this->assertDatabaseHas('finance_idempotency_records', [
             'key_hash' => (new IdempotencyKey('payment-record-other-key'))->hash(),
+            'status' => 'completed',
         ]);
     }
 
@@ -854,6 +851,159 @@ final class FinanceInvoicePersistenceTest extends TestCase
                 ->where('payment_id', $aggregate['payment_id'])->count());
             $this->assertSame(1_500, (int) DB::table('finance_invoices')
                 ->where('id', $aggregate['invoice_id'])->value('allocated_minor'));
+        });
+    }
+
+    public function test_postgresql_concurrent_payment_source_replays_once_across_transport_keys_when_configured(): void
+    {
+        $this->withIsolatedPostgresSchema(function (
+            string $_connectionName,
+            string $postgresUrl,
+            string $schema,
+        ): void {
+            DB::statement('CREATE TABLE finance_task10_record_barrier (worker varchar(32) PRIMARY KEY)');
+            $processes = [
+                $this->startPostgresRecordPaymentWorker(
+                    $postgresUrl,
+                    $schema,
+                    'first',
+                    'pgsql-source-transport-first',
+                ),
+                $this->startPostgresRecordPaymentWorker(
+                    $postgresUrl,
+                    $schema,
+                    'second',
+                    'pgsql-source-transport-second',
+                ),
+            ];
+            $results = [];
+
+            foreach ($processes as $process) {
+                $exitCode = $process->wait();
+                $this->assertSame(0, $exitCode, $process->getErrorOutput().$process->getOutput());
+                $result = json_decode(trim($process->getOutput()), true, 512, JSON_THROW_ON_ERROR);
+                $this->assertIsArray($result);
+                $results[] = $result;
+            }
+
+            $this->assertSame($results[0]['payment_id'], $results[1]['payment_id']);
+            $this->assertSame(1, DB::table('finance_payments')->count());
+            $this->assertSame(2, DB::table('finance_idempotency_records')
+                ->where('operation', 'payment.record')
+                ->where('status', 'completed')
+                ->count());
+        });
+    }
+
+    public function test_postgresql_concurrent_payment_record_same_key_replays_once_when_configured(): void
+    {
+        $this->withIsolatedPostgresSchema(function (
+            string $_connectionName,
+            string $postgresUrl,
+            string $schema,
+        ): void {
+            DB::statement('CREATE TABLE finance_task10_record_barrier (worker varchar(32) PRIMARY KEY)');
+            $processes = [
+                $this->startPostgresRecordPaymentWorker(
+                    $postgresUrl,
+                    $schema,
+                    'first',
+                    'pgsql-record-same-transport-key',
+                ),
+                $this->startPostgresRecordPaymentWorker(
+                    $postgresUrl,
+                    $schema,
+                    'second',
+                    'pgsql-record-same-transport-key',
+                ),
+            ];
+            $results = [];
+
+            foreach ($processes as $process) {
+                $exitCode = $process->wait();
+                $this->assertSame(0, $exitCode, $process->getErrorOutput().$process->getOutput());
+                $result = json_decode(trim($process->getOutput()), true, 512, JSON_THROW_ON_ERROR);
+                $this->assertIsArray($result);
+                $results[] = $result;
+            }
+
+            $this->assertSame($results[0]['payment_id'], $results[1]['payment_id']);
+            $this->assertSame(1, DB::table('finance_payments')->count());
+            $this->assertSame(1, DB::table('finance_idempotency_records')
+                ->where('operation', 'payment.record')
+                ->where('status', 'completed')
+                ->count());
+        });
+    }
+
+    public function test_postgresql_different_payments_cannot_overallocate_one_invoice_or_deadlock_when_configured(): void
+    {
+        $this->withIsolatedPostgresSchema(function (
+            string $_connectionName,
+            string $postgresUrl,
+            string $schema,
+        ): void {
+            $aggregate = $this->storedFinanceAggregate(1, 62);
+            $owner = new User;
+            $owner->forceFill(['id' => 1]);
+            $this->actingAs($owner);
+            $secondPayment = $this->paymentRepository()->record(new RecordPaymentData(
+                10_900,
+                'EUR',
+                new DateTimeImmutable('2026-08-28T11:00:00+00:00'),
+                'RE-2026-62-second',
+                'ACME',
+                sourceType: 'manual',
+                sourceKey: 'pgsql-overallocation-second-payment',
+            ), new IdempotencyKey('pgsql-overallocation-record-second'));
+            DB::statement('CREATE TABLE finance_task5_allocation_barrier (worker varchar(32) PRIMARY KEY)');
+            $processes = [
+                $this->startPostgresAllocationWorker(
+                    $postgresUrl,
+                    $schema,
+                    'first',
+                    $aggregate,
+                    $aggregate['payment_id'],
+                    10_900,
+                    'pgsql-overallocation-first',
+                ),
+                $this->startPostgresAllocationWorker(
+                    $postgresUrl,
+                    $schema,
+                    'second',
+                    $aggregate,
+                    $secondPayment->id->value,
+                    10_900,
+                    'pgsql-overallocation-second',
+                ),
+            ];
+            $results = [];
+
+            foreach ($processes as $process) {
+                $exitCode = $process->wait();
+                $this->assertSame(0, $exitCode, $process->getErrorOutput().$process->getOutput());
+                $result = json_decode(trim($process->getOutput()), true, 512, JSON_THROW_ON_ERROR);
+                $this->assertIsArray($result);
+                $results[] = $result;
+            }
+
+            $this->assertCount(1, array_filter($results, static fn (array $result): bool => isset($result['batch_id'])));
+            $errors = array_values(array_filter(
+                $results,
+                static fn (array $result): bool => isset($result['error']),
+            ));
+            $this->assertCount(1, $errors);
+            $error = $errors[0]['error'] ?? null;
+            $this->assertIsString($error);
+            $this->assertSame('invoice_overallocated', $error);
+            $this->assertSame(11_900, (int) DB::table('finance_payment_allocations')
+                ->where('invoice_id', $aggregate['invoice_id'])
+                ->sum('amount_minor'));
+            $this->assertDatabaseHas('finance_invoices', [
+                'id' => $aggregate['invoice_id'],
+                'allocated_minor' => 11_900,
+                'open_minor' => 0,
+            ]);
         });
     }
 
@@ -1127,6 +1277,9 @@ final class FinanceInvoicePersistenceTest extends TestCase
         string $schema,
         string $worker,
         array $aggregate,
+        ?int $paymentId = null,
+        int $amountMinor = 500,
+        string $idempotencyKey = 'pgsql-concurrent-allocation-key',
     ): Process {
         $script = <<<'PHP'
             require getcwd().'/vendor/autoload.php';
@@ -1136,7 +1289,15 @@ final class FinanceInvoicePersistenceTest extends TestCase
             $url = getenv('FINANCE_TEST_PGSQL_URL');
             $schema = getenv('FINANCE_TEST_PGSQL_SCHEMA');
             $worker = getenv('FINANCE_TEST_PAYMENT_WORKER');
+            $paymentId = filter_var(getenv('FINANCE_TEST_PAYMENT_ID'), FILTER_VALIDATE_INT);
+            $invoiceId = filter_var(getenv('FINANCE_TEST_INVOICE_ID'), FILTER_VALIDATE_INT);
+            $amountMinor = filter_var(getenv('FINANCE_TEST_ALLOCATION_MINOR'), FILTER_VALIDATE_INT);
+            $idempotencyKey = getenv('FINANCE_TEST_IDEMPOTENCY_KEY');
             if (! is_string($url) || ! is_string($schema) || ! is_string($worker)
+                || ! is_int($paymentId) || $paymentId < 1
+                || ! is_int($invoiceId) || $invoiceId < 1
+                || ! is_int($amountMinor) || $amountMinor === 0
+                || ! is_string($idempotencyKey) || $idempotencyKey === ''
                 || preg_match('/\Afinance_invoice_task5_[0-9a-f]{16}\z/D', $schema) !== 1) {
                 fwrite(STDERR, 'invalid-postgres-worker-configuration');
                 exit(90);
@@ -1190,23 +1351,24 @@ final class FinanceInvoicePersistenceTest extends TestCase
                 $result = $payments->allocate(
                     new \App\Modules\Finance\Application\DTOs\Payments\AllocatePaymentData(
                         new \App\Modules\Finance\Application\DTOs\Payments\PaymentId(
-                            (int) getenv('FINANCE_TEST_PAYMENT_ID'),
+                            $paymentId,
                         ),
                         [new \App\Modules\Finance\Application\DTOs\Payments\AllocationLineData(
                             new \App\Modules\Finance\Application\DTOs\Invoices\InvoiceId(
-                                (int) getenv('FINANCE_TEST_INVOICE_ID'),
+                                $invoiceId,
                             ),
-                            500,
+                            $amountMinor,
                         )],
                     ),
-                    new \App\Modules\Finance\Application\DTOs\IdempotencyKey(
-                        'pgsql-concurrent-allocation-key',
-                    ),
+                    new \App\Modules\Finance\Application\DTOs\IdempotencyKey($idempotencyKey),
                 );
                 echo json_encode([
                     'batch_id' => $result->batchId,
                     'allocation_id' => $result->allocationIds[0]->value,
                 ], JSON_THROW_ON_ERROR);
+                exit(0);
+            } catch (\DomainException $exception) {
+                echo json_encode(['error' => $exception->getMessage()], JSON_THROW_ON_ERROR);
                 exit(0);
             } catch (Throwable $exception) {
                 fwrite(STDERR, $exception::class.':'.$exception->getMessage());
@@ -1221,8 +1383,114 @@ final class FinanceInvoicePersistenceTest extends TestCase
                 'FINANCE_TEST_PGSQL_URL' => $postgresUrl,
                 'FINANCE_TEST_PGSQL_SCHEMA' => $schema,
                 'FINANCE_TEST_PAYMENT_WORKER' => $worker,
-                'FINANCE_TEST_PAYMENT_ID' => (string) $aggregate['payment_id'],
+                'FINANCE_TEST_PAYMENT_ID' => (string) ($paymentId ?? $aggregate['payment_id']),
                 'FINANCE_TEST_INVOICE_ID' => (string) $aggregate['invoice_id'],
+                'FINANCE_TEST_ALLOCATION_MINOR' => (string) $amountMinor,
+                'FINANCE_TEST_IDEMPOTENCY_KEY' => $idempotencyKey,
+            ],
+            null,
+            25,
+        );
+        $process->start();
+
+        return $process;
+    }
+
+    private function startPostgresRecordPaymentWorker(
+        string $postgresUrl,
+        string $schema,
+        string $worker,
+        string $idempotencyKey,
+    ): Process {
+        $script = <<<'PHP'
+            require getcwd().'/vendor/autoload.php';
+            $app = require getcwd().'/bootstrap/app.php';
+            $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+            $url = getenv('FINANCE_TEST_PGSQL_URL');
+            $schema = getenv('FINANCE_TEST_PGSQL_SCHEMA');
+            $worker = getenv('FINANCE_TEST_PAYMENT_WORKER');
+            $idempotencyKey = getenv('FINANCE_TEST_IDEMPOTENCY_KEY');
+            if (! is_string($url) || ! is_string($schema) || ! is_string($worker)
+                || ! is_string($idempotencyKey) || $idempotencyKey === ''
+                || preg_match('/\Afinance_invoice_task5_[0-9a-f]{16}\z/D', $schema) !== 1) {
+                fwrite(STDERR, 'invalid-postgres-record-worker-configuration');
+                exit(90);
+            }
+
+            $base = config('database.connections.pgsql');
+            $base = is_array($base) ? $base : [];
+            foreach (['pgsql_task10_record_worker', 'pgsql_task10_record_barrier'] as $connectionName) {
+                config([
+                    "database.connections.{$connectionName}" => array_merge(
+                        $base,
+                        ['driver' => 'pgsql', 'url' => $url, 'search_path' => $schema],
+                    ),
+                ]);
+                \Illuminate\Support\Facades\DB::purge($connectionName);
+                \Illuminate\Support\Facades\DB::connection($connectionName)
+                    ->statement('SET search_path TO "'.$schema.'"');
+            }
+            \Illuminate\Support\Facades\DB::setDefaultConnection('pgsql_task10_record_worker');
+            \Illuminate\Support\Facades\Schema::clearResolvedInstance('db.schema');
+            \Illuminate\Support\Facades\DB::statement("SET lock_timeout TO '10s'");
+            \Illuminate\Support\Facades\DB::statement("SET statement_timeout TO '20s'");
+
+            $barrier = \Illuminate\Support\Facades\DB::connection('pgsql_task10_record_barrier');
+            $barrier->table('finance_task10_record_barrier')->insert(['worker' => $worker]);
+            $deadline = microtime(true) + 10.0;
+            while ((int) $barrier->table('finance_task10_record_barrier')->count() < 2) {
+                if (microtime(true) >= $deadline) {
+                    fwrite(STDERR, 'postgres-record-barrier-timeout');
+                    exit(91);
+                }
+                usleep(20_000);
+            }
+
+            $owner = new \App\Models\User;
+            $owner->forceFill(['id' => 1]);
+            \Illuminate\Support\Facades\Auth::setUser($owner);
+            $clock = new \App\Modules\Finance\Infrastructure\SystemClock;
+            $idempotency = new \App\Modules\Finance\Infrastructure\Persistence\EloquentIdempotencyStore($clock);
+            $invoices = new \App\Modules\Finance\Infrastructure\Persistence\EloquentInvoiceRepository(
+                $idempotency,
+                $clock,
+            );
+            $payments = new \App\Modules\Finance\Infrastructure\Persistence\EloquentPaymentRepository(
+                $idempotency,
+                $clock,
+                $invoices,
+            );
+
+            try {
+                $payment = $payments->record(
+                    new \App\Modules\Finance\Application\DTOs\Payments\RecordPaymentData(
+                        10_900,
+                        'EUR',
+                        new \DateTimeImmutable('2026-08-28T11:00:00+00:00'),
+                        'RE-2026-PGSQL',
+                        'ACME',
+                        sourceType: 'bank_import',
+                        sourceKey: 'pgsql-concurrent-source-row',
+                    ),
+                    new \App\Modules\Finance\Application\DTOs\IdempotencyKey($idempotencyKey),
+                );
+                echo json_encode(['payment_id' => $payment->id->value], JSON_THROW_ON_ERROR);
+                exit(0);
+            } catch (Throwable $exception) {
+                fwrite(STDERR, $exception::class.':'.$exception->getMessage());
+                exit(92);
+            }
+            PHP;
+
+        $process = new Process(
+            [PHP_BINARY, '-r', $script],
+            base_path(),
+            [
+                'FINANCE_TEST_PGSQL_URL' => $postgresUrl,
+                'FINANCE_TEST_PGSQL_SCHEMA' => $schema,
+                'FINANCE_TEST_PAYMENT_WORKER' => $worker,
+                'FINANCE_TEST_IDEMPOTENCY_KEY' => $idempotencyKey,
             ],
             null,
             25,

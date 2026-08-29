@@ -28,6 +28,7 @@ use App\Modules\Finance\Infrastructure\Persistence\Models\PaymentAllocationRecor
 use App\Modules\Finance\Infrastructure\Persistence\Models\PaymentRecord;
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -64,56 +65,73 @@ final class EloquentPaymentRepository implements PaymentRepository
             'source_type' => $data->sourceType,
             'source_key' => $data->sourceKey,
         ]);
+        $sourcePayloadHash = $this->requestHash($this->sourcePayload($data));
 
         try {
-            return DB::transaction(function () use ($data, $key, $requestHash): PaymentView {
-                $reservation = $this->idempotency->reserve('payment.record', $key, $requestHash);
-
-                if ($reservation['status'] === 'replay') {
-                    $paymentId = $reservation['response_payload']['payment_id'] ?? null;
-                    if (! is_int($paymentId)) {
-                        throw new LogicException('Stored payment result is incomplete.');
-                    }
-
-                    return $this->get(new PaymentId($paymentId));
-                }
-                if ($reservation['status'] !== 'new') {
-                    throw new DomainException('idempotency_'.$reservation['status']);
-                }
-                $this->assertOwnedRecordReferences($data);
-
-                $payment = new PaymentRecord;
-                $payment->forceFill([
-                    'user_id' => $this->ownerId(),
-                    'uuid' => (string) Str::uuid(),
-                    'amount_minor' => $data->amountMinor,
-                    'currency' => $data->currency,
-                    'received_at' => $data->receivedAt,
-                    'reference' => $data->reference,
-                    'counterparty' => $data->counterparty,
-                    'payment_method_id' => $data->paymentMethodId,
-                    'source_type' => $data->sourceType,
-                    'source_key' => $data->sourceKey,
-                    'version' => 0,
-                ])->save();
-                $this->idempotency->complete($reservation['record_id'], 201, [
-                    'payment_id' => (int) $payment->id,
-                ]);
-
-                return $this->view($payment);
-            }, 1);
+            return $this->recordOnce($data, $key, $requestHash, $sourcePayloadHash);
         } catch (QueryException $exception) {
             if ($data->sourceType !== null && $data->sourceKey !== null
-                && DB::table('finance_payments')
-                    ->where('user_id', $this->ownerId())
-                    ->where('source_type', $data->sourceType)
-                    ->where('source_key', $data->sourceKey)
-                    ->exists()) {
-                throw new DomainException('payment_source_conflict', previous: $exception);
+                && $this->ownedSourcePayment($data) instanceof PaymentRecord) {
+                return $this->recordOnce($data, $key, $requestHash, $sourcePayloadHash);
             }
 
             throw $exception;
         }
+    }
+
+    private function recordOnce(
+        RecordPaymentData $data,
+        IdempotencyKey $key,
+        string $requestHash,
+        string $sourcePayloadHash,
+    ): PaymentView {
+        return DB::transaction(function () use ($data, $key, $requestHash, $sourcePayloadHash): PaymentView {
+            $reservation = $this->idempotency->reserve('payment.record', $key, $requestHash);
+
+            if ($reservation['status'] === 'replay') {
+                $paymentId = $reservation['response_payload']['payment_id'] ?? null;
+                if (! is_int($paymentId)) {
+                    throw new LogicException('Stored payment result is incomplete.');
+                }
+
+                return $this->get(new PaymentId($paymentId));
+            }
+            if ($reservation['status'] !== 'new') {
+                throw new DomainException('idempotency_'.$reservation['status']);
+            }
+            $sourcePayment = $this->ownedSourcePayment($data, true);
+            if ($sourcePayment instanceof PaymentRecord) {
+                if (! hash_equals($this->sourcePayloadHash($sourcePayment), $sourcePayloadHash)) {
+                    throw new DomainException('payment_source_conflict');
+                }
+                $this->idempotency->complete($reservation['record_id'], 200, [
+                    'payment_id' => (int) $sourcePayment->id,
+                ]);
+
+                return $this->view($sourcePayment);
+            }
+            $this->assertOwnedRecordReferences($data);
+
+            $payment = new PaymentRecord;
+            $payment->forceFill([
+                'user_id' => $this->ownerId(),
+                'uuid' => (string) Str::uuid(),
+                'amount_minor' => $data->amountMinor,
+                'currency' => $data->currency,
+                'received_at' => $this->canonicalReceivedAt($data->receivedAt),
+                'reference' => $data->reference,
+                'counterparty' => $data->counterparty,
+                'payment_method_id' => $data->paymentMethodId,
+                'source_type' => $data->sourceType,
+                'source_key' => $data->sourceKey,
+                'version' => 0,
+            ])->save();
+            $this->idempotency->complete($reservation['record_id'], 201, [
+                'payment_id' => (int) $payment->id,
+            ]);
+
+            return $this->view($payment);
+        }, 1);
     }
 
     public function allocate(AllocatePaymentData $data, IdempotencyKey $key): AllocationResult
@@ -384,6 +402,67 @@ final class EloquentPaymentRepository implements PaymentRepository
         }
 
         return (int) $ownerId;
+    }
+
+    private function ownedSourcePayment(RecordPaymentData $data, bool $lock = false): ?PaymentRecord
+    {
+        if ($data->sourceType === null || $data->sourceKey === null) {
+            return null;
+        }
+        $query = PaymentRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->where('source_type', $data->sourceType)
+            ->where('source_key', $data->sourceKey);
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+        $payment = $query->first();
+
+        return $payment instanceof PaymentRecord ? $payment : null;
+    }
+
+    /** @return array<string, int|string|null> */
+    private function sourcePayload(RecordPaymentData $data): array
+    {
+        return [
+            'amount_minor' => $data->amountMinor,
+            'currency' => $data->currency,
+            'received_at' => $this->canonicalReceivedAt($data->receivedAt),
+            'reference' => $data->reference,
+            'counterparty' => $data->counterparty,
+            'payment_method_id' => $data->paymentMethodId,
+            'source_type' => $data->sourceType,
+            'source_key' => $data->sourceKey,
+        ];
+    }
+
+    private function sourcePayloadHash(PaymentRecord $payment): string
+    {
+        $receivedAt = $payment->getRawOriginal('received_at');
+        if (! is_string($receivedAt)) {
+            throw new LogicException('Stored payment source date is incomplete.');
+        }
+
+        return $this->requestHash([
+            'amount_minor' => (int) $payment->amount_minor,
+            'currency' => (string) $payment->currency,
+            'received_at' => $receivedAt,
+            'reference' => is_string($payment->reference) ? $payment->reference : null,
+            'counterparty' => is_string($payment->counterparty) ? $payment->counterparty : null,
+            'payment_method_id' => $payment->payment_method_id !== null
+                ? (int) $payment->payment_method_id
+                : null,
+            'source_type' => is_string($payment->source_type) ? $payment->source_type : null,
+            'source_key' => is_string($payment->source_key) ? $payment->source_key : null,
+        ]);
+    }
+
+    private function canonicalReceivedAt(DateTimeImmutable $receivedAt): string
+    {
+        return $receivedAt
+            ->setTimezone(new DateTimeZone('UTC'))
+            ->format('Y-m-d H:i:s');
     }
 
     private function assertOwnedRecordReferences(RecordPaymentData $data): void

@@ -10,12 +10,14 @@ use App\Modules\Finance\Application\Ports\InventoryMovementPort;
 use App\Modules\Finance\Application\Ports\InvoiceMailer;
 use App\Modules\Finance\Application\Ports\InvoiceNumberAllocator;
 use App\Modules\Finance\Application\Ports\InvoiceRepository;
+use App\Modules\Finance\Application\Ports\PaymentRepository;
 use App\Modules\Finance\Infrastructure\Inventory\LegacyStockLedgerAdapter;
 use App\Modules\Finance\Infrastructure\Mail\CompanyInvoiceMailer;
 use App\Modules\Finance\Infrastructure\Pdf\AtomicDocumentObjectStore;
 use App\Modules\Finance\Infrastructure\Pdf\LocalAtomicDocumentObjectStore;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentIdempotencyStore;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentInvoiceRepository;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentPaymentRepository;
 use App\Modules\Finance\Infrastructure\Persistence\LockedInvoiceNumberAllocator;
 use App\Modules\Finance\Infrastructure\Persistence\OrphanDocumentReconciler;
 use Illuminate\Support\Facades\File;
@@ -38,6 +40,7 @@ final class InvoiceProviderBindingsTest extends TestCase
         try {
             $this->assertInstanceOf(EloquentIdempotencyStore::class, app(IdempotencyStore::class));
             $this->assertInstanceOf(EloquentInvoiceRepository::class, app(InvoiceRepository::class));
+            $this->assertInstanceOf(EloquentPaymentRepository::class, app(PaymentRepository::class));
             $this->assertInstanceOf(LockedInvoiceNumberAllocator::class, app(InvoiceNumberAllocator::class));
             $this->assertInstanceOf(LegacyStockLedgerAdapter::class, app(InventoryMovementPort::class));
             $this->assertInstanceOf(CompanyInvoiceMailer::class, app(InvoiceMailer::class));
