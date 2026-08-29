@@ -19,5 +19,8 @@ final readonly class PaymentView
         public ?string $reference,
         public ?string $counterparty,
         public int $version,
+        public ?int $paymentMethodId = null,
+        public ?string $sourceType = null,
+        public ?string $sourceKey = null,
     ) {}
 }

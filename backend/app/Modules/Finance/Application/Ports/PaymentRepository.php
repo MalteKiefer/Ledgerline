@@ -20,5 +20,9 @@ interface PaymentRepository
 
     public function allocate(AllocatePaymentData $data, IdempotencyKey $key): AllocationResult;
 
-    public function reverse(AllocationId $id, IdempotencyKey $key): AllocationResult;
+    public function reverse(
+        AllocationId $id,
+        IdempotencyKey $key,
+        ?int $expectedPaymentVersion = null,
+    ): AllocationResult;
 }

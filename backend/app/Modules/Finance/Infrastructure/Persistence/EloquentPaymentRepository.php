@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Finance\Infrastructure\Persistence;
 
+use App\Models\BankTransaction;
+use App\Models\PaymentMethod;
 use App\Modules\Finance\Application\DTOs\IdempotencyKey;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
 use App\Modules\Finance\Application\DTOs\Payments\AllocatePaymentData;
@@ -17,6 +19,7 @@ use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\IdempotencyStore;
 use App\Modules\Finance\Application\Ports\InvoiceRepository;
 use App\Modules\Finance\Application\Ports\PaymentRepository;
+use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\InvoiceRecord;
@@ -49,6 +52,26 @@ final class EloquentPaymentRepository implements PaymentRepository
 
     public function record(RecordPaymentData $data, IdempotencyKey $key): PaymentView
     {
+        if ($data->paymentMethodId !== null && ! DB::table('payment_methods')
+            ->where('id', $data->paymentMethodId)
+            ->where('user_id', $this->ownerId())
+            ->whereNull('deleted_at')
+            ->exists()) {
+            throw (new ModelNotFoundException)->setModel(PaymentMethod::class, [$data->paymentMethodId]);
+        }
+        if ($data->sourceType === 'bank_transaction') {
+            $sourceId = filter_var($data->sourceKey, FILTER_VALIDATE_INT);
+            if (! is_int($sourceId) || $sourceId < 1 || ! DB::table('bank_transactions')
+                ->where('id', $sourceId)
+                ->where('user_id', $this->ownerId())
+                ->whereNull('deleted_at')
+                ->exists()) {
+                throw (new ModelNotFoundException)->setModel(
+                    BankTransaction::class,
+                    [$data->sourceKey ?? ''],
+                );
+            }
+        }
         $requestHash = $this->requestHash([
             'amount_minor' => $data->amountMinor,
             'currency' => $data->currency,
@@ -118,6 +141,7 @@ final class EloquentPaymentRepository implements PaymentRepository
                 'invoice_id' => $line->invoiceId->value,
                 'amount_minor' => $line->amountMinor,
             ], $data->lines),
+            'expected_version' => $data->expectedVersion,
         ]);
 
         return DB::transaction(function () use ($data, $key, $requestHash): AllocationResult {
@@ -135,6 +159,9 @@ final class EloquentPaymentRepository implements PaymentRepository
             );
             $context = $this->lockContext($data->paymentId, $invoiceIds);
             $payment = $context['payment'];
+            if ($data->expectedVersion !== null && (int) $payment->version !== $data->expectedVersion) {
+                throw new DomainException('payment_version_conflict');
+            }
             $existingPaymentAllocation = $this->exactInteger(
                 $context['allocations']->sum('amount_minor'),
                 'Payment allocation sum',
@@ -153,6 +180,14 @@ final class EloquentPaymentRepository implements PaymentRepository
                 }
                 if ((string) $invoice->workflow_status === 'draft') {
                     throw new DomainException('allocation_invoice_not_finalized');
+                }
+                if (InvoiceRecord::query()
+                    ->withoutGlobalScopes()
+                    ->where('user_id', $this->ownerId())
+                    ->where('cancels_invoice_id', $invoice->id)
+                    ->where('workflow_status', '!=', 'draft')
+                    ->exists()) {
+                    throw new DomainException('allocation_invoice_cancelled');
                 }
                 if ((string) $revision->currency !== (string) $payment->currency) {
                     throw new DomainException('allocation_currency_mismatch');
@@ -178,6 +213,17 @@ final class EloquentPaymentRepository implements PaymentRepository
                     'created_at' => $this->clock->now(),
                 ])->save();
                 $allocationIds[] = new AllocationId((int) $allocation->id);
+                $this->appendActivity(
+                    $context['invoices'][$line->invoiceId->value],
+                    $context['revisions'][$line->invoiceId->value],
+                    'payment.allocated',
+                    [
+                        'payment_id' => (int) $payment->id,
+                        'batch_id' => (int) $batch->id,
+                        'allocation_id' => (int) $allocation->id,
+                        'amount_minor' => $line->amountMinor,
+                    ],
+                );
             }
 
             $this->refreshProjections($payment, array_values(array_unique($invoiceIds)), $context['revisions']);
@@ -193,11 +239,17 @@ final class EloquentPaymentRepository implements PaymentRepository
         }, 1);
     }
 
-    public function reverse(AllocationId $id, IdempotencyKey $key): AllocationResult
-    {
-        $requestHash = $this->requestHash(['allocation_id' => $id->value]);
+    public function reverse(
+        AllocationId $id,
+        IdempotencyKey $key,
+        ?int $expectedPaymentVersion = null,
+    ): AllocationResult {
+        $requestHash = $this->requestHash([
+            'allocation_id' => $id->value,
+            'expected_version' => $expectedPaymentVersion,
+        ]);
 
-        return DB::transaction(function () use ($id, $key, $requestHash): AllocationResult {
+        return DB::transaction(function () use ($id, $key, $requestHash, $expectedPaymentVersion): AllocationResult {
             $reservation = $this->idempotency->reserve('payment.reverse', $key, $requestHash);
             if ($reservation['status'] === 'replay') {
                 return $this->replayedAllocation($reservation['response_payload']);
@@ -215,6 +267,10 @@ final class EloquentPaymentRepository implements PaymentRepository
                 new PaymentId((int) $originalLocator->payment_id),
                 [(int) $originalLocator->invoice_id],
             );
+            if ($expectedPaymentVersion !== null
+                && (int) $context['payment']->version !== $expectedPaymentVersion) {
+                throw new DomainException('payment_version_conflict');
+            }
             $original = $context['allocations']->firstWhere('id', $id->value);
             if (! $original instanceof PaymentAllocationRecord) {
                 throw (new ModelNotFoundException)
@@ -241,6 +297,18 @@ final class EloquentPaymentRepository implements PaymentRepository
                 'created_at' => $this->clock->now(),
             ])->save();
             $invoiceIds = [(int) $original->invoice_id];
+            $this->appendActivity(
+                $context['invoices'][(int) $original->invoice_id],
+                $context['revisions'][(int) $original->invoice_id],
+                'payment.allocation_reversed',
+                [
+                    'payment_id' => (int) $original->payment_id,
+                    'batch_id' => (int) $batch->id,
+                    'allocation_id' => (int) $reversal->id,
+                    'reverses_allocation_id' => (int) $original->id,
+                    'amount_minor' => -(int) $original->amount_minor,
+                ],
+            );
             $this->refreshProjections($context['payment'], $invoiceIds, $context['revisions']);
             $payload = [
                 'batch_id' => (int) $batch->id,
@@ -293,6 +361,9 @@ final class EloquentPaymentRepository implements PaymentRepository
             is_string($payment->reference) ? $payment->reference : null,
             is_string($payment->counterparty) ? $payment->counterparty : null,
             (int) $payment->version,
+            $payment->payment_method_id !== null ? (int) $payment->payment_method_id : null,
+            is_string($payment->source_type) ? $payment->source_type : null,
+            is_string($payment->source_key) ? $payment->source_key : null,
         );
     }
 
@@ -468,6 +539,25 @@ final class EloquentPaymentRepository implements PaymentRepository
         if (abs($allocated) > abs($total)) {
             throw new DomainException($error);
         }
+    }
+
+    /** @param array<string, int|string|null> $payload */
+    private function appendActivity(
+        InvoiceRecord $invoice,
+        DocumentRevisionRecord $revision,
+        string $type,
+        array $payload,
+    ): void {
+        $activity = new DocumentActivityRecord;
+        $activity->forceFill([
+            'user_id' => $this->ownerId(),
+            'document_series_id' => $invoice->document_series_id,
+            'document_revision_id' => $revision->id,
+            'type' => $type,
+            'payload' => $payload,
+            'created_by' => $this->ownerId(),
+            'created_at' => $this->clock->now(),
+        ])->save();
     }
 
     /** @param array<string, mixed>|null $payload */

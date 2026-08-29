@@ -9,10 +9,16 @@ use InvalidArgumentException;
 final readonly class AllocatePaymentData
 {
     /** @param list<AllocationLineData> $lines */
-    public function __construct(public PaymentId $paymentId, public array $lines)
-    {
+    public function __construct(
+        public PaymentId $paymentId,
+        public array $lines,
+        public ?int $expectedVersion = null,
+    ) {
         if ($lines === []) {
             throw new InvalidArgumentException('Payment allocation requires at least one line.');
+        }
+        if ($expectedVersion !== null && $expectedVersion < 0) {
+            throw new InvalidArgumentException('Expected payment version must not be negative.');
         }
         $invoiceIds = [];
         foreach ($lines as $line) {

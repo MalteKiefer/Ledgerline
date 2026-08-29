@@ -20,6 +20,7 @@ use App\Modules\Finance\Application\DTOs\StoredDocument;
 use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\IdempotencyStore;
 use App\Modules\Finance\Application\Ports\InvoiceRepository;
+use App\Modules\Finance\Domain\Invoices\InvoiceBalance;
 use App\Modules\Finance\Domain\Shared\DecimalQuantity;
 use App\Modules\Finance\Domain\Shared\Discount;
 use App\Modules\Finance\Domain\Shared\DocumentCalculator;
@@ -1075,13 +1076,29 @@ final class EloquentInvoiceRepository implements InvoiceRepository
     {
         $revision = $invoice->currentRevision()->firstOrFail();
         $snapshot = $this->snapshot($revision->getAttribute('snapshot'));
+        $workflowStatus = (string) $invoice->workflow_status;
+        $status = $workflowStatus;
+        if ($workflowStatus !== 'draft') {
+            $cancelled = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $this->ownerId())
+                ->where('cancels_invoice_id', $invoice->id)
+                ->where('workflow_status', '!=', 'draft')
+                ->exists();
+            $status = (new InvoiceBalance(
+                (int) $revision->gross_minor,
+                (int) $invoice->allocated_minor,
+                $invoice->sent_at !== null || $workflowStatus === 'sent',
+                $cancelled,
+            ))->effectiveStatus()->value;
+        }
 
         return new InvoiceView(
             new InvoiceId((int) $invoice->id),
             (string) $invoice->uuid,
             (string) $invoice->kind,
             is_string($invoice->number) ? $invoice->number : null,
-            (string) $invoice->workflow_status,
+            $status,
             $this->date($invoice->getAttribute('issue_date')),
             $this->date($invoice->getAttribute('due_date')),
             $invoice->partner_id !== null ? (int) $invoice->partner_id : null,
