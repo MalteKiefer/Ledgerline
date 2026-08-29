@@ -24,4 +24,9 @@ final readonly class QuoteRevisionRef
         public ?DateTimeImmutable $publishedAt,
         public DateTimeImmutable $createdAt,
     ) {}
+
+    public function canonicalSnapshotSha256(): string
+    {
+        return hash('sha256', json_encode($this->snapshot, JSON_THROW_ON_ERROR));
+    }
 }

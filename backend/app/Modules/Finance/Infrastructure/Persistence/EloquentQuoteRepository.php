@@ -6,6 +6,7 @@ namespace App\Modules\Finance\Infrastructure\Persistence;
 
 use App\Models\FinancePartner;
 use App\Modules\Finance\Application\DTOs\DocumentRevisionId;
+use App\Modules\Finance\Application\DTOs\Quotes\InvoiceDraftTarget;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteId;
 use App\Modules\Finance\Application\DTOs\Quotes\QuotePage;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteRevisionRef;
@@ -14,10 +15,14 @@ use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteSettings;
 use App\Modules\Finance\Domain\Quotes\Exception\InvalidQuoteAction;
+use App\Modules\Finance\Domain\Quotes\QuoteRevisionState;
+use App\Modules\Finance\Domain\Quotes\QuoteStatus;
+use App\Modules\Finance\Domain\Quotes\QuoteWorkflow;
 use App\Modules\Finance\Domain\Shared\DocumentTotals;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentSeriesRecord;
+use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteConversionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteDeliveryRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteDraftRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\QuoteOperationRecord;
@@ -869,6 +874,437 @@ final class EloquentQuoteRepository implements QuoteRepository
         }, 1);
     }
 
+    public function decide(
+        QuoteId $id,
+        int $expectedVersion,
+        int $expectedRevisionId,
+        string $decision,
+        int $operationId,
+    ): QuoteView {
+        return DB::transaction(function () use (
+            $id,
+            $expectedVersion,
+            $expectedRevisionId,
+            $decision,
+            $operationId,
+        ): QuoteView {
+            [$series, $quote, $revision, $draft] = $this->lockedAggregate($id);
+            $operation = $this->lockedOperation($id, (int) $series->id, $operationId, $decision === 'accepted' ? 'accept' : 'decline');
+            if ((string) $operation->state === 'succeeded') {
+                return $this->viewForUuid($id);
+            }
+            if ((int) $quote->version !== $expectedVersion) {
+                throw new InvalidQuoteAction('version_conflict');
+            }
+            $this->assertNoActivePublication($id->ownerId, (int) $series->id);
+            $this->assertActionableRevision(
+                $id,
+                $series,
+                $revision,
+                $draft !== null,
+                $expectedRevisionId,
+                $decision,
+            );
+
+            $updatedAt = $this->clock->now();
+            $timestampColumn = $decision === 'accepted' ? 'accepted_at' : 'declined_at';
+            $updated = DB::table('finance_quote_series')
+                ->where('user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('version', $expectedVersion)
+                ->update([
+                    $timestampColumn => $updatedAt,
+                    'version' => $expectedVersion + 1,
+                    'updated_at' => $updatedAt,
+                ]);
+            if ($updated !== 1) {
+                throw new LogicException('Quote decision compare-and-swap failed after locking.');
+            }
+            $seriesUpdated = DB::table('finance_document_series')
+                ->where('user_id', $id->ownerId)
+                ->where('id', $series->id)
+                ->where('document_type', 'quote')
+                ->update(['status' => $decision, 'updated_at' => $updatedAt]);
+            if ($seriesUpdated !== 1) {
+                throw new LogicException('Quote decision status update failed after locking.');
+            }
+            $this->appendActivity(
+                $id->ownerId,
+                (int) $series->id,
+                'quote.'.$decision,
+                $expectedVersion + 1,
+                $updatedAt,
+                ['revision_id' => $expectedRevisionId],
+                $expectedRevisionId,
+            );
+            $this->completeOperation($operation, [
+                'quote_uuid' => $id->uuid,
+                'revision_id' => $expectedRevisionId,
+                'status' => $decision,
+            ], $updatedAt);
+
+            return $this->viewForUuid($id);
+        }, 1);
+    }
+
+    public function duplicate(
+        QuoteId $sourceId,
+        int $expectedVersion,
+        ?int $sourceRevisionId,
+        int $operationId,
+        callable $draft,
+    ): QuoteView {
+        return DB::transaction(function () use (
+            $sourceId,
+            $expectedVersion,
+            $sourceRevisionId,
+            $operationId,
+            $draft,
+        ): QuoteView {
+            [$series, $quote, $revision, $pendingDraft] = $this->lockedAggregate($sourceId);
+            $operation = $this->lockedOperation($sourceId, (int) $series->id, $operationId, 'duplicate');
+            if ((string) $operation->state === 'succeeded') {
+                return $this->replayDuplicatedQuote($sourceId->ownerId, $operation);
+            }
+            if ((int) $quote->version !== $expectedVersion) {
+                throw new InvalidQuoteAction('version_conflict');
+            }
+
+            if ($sourceRevisionId === null) {
+                if ((string) $series->status !== 'draft' || $revision !== null || $pendingDraft === null) {
+                    throw new InvalidQuoteAction('quote_revision_stale');
+                }
+                $sourcePayload = $pendingDraft->getAttribute('payload');
+            } else {
+                if ($revision === null || (int) $revision->id !== $sourceRevisionId) {
+                    $this->throwRevisionMismatch($sourceId, (int) $series->id, $sourceRevisionId);
+                }
+                $sourcePayload = $revision->getAttribute('snapshot');
+            }
+            if (! is_array($sourcePayload)) {
+                throw new LogicException('Quote duplication source must be an array.');
+            }
+
+            $built = $draft($sourcePayload, $quote->partner_id !== null ? (int) $quote->partner_id : null);
+            $copy = $this->createDraft(
+                $sourceId->ownerId,
+                $built['payload'],
+                $built['totals'],
+                $built['partner_id'],
+            );
+            $completedAt = $this->clock->now();
+            $this->appendActivity(
+                $sourceId->ownerId,
+                (int) $series->id,
+                'quote.duplicated',
+                (int) $quote->version,
+                $completedAt,
+                [
+                    'source_revision_id' => $sourceRevisionId,
+                    'target_quote_uuid' => $copy->id->uuid,
+                ],
+                $sourceRevisionId,
+            );
+            $this->completeOperation($operation, [
+                'quote_uuid' => $copy->id->uuid,
+                'source_revision_id' => $sourceRevisionId,
+            ], $completedAt);
+
+            return $copy;
+        }, 1);
+    }
+
+    public function convertToInvoice(
+        QuoteId $id,
+        int $expectedVersion,
+        int $expectedRevisionId,
+        int $operationId,
+        callable $createTarget,
+    ): InvoiceDraftTarget {
+        return DB::transaction(function () use (
+            $id,
+            $expectedVersion,
+            $expectedRevisionId,
+            $operationId,
+            $createTarget,
+        ): InvoiceDraftTarget {
+            [$series, $quote, $revision, $draft] = $this->lockedAggregate($id);
+            $operation = $this->lockedOperation($id, (int) $series->id, $operationId, 'convert_invoice');
+            if ((string) $operation->state === 'succeeded') {
+                return $this->conversionTargetFromOperation($operation);
+            }
+
+            $existing = QuoteConversionRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_quote_conversions.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('target_type', 'invoice')
+                ->lockForUpdate()
+                ->first();
+            if ($existing instanceof QuoteConversionRecord) {
+                if ((int) $existing->source_revision_id !== $expectedRevisionId) {
+                    throw new InvalidQuoteAction('quote_revision_stale');
+                }
+                $target = new InvoiceDraftTarget(
+                    (string) $existing->target_reference,
+                    $existing->target_id !== null ? (int) $existing->target_id : null,
+                );
+                $this->completeOperation($operation, $this->conversionResult($target, $expectedRevisionId), $this->clock->now());
+
+                return $target;
+            }
+            if ((int) $quote->version !== $expectedVersion) {
+                throw new InvalidQuoteAction('version_conflict');
+            }
+            $this->assertNoActivePublication($id->ownerId, (int) $series->id);
+            $this->assertActionableRevision(
+                $id,
+                $series,
+                $revision,
+                $draft !== null,
+                $expectedRevisionId,
+                'converted',
+            );
+            if (! $revision instanceof DocumentRevisionRecord) {
+                throw new LogicException('Accepted quote has no current revision.');
+            }
+            $snapshot = $revision->getAttribute('snapshot');
+            if (! is_array($snapshot)) {
+                throw new LogicException('Quote conversion snapshot must be an array.');
+            }
+            $source = $this->revisionRef($revision);
+            $target = $createTarget($source, $snapshot);
+            if (! $target instanceof InvoiceDraftTarget) {
+                throw new LogicException('Quote conversion target port returned an invalid result.');
+            }
+
+            $convertedAt = $this->clock->now();
+            $conversion = new QuoteConversionRecord;
+            $conversion->forceFill([
+                'user_id' => $id->ownerId,
+                'document_series_id' => $series->id,
+                'source_revision_id' => $revision->id,
+                'target_type' => 'invoice',
+                'target_reference' => $target->targetReference,
+                'target_id' => $target->targetId,
+                'created_at' => $convertedAt,
+            ])->save();
+            $updated = DB::table('finance_quote_series')
+                ->where('user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('version', $expectedVersion)
+                ->update([
+                    'converted_at' => $convertedAt,
+                    'version' => $expectedVersion + 1,
+                    'updated_at' => $convertedAt,
+                ]);
+            if ($updated !== 1) {
+                throw new LogicException('Quote conversion compare-and-swap failed after locking.');
+            }
+            $seriesUpdated = DB::table('finance_document_series')
+                ->where('user_id', $id->ownerId)
+                ->where('id', $series->id)
+                ->where('document_type', 'quote')
+                ->update(['status' => 'converted', 'updated_at' => $convertedAt]);
+            if ($seriesUpdated !== 1) {
+                throw new LogicException('Quote conversion status update failed after locking.');
+            }
+            $this->appendActivity(
+                $id->ownerId,
+                (int) $series->id,
+                'quote.converted',
+                $expectedVersion + 1,
+                $convertedAt,
+                [
+                    'revision_id' => $expectedRevisionId,
+                    'target_reference' => $target->targetReference,
+                ],
+                $expectedRevisionId,
+            );
+            $this->completeOperation($operation, $this->conversionResult($target, $expectedRevisionId), $convertedAt);
+
+            return $target;
+        }, 1);
+    }
+
+    /**
+     * @return array{DocumentSeriesRecord, QuoteSeriesRecord, DocumentRevisionRecord|null, QuoteDraftRecord|null}
+     */
+    private function lockedAggregate(QuoteId $id): array
+    {
+        $series = DocumentSeriesRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_document_series.user_id', $id->ownerId)
+            ->where('uuid', $id->uuid)
+            ->where('document_type', 'quote')
+            ->lockForUpdate()
+            ->firstOrFail();
+        $quote = QuoteSeriesRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_quote_series.user_id', $id->ownerId)
+            ->where('document_series_id', $series->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+        $revision = $quote->current_revision_id !== null
+            ? DocumentRevisionRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_revisions.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($quote->current_revision_id)
+                ->lockForUpdate()
+                ->firstOrFail()
+            : null;
+        $draft = QuoteDraftRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_quote_drafts.user_id', $id->ownerId)
+            ->where('document_series_id', $series->id)
+            ->lockForUpdate()
+            ->first();
+
+        return [$series, $quote, $revision, $draft];
+    }
+
+    private function lockedOperation(
+        QuoteId $id,
+        int $seriesId,
+        int $operationId,
+        string $operation,
+    ): QuoteOperationRecord {
+        $record = QuoteOperationRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_quote_operations.user_id', $id->ownerId)
+            ->where('document_series_id', $seriesId)
+            ->where('operation', $operation)
+            ->whereKey($operationId)
+            ->lockForUpdate()
+            ->firstOrFail();
+        if ((string) $record->state === 'failed') {
+            throw new InvalidQuoteAction(is_string($record->error_code) ? $record->error_code : 'quote_operation_failed');
+        }
+
+        return $record;
+    }
+
+    private function assertActionableRevision(
+        QuoteId $id,
+        DocumentSeriesRecord $series,
+        ?DocumentRevisionRecord $revision,
+        bool $hasPendingDraft,
+        int $expectedRevisionId,
+        string $action,
+    ): void {
+        $status = QuoteStatus::from((string) $series->status);
+        if ($status === QuoteStatus::Draft || $revision === null) {
+            throw new InvalidQuoteAction('quote_not_published');
+        }
+        $state = QuoteRevisionState::Current;
+        if ((int) $revision->id !== $expectedRevisionId) {
+            $replaced = DocumentRevisionRecord::query()
+                ->withoutGlobalScope('owner')
+                ->where('finance_document_revisions.user_id', $id->ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($expectedRevisionId)
+                ->lockForUpdate()
+                ->first(['id']);
+            $state = $replaced !== null ? QuoteRevisionState::Replaced : QuoteRevisionState::Current;
+        }
+        $snapshot = $revision?->getAttribute('snapshot');
+        $validUntil = is_array($snapshot) ? ($snapshot['valid_until'] ?? null) : null;
+        if (! is_string($validUntil)) {
+            throw new LogicException('Quote revision validity is missing.');
+        }
+        $timezone = new DateTimeZone($this->settings->ownerTimezone($id->ownerId));
+        $validity = DateTimeImmutable::createFromFormat('!Y-m-d', $validUntil, $timezone);
+        if (! $validity instanceof DateTimeImmutable || $validity->format('Y-m-d') !== $validUntil) {
+            throw new LogicException('Quote revision validity is invalid.');
+        }
+        $workflow = new QuoteWorkflow;
+        $now = $this->clock->now()->setTimezone($timezone);
+        if ($action === 'converted') {
+            $workflow->assertCurrentRevisionMayBeConverted(
+                $status,
+                $expectedRevisionId,
+                (int) $revision->id,
+                $validity,
+                $now,
+                $hasPendingDraft,
+                $state,
+            );
+
+            return;
+        }
+        $workflow->assertCurrentRevisionMayBeDecided(
+            $status,
+            QuoteStatus::from($action),
+            $expectedRevisionId,
+            (int) $revision->id,
+            $validity,
+            $now,
+            $hasPendingDraft,
+            $state,
+        );
+    }
+
+    private function throwRevisionMismatch(QuoteId $id, int $seriesId, int $expectedRevisionId): never
+    {
+        $replaced = DocumentRevisionRecord::query()
+            ->withoutGlobalScope('owner')
+            ->where('finance_document_revisions.user_id', $id->ownerId)
+            ->where('document_series_id', $seriesId)
+            ->whereKey($expectedRevisionId)
+            ->lockForUpdate()
+            ->first(['id']);
+
+        throw new InvalidQuoteAction($replaced !== null ? 'quote_revision_replaced' : 'quote_revision_stale');
+    }
+
+    private function replayDuplicatedQuote(int $ownerId, QuoteOperationRecord $operation): QuoteView
+    {
+        $result = $operation->getAttribute('result');
+        $uuid = is_array($result) ? ($result['quote_uuid'] ?? null) : null;
+        if (! is_string($uuid)) {
+            throw new LogicException('Completed quote duplication has no replay identity.');
+        }
+
+        return $this->viewForUuid(new QuoteId($ownerId, $uuid));
+    }
+
+    private function conversionTargetFromOperation(QuoteOperationRecord $operation): InvoiceDraftTarget
+    {
+        $result = $operation->getAttribute('result');
+        $reference = is_array($result) ? ($result['target_reference'] ?? null) : null;
+        $targetId = is_array($result) ? ($result['target_id'] ?? null) : null;
+        if (! is_string($reference) || ($targetId !== null && ! is_int($targetId))) {
+            throw new LogicException('Completed quote conversion has no replay target.');
+        }
+
+        return new InvoiceDraftTarget($reference, $targetId);
+    }
+
+    /** @return array{target_reference: string, target_id: int|null, source_revision_id: int} */
+    private function conversionResult(InvoiceDraftTarget $target, int $sourceRevisionId): array
+    {
+        return [
+            'target_reference' => $target->targetReference,
+            'target_id' => $target->targetId,
+            'source_revision_id' => $sourceRevisionId,
+        ];
+    }
+
+    /** @param array<string, mixed> $result */
+    private function completeOperation(
+        QuoteOperationRecord $operation,
+        array $result,
+        DateTimeInterface $completedAt,
+    ): void {
+        $operation->forceFill([
+            'state' => 'succeeded',
+            'result' => $result,
+            'error_code' => null,
+            'completed_at' => $completedAt,
+        ])->save();
+    }
+
     private function assertOwnedPartner(int $ownerId, ?int $partnerId): void
     {
         if ($partnerId === null) {
@@ -1011,12 +1447,13 @@ final class EloquentQuoteRepository implements QuoteRepository
         int $version,
         DateTimeInterface $createdAt,
         array $payload = [],
+        ?int $revisionId = null,
     ): void {
         $activity = new DocumentActivityRecord;
         $activity->forceFill([
             'user_id' => $ownerId,
             'document_series_id' => $seriesId,
-            'document_revision_id' => null,
+            'document_revision_id' => $revisionId,
             'type' => $type,
             'payload' => ['version' => $version, ...$payload],
             'created_by' => $ownerId,
@@ -1109,7 +1546,7 @@ final class EloquentQuoteRepository implements QuoteRepository
             ->format('Y-m-d');
 
         if ($effectiveStatus === 'expired') {
-            $query->where('quote_document_series.status', 'sent')
+            $query->whereIn('quote_document_series.status', ['sent', 'accepted'])
                 ->whereNotNull('quote_current_revision.id')
                 ->whereRaw("{$validUntil} IS NOT NULL")
                 ->whereRaw("{$validUntil} < ?", [$today]);
@@ -1119,6 +1556,17 @@ final class EloquentQuoteRepository implements QuoteRepository
 
         if ($effectiveStatus === 'sent') {
             $query->where('quote_document_series.status', 'sent')
+                ->where(static function (Builder $query) use ($validUntil, $today): void {
+                    $query->whereNull('quote_current_revision.id')
+                        ->orWhereRaw("{$validUntil} IS NULL")
+                        ->orWhereRaw("{$validUntil} >= ?", [$today]);
+                });
+
+            return;
+        }
+
+        if ($effectiveStatus === 'accepted') {
+            $query->where('quote_document_series.status', 'accepted')
                 ->where(static function (Builder $query) use ($validUntil, $today): void {
                     $query->whereNull('quote_current_revision.id')
                         ->orWhereRaw("{$validUntil} IS NULL")
@@ -1205,7 +1653,7 @@ final class EloquentQuoteRepository implements QuoteRepository
         string $status,
         ?DocumentRevisionRecord $revision,
     ): string {
-        if ($status !== 'sent' || $revision === null) {
+        if (! in_array($status, ['sent', 'accepted'], true) || $revision === null) {
             return $status;
         }
 
