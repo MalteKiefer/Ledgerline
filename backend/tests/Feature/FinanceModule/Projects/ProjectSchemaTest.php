@@ -265,6 +265,73 @@ final class ProjectSchemaTest extends TestCase
         $this->assertNull(DB::table('finance_project_document_links')->where('id', $id)->value('detached_by'));
     }
 
+    public function test_sqlite_document_link_guards_survive_operation_identity_table_rebuild(): void
+    {
+        if (DB::getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('SQLite rebuild regression.');
+        }
+
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $projectId = $this->insertProject((int) $owner->id);
+        $seriesUuid = $this->uuid(601);
+        $seriesId = $this->insertSeries((int) $owner->id, $seriesUuid);
+        $revisionId = $this->insertRevision((int) $owner->id, $seriesId);
+        $linkId = $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'source_type' => 'finance_series',
+            'source_reference' => $seriesUuid,
+            'document_series_id' => $seriesId,
+            'pinned_revision_id' => $revisionId,
+            'role' => 'quote',
+        ]);
+
+        $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'source_type' => 'finance_series',
+            'source_reference' => $seriesUuid,
+            'document_series_id' => $seriesId,
+            'pinned_revision_id' => $revisionId,
+            'role' => 'quote',
+        ]));
+        $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'source_type' => 'finance_series',
+        ]));
+        $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'source_type' => 'finance_series',
+            'source_reference' => $this->uuid(999),
+            'document_series_id' => $seriesId,
+            'pinned_revision_id' => $revisionId,
+        ]));
+        $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'attached_by' => $other->id,
+        ]));
+        $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'detached_by' => $owner->id,
+        ]));
+        $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'detached_by' => $other->id,
+            'detached_at' => now(),
+        ]));
+        $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'source_type' => 'unknown',
+        ]));
+        $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'role' => 'attachment',
+        ]));
+
+        DB::table('finance_project_document_links')->where('id', $linkId)->update(['detached_at' => now()]);
+        $reattached = $this->insertDocumentLink((int) $owner->id, $projectId, [
+            'source_type' => 'finance_series',
+            'source_reference' => $seriesUuid,
+            'document_series_id' => $seriesId,
+            'pinned_revision_id' => $revisionId,
+            'role' => 'quote',
+        ]);
+        $this->assertGreaterThan($linkId, $reattached);
+        $this->expectConstraint(fn () => DB::table('finance_project_document_links')
+            ->where('id', $linkId)
+            ->update(['detached_at' => null]));
+    }
+
     public function test_project_notes_are_owner_bound_append_history_with_exact_correction_rules(): void
     {
         $owner = User::factory()->create();
