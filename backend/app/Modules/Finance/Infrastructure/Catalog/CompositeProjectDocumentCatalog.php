@@ -61,12 +61,10 @@ final class CompositeProjectDocumentCatalog implements ProjectDocumentCatalog
         $heads = [];
         /** @var array<string, string|null> $nextCursors */
         $nextCursors = [];
-        /** @var array<string, true> $emptySources */
-        $emptySources = [];
 
         while (count($items) < $filter->perPage) {
             foreach ($types as $type) {
-                if (! isset($heads[$type]) && ! $state[$type]['done'] && ! isset($emptySources[$type])) {
+                if (! isset($heads[$type]) && ! $state[$type]['done']) {
                     $source = $this->one($type);
                     $page = $source->search($ownerId, new ProjectDocumentSourceFilter(
                         $ownerId,
@@ -85,7 +83,8 @@ final class CompositeProjectDocumentCatalog implements ProjectDocumentCatalog
                         $state[$type] = ['cursor' => null, 'done' => true];
                     } else {
                         $state[$type]['cursor'] = $page->nextCursor;
-                        $emptySources[$type] = true;
+
+                        return new ProjectDocumentSourcePage($items, $this->cursor($filter, $types, $state, $last));
                     }
                 }
             }

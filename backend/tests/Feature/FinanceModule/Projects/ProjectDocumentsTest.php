@@ -179,6 +179,99 @@ final class ProjectDocumentsTest extends TestCase
         $this->assertSame(['legacy-invoice:10', 'file:2', 'gallery-photo:3'], $references);
     }
 
+    public function test_composite_keeps_known_heads_unemitted_across_multiple_empty_embedded_frontiers(): void
+    {
+        $receiptReference = 'bank-transaction-receipt:1:00000000-0000-4000-8000-000000000001';
+        $catalog = new CompositeProjectDocumentCatalog([
+            $this->scriptedSource('bank_transaction_receipt', [
+                [],
+                [],
+                [[$receiptReference, '2026-08-29 09:00:00.000000']],
+            ]),
+            $this->scriptedSource('file', [
+                [['file:1', '2026-08-29 08:00:00.000000']],
+            ]),
+        ]);
+        $filter = static fn (?string $cursor): ProjectDocumentSourceFilter => new ProjectDocumentSourceFilter(
+            1,
+            sourceTypes: ['bank_transaction_receipt', 'file'],
+            cursor: $cursor,
+            perPage: 2,
+        );
+
+        $first = $catalog->search(1, $filter(null));
+        $second = $catalog->search(1, $filter($first->nextCursor));
+        $third = $catalog->search(1, $filter($second->nextCursor));
+
+        $this->assertSame([], $first->items);
+        $this->assertNotNull($first->nextCursor);
+        $this->assertSame([], $second->items);
+        $this->assertNotNull($second->nextCursor);
+        $this->assertSame(
+            [$receiptReference, 'file:1'],
+            array_map(static fn (ProjectDocumentMetadata $item): string => $item->source->sourceReference, $third->items),
+        );
+        $this->assertNull($third->nextCursor);
+    }
+
+    public function test_composite_returns_a_partial_page_before_crossing_an_unresolved_frontier(): void
+    {
+        $newestReceipt = 'bank-transaction-receipt:1:00000000-0000-4000-8000-000000000010';
+        $hiddenReceipt = 'bank-transaction-receipt:1:00000000-0000-4000-8000-000000000009';
+        $catalog = new CompositeProjectDocumentCatalog([
+            $this->scriptedSource('bank_transaction_receipt', [
+                [[$newestReceipt, '2026-08-29 10:00:00.000000']],
+                [],
+                [[$hiddenReceipt, '2026-08-29 09:00:00.000000']],
+            ]),
+            $this->scriptedSource('file', [
+                [['file:8', '2026-08-29 08:00:00.000000']],
+            ]),
+        ]);
+
+        $first = $catalog->search(1, new ProjectDocumentSourceFilter(1, sourceTypes: ['bank_transaction_receipt', 'file'], perPage: 3));
+        $second = $catalog->search(1, new ProjectDocumentSourceFilter(1, sourceTypes: ['bank_transaction_receipt', 'file'], cursor: $first->nextCursor, perPage: 3));
+
+        $this->assertSame([$newestReceipt], array_map(static fn (ProjectDocumentMetadata $item): string => $item->source->sourceReference, $first->items));
+        $this->assertNotNull($first->nextCursor);
+        $this->assertSame(
+            [$hiddenReceipt, 'file:8'],
+            array_map(static fn (ProjectDocumentMetadata $item): string => $item->source->sourceReference, $second->items),
+        );
+        $this->assertNull($second->nextCursor);
+    }
+
+    public function test_composite_returns_a_full_page_without_probing_the_next_frontier(): void
+    {
+        $newestReceipt = 'bank-transaction-receipt:1:00000000-0000-4000-8000-000000000010';
+        $hiddenReceipt = 'bank-transaction-receipt:1:00000000-0000-4000-8000-000000000009';
+        $catalog = new CompositeProjectDocumentCatalog([
+            $this->scriptedSource('bank_transaction_receipt', [
+                [[$newestReceipt, '2026-08-29 10:00:00.000000']],
+                [],
+                [[$hiddenReceipt, '2026-08-29 09:00:00.000000']],
+            ]),
+            $this->scriptedSource('file', [
+                [['file:8', '2026-08-29 08:00:00.000000']],
+            ]),
+        ]);
+        $cursor = null;
+        $pages = [];
+
+        do {
+            $page = $catalog->search(1, new ProjectDocumentSourceFilter(
+                1,
+                sourceTypes: ['bank_transaction_receipt', 'file'],
+                cursor: $cursor,
+                perPage: 1,
+            ));
+            $pages[] = array_map(static fn (ProjectDocumentMetadata $item): string => $item->source->sourceReference, $page->items);
+            $cursor = $page->nextCursor;
+        } while ($cursor !== null);
+
+        $this->assertSame([[$newestReceipt], [], [$hiddenReceipt], ['file:8']], $pages);
+    }
+
     public function test_full_catalog_has_exactly_one_owner_scoped_adapter_for_every_supported_type(): void
     {
         $owner = User::factory()->create();
@@ -1410,6 +1503,48 @@ final class ProjectDocumentsTest extends TestCase
                 return new ProjectDocumentSourcePage([
                     $this->resolve($ownerId, new ProjectDocumentSourceRef($this->type, $this->reference)),
                 ], base64_encode('1'));
+            }
+        };
+    }
+
+    /**
+     * @param  list<list<array{string, string}>>  $pages
+     */
+    private function scriptedSource(string $type, array $pages): ProjectDocumentSource
+    {
+        return new class($type, $pages) implements ProjectDocumentSource
+        {
+            /** @param list<list<array{string, string}>> $pages */
+            public function __construct(private readonly string $type, private readonly array $pages) {}
+
+            public function supports(string $sourceType): bool
+            {
+                return $sourceType === $this->type;
+            }
+
+            public function resolve(int $ownerId, ProjectDocumentSourceRef $ref): ProjectDocumentMetadata
+            {
+                foreach ($this->pages as $page) {
+                    foreach ($page as [$reference, $occurredAt]) {
+                        if ($reference === $ref->sourceReference) {
+                            return new ProjectDocumentMetadata($ref, $reference, null, null, null, $this->type, null, new DateTimeImmutable($occurredAt));
+                        }
+                    }
+                }
+
+                throw new ModelNotFoundException;
+            }
+
+            public function search(int $ownerId, ProjectDocumentSourceFilter $filter): ProjectDocumentSourcePage
+            {
+                $index = $filter->cursor === null ? 0 : (int) base64_decode($filter->cursor, true);
+                $items = array_map(
+                    fn (array $item): ProjectDocumentMetadata => $this->resolve($ownerId, new ProjectDocumentSourceRef($this->type, $item[0])),
+                    $this->pages[$index] ?? [],
+                );
+                $next = $index + 1;
+
+                return new ProjectDocumentSourcePage($items, $next < count($this->pages) ? base64_encode((string) $next) : null);
             }
         };
     }

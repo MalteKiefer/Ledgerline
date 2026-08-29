@@ -37,13 +37,19 @@ Task 8 ist als owner-validierter, read-only Source Catalog mit append-only Proje
 - Legacy-Invoices klassifizieren PDF nur bei einem nichtleeren `pdf_path`, verwenden für Filter und Sortierung `COALESCE(issue_date, created_at)` und liefern fehlende PDFs als `other`. Finance-Series veröffentlichen PDF-Metadaten und Capability ebenfalls nur bei realem PDF-Objekt. Dateien und Finance-Receipts mit NULL-MIME werden korrekt der Gruppe `other` zugeordnet.
 - Die additive Migration besitzt getestete Up-/Down-Pfade sowie Tests für Cross-Owner-Ablehnung, unveränderliche Link-Historie und Owner-Cascade.
 
+## Review-Runde 3
+
+- Eine leere Adapterseite mit echtem Fortsetzungscursor gilt als ungelöste Merge-Frontier. Der Composite avanciert ausschließlich die Position dieses Adapters und beendet die aktuelle Seite sofort, bevor er bekannte Heads anderer Adapter emittiert.
+- Bereits geladene, aber nicht emittierte Heads verändern ihre Adapterposition nicht und werden beim Resume deterministisch erneut geladen. Damit kann ein in einem späteren Batch versteckter 09:00-Treffer weiterhin vor einem bereits bekannten 08:00-Treffer erscheinen, ohne Duplikate, Verlust oder `document_source_cursor_order_invalid`.
+- Mehrere aufeinanderfolgende leere Frontiers liefern entsprechend mehrere leere Fortsetzungsseiten. Bereits emittierte Items bleiben als korrekte Partial Page erhalten; eine vollständig gefüllte Seite probt die nächste Frontier nicht vorzeitig.
+
 ## Verifikation
 
-- `ProjectDocumentsTest + FinanceRelationalTest + FilesRelationalTest`: **82 Tests, 81 bestanden, 509 Assertions, grün**; der PostgreSQL-Concurrency-Test ist ohne `FINANCE_TEST_PGSQL_URL` erwartungsgemäß übersprungen.
+- `ProjectDocumentsTest + FinanceRelationalTest + FilesRelationalTest`: **85 Tests, 84 bestanden, 520 Assertions, grün**; der PostgreSQL-Concurrency-Test ist ohne `FINANCE_TEST_PGSQL_URL` erwartungsgemäß übersprungen.
 - Task-8-Pint im Check-Modus: **grün**.
 - PHPStan auf allen Task-8-Produktionsdateien mit 1 GiB: **0 Fehler**.
 - Gesamter Project-Testordner: nicht vollständig ausführbar, weil `phpunit.xml` beim Application-Reboot wieder auf 128 MiB begrenzt und bereits beim Laden von `routes/web.php` erschöpft. Ein separater Baseline-Lauf zeigte zusätzlich den unabhängigen bestehenden Legacy-Gallery/S3-Konfigurationsfehler (fehlender Bucket). Der fokussierte Task-8- und relationale Satz ist davon nicht betroffen.
 
 ## Scope
 
-Keine Änderungen an HTTP-Workflow, Quote-Workflow oder Provider-Bindings in Runde 2. Die einzige neue Schemaänderung ist die additive, portable Checkpoint-Migration; Quellmodelle bleiben unverändert. Fremde parallele Quote/Invoice-/Frontend-Dateien im gemeinsamen Worktree wurden nicht bearbeitet und werden nicht committed.
+Keine Änderungen an HTTP-Workflow, Quote-Workflow oder Provider-Bindings in Runde 2. Die einzige neue Schemaänderung ist die additive, portable Checkpoint-Migration; Quellmodelle bleiben unverändert. Runde 3 ändert ausschließlich Composite, ProjectDocuments-Test und diesen Bericht. Fremde parallele Quote/Invoice-/Frontend-Dateien im gemeinsamen Worktree wurden nicht bearbeitet und werden nicht committed.
