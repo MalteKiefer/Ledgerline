@@ -43,4 +43,25 @@ interface InvoiceRepository
     ): FinalizedInvoice;
 
     public function markDeliverySent(DeliveryId $deliveryId, DateTimeImmutable $at): InvoiceView;
+
+    /** @return array{recipient:string, pdf_path:string, pdf_sha256:string} */
+    public function assertDeliveryReady(InvoiceId $id, ?string $recipient, string $kind): array;
+
+    /**
+     * @param  array<string, int|string|bool|null>  $context
+     * @return array{DeliveryId, bool}
+     */
+    public function queueDelivery(
+        InvoiceId $id,
+        string $kind,
+        string $recipient,
+        IdempotencyKey $key,
+        array $context = [],
+    ): array;
+
+    /** @return array{DeliveryId, bool} */
+    public function retryDelivery(DeliveryId $failedDelivery, IdempotencyKey $key): array;
+
+    /** @return array{invoice_id:int, kind:string, recipient:string, pdf_path:string, pdf_sha256:string} */
+    public function assertDeliveryRetryReady(DeliveryId $failedDelivery): array;
 }

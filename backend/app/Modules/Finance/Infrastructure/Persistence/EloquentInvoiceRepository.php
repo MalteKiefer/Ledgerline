@@ -33,6 +33,7 @@ use App\Modules\Finance\Infrastructure\Persistence\Models\InvoiceRecord;
 use Closure;
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Auth;
@@ -569,6 +570,281 @@ final class EloquentInvoiceRepository implements InvoiceRepository
 
             return $this->view($invoice->refresh());
         }, 1);
+    }
+
+    public function assertDeliveryReady(InvoiceId $id, ?string $recipient, string $kind): array
+    {
+        if (! in_array($kind, ['invoice', 'reminder'], true)) {
+            throw new DomainException('delivery_kind_invalid');
+        }
+        $invoice = $this->ownedInvoice($id);
+        $allowed = $kind === 'invoice' ? ['finalized'] : ['sent'];
+        if (! in_array((string) $invoice->workflow_status, $allowed, true)) {
+            throw new DomainException('delivery_invoice_not_eligible');
+        }
+        $revision = DocumentRevisionRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->where('document_series_id', $invoice->document_series_id)
+            ->whereKey($invoice->current_revision_id)
+            ->firstOrFail();
+        $path = $revision->getAttribute('pdf_path');
+        $sha256 = $revision->getAttribute('pdf_sha256');
+        if (! is_string($path)
+            || preg_match('#\Afinance/revisions/[0-9a-f]{2}/[0-9a-f]{64}\.pdf\z#D', $path) !== 1
+            || ! is_string($sha256)
+            || preg_match('/\A[0-9a-f]{64}\z/D', $sha256) !== 1) {
+            throw new DomainException('delivery_pdf_unavailable');
+        }
+        if ($recipient === null) {
+            $snapshot = $revision->getAttribute('snapshot');
+            $customer = is_array($snapshot) && is_array($snapshot['customer'] ?? null)
+                ? $snapshot['customer']
+                : [];
+            $recipient = is_string($customer['email'] ?? null) ? $customer['email'] : null;
+        }
+        $recipient = is_string($recipient) ? trim($recipient) : '';
+        if ($recipient === '' || filter_var($recipient, FILTER_VALIDATE_EMAIL) === false) {
+            throw new DomainException('delivery_recipient_missing');
+        }
+
+        return [
+            'recipient' => $recipient,
+            'pdf_path' => $path,
+            'pdf_sha256' => $sha256,
+        ];
+    }
+
+    /** @param array<string, int|string|bool|null> $context */
+    public function queueDelivery(
+        InvoiceId $id,
+        string $kind,
+        string $recipient,
+        IdempotencyKey $key,
+        array $context = [],
+    ): array {
+        $ownerId = $this->ownerId();
+        $keyHash = $key->hash();
+
+        return DB::transaction(function () use ($id, $kind, $recipient, $keyHash, $ownerId, $context): array {
+            $invoice = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($id->value)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $revision = DocumentRevisionRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $invoice->document_series_id)
+                ->whereKey($invoice->current_revision_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $requestHash = hash('sha256', json_encode([
+                'invoice_id' => (int) $invoice->id,
+                'revision_id' => (int) $revision->id,
+                'kind' => $kind,
+                'recipient' => $recipient,
+                'context' => $this->canonicalize($context),
+            ], JSON_THROW_ON_ERROR));
+            $existing = InvoiceDeliveryRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('kind', $kind)
+                ->where('idempotency_key_hash', $keyHash)
+                ->first();
+            if ($existing !== null) {
+                if (! hash_equals((string) $existing->request_hash, $requestHash)) {
+                    throw new DomainException('delivery_idempotency_conflict');
+                }
+
+                return [new DeliveryId((int) $existing->id, (string) $existing->uuid), false];
+            }
+            $normalized = $this->assertDeliveryReady($id, $recipient, $kind);
+            if ($normalized['recipient'] !== $recipient) {
+                throw new LogicException('Invoice delivery recipient changed while queuing.');
+            }
+            $uuid = (string) Str::uuid();
+            $now = $this->clock->now();
+            $deliveryId = DB::table('finance_invoice_deliveries')->insertGetId([
+                'user_id' => $ownerId,
+                'uuid' => $uuid,
+                'invoice_id' => $invoice->id,
+                'document_series_id' => $invoice->document_series_id,
+                'document_revision_id' => $revision->id,
+                'kind' => $kind,
+                'recipient' => $recipient,
+                'message_id' => '<'.$uuid.'@invoices.ledgerline>',
+                'status' => 'pending',
+                'attempts' => 0,
+                'last_error_code' => null,
+                'idempotency_key_hash' => $keyHash,
+                'request_hash' => $requestHash,
+                'queued_at' => $now,
+                'last_attempt_at' => null,
+                'sent_at' => null,
+                'next_retry_at' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            if ($kind === 'reminder') {
+                $activity = new DocumentActivityRecord;
+                $activity->forceFill([
+                    'user_id' => $ownerId,
+                    'document_series_id' => $invoice->document_series_id,
+                    'document_revision_id' => $revision->id,
+                    'type' => 'invoice.reminder.queued',
+                    'payload' => [
+                        'delivery_id' => $deliveryId,
+                        'level' => $context['level'] ?? null,
+                    ],
+                    'created_by' => $ownerId,
+                    'created_at' => $now,
+                ])->save();
+            }
+
+            return [new DeliveryId($deliveryId, $uuid), true];
+        }, 1);
+    }
+
+    public function retryDelivery(DeliveryId $failedDelivery, IdempotencyKey $key): array
+    {
+        $ownerId = $this->ownerId();
+        $keyHash = $key->hash();
+
+        return DB::transaction(function () use ($failedDelivery, $keyHash, $ownerId): array {
+            $source = InvoiceDeliveryRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($failedDelivery->value)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if (! in_array((string) $source->status, ['failed', 'unknown'], true)) {
+                throw new DomainException('delivery_retry_not_allowed');
+            }
+            $invoice = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($source->invoice_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ((int) $invoice->current_revision_id !== (int) $source->document_revision_id) {
+                throw new DomainException('delivery_revision_stale');
+            }
+            if ((string) $source->kind === 'reminder') {
+                $this->assertReminderOverdue($invoice);
+            }
+            $candidate = $this->assertDeliveryReady(
+                new InvoiceId((int) $invoice->id),
+                (string) $source->recipient,
+                (string) $source->kind,
+            );
+            $recipient = $candidate['recipient'];
+            $requestHash = hash('sha256', json_encode([
+                'retry_of' => (int) $source->id,
+                'invoice_id' => (int) $invoice->id,
+                'revision_id' => (int) $source->document_revision_id,
+                'kind' => (string) $source->kind,
+                'recipient' => $recipient,
+            ], JSON_THROW_ON_ERROR));
+            $existing = InvoiceDeliveryRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('kind', $source->kind)
+                ->where('idempotency_key_hash', $keyHash)
+                ->first();
+            if ($existing !== null) {
+                if (! hash_equals((string) $existing->request_hash, $requestHash)) {
+                    throw new DomainException('delivery_idempotency_conflict');
+                }
+
+                return [new DeliveryId((int) $existing->id, (string) $existing->uuid), false];
+            }
+            $uuid = (string) Str::uuid();
+            $now = $this->clock->now();
+            $id = DB::table('finance_invoice_deliveries')->insertGetId([
+                'user_id' => $ownerId,
+                'uuid' => $uuid,
+                'invoice_id' => $source->invoice_id,
+                'document_series_id' => $source->document_series_id,
+                'document_revision_id' => $source->document_revision_id,
+                'kind' => $source->kind,
+                'recipient' => $recipient,
+                'message_id' => '<'.$uuid.'@invoices.ledgerline>',
+                'status' => 'pending',
+                'attempts' => 0,
+                'last_error_code' => null,
+                'idempotency_key_hash' => $keyHash,
+                'request_hash' => $requestHash,
+                'queued_at' => $now,
+                'last_attempt_at' => null,
+                'sent_at' => null,
+                'next_retry_at' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            return [new DeliveryId($id, $uuid), true];
+        }, 1);
+    }
+
+    public function assertDeliveryRetryReady(DeliveryId $failedDelivery): array
+    {
+        $ownerId = $this->ownerId();
+        $source = InvoiceDeliveryRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->whereKey($failedDelivery->value)
+            ->firstOrFail();
+        if (! in_array((string) $source->status, ['failed', 'unknown'], true)) {
+            throw new DomainException('delivery_retry_not_allowed');
+        }
+        $invoice = InvoiceRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId)
+            ->whereKey($source->invoice_id)
+            ->firstOrFail();
+        if ((int) $invoice->current_revision_id !== (int) $source->document_revision_id) {
+            throw new DomainException('delivery_revision_stale');
+        }
+        if ((string) $source->kind === 'reminder') {
+            $this->assertReminderOverdue($invoice);
+        }
+        $candidate = $this->assertDeliveryReady(
+            new InvoiceId((int) $invoice->id),
+            (string) $source->recipient,
+            (string) $source->kind,
+        );
+
+        return [
+            'invoice_id' => (int) $invoice->id,
+            'kind' => (string) $source->kind,
+            ...$candidate,
+        ];
+    }
+
+    private function assertReminderOverdue(InvoiceRecord $invoice): void
+    {
+        $configured = UserSetting::query()->find($this->ownerId())?->getAttribute('timezone');
+        $fallback = config('app.timezone', 'UTC');
+        $name = is_string($configured) && trim($configured) !== ''
+            ? trim($configured)
+            : (is_string($fallback) ? $fallback : 'UTC');
+        try {
+            $zone = new DateTimeZone($name);
+        } catch (\Throwable) {
+            $zone = new DateTimeZone(is_string($fallback) ? $fallback : 'UTC');
+        }
+        $dueDate = new DateTimeImmutable(
+            $this->date($invoice->getAttribute('due_date'))->format('Y-m-d'),
+            $zone,
+        );
+        $today = (new DateTimeImmutable('now', $zone))->setTime(0, 0);
+        if ((string) $invoice->workflow_status !== 'sent'
+            || (int) $invoice->open_minor <= 0
+            || $dueDate >= $today) {
+            throw new DomainException('invoice_not_overdue');
+        }
     }
 
     private function ownedInvoice(InvoiceId $id): InvoiceRecord

@@ -10,6 +10,7 @@ use App\Modules\Finance\Application\Ports\DocumentRevisionRepository;
 use App\Modules\Finance\Application\Ports\DocumentStorage;
 use App\Modules\Finance\Application\Ports\IdempotencyStore;
 use App\Modules\Finance\Application\Ports\InventoryMovementPort;
+use App\Modules\Finance\Application\Ports\InvoiceMailer;
 use App\Modules\Finance\Application\Ports\InvoiceNumberAllocator;
 use App\Modules\Finance\Application\Ports\InvoiceRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentCatalog;
@@ -43,6 +44,7 @@ use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectRateSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectReferenceResolver;
 use App\Modules\Finance\Infrastructure\Integrations\Quotes\FinanceQuoteProjectTarget;
 use App\Modules\Finance\Infrastructure\Inventory\LegacyStockLedgerAdapter;
+use App\Modules\Finance\Infrastructure\Mail\CompanyInvoiceMailer;
 use App\Modules\Finance\Infrastructure\Mail\CompanyMailTransport;
 use App\Modules\Finance\Infrastructure\Mail\LaravelCompanyMailTransport;
 use App\Modules\Finance\Infrastructure\Mail\LaravelQuoteMailer;
@@ -140,6 +142,7 @@ final class FinanceServiceProvider extends ServiceProvider
         $this->app->singleton(Clock::class, SystemClock::class);
         $this->app->bind(IdempotencyStore::class, EloquentIdempotencyStore::class);
         $this->app->bind(InvoiceRepository::class, EloquentInvoiceRepository::class);
+        $this->app->bind(InvoiceMailer::class, CompanyInvoiceMailer::class);
         $this->app->bind(InvoiceNumberAllocator::class, LockedInvoiceNumberAllocator::class);
         $this->app->bind(InventoryMovementPort::class, LegacyStockLedgerAdapter::class);
         $this->app->bind(
