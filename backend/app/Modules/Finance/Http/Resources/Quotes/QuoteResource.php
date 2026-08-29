@@ -21,7 +21,7 @@ final class QuoteResource extends JsonResource
     {
         $quote = $this->quote;
 
-        return [
+        return QuoteWireValues::exactIntegerStrings([
             'id' => $quote->id->uuid,
             'status' => $quote->status,
             'effective_status' => $quote->effectiveStatus,
@@ -49,6 +49,6 @@ final class QuoteResource extends JsonResource
             'converted_at' => $quote->convertedAt?->format(DATE_ATOM),
             'created_at' => $quote->createdAt->format(DATE_ATOM),
             'updated_at' => $quote->updatedAt->format(DATE_ATOM),
-        ];
+        ]);
     }
 }

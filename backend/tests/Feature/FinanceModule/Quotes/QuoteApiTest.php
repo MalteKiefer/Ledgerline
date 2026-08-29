@@ -90,9 +90,9 @@ final class QuoteApiTest extends TestCase
             ->assertJsonPath('status', 'draft')
             ->assertJsonPath('effective_status', 'draft')
             ->assertJsonPath('version', 0)
-            ->assertJsonPath('totals.net_minor', 22500)
-            ->assertJsonPath('totals.vat_minor', 4275)
-            ->assertJsonPath('totals.gross_minor', 26775)
+            ->assertJsonPath('totals.net_minor', '22500')
+            ->assertJsonPath('totals.vat_minor', '4275')
+            ->assertJsonPath('totals.gross_minor', '26775')
             ->assertJsonPath('totals.currency', 'EUR')
             ->assertJsonMissingPath('user_id')
             ->assertJsonMissingPath('pdf_path');
@@ -107,6 +107,48 @@ final class QuoteApiTest extends TestCase
             ->assertJsonPath('error', 'idempotency_key_reused');
     }
 
+    public function test_control_totals_require_canonical_bounded_integer_strings_without_precision_loss(): void
+    {
+        [, $token] = $this->ownerAndToken();
+
+        foreach ([22500, '+22500', '022500', '-0', ((string) PHP_INT_MAX).'0', ((string) PHP_INT_MIN).'0'] as $invalid) {
+            $payload = $this->draftPayload();
+            $payload['control_net_minor'] = $invalid;
+            $this->withToken($token)->postJson('/api/v1/finance-v2/quotes/preview', $payload)
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors(['control_net_minor']);
+        }
+
+        $payload = $this->draftPayload();
+        $payload['control_net_minor'] = '22500';
+        $payload['control_vat_minor'] = '4275';
+        $payload['control_gross_minor'] = '26775';
+        $this->withToken($token)->postJson('/api/v1/finance-v2/quotes/preview', $payload)
+            ->assertOk()
+            ->assertJsonPath('gross_minor', '26775');
+
+        unset($payload['control_vat_minor'], $payload['control_gross_minor']);
+        foreach (['9007199254740993', (string) PHP_INT_MAX, (string) PHP_INT_MIN] as $boundedButOutsideMoneyDomain) {
+            $payload['control_net_minor'] = $boundedButOutsideMoneyDomain;
+            $this->withToken($token)->postJson('/api/v1/finance-v2/quotes/preview', $payload)
+                ->assertUnprocessable()
+                ->assertExactJson(['error' => 'invalid_money']);
+        }
+
+        $negative = $this->draftPayload();
+        $negative['lines'][0]['quantity'] = '-1.0000';
+        $negative['discount_type'] = 'none';
+        $negative['discount_value'] = null;
+        $negative['control_net_minor'] = '-10000';
+        $negative['control_vat_minor'] = '-1900';
+        $negative['control_gross_minor'] = '-11900';
+        $this->withToken($token)->postJson('/api/v1/finance-v2/quotes/preview', $negative)
+            ->assertOk()
+            ->assertJsonPath('net_minor', '-10000')
+            ->assertJsonPath('vat_minor', '-1900')
+            ->assertJsonPath('gross_minor', '-11900');
+    }
+
     public function test_preview_is_read_only_and_returns_server_authoritative_minor_units(): void
     {
         [$owner, $token] = $this->ownerAndToken();
@@ -114,22 +156,83 @@ final class QuoteApiTest extends TestCase
         $this->withToken($token)->postJson('/api/v1/finance-v2/quotes/preview', $this->draftPayload())
             ->assertOk()
             ->assertExactJson([
-                'net_minor' => 22500,
-                'vat_minor' => 4275,
-                'gross_minor' => 26775,
-                'discount_minor' => 2500,
+                'net_minor' => '22500',
+                'vat_minor' => '4275',
+                'gross_minor' => '26775',
+                'discount_minor' => '2500',
                 'currency' => 'EUR',
                 'tax_breakdowns' => [[
-                    'tax_rate_basis_points' => 1900,
-                    'net_minor' => 22500,
-                    'vat_minor' => 4275,
-                    'gross_minor' => 26775,
+                    'tax_rate_basis_points' => '1900',
+                    'net_minor' => '22500',
+                    'vat_minor' => '4275',
+                    'gross_minor' => '26775',
                 ]],
                 'issue_date' => '2026-08-28',
                 'valid_until' => '2026-09-27',
             ]);
 
         $this->assertSame(0, DB::table('finance_quote_series')->where('user_id', $owner->id)->count());
+    }
+
+    public function test_quote_resources_preserve_exact_nested_integer_values_above_javascript_safe_range(): void
+    {
+        [$owner, $token] = $this->ownerAndToken();
+        $quote = $this->createQuote($owner, 'Exact integers');
+        $seriesId = (int) DB::table('finance_document_series')->where('uuid', $quote->id->uuid)->value('id');
+        $large = 9_007_199_254_740_993;
+        $larger = 9_007_199_254_740_994;
+        $payload = json_decode((string) DB::table('finance_quote_drafts')->where('document_series_id', $seriesId)->value('payload'), true, 512, JSON_THROW_ON_ERROR);
+        $payload['lines'][0]['quantity_scaled'] = $large;
+        $payload['lines'][0]['unit_price_minor'] = $larger;
+        $payload['lines'][0]['tax_rate_basis_points'] = 1900;
+        $payload['discount'] = ['type' => 'fixed', 'value' => '1.00', 'minor' => $large, 'currency' => 'EUR'];
+        $payload['totals'] = [
+            'net_minor' => $large,
+            'vat_minor' => 1,
+            'gross_minor' => $larger,
+            'discount_minor' => $large,
+            'currency' => 'EUR',
+            'tax_breakdowns' => [[
+                'tax_rate_basis_points' => 1900,
+                'net_minor' => $large,
+                'vat_minor' => 1,
+                'gross_minor' => $larger,
+            ]],
+        ];
+        DB::table('finance_quote_drafts')->where('document_series_id', $seriesId)->update([
+            'payload' => json_encode($payload, JSON_THROW_ON_ERROR),
+            'net_minor' => $large,
+            'vat_minor' => 1,
+            'gross_minor' => $larger,
+        ]);
+
+        $detail = $this->withToken($token)->getJson('/api/v1/finance-v2/quotes/'.$quote->id->uuid)->assertOk();
+        $this->assertSame((string) $large, $detail->json('totals.net_minor'), json_encode($detail->json(), JSON_THROW_ON_ERROR));
+        $detail->assertJsonPath('draft.lines.0.quantity_scaled', (string) $large)
+            ->assertJsonPath('draft.lines.0.unit_price_minor', (string) $larger)
+            ->assertJsonPath('draft.lines.0.tax_rate_basis_points', '1900')
+            ->assertJsonPath('draft.discount.minor', (string) $large)
+            ->assertJsonPath('draft.totals.tax_breakdowns.0.gross_minor', (string) $larger);
+
+        $this->withToken($token)->getJson('/api/v1/finance-v2/quotes')->assertOk()
+            ->assertJsonPath('data.0.totals.net_minor', (string) $large)
+            ->assertJsonPath('data.0.draft.lines.0.quantity_scaled', (string) $large);
+
+        $revisionId = $this->publishFixture($owner, $seriesId);
+        $revisionSnapshot = $payload;
+        DB::table('finance_document_revisions')->where('id', $revisionId)->update([
+            'snapshot' => json_encode($revisionSnapshot, JSON_THROW_ON_ERROR),
+            'net_minor' => $large,
+            'vat_minor' => 1,
+            'gross_minor' => $larger,
+        ]);
+
+        $this->withToken($token)->getJson('/api/v1/finance-v2/quotes/'.$quote->id->uuid.'/revisions')->assertOk()
+            ->assertJsonPath('0.id', $revisionId)
+            ->assertJsonPath('0.totals.net_minor', (string) $large)
+            ->assertJsonPath('0.snapshot.lines.0.quantity_scaled', (string) $large)
+            ->assertJsonPath('0.snapshot.discount.minor', (string) $large)
+            ->assertJsonPath('0.snapshot.totals.tax_breakdowns.0.gross_minor', (string) $larger);
     }
 
     public function test_unsupported_expense_lines_are_rejected_at_the_http_boundary(): void
@@ -278,7 +381,8 @@ final class QuoteApiTest extends TestCase
             ->assertHeader('ETag', '"0"')
             ->assertJsonPath('error', 'version_conflict')
             ->assertJsonPath('current.id', $quote->id->uuid)
-            ->assertJsonPath('current.version', 0);
+            ->assertJsonPath('current.version', 0)
+            ->assertJsonPath('current.totals.gross_minor', '26775');
     }
 
     public function test_named_actions_validate_idempotency_revision_and_version_at_the_http_boundary(): void
@@ -349,7 +453,8 @@ final class QuoteApiTest extends TestCase
         $updatePayload = $this->draftPayload('Updated through HTTP');
         $updatePayload['version'] = 0;
         $this->withToken($token)->putJson('/api/v1/finance-v2/quotes/'.$updated->id->uuid.'/draft', $updatePayload)
-            ->assertOk()->assertJsonPath('version', 1)->assertJsonPath('draft.title', 'Updated through HTTP');
+            ->assertOk()->assertJsonPath('version', 1)->assertJsonPath('draft.title', 'Updated through HTTP')
+            ->assertJsonPath('totals.gross_minor', '26775');
 
         $discarded = $this->createQuote($owner, 'Discard');
         $discardSeries = (int) DB::table('finance_document_series')->where('uuid', $discarded->id->uuid)->value('id');
@@ -505,6 +610,54 @@ JS;
         $this->assertFalse($schemas['FinanceV2QuoteDraft']['additionalProperties']);
         $this->assertContains('target_id', $schemas['FinanceV2Quote']['properties']['conversions']['items']['required']);
         $this->assertArrayHasKey('oneOf', $schemas['FinanceV2QuoteUnprocessable']);
+
+        $signedPattern = '^(?:0|-?[1-9][0-9]*)$';
+        $unsignedPattern = '^(?:0|[1-9][0-9]*)$';
+        foreach ([
+            ['FinanceV2Money', 'net_minor'],
+            ['FinanceV2Money', 'vat_minor'],
+            ['FinanceV2Money', 'gross_minor'],
+            ['FinanceV2QuotePreview', 'net_minor'],
+            ['FinanceV2QuotePreview', 'vat_minor'],
+            ['FinanceV2QuotePreview', 'gross_minor'],
+            ['FinanceV2QuotePreview', 'discount_minor'],
+            ['FinanceV2QuoteLine', 'quantity_scaled'],
+            ['FinanceV2QuoteLine', 'unit_price_minor'],
+            ['FinanceV2QuoteCalculatedTotals', 'net_minor'],
+            ['FinanceV2QuoteCalculatedTotals', 'vat_minor'],
+            ['FinanceV2QuoteCalculatedTotals', 'gross_minor'],
+            ['FinanceV2QuoteCalculatedTotals', 'discount_minor'],
+        ] as [$schema, $property]) {
+            $definition = $schemas[$schema]['properties'][$property];
+            $this->assertSame('string', $definition['type'], "{$schema}.{$property}");
+            $this->assertSame($signedPattern, $definition['pattern'], "{$schema}.{$property}");
+            $this->assertIsString($definition['example'], "{$schema}.{$property}");
+        }
+        foreach ([
+            ['FinanceV2QuoteLine', 'tax_rate_basis_points'],
+            ['FinanceV2QuoteDiscount', 'basis_points'],
+            ['FinanceV2QuoteDiscount', 'minor'],
+        ] as [$schema, $property]) {
+            $definition = $schemas[$schema]['properties'][$property];
+            $this->assertSame('string', $definition['type'], "{$schema}.{$property}");
+            $this->assertSame($unsignedPattern, $definition['pattern'], "{$schema}.{$property}");
+            $this->assertIsString($definition['example'], "{$schema}.{$property}");
+        }
+        foreach (['FinanceV2QuotePreview', 'FinanceV2QuoteCalculatedTotals'] as $schema) {
+            $properties = $schemas[$schema]['properties']['tax_breakdowns']['items']['properties'];
+            foreach (['net_minor', 'vat_minor', 'gross_minor'] as $property) {
+                $this->assertSame('string', $properties[$property]['type'], "{$schema}.tax_breakdowns.{$property}");
+                $this->assertSame($signedPattern, $properties[$property]['pattern'], "{$schema}.tax_breakdowns.{$property}");
+            }
+            $this->assertSame('string', $properties['tax_rate_basis_points']['type']);
+            $this->assertSame($unsignedPattern, $properties['tax_rate_basis_points']['pattern']);
+        }
+        foreach (['control_net_minor', 'control_vat_minor', 'control_gross_minor'] as $property) {
+            $definition = $schemas['FinanceV2QuoteDraftInput']['properties'][$property];
+            $this->assertSame(['string', 'null'], $definition['type'], $property);
+            $this->assertSame($signedPattern, $definition['pattern'], $property);
+            $this->assertIsString($definition['example'], $property);
+        }
         foreach ([
             '/finance-v2/quotes',
             '/finance-v2/quotes/preview',

@@ -6,6 +6,7 @@ namespace App\Modules\Finance\Http\Requests\Quotes;
 
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteDraftData;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteLineData;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class QuoteDraftRequest extends FormRequest
@@ -40,9 +41,9 @@ final class QuoteDraftRequest extends FormRequest
             'intro_text' => ['nullable', 'string'],
             'outro_text' => ['nullable', 'string'],
             'internal_note' => ['nullable', 'string'],
-            'control_net_minor' => ['nullable', 'integer'],
-            'control_vat_minor' => ['nullable', 'integer'],
-            'control_gross_minor' => ['nullable', 'integer'],
+            'control_net_minor' => ['nullable', 'string', 'regex:/\A(?:0|-?[1-9][0-9]*)\z/D', $this->boundedIntegerRule()],
+            'control_vat_minor' => ['nullable', 'string', 'regex:/\A(?:0|-?[1-9][0-9]*)\z/D', $this->boundedIntegerRule()],
+            'control_gross_minor' => ['nullable', 'string', 'regex:/\A(?:0|-?[1-9][0-9]*)\z/D', $this->boundedIntegerRule()],
         ];
 
         if ($this->routeIs('api.finance-v2.quotes.store')) {
@@ -117,9 +118,9 @@ final class QuoteDraftRequest extends FormRequest
             $this->nullableString($data, 'intro_text'),
             $this->nullableString($data, 'outro_text'),
             $this->nullableString($data, 'internal_note'),
-            $this->nullableInt($data, 'control_net_minor'),
-            $this->nullableInt($data, 'control_vat_minor'),
-            $this->nullableInt($data, 'control_gross_minor'),
+            $this->nullableExactInteger($data, 'control_net_minor'),
+            $this->nullableExactInteger($data, 'control_vat_minor'),
+            $this->nullableExactInteger($data, 'control_gross_minor'),
         );
     }
 
@@ -164,5 +165,31 @@ final class QuoteDraftRequest extends FormRequest
         }
 
         return $value;
+    }
+
+    /** @param array<array-key, mixed> $data */
+    private function nullableExactInteger(array $data, string $key): ?int
+    {
+        $value = $data[$key] ?? null;
+        if ($value === null) {
+            return null;
+        }
+
+        $integer = filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE);
+        if (! is_string($value) || ! is_int($integer)) {
+            throw new \LogicException("Validated quote {$key} is outside the supported integer range.");
+        }
+
+        return $integer;
+    }
+
+    private function boundedIntegerRule(): Closure
+    {
+        return static function (string $attribute, mixed $value, Closure $fail): void {
+            if (! is_string($value)
+                || ! is_int(filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE))) {
+                $fail("The {$attribute} field must be within the supported integer range.");
+            }
+        };
     }
 }

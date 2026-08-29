@@ -20,6 +20,7 @@ use App\Modules\Finance\Http\Requests\Quotes\QuoteListRequest;
 use App\Modules\Finance\Http\Resources\Quotes\QuotePageResource;
 use App\Modules\Finance\Http\Resources\Quotes\QuoteResource;
 use App\Modules\Finance\Http\Resources\Quotes\QuoteRevisionResource;
+use App\Modules\Finance\Http\Resources\Quotes\QuoteWireValues;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -46,7 +47,7 @@ class QuoteController
             return $this->failure($exception);
         }
 
-        return response()->json([
+        return response()->json(QuoteWireValues::exactIntegerStrings([
             'net_minor' => $totals->netMinor,
             'vat_minor' => $totals->vatMinor,
             'gross_minor' => $totals->grossMinor,
@@ -55,7 +56,7 @@ class QuoteController
             'tax_breakdowns' => $totals->taxBreakdowns,
             'issue_date' => $totals->issueDate,
             'valid_until' => $totals->validUntil,
-        ]);
+        ]));
     }
 
     public function store(QuoteDraftRequest $request, CreateQuote $command): JsonResponse

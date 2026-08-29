@@ -40,3 +40,25 @@ The normal Artisan wrapper retains the repository-wide 128 MB test-process limit
 Only the reviewed Quote command/request/controller tests, the one Task 8 Send recovery fixture, the Quote conversion binding, OpenAPI, and this report are included. Concurrent Payment work visible in the shared worktree is excluded from the explicit-path commit. No push, tag, deploy, or history rewrite was performed.
 
 No unresolved functional concern remains. The three full-suite skips are the existing opt-in PostgreSQL/runtime concurrency paths and remain available through their documented environment configuration.
+
+## Exact-integer wire-contract follow-up
+
+The Task 11 review exposed a JavaScript precision boundary in the original Task 10 schema: Quote money, scaled quantity, and basis-point values were emitted as JSON numbers. The HTTP contract now emits every controlled `*_minor`, `minor`, `*_scaled`, `*_basis_points`, and `basis_points` business integer as a canonical decimal string at the shared Quote Resource boundary. UUIDs remain strings; database IDs, optimistic versions, delivery attempts, and pagination/count metadata remain integers.
+
+The serializer covers root totals, mutable drafts, immutable revision snapshots, revision totals, list rows, detail resources, mutation responses, Send replays, and conflict `current` resources. Regression fixtures persist values above JavaScript's `2^53` safe range and prove exact detail, list, and revision-history JSON output.
+
+Optional control totals now accept only signed canonical decimal integer strings: no JSON numbers, plus signs, leading zeros, or negative zero. Request validation rejects values outside the PHP integer range before conversion. Exact `PHP_INT_MIN`, `PHP_INT_MAX`, and `9007199254740993` inputs reach the Application layer without precision loss and are then rejected by the existing narrower Money domain with stable `invalid_money`; valid positive and negative controls retain existing semantics.
+
+OpenAPI uses matching string types, canonical signed/non-negative patterns, and quoted string examples for every Quote money/scaled/basis-point property. Strict YAML parsing and a field-by-field schema matrix guard the contract.
+
+### Follow-up TDD and verification
+
+- RED: create, preview, nested detail/list/revision, and OpenAPI matrix tests observed JSON integers.
+- RED: numeric and noncanonical control totals passed the old Laravel `integer` rule.
+- GREEN: focused Quote API suite with `FILES_DISK=local`: 20 tests passed, 414 assertions.
+- GREEN: Quote API plus global API surface guard on the shared Project/Quote OpenAPI HEAD: 24 tests passed, 418 assertions.
+- GREEN: strict OpenAPI parsing is included in that suite and passes with 95 schema assertions in its focused test.
+- GREEN: focused Quote HTTP PHPStan reports zero errors; focused Pint passes.
+- The combined OpenAPI file, including these Quote schema changes, was committed by the coordinated Project Task 10 commit `dd441a6a`; this Quote follow-up does not duplicate it.
+
+This follow-up changes only Quote HTTP request/resource serialization, its API/contract tests, OpenAPI, and this report. It does not change frontend code, route mounting/cutover, Domain calculations, persistence, provider bindings, or legacy endpoints.

@@ -21,7 +21,7 @@ final class QuoteRevisionResource extends JsonResource
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
-        return [
+        return QuoteWireValues::exactIntegerStrings([
             'id' => $this->revision->id,
             'revision_number' => $this->revision->revisionNumber,
             'previous_revision_id' => $this->revision->previousRevisionId,
@@ -45,6 +45,6 @@ final class QuoteRevisionResource extends JsonResource
             ]),
             'published_at' => $this->revision->publishedAt?->format(DATE_ATOM),
             'created_at' => $this->revision->createdAt->format(DATE_ATOM),
-        ];
+        ]);
     }
 }
