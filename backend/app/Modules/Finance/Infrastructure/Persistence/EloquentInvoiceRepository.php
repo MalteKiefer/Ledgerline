@@ -463,7 +463,76 @@ final class EloquentInvoiceRepository implements InvoiceRepository
         Closure $storePdf,
         Closure $recordInventory,
     ): FinalizedInvoice {
-        $requestHash = hash('sha256', "invoice.finalize:{$id->value}");
+        return $this->finalizeUsingOperation(
+            $id,
+            $key,
+            $allocateNumber,
+            $storePdf,
+            $recordInventory,
+            'invoice.finalize',
+        );
+    }
+
+    public function finalizeCancellationAtomically(
+        InvoiceId $id,
+        IdempotencyKey $key,
+        Closure $allocateNumber,
+        Closure $storePdf,
+        Closure $recordInventory,
+    ): FinalizedInvoice {
+        $invoice = $this->ownedInvoice($id);
+        $sourceKey = $invoice->source_key;
+        $sourceRevisionId = $invoice->source_revision_id;
+        $sourceSnapshotSha256 = $invoice->source_snapshot_sha256;
+        $cancelsInvoiceId = $invoice->cancels_invoice_id;
+        if ((string) $invoice->kind !== 'credit_note'
+            || (string) $invoice->source_type !== 'cancellation'
+            || ! is_string($sourceKey)
+            || trim($sourceKey) === ''
+            || ! is_numeric($sourceRevisionId)
+            || (int) $sourceRevisionId < 1
+            || ! is_string($sourceSnapshotSha256)
+            || preg_match('/\A[0-9a-f]{64}\z/D', $sourceSnapshotSha256) !== 1
+            || ! is_numeric($cancelsInvoiceId)
+            || (int) $cancelsInvoiceId < 1) {
+            throw new DomainException('invoice_cancellation_finalization_invalid');
+        }
+        $requestHash = hash('sha256', json_encode([
+            'invoice_id' => $id->value,
+            'kind' => 'credit_note',
+            'source_type' => 'cancellation',
+            'source_key' => $sourceKey,
+            'source_revision_id' => (int) $sourceRevisionId,
+            'source_snapshot_sha256' => $sourceSnapshotSha256,
+            'cancels_invoice_id' => (int) $cancelsInvoiceId,
+        ], JSON_THROW_ON_ERROR));
+
+        return $this->finalizeUsingOperation(
+            $id,
+            $key,
+            $allocateNumber,
+            $storePdf,
+            $recordInventory,
+            'invoice.cancel.finalize',
+            $requestHash,
+        );
+    }
+
+    /**
+     * @param  Closure(int, string): array{number: string, year: int, sequence: int}  $allocateNumber
+     * @param  Closure(string, array<array-key, mixed>): StoredDocument  $storePdf
+     * @param  Closure(int, string, array<int, int>, DateTimeImmutable): void  $recordInventory
+     */
+    private function finalizeUsingOperation(
+        InvoiceId $id,
+        IdempotencyKey $key,
+        Closure $allocateNumber,
+        Closure $storePdf,
+        Closure $recordInventory,
+        string $operation,
+        ?string $requestHash = null,
+    ): FinalizedInvoice {
+        $requestHash ??= hash('sha256', "invoice.finalize:{$id->value}");
 
         return DB::transaction(function () use (
             $id,
@@ -472,8 +541,18 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             $storePdf,
             $recordInventory,
             $requestHash,
+            $operation,
         ): FinalizedInvoice {
-            $reservation = $this->idempotency->reserve('invoice.finalize', $key, $requestHash);
+            try {
+                $reservation = $this->idempotency->reserve($operation, $key, $requestHash);
+            } catch (DomainException $exception) {
+                if ($operation !== 'invoice.cancel.finalize'
+                    || $exception->getMessage() !== 'idempotency_key_reused') {
+                    throw $exception;
+                }
+
+                throw new DomainException('cancellation_finalization_conflict', previous: $exception);
+            }
 
             if ($reservation['status'] === 'replay') {
                 return $this->replayedFinalization($id, $reservation['response_payload']);
@@ -505,6 +584,18 @@ final class EloquentInvoiceRepository implements InvoiceRepository
                 ->whereKey($invoice->current_revision_id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            $hasCancellationMarker = (string) $invoice->source_type === 'cancellation'
+                || $invoice->cancels_invoice_id !== null;
+            if ($operation === 'invoice.cancel.finalize') {
+                if ((string) $invoice->kind !== 'credit_note'
+                    || (string) $invoice->source_type !== 'cancellation'
+                    || $invoice->cancels_invoice_id === null) {
+                    throw new DomainException('invoice_cancellation_finalization_invalid');
+                }
+            } elseif ($hasCancellationMarker) {
+                throw new DomainException('cancellation_requires_internal_finalization');
+            }
 
             if ((string) $series->status !== 'draft'
                 || (string) $invoice->workflow_status !== 'draft'

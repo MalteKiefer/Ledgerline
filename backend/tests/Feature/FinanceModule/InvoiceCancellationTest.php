@@ -258,6 +258,94 @@ final class InvoiceCancellationTest extends TestCase
             ->count());
     }
 
+    public function test_public_finalization_key_collision_cannot_block_cancellation_checkpoint_recovery(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        [$repository, $workingCancel, $finalize, , $storage] = $this->cancellationEnvironment();
+        $target = $repository->createDraft($this->simpleDraft());
+        $hostile = $repository->createDraft($this->simpleDraft());
+        $finalize->handle($target, new IdempotencyKey('finalize-collision-target'));
+        $clock = new InvoiceCancellationClock(new DateTimeImmutable('2026-08-29T10:15:00+02:00'));
+        $failingCancel = new CancelInvoice(
+            $repository,
+            new FinalizeInvoice(
+                $repository,
+                new LockedInvoiceNumberAllocator,
+                new FailingCancellationInventory,
+                new InvoiceCancellationRenderer,
+                $storage,
+                new NullLogger,
+            ),
+            $clock,
+        );
+        $cancelKey = new IdempotencyKey('cancel-after-public-finalize-collision');
+        try {
+            $failingCancel->handle(new CancelInvoiceData($target), $cancelKey);
+            $this->fail('The cancellation inventory failure was not observed.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('cancellation inventory failed', $exception->getMessage());
+        }
+        $checkpoint = DB::table('finance_invoices')->where('cancels_invoice_id', $target->value)->first();
+        $this->assertNotNull($checkpoint);
+        $this->assertSame('draft', $checkpoint->workflow_status);
+        $checkpointId = $checkpoint->id ?? null;
+        $this->assertIsInt($checkpointId);
+        $publicCheckpointKey = new IdempotencyKey('hostile-public-checkpoint-finalization');
+        try {
+            $finalize->handle(new InvoiceId($checkpointId), $publicCheckpointKey);
+            $this->fail('The public finalization path accepted a cancellation checkpoint.');
+        } catch (DomainException $exception) {
+            $this->assertSame('cancellation_requires_internal_finalization', $exception->getMessage());
+        }
+        $this->assertSame(0, DB::table('finance_idempotency_records')
+            ->where('operation', 'invoice.finalize')
+            ->where('key_hash', $publicCheckpointKey->hash())
+            ->count());
+
+        $publicCollisionKey = new IdempotencyKey('invoice.cancel.finalize.'.$target->value);
+        $finalize->handle($hostile, $publicCollisionKey);
+
+        $credit = $workingCancel->handle(new CancelInvoiceData($target), $cancelKey);
+        $replay = $workingCancel->handle(new CancelInvoiceData($target), $cancelKey);
+
+        $this->assertSame($credit->invoice->id->value, $replay->invoice->id->value);
+        $this->assertSame($checkpoint->id, $credit->invoice->id->value);
+        $this->assertSame(1, DB::table('finance_invoices')->where('cancels_invoice_id', $target->value)->count());
+        $this->assertSame(1, DB::table('finance_idempotency_records')
+            ->where('operation', 'invoice.finalize')
+            ->where('key_hash', $publicCollisionKey->hash())
+            ->where('status', 'completed')
+            ->count());
+        $this->assertSame(1, DB::table('finance_idempotency_records')
+            ->where('operation', 'invoice.cancel.finalize')
+            ->where('status', 'completed')
+            ->count());
+    }
+
+    public function test_internal_replay_rejects_changed_cancellation_source_identity(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        [$repository, $cancel, $finalize] = $this->cancellationEnvironment();
+        $target = $repository->createDraft($this->simpleDraft());
+        $finalize->handle($target, new IdempotencyKey('finalize-source-conflict-target'));
+        $key = new IdempotencyKey('cancel-source-conflict-target');
+        $credit = $cancel->handle(new CancelInvoiceData($target), $key);
+        DB::table('finance_invoices')
+            ->where('id', $credit->invoice->id->value)
+            ->update(['source_snapshot_sha256' => str_repeat('b', 64)]);
+
+        try {
+            $cancel->handle(new CancelInvoiceData($target), $key);
+            $this->fail('Changed cancellation source identity replayed an internal finalization.');
+        } catch (DomainException $exception) {
+            $this->assertSame('cancellation_finalization_conflict', $exception->getMessage());
+        }
+
+        $this->assertSame(1, DB::table('finance_invoices')->where('cancels_invoice_id', $target->value)->count());
+    }
+
     public function test_paid_invoice_can_be_cancelled_without_fabricating_a_refund_payment(): void
     {
         $owner = User::factory()->create();

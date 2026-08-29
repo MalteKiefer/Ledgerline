@@ -32,12 +32,33 @@ final readonly class FinalizeInvoice
 
     public function handle(InvoiceId $id, IdempotencyKey $key): FinalizedInvoice
     {
+        return $this->finalize($id, $key, false);
+    }
+
+    public function finalizeCancellation(InvoiceId $id): FinalizedInvoice
+    {
+        return $this->finalize(
+            $id,
+            new IdempotencyKey('invoice.cancel.finalize.credit.'.$id->value),
+            true,
+        );
+    }
+
+    private function finalize(
+        InvoiceId $id,
+        IdempotencyKey $key,
+        bool $cancellation,
+    ): FinalizedInvoice {
         $write = null;
         $storageAttempted = false;
         $stored = null;
 
         try {
-            return $this->invoices->finalizeAtomically(
+            $finalize = $cancellation
+                ? $this->invoices->finalizeCancellationAtomically(...)
+                : $this->invoices->finalizeAtomically(...);
+
+            return $finalize(
                 $id,
                 $key,
                 fn (int $ownerId, string $issueDate): array => $this->numbers->allocate($ownerId, $issueDate),

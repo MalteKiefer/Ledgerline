@@ -51,6 +51,19 @@ interface InvoiceRepository
         Closure $recordInventory,
     ): FinalizedInvoice;
 
+    /**
+     * @param  Closure(int, string): array{number: string, year: int, sequence: int}  $allocateNumber
+     * @param  Closure(string, array<array-key, mixed>): StoredDocument  $storePdf
+     * @param  Closure(int, string, array<int, int>, DateTimeImmutable): void  $recordInventory
+     */
+    public function finalizeCancellationAtomically(
+        InvoiceId $id,
+        IdempotencyKey $key,
+        Closure $allocateNumber,
+        Closure $storePdf,
+        Closure $recordInventory,
+    ): FinalizedInvoice;
+
     public function markDeliverySent(DeliveryId $deliveryId, DateTimeImmutable $at): InvoiceView;
 
     /** @return array{recipient:string, pdf_path:string, pdf_sha256:string} */

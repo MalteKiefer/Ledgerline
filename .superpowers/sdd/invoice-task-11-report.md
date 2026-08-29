@@ -102,3 +102,43 @@ Der bestehende unvermeidbare Prozess-Crash genau zwischen externem Objekt-Write
 und DB-Commit bleibt wie bei der normalen Finalisierung über die vorhandene
 Orphan-Reconciliation abgedeckt; alle synchron beobachtbaren Fehler sind
 kompensiert und getestet.
+
+## Review-Fix P1: interner Finalisierungs-Namespace
+
+Der ursprüngliche Command leitete den Child-Key
+`invoice.cancel.finalize.<original-id>` ab, verwendete ihn aber im öffentlichen
+Idempotenz-Namespace `invoice.finalize`. Ein Client konnte diesen vorhersagbaren
+Key durch eine normale Draft-Finalisierung vorab reservieren. Nach einem bereits
+committeten Storno-Checkpoint schlug dann jeder Retry dauerhaft mit
+`idempotency_key_reused` fehl.
+
+Der Fix trennt die Pfade ohne frei wählbaren Namespace-Parameter:
+
+- `FinalizeInvoice::handle()` bleibt unverändert der öffentliche Pfad und nutzt
+  weiterhin ausschließlich `invoice.finalize`;
+- `FinalizeInvoice::finalizeCancellation()` nimmt nur die eindeutige Credit-ID
+  entgegen, erzeugt daraus einen deterministischen internen Recovery-Key und
+  ruft den festen Repository-Pfad `finalizeCancellationAtomically()` auf;
+- dieser feste Pfad verwendet ausschließlich `invoice.cancel.finalize` und
+  bindet seinen Request-Hash an Credit-ID, Kind, Originalrelation, Source-Key,
+  Source-Revisions-ID und Source-Snapshot-SHA;
+- der öffentliche Finalisierungsweg lehnt einen Storno-Checkpoint stabil mit
+  `cancellation_requires_internal_finalization` ab;
+- eine abweichende bereits reservierte interne Source-Identität liefert stabil
+  `cancellation_finalization_conflict`.
+
+TDD-RED wurde mit zwei echten Persistenzrepros beobachtet: erstens blieb ein
+Checkpoint nach Inventory-Fehler bestehen, ein normaler Draft reservierte danach
+den alten öffentlichen Key, und der Storno-Retry scheiterte; zweitens replayte
+eine nachträglich abweichende Source-SHA zunächst fälschlich das abgeschlossene
+interne Ergebnis. Nach dem Fix sind beide Pfade grün, ein Replay derselben
+Cancellation-ID bleibt deterministisch und es entsteht weiterhin genau ein
+Gegen-Dokument.
+
+Review-Verifikation:
+
+- Task11, normale Finalisierung, Legacy-Storno/Rabatt und gemeinsamer Calculator:
+  `56 tests`, `54 passed`, `447 assertions`, `2 optionale PostgreSQL-Skips`;
+- der bereits dokumentierte, unveränderte Null-Brutto-Baselinewiderspruch wurde
+  bei diesem kombinierten Lauf gezielt ausgeschlossen;
+- fokussiertes PHPStan und Pint: frisch vor dem Review-Fix-Commit ohne Befund.

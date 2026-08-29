@@ -34,10 +34,7 @@ final readonly class CancelInvoice
             fn (InvoiceView $original, int $revisionId, string $snapshotSha256): InvoiceDraftSource => $this->source($original, $revisionId, $snapshotSha256),
         );
 
-        return $this->finalize->handle(
-            $cancellationId,
-            new IdempotencyKey('invoice.cancel.finalize.'.$data->invoiceId->value),
-        );
+        return $this->finalize->finalizeCancellation($cancellationId);
     }
 
     private function source(
