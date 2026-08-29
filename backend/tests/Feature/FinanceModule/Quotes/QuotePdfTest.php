@@ -149,7 +149,7 @@ final class QuotePdfTest extends TestCase
         $path = 'finance/revisions/77/'.str_repeat('77', 32).'.pdf';
 
         $store->create($path, $bytes, $write);
-        $store->deleteIfOwned($path, $write);
+        $this->assertTrue($store->deleteIfOwned($path, $write));
 
         $put = $commands->get(0);
         $delete = $commands->get(1);
@@ -190,7 +190,10 @@ final class QuotePdfTest extends TestCase
         ])]);
         $store = new S3AtomicDocumentObjectStore($this->s3Client($handler), 'private-bucket');
 
-        $store->deleteIfOwned('finance/revisions/79/'.str_repeat('79', 32).'.pdf', $stale);
+        $this->assertFalse($store->deleteIfOwned(
+            'finance/revisions/79/'.str_repeat('79', 32).'.pdf',
+            $stale,
+        ));
 
         $this->assertCount(0, $handler);
     }
@@ -325,6 +328,20 @@ final class QuotePdfTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$ownerToken)
             ->get(route('api.finance-v2.quotes.revisions.pdf', [$quoteUuid, $revisionId]))
             ->assertNotFound();
+    }
+
+    public function test_quote_pdf_stream_rejects_non_positive_and_oversized_revision_route_values_as_not_found(): void
+    {
+        Storage::fake('quote-pdfs');
+        config()->set('files.disk', 'quote-pdfs');
+        [$owner, $quoteUuid] = $this->publishedQuote();
+        $token = $owner->createToken('device', ['device'])->plainTextToken;
+
+        foreach (['0', '9223372036854775808', str_repeat('9', 100)] as $revision) {
+            $this->withHeader('Authorization', 'Bearer '.$token)
+                ->get(route('api.finance-v2.quotes.revisions.pdf', [$quoteUuid, $revision]))
+                ->assertNotFound();
+        }
     }
 
     public function test_pdf_stream_rejects_missing_or_digest_mismatched_immutable_bytes(): void

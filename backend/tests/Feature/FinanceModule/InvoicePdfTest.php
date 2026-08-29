@@ -27,10 +27,12 @@ use App\Modules\Finance\Infrastructure\Persistence\OrphanDocumentReconciler;
 use App\Modules\Finance\Infrastructure\SystemClock;
 use App\Support\BinaryProcess;
 use Aws\CommandInterface;
+use Aws\Exception\AwsException;
 use Aws\MockHandler;
 use Aws\Result;
 use Aws\S3\S3Client;
 use DateTimeImmutable;
+use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -266,6 +268,20 @@ final class InvoicePdfTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$ownerToken)->get($url)->assertNotFound();
     }
 
+    public function test_invoice_pdf_stream_rejects_non_positive_and_oversized_revision_route_values_as_not_found(): void
+    {
+        Storage::fake('invoice-pdfs');
+        config()->set('files.disk', 'invoice-pdfs');
+        [$owner, $invoiceUuid] = $this->publishedInvoice();
+        $token = $owner->createToken('device', ['device'])->plainTextToken;
+
+        foreach (['0', '9223372036854775808', str_repeat('9', 100)] as $revision) {
+            $this->withHeader('Authorization', 'Bearer '.$token)
+                ->get(route('api.finance-v2.invoices.revisions.pdf', [$invoiceUuid, $revision]))
+                ->assertNotFound();
+        }
+    }
+
     public function test_invoice_revision_resource_exposes_verified_metadata_without_the_private_path(): void
     {
         Storage::fake('invoice-pdfs');
@@ -319,6 +335,29 @@ final class InvoicePdfTest extends TestCase
             $this->assertFileExists($this->objectPath($root, $referencedPath));
             $this->assertFileExists($this->objectPath($root, $youngPath));
             $this->assertFileExists($this->objectPath($root, $untrustedPath));
+        } finally {
+            $this->deleteDirectory($root);
+            $this->deleteDirectory($locks);
+        }
+    }
+
+    public function test_local_atomic_delete_reports_only_an_actual_generation_owned_deletion(): void
+    {
+        [$root, $locks] = $this->storageDirectories();
+        $objects = new LocalAtomicDocumentObjectStore($root, $locks);
+        $bytes = '%PDF-local-delete-result';
+        $owned = $this->storageWrite(str_repeat('91', 32), str_repeat('92', 32), $bytes);
+        $stale = $this->storageWrite($owned->ownershipToken, str_repeat('93', 32), $bytes);
+        $path = 'finance/revisions/91/'.$owned->ownershipToken.'.pdf';
+
+        try {
+            $objects->create($path, $bytes, $owned);
+
+            $this->assertFalse($objects->deleteIfOwned($path, $stale));
+            $this->assertFileExists($this->objectPath($root, $path));
+            $this->assertTrue($objects->deleteIfOwned($path, $owned));
+            $this->assertFileDoesNotExist($this->objectPath($root, $path));
+            $this->assertFalse($objects->deleteIfOwned($path, $owned));
         } finally {
             $this->deleteDirectory($root);
             $this->deleteDirectory($locks);
@@ -393,6 +432,68 @@ final class InvoicePdfTest extends TestCase
             'private-bucket',
             'private-prefix',
         );
+
+        $this->assertSame(0, (new OrphanDocumentReconciler($objects, 86_400))->reconcile($now));
+        $this->assertCount(0, $handler);
+    }
+
+    public function test_s3_orphan_reconciliation_does_not_count_a_generation_changed_before_delete(): void
+    {
+        $now = new DateTimeImmutable('2026-08-29T12:00:00+00:00');
+        $bytes = '%PDF-s3-generation-race';
+        $stale = $this->storageWrite(str_repeat('71', 32), str_repeat('72', 32), $bytes);
+        $current = $this->storageWrite($stale->ownershipToken, str_repeat('73', 32), $bytes);
+        $key = 'private-prefix/finance/revisions/71/'.$stale->ownershipToken.'.pdf';
+        $handler = new MockHandler([
+            new Result([
+                'Contents' => [['Key' => $key, 'LastModified' => $now->modify('-2 days')]],
+                'IsTruncated' => false,
+            ]),
+            new Result(['Metadata' => $this->s3Metadata($stale)]),
+            new Result([
+                'ETag' => '"current"',
+                'LastModified' => $now->modify('-1 minute'),
+                'ContentLength' => strlen($bytes),
+                'Metadata' => $this->s3Metadata($current),
+            ]),
+        ]);
+        $objects = new S3AtomicDocumentObjectStore(
+            $this->s3Client($handler),
+            'private-bucket',
+            'private-prefix',
+        );
+
+        $this->assertSame(0, (new OrphanDocumentReconciler($objects, 86_400))->reconcile($now));
+        $this->assertCount(0, $handler);
+    }
+
+    public function test_s3_orphan_reconciliation_does_not_count_a_conditional_delete_conflict(): void
+    {
+        $now = new DateTimeImmutable('2026-08-29T12:00:00+00:00');
+        $bytes = '%PDF-s3-delete-conflict';
+        $write = $this->storageWrite(str_repeat('81', 32), str_repeat('82', 32), $bytes);
+        $key = 'private-prefix/finance/revisions/81/'.$write->ownershipToken.'.pdf';
+        $handler = new MockHandler;
+        $client = $this->s3Client($handler);
+        $handler->append(
+            new Result([
+                'Contents' => [['Key' => $key, 'LastModified' => $now->modify('-2 days')]],
+                'IsTruncated' => false,
+            ]),
+            new Result(['Metadata' => $this->s3Metadata($write)]),
+            new Result([
+                'ETag' => '"owned"',
+                'LastModified' => $now->modify('-2 days'),
+                'ContentLength' => strlen($bytes),
+                'Metadata' => $this->s3Metadata($write),
+            ]),
+            new AwsException(
+                'conditional delete conflict',
+                $client->getCommand('DeleteObject'),
+                ['response' => new Response(412)],
+            ),
+        );
+        $objects = new S3AtomicDocumentObjectStore($client, 'private-bucket', 'private-prefix');
 
         $this->assertSame(0, (new OrphanDocumentReconciler($objects, 86_400))->reconcile($now));
         $this->assertCount(0, $handler);
@@ -596,6 +697,16 @@ final class InvoicePdfTest extends TestCase
     private function storageWrite(string $token, string $proof, string $bytes): DocumentStorageWrite
     {
         return new DocumentStorageWrite($token, $proof, hash('sha256', $bytes));
+    }
+
+    /** @return array{ledgerline-proof: string, ledgerline-sha256: string, ledgerline-generation: string} */
+    private function s3Metadata(DocumentStorageWrite $write): array
+    {
+        return [
+            'ledgerline-proof' => $write->cleanupProof,
+            'ledgerline-sha256' => $write->sha256,
+            'ledgerline-generation' => $write->generation(),
+        ];
     }
 
     private function objectPath(string $root, string $path): string

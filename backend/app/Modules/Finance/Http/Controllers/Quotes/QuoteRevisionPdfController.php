@@ -19,8 +19,9 @@ final class QuoteRevisionPdfController
     public function __invoke(
         QuoteRevisionPdfRequest $request,
         string $quote,
-        int $revision,
+        string $revision,
     ): StreamedResponse {
+        $revisionId = $this->revisionId($revision);
         $owner = $request->user();
         if (! $owner instanceof User) {
             abort(401);
@@ -43,7 +44,7 @@ final class QuoteRevisionPdfController
         $document = DocumentRevisionRecord::query()
             ->where('user_id', $ownerId)
             ->where('document_series_id', (int) $series->document_series_id)
-            ->where('id', $revision)
+            ->where('id', $revisionId)
             ->where('status', 'published')
             ->whereNotNull('published_at')
             ->firstOrFail();
@@ -124,5 +125,17 @@ final class QuoteRevisionPdfController
         }
 
         return Storage::disk($name);
+    }
+
+    private function revisionId(string $value): int
+    {
+        $maximum = (string) PHP_INT_MAX;
+        if (preg_match('/\A[1-9][0-9]*\z/D', $value) !== 1
+            || strlen($value) > strlen($maximum)
+            || (strlen($value) === strlen($maximum) && strcmp($value, $maximum) > 0)) {
+            abort(404);
+        }
+
+        return (int) $value;
     }
 }

@@ -5534,7 +5534,7 @@ paths:
         - name: revision
           in: path
           required: true
-          schema: { type: integer, minimum: 1 }
+          schema: { type: integer, format: int64, minimum: 1, maximum: 9223372036854775807 }
         - name: download
           in: query
           required: false
@@ -5580,7 +5580,7 @@ paths:
         - name: revision
           in: path
           required: true
-          schema: { type: integer, minimum: 1 }
+          schema: { type: integer, format: int64, minimum: 1, maximum: 9223372036854775807 }
         - name: download
           in: query
           required: false

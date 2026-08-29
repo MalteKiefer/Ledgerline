@@ -16,9 +16,10 @@ use Throwable;
 
 final class InvoiceRevisionController
 {
-    public function __invoke(Request $request, string $invoice, int $revision): StreamedResponse
+    public function __invoke(Request $request, string $invoice, string $revision): StreamedResponse
     {
         $request->validate(['download' => ['sometimes', 'boolean']]);
+        $revisionId = $this->revisionId($revision);
         $owner = $request->user();
         if (! $owner instanceof User) {
             abort(401);
@@ -41,7 +42,7 @@ final class InvoiceRevisionController
         $document = DocumentRevisionRecord::query()
             ->where('user_id', $ownerId)
             ->where('document_series_id', (int) $invoiceRecord->document_series_id)
-            ->whereKey($revision)
+            ->whereKey($revisionId)
             ->where('status', 'published')
             ->whereNotNull('published_at')
             ->firstOrFail();
@@ -120,5 +121,17 @@ final class InvoiceRevisionController
         }
 
         return Storage::disk($name);
+    }
+
+    private function revisionId(string $value): int
+    {
+        $maximum = (string) PHP_INT_MAX;
+        if (preg_match('/\A[1-9][0-9]*\z/D', $value) !== 1
+            || strlen($value) > strlen($maximum)
+            || (strlen($value) === strlen($maximum) && strcmp($value, $maximum) > 0)) {
+            abort(404);
+        }
+
+        return (int) $value;
     }
 }

@@ -44,7 +44,7 @@ final readonly class S3AtomicDocumentObjectStore implements AtomicDocumentObject
         }
     }
 
-    public function deleteIfOwned(string $path, DocumentStorageWrite $write): void
+    public function deleteIfOwned(string $path, DocumentStorageWrite $write): bool
     {
         $key = $this->key($path);
 
@@ -55,7 +55,7 @@ final readonly class S3AtomicDocumentObjectStore implements AtomicDocumentObject
             ]);
         } catch (AwsException $exception) {
             if ($exception->getStatusCode() === 404) {
-                return;
+                return false;
             }
 
             throw $exception;
@@ -68,7 +68,7 @@ final readonly class S3AtomicDocumentObjectStore implements AtomicDocumentObject
             || ($metadata['ledgerline-proof'] ?? null) !== $write->cleanupProof
             || ($metadata['ledgerline-sha256'] ?? null) !== $write->sha256
             || ($metadata['ledgerline-generation'] ?? null) !== $write->generation()) {
-            return;
+            return false;
         }
 
         $lastModified = $head->get('LastModified');
@@ -87,11 +87,13 @@ final readonly class S3AtomicDocumentObjectStore implements AtomicDocumentObject
             ]);
         } catch (AwsException $exception) {
             if (in_array($exception->getStatusCode(), [404, 409, 412], true)) {
-                return;
+                return false;
             }
 
             throw $exception;
         }
+
+        return true;
     }
 
     public function ownedBefore(DateTimeInterface $cutoff): iterable

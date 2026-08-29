@@ -60,9 +60,10 @@ final readonly class LocalAtomicDocumentObjectStore implements AtomicDocumentObj
         });
     }
 
-    public function deleteIfOwned(string $path, DocumentStorageWrite $write): void
+    public function deleteIfOwned(string $path, DocumentStorageWrite $write): bool
     {
-        $this->withLock($write, function () use ($path, $write): void {
+        $deleted = false;
+        $this->withLock($write, function () use ($path, $write, &$deleted): void {
             $absolutePath = $this->absolutePath($path);
             $metadataPath = $absolutePath.'.ledgerline-owner';
             $metadataJson = @file_get_contents($metadataPath);
@@ -94,7 +95,10 @@ final readonly class LocalAtomicDocumentObjectStore implements AtomicDocumentObj
             if (! @unlink($metadataPath) && is_file($metadataPath)) {
                 throw new RuntimeException('The document ownership metadata could not be deleted.');
             }
+            $deleted = true;
         });
+
+        return $deleted;
     }
 
     public function ownedBefore(DateTimeInterface $cutoff): iterable

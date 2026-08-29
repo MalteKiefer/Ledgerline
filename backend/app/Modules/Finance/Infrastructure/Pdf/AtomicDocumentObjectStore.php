@@ -11,7 +11,7 @@ interface AtomicDocumentObjectStore
 {
     public function create(string $path, string $bytes, DocumentStorageWrite $write): void;
 
-    public function deleteIfOwned(string $path, DocumentStorageWrite $write): void;
+    public function deleteIfOwned(string $path, DocumentStorageWrite $write): bool;
 
     /** @return iterable<array{path: string, write: DocumentStorageWrite}> */
     public function ownedBefore(DateTimeInterface $cutoff): iterable;

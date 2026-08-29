@@ -32,8 +32,9 @@ final readonly class OrphanDocumentReconciler
                 continue;
             }
 
-            $this->objects->deleteIfOwned($candidate['path'], $candidate['write']);
-            $deleted++;
+            if ($this->objects->deleteIfOwned($candidate['path'], $candidate['write'])) {
+                $deleted++;
+            }
         }
 
         return $deleted;
