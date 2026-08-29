@@ -32,10 +32,10 @@ Task 9 implementiert strikt typisierte Projekt- und Dokumentnotizen sowie eine o
 - Project-, Link-, Series- und Document-Activity-Abfragen besitzen explizite Owner-Joins. Fremde Series-Aktivitäten können nicht über einen Link oder einen manipulierten Cursor sichtbar werden.
 - Activity Payloads werden auf eine feste Liste fachlicher Schlüssel und JSON-skalare Werte begrenzt. Die Allowlist umfasst die aktuellen Project-, Work-, Link-, Revision-, Quote- und Invoice-Events, darunter alte/neue Versionen und Status, Reopen-/Archive-Metadaten, UUID-/Operationsreferenzen, Delivery-Domains sowie stabile Error-Codes und Hashes. Passwörter, Secrets, Tokens, vollständige Empfänger, Storage-/PDF-/Blob-Pfade, OCR, Dokumenttexte, rohe Error-/Exception-Meldungen und Traces werden nicht ausgegeben.
 
-## Provider und Invoice-Audit-Follow-up
+## Provider und Invoice-Audit
 
 - `ProjectHistoryRepository` ist additiv an `EloquentProjectHistoryRepository` gebunden. Ein Container-Vertragstest löst zugleich die bestehenden Project-, Document-, Invoice- und Quote-Ports sowie Commands/Queries auf und schützt deren Bindings vor versehentlichem Ersatz.
-- Der Review-Fix für Invoice-Draft-Delete ist TDD-implementiert und fokussiert grün, bleibt wegen einer parallelen, noch uncommitteten Invoice-Änderung jedoch aus diesem Commit ausgeschlossen. Er folgt als separater Task-9-Commit nach dem Payment-Vorcommit: Nur die normale Invoice-Zeile wird entfernt, Series und Revision bleiben als owner-gebundenes Audit-Aggregat erhalten, die Series wird auf `deleted` tombstoned und `invoice.draft.deleted` append-only ergänzt.
+- Der Review-Fix für Invoice-Draft-Delete folgt als separater Task-9-Commit nach dem koordinierten Payment-Vorcommit: Nur die normale Invoice-Zeile wird entfernt, Series und Revision bleiben als owner-gebundenes Audit-Aggregat erhalten, die Series wird auf `deleted` tombstoned und `invoice.draft.deleted` append-only ergänzt. Normale Invoice-Abfragen sehen den Tombstone nicht; die erhaltene Activity trägt Owner, Series und Revision explizit.
 
 ## Schema
 
@@ -52,7 +52,7 @@ Task 9 implementiert strikt typisierte Projekt- und Dokumentnotizen sowie eine o
 - Task-9-Pint im Check-Modus: **grün**.
 - PHPStan auf allen Task-9-Produktionsdateien mit 1 GiB: **0 Fehler**.
 - Review-Runde 1 RED: fehlendes Provider-Binding, zu breite Korrekturidentität, verworfene fachliche Payload-Felder, late-commit Aufnahme über numerische High-Water-Werte, fehlende Snapshot-Tabelle und gelöschte Invoice-Auditzeilen wurden jeweils durch fokussierte Regressionen bestätigt.
-- Review-Runde 1 Zwischen-GREEN: neue Project-History-Regressionen **5/5, 30 Assertions**; Invoice-Delete-Regressions **2/2, 10 Assertions**; gemeinsamer History-/Invoice-Lauf **25/25, 150 Assertions**. Der Invoice-Hunk ist wie oben beschrieben noch nicht Bestandteil dieses Commits.
+- Review-Runde 1 GREEN: neue Project-History-Regressionen **5/5, 30 Assertions**; Invoice-Delete-Regressions **2/2, 11 Assertions**; gemeinsamer History-/Invoice-Lauf **25/25, 151 Assertions**.
 - Weitere einzelne Project-Dateien: Application 24/24, Documents 36/37 mit einem opt-in Skip, Persistence 45/47 mit zwei opt-in Skips, Work 15/15 und Quote Target 8/9 mit einem opt-in Skip; zusammen **136 bestanden, 774 Assertions, 4 Skips**.
 
 ## Bekannte unabhängige Baseline
@@ -63,4 +63,4 @@ Task 9 implementiert strikt typisierte Projekt- und Dokumentnotizen sowie eine o
 
 ## Scope
 
-Dieser Commit ändert ausschließlich die gelisteten History-Komponenten und Tests, die additive Provider-Bindung sowie die beiden Snapshot-Tabellen. Der minimale Invoice-Draft-Delete-/Testpfad bleibt als koordinierter Follow-up im Working Tree. HTTP, Routes, OpenAPI, Quote-Workflow und fremde parallele Dateien werden nicht committed. Kein Push, Tag oder Deployment.
+Task 9 ändert ausschließlich die gelisteten History-Komponenten und Tests, die additive Provider-Bindung, die beiden Snapshot-Tabellen sowie den minimalen Invoice-Draft-Delete-/Testpfad. HTTP, Routes, OpenAPI, Quote-Workflow und fremde parallele Dateien werden nicht committed. Kein Push, Tag oder Deployment.

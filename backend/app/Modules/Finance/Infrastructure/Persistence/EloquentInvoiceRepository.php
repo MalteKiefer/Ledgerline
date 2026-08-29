@@ -254,27 +254,27 @@ final class EloquentInvoiceRepository implements InvoiceRepository
                 throw new DomainException('invoice_version_conflict');
             }
 
-            DB::table('finance_document_activities')
-                ->where('user_id', $ownerId)
-                ->where('document_series_id', $series->id)
-                ->delete();
-            $revisionDeleted = DB::table('finance_document_revisions')
-                ->where('id', $revision->id)
-                ->where('user_id', $ownerId)
-                ->where('document_series_id', $series->id)
-                ->where('status', 'draft')
-                ->whereNull('published_at')
-                ->delete();
-            $seriesDeleted = DB::table('finance_document_series')
+            $seriesUpdated = DB::table('finance_document_series')
                 ->where('id', $series->id)
                 ->where('user_id', $ownerId)
                 ->where('document_type', 'invoice')
                 ->where('status', 'draft')
-                ->delete();
+                ->update([
+                    'status' => 'deleted',
+                    'updated_at' => $this->clock->now(),
+                ]);
 
-            if ($revisionDeleted !== 1 || $seriesDeleted !== 1) {
+            if ($seriesUpdated !== 1) {
                 throw new DomainException('invoice_delete_conflict');
             }
+
+            $this->appendActivity(
+                $ownerId,
+                (int) $series->id,
+                (int) $revision->id,
+                'invoice.draft.deleted',
+                $expectedVersion,
+            );
         }, 1);
     }
 

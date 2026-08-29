@@ -310,7 +310,7 @@ final class InvoiceDraftApplicationTest extends TestCase
         );
     }
 
-    public function test_delete_removes_the_complete_unpublished_draft_aggregate_with_cas(): void
+    public function test_delete_removes_invoice_but_retains_an_owner_safe_document_audit_tombstone(): void
     {
         $owner = User::factory()->create();
         $this->actingAs($owner);
@@ -321,11 +321,23 @@ final class InvoiceDraftApplicationTest extends TestCase
         $this->app->make(DeleteInvoiceDraft::class)->handle($created->id, 0);
 
         $this->assertDatabaseMissing('finance_invoices', ['id' => $created->id->value]);
-        $this->assertDatabaseMissing('finance_document_revisions', ['id' => $invoice->current_revision_id]);
-        $this->assertDatabaseMissing('finance_document_series', ['id' => $invoice->document_series_id]);
-        $this->assertSame(0, DB::table('finance_document_activities')
+        $this->assertDatabaseHas('finance_document_revisions', [
+            'id' => $invoice->current_revision_id, 'user_id' => $owner->id,
+        ]);
+        $this->assertDatabaseHas('finance_document_series', [
+            'id' => $invoice->document_series_id, 'user_id' => $owner->id, 'status' => 'deleted',
+        ]);
+        $this->assertDatabaseHas('finance_document_activities', [
+            'user_id' => $owner->id,
+            'document_series_id' => $invoice->document_series_id,
+            'document_revision_id' => $invoice->current_revision_id,
+            'type' => 'invoice.draft.deleted',
+        ]);
+        $this->assertSame(['invoice.draft.created', 'invoice.draft.deleted'], DB::table('finance_document_activities')
             ->where('document_series_id', $invoice->document_series_id)
-            ->count());
+            ->orderBy('id')
+            ->pluck('type')
+            ->all());
     }
 
     public function test_delete_rejects_stale_or_finalized_invoices_without_removing_history(): void
