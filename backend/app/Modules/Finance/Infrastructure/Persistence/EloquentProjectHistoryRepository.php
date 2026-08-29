@@ -30,15 +30,18 @@ use LogicException;
 
 final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
 {
+    private const ACTIVITY_SNAPSHOT_CLEANUP_LIMIT = 100;
+
     private const ACTIVITY_PAYLOAD_KEYS = [
-        'amount_minor', 'archived', 'availability', 'category_reference', 'changes', 'claim_reference',
+        'allocation_id', 'amount_minor', 'archived', 'availability', 'based_on_revision_id', 'batch_id',
+        'category_reference', 'changes', 'claim_reference',
         'corrects_uuid', 'creation_key_sha256', 'currency', 'current_revision_id', 'delivery_id', 'direction', 'document_label',
         'document_type', 'due_date', 'entry_count', 'error_code', 'from_status', 'gross_minor',
         'invoice_uuid', 'ledger_entry_uuid', 'level', 'link_id', 'metadata', 'net_minor',
         'new_parent_uuid', 'new_status', 'new_version', 'note_id', 'number', 'old_parent_uuid',
         'old_status', 'old_version', 'operation', 'operation_id', 'ordered_uuids', 'parent_uuid',
-        'payment_reference', 'pdf_sha256', 'previous', 'previous_revision_id', 'project_uuid',
-        'quantity_scaled', 'reason_code', 'recipient_domain', 'reopened', 'retry_of_delivery_id', 'revision_id',
+        'payment_id', 'payment_reference', 'pdf_sha256', 'previous', 'previous_revision_id', 'project_uuid',
+        'quantity_scaled', 'reason_code', 'recipient_domain', 'reopened', 'retry_of_delivery_id', 'reverses_allocation_id', 'revision_id',
         'revision_number', 'role', 'sha256', 'snapshot_sha256', 'source_line_index',
         'source_reference', 'source_revision_id', 'source_type', 'status', 'target_quote_uuid',
         'target_reference', 'time_entry_ids', 'time_entry_uuid', 'time_entry_uuids', 'to_status',
@@ -198,12 +201,37 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
         $recordId = $this->projectRecordId($projectId);
 
         return DB::transaction(function () use ($projectId, $recordId, $cursor, $perPage): HistoryPage {
-            $state = $cursor === null
+            $initial = $cursor === null;
+            if ($initial) {
+                $this->cleanupExpiredActivitySnapshots();
+            }
+            $state = $initial
                 ? $this->createActivitySnapshot($projectId, $recordId)
                 : $this->decodeActivityCursor($projectId, $recordId, $cursor);
+            $page = $this->activitySnapshotPage($projectId, $recordId, $state, $perPage);
+            if ($initial && $page->nextCursor === null) {
+                DB::table('finance_project_history_snapshots')
+                    ->where('user_id', $projectId->ownerId)
+                    ->where('project_id', $recordId)
+                    ->where('uuid', $state['snapshot_uuid'])
+                    ->delete();
+            }
 
-            return $this->activitySnapshotPage($projectId, $recordId, $state, $perPage);
+            return $page;
         });
+    }
+
+    private function cleanupExpiredActivitySnapshots(): void
+    {
+        $ids = DB::table('finance_project_history_snapshots')
+            ->where('expires_at', '<=', $this->timestamp(new DateTimeImmutable('now')))
+            ->orderBy('id')
+            ->limit(self::ACTIVITY_SNAPSHOT_CLEANUP_LIMIT)
+            ->pluck('id')
+            ->all();
+        if ($ids !== []) {
+            DB::table('finance_project_history_snapshots')->whereIn('id', $ids)->delete();
+        }
     }
 
     /** @param array<mixed> $record */

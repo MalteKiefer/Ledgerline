@@ -314,21 +314,36 @@ final class ProjectHistoryTest extends TestCase
         [$seriesUuid, $seriesId, $revisionId] = $this->series($owner);
         $this->linkSeries($owner, $projectRowId, $seriesUuid, $seriesId, $revisionId, true);
         $projectPayloads = [
+            'project.created' => ['parent_uuid' => null, 'status' => 'planned'],
             'project.updated' => ['old_version' => 2, 'new_version' => 3],
             'project.status_changed' => ['old_status' => 'active', 'new_status' => 'done', 'reopened' => false],
             'project.moved' => ['old_parent_uuid' => 'old', 'new_parent_uuid' => 'new'],
+            'project.archived' => ['archived' => true],
+            'work_item.created' => ['work_item_uuid' => 'work-1', 'source_line_index' => 2],
+            'work_item.updated' => ['work_item_uuid' => 'work-1', 'old_status' => 'open', 'new_status' => 'done'],
             'work_item.reordered' => ['ordered_uuids' => ['b', 'a']],
+            'time_entry.logged' => ['time_entry_uuid' => 'time-1', 'quantity_scaled' => 25_000],
             'time_entries.invoiced' => ['target_reference' => 'INV-1', 'time_entry_uuids' => ['time-1']],
+            'ledger_entry.corrected' => ['ledger_entry_uuid' => 'ledger-2', 'corrects_uuid' => 'ledger-1'],
             'project.document_attached' => [
                 'link_id' => 4, 'operation_id' => 5, 'source_type' => 'finance_series',
                 'source_reference' => $seriesUuid, 'role' => 'quote',
             ],
         ];
         $documentPayloads = [
+            'revision.created' => ['snapshot_sha256' => str_repeat('a', 64), 'creation_key_sha256' => str_repeat('b', 64)],
+            'revision.published' => ['pdf_sha256' => str_repeat('c', 64)],
+            'invoice.reminder.queued' => ['delivery_id' => 4, 'level' => 2, 'retry_of_delivery_id' => 3],
+            'quote.version.started' => ['version' => 3, 'based_on_revision_id' => 8],
             'quote.revision.superseded' => ['version' => 2, 'previous_revision_id' => 8, 'current_revision_id' => 9],
             'quote.duplicated' => ['version' => 1, 'source_revision_id' => 9, 'target_quote_uuid' => 'quote-2'],
             'invoice.mail.failed' => [
                 'delivery_id' => 7, 'recipient_domain' => 'example.test', 'level' => 'error', 'error_code' => 'smtp_timeout',
+            ],
+            'payment.allocated' => ['payment_id' => 11, 'batch_id' => 12, 'allocation_id' => 13, 'amount_minor' => 1_000],
+            'payment.allocation_reversed' => [
+                'payment_id' => 11, 'batch_id' => 14, 'allocation_id' => 15,
+                'reverses_allocation_id' => 13, 'amount_minor' => -1_000,
             ],
         ];
         $second = 0;
@@ -477,6 +492,58 @@ final class ProjectHistoryTest extends TestCase
         } catch (InvalidArgumentException $exception) {
             $this->assertSame('project_activity_cursor_expired', $exception->getMessage());
         }
+    }
+
+    public function test_first_activity_page_without_continuation_leaves_no_snapshot(): void
+    {
+        $owner = User::factory()->create();
+        [$project, $projectRowId] = $this->project($owner);
+        $this->projectActivity($owner, $projectRowId, 'project.one', '2026-08-29 15:00:00.000001', []);
+
+        $page = (new ListProjectActivity(new EloquentProjectHistoryRepository))->handle($project, null, 10);
+
+        $this->assertCount(1, $page->items);
+        $this->assertNull($page->nextCursor);
+        $this->assertSame(0, DB::table('finance_project_history_snapshots')->count());
+        $this->assertSame(0, DB::table('finance_project_history_snapshot_items')->count());
+    }
+
+    public function test_first_activity_page_boundedly_cleans_expired_snapshots_and_keeps_active_snapshot(): void
+    {
+        $owner = User::factory()->create();
+        [$project, $projectRowId] = $this->project($owner);
+        $expired = [];
+        for ($index = 0; $index < 101; $index++) {
+            $expired[] = [
+                'uuid' => strtolower((string) Str::uuid()), 'user_id' => $owner->id, 'project_id' => $projectRowId,
+                'expires_at' => '2000-01-01 00:00:00.000000', 'created_at' => '1999-12-31 23:00:00.000000',
+            ];
+        }
+        DB::table('finance_project_history_snapshots')->insert($expired);
+        $expiredIds = DB::table('finance_project_history_snapshots')->orderBy('id')->pluck('id')->all();
+        $activeUuid = strtolower((string) Str::uuid());
+        $activeId = (int) DB::table('finance_project_history_snapshots')->insertGetId([
+            'uuid' => $activeUuid, 'user_id' => $owner->id, 'project_id' => $projectRowId,
+            'expires_at' => '2099-01-01 00:00:00.000000', 'created_at' => '2026-08-29 15:00:00.000000',
+        ]);
+        $items = array_map(static fn (int|string $snapshotId): array => [
+            'snapshot_id' => (int) $snapshotId, 'source_kind' => 'project',
+            'source_id' => (int) $snapshotId, 'occurred_at' => '1999-12-31 23:00:00.000000',
+        ], $expiredIds);
+        $items[] = [
+            'snapshot_id' => $activeId, 'source_kind' => 'project',
+            'source_id' => $activeId, 'occurred_at' => '2026-08-29 15:00:00.000000',
+        ];
+        DB::table('finance_project_history_snapshot_items')->insert($items);
+
+        $page = (new ListProjectActivity(new EloquentProjectHistoryRepository))->handle($project, null, 10);
+
+        $this->assertSame([], $page->items);
+        $this->assertNull($page->nextCursor);
+        $this->assertSame(1, DB::table('finance_project_history_snapshots')->where('expires_at', '<=', now())->count());
+        $this->assertTrue(DB::table('finance_project_history_snapshots')->where('uuid', $activeUuid)->exists());
+        $this->assertTrue(DB::table('finance_project_history_snapshot_items')->where('snapshot_id', $activeId)->exists());
+        $this->assertSame(2, DB::table('finance_project_history_snapshot_items')->count());
     }
 
     public function test_project_and_document_history_models_reject_every_bulk_mutation_path(): void

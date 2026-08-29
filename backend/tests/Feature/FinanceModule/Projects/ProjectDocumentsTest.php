@@ -336,6 +336,58 @@ final class ProjectDocumentsTest extends TestCase
         $this->assertSame([], $metadata->capabilityParameters);
     }
 
+    public function test_tombstoned_finance_series_remains_historical_but_cannot_be_newly_attached(): void
+    {
+        $owner = User::factory()->create();
+        $project = $this->project($owner);
+        $otherProject = $this->project($owner);
+        [$uuid, $revisionId] = $this->financeSeries($owner, 'invoice', 'INV-DELETED');
+        $source = new FinanceSeriesDocumentSource;
+        $repository = new EloquentProjectDocumentRepository;
+        $command = new AttachProjectDocument($source, $repository, app(ProjectOperationRepository::class));
+        $ref = new ProjectDocumentSourceRef('finance_series', $uuid, $revisionId);
+        $linked = $command->handle(
+            $project,
+            $ref,
+            'invoice',
+            (int) $owner->id,
+            new DateTimeImmutable('2026-08-29 09:00:00'),
+            'attach-before-delete',
+        );
+        DB::table('finance_document_series')->where('uuid', $uuid)->update(['status' => 'deleted']);
+
+        $resolved = $source->resolve((int) $owner->id, $ref);
+        $search = $source->search(
+            (int) $owner->id,
+            new ProjectDocumentSourceFilter((int) $owner->id, sourceTypes: ['finance_series']),
+        );
+        $historical = $repository->get($project, $linked->linkId, $source);
+
+        $this->assertSame('deleted', $resolved->availability);
+        $this->assertNull($resolved->capabilityRoute);
+        $this->assertNotContains($uuid, array_map(
+            static fn (ProjectDocumentMetadata $item): string => $item->source->sourceReference,
+            $search->items,
+        ));
+        $this->assertSame('deleted', $historical->availability);
+        $this->assertNull($historical->current);
+        $this->assertSame('Invoice INV-DELETED', $historical->snapshot['title']);
+
+        try {
+            $command->handle(
+                $otherProject,
+                $ref,
+                'invoice',
+                (int) $owner->id,
+                new DateTimeImmutable('2026-08-29 10:00:00'),
+                'attach-after-delete',
+            );
+            $this->fail('A tombstoned invoice series was newly attached.');
+        } catch (\InvalidArgumentException) {
+            $this->addToAssertionCount(1);
+        }
+    }
+
     public function test_embedded_bank_receipt_parses_canonical_reference_without_leaking_blob_and_is_owner_scoped(): void
     {
         $owner = User::factory()->create();

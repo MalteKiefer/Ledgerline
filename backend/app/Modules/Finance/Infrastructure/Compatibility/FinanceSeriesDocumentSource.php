@@ -40,11 +40,11 @@ final class FinanceSeriesDocumentSource implements ProjectDocumentSource
         }
         $row = DB::table('finance_document_series as s')->join('finance_document_revisions as r', 'r.document_series_id', '=', 's.id')
             ->where('s.user_id', $ownerId)->where('r.user_id', $ownerId)->where('s.uuid', $ref->sourceReference)->where('r.id', $ref->pinnedRevisionId)
-            ->first(['s.uuid', 's.document_type', 'r.id', 'r.revision_number', 'r.snapshot', 'r.pdf_path', 'r.pdf_sha256', 'r.published_at', 'r.created_at']);
+            ->first(['s.uuid', 's.document_type', 's.status', 'r.id', 'r.revision_number', 'r.snapshot', 'r.pdf_path', 'r.pdf_sha256', 'r.published_at', 'r.created_at']);
         if ($row === null) {
             throw (new ModelNotFoundException)->setModel(DocumentRevisionRecord::class, [$ref->pinnedRevisionId]);
         }
-        if (! is_string($row->snapshot) || ! is_string($row->document_type) || ! is_numeric($row->revision_number)
+        if (! is_string($row->snapshot) || ! is_string($row->document_type) || ! is_string($row->status) || ! is_numeric($row->revision_number)
             || ! is_string($row->uuid) || (! is_string($row->created_at) && ! is_string($row->published_at))) {
             throw new \LogicException('Finance series metadata is invalid.');
         }
@@ -66,11 +66,12 @@ final class FinanceSeriesDocumentSource implements ProjectDocumentSource
             'invoice' => 'api.finance-v2.invoices.revisions.pdf',
             default => null,
         };
-        $routeAvailable = $hasPdf && $route !== null && ($this->routeExists)($route);
+        $available = $row->status !== 'deleted';
+        $routeAvailable = $available && $hasPdf && $route !== null && ($this->routeExists)($route);
 
         return new ProjectDocumentMetadata($ref, $title, $hasPdf ? 'application/pdf' : null, null,
             is_string($row->pdf_sha256) ? $row->pdf_sha256 : null, $type, 'Revision '.$revisionNumber,
-            new DateTimeImmutable($occurredAt), 'available',
+            new DateTimeImmutable($occurredAt), $available ? 'available' : 'deleted',
             $routeAvailable ? $route : null,
             $routeAvailable ? [$type => $uuid, 'revision' => $revisionNumber] : []);
     }
@@ -83,6 +84,7 @@ final class FinanceSeriesDocumentSource implements ProjectDocumentSource
         $offset = $this->offset($filter->cursor);
         $rows = DB::table('finance_document_series as s')->join('finance_document_revisions as r', 'r.document_series_id', '=', 's.id')
             ->where('s.user_id', $ownerId)->where('r.user_id', $ownerId)
+            ->where('s.status', '!=', 'deleted')
             ->whereRaw('r.revision_number = (select max(r2.revision_number) from finance_document_revisions r2 where r2.document_series_id = s.id and r2.user_id = s.user_id)')
             ->orderByDesc(DB::raw('COALESCE(r.published_at, r.created_at)'))->orderBy('s.uuid')->offset($offset)->limit($filter->perPage + 1)->get(['s.uuid', 'r.id']);
         $items = [];
