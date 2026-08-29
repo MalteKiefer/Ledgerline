@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { ApiError, setToken } from '@spa/api/client';
 import { quoteApi, quoteErrorCode } from '@spa/modules/finance/api/quoteApi';
 import type { Quote, QuoteDraftInput, QuotePage, QuotePreview } from '@spa/modules/finance/models/quote';
@@ -36,6 +36,9 @@ function draft(): QuoteDraftInput {
     intro_text: null,
     outro_text: null,
     internal_note: null,
+    control_net_minor: '9007199254740993',
+    control_vat_minor: '1711367858400789',
+    control_gross_minor: '10718567113141782',
   };
 }
 
@@ -49,8 +52,44 @@ function quote(): Quote {
     version: 0,
     has_pending_draft: true,
     current_revision: null,
-    draft: null,
-    totals: { net_minor: 22500, vat_minor: 4275, gross_minor: 26775, currency: 'EUR' },
+    draft: {
+      title: 'Network refresh',
+      partner_id: null,
+      customer: { name: 'Ada GmbH', email: 'billing@example.com' },
+      issue_date: '2026-08-28',
+      valid_until: '2026-09-27',
+      currency: 'EUR',
+      lines: [{
+        ...draft().lines[0],
+        quantity_scaled: '9007199254740993',
+        unit_price_minor: '9007199254740995',
+        currency: 'EUR',
+        tax_rate_basis_points: '1900',
+      }],
+      discount: { type: 'fixed', value: '10000000000000.00', minor: '1000000000000000', currency: 'EUR' },
+      totals: {
+        net_minor: '9007199254740993',
+        vat_minor: '1711367858400789',
+        gross_minor: '10718567113141782',
+        discount_minor: '1000000000000000',
+        currency: 'EUR',
+        tax_breakdowns: [{
+          tax_rate_basis_points: '1900',
+          net_minor: '9007199254740993',
+          vat_minor: '1711367858400789',
+          gross_minor: '10718567113141782',
+        }],
+      },
+      intro_text: null,
+      outro_text: null,
+      internal_note: null,
+    },
+    totals: {
+      net_minor: '9007199254740993',
+      vat_minor: '1711367858400789',
+      gross_minor: '10718567113141782',
+      currency: 'EUR',
+    },
     conversions: [],
     delivery: null,
     published_at: null,
@@ -75,12 +114,17 @@ beforeEach(() => {
 describe('quoteApi', () => {
   it('sends exact decimal strings and preserves UUID and integer minor-unit responses', async () => {
     const preview: QuotePreview = {
-      net_minor: 22500,
-      vat_minor: 4275,
-      gross_minor: 26775,
-      discount_minor: 2500,
+      net_minor: '9007199254740993',
+      vat_minor: '1711367858400789',
+      gross_minor: '10718567113141782',
+      discount_minor: '1000000000000000',
       currency: 'EUR',
-      tax_breakdowns: [{ tax_rate_basis_points: 1900, net_minor: 22500, vat_minor: 4275, gross_minor: 26775 }],
+      tax_breakdowns: [{
+        tax_rate_basis_points: '1900',
+        net_minor: '9007199254740993',
+        vat_minor: '1711367858400789',
+        gross_minor: '10718567113141782',
+      }],
       issue_date: '2026-08-28',
       valid_until: '2026-09-27',
     };
@@ -95,10 +139,14 @@ describe('quoteApi', () => {
     const previewBody = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as QuoteDraftInput;
     const createHeaders = (fetchMock.mock.calls[1][1] as RequestInit).headers as Record<string, string>;
     expect(previewBody.lines[0]).toMatchObject({ quantity: '2.5000', unit_price: '100.00', tax_rate: '19.00' });
+    expect(previewBody.control_gross_minor).toBe('10718567113141782');
     expect(typeof previewBody.lines[0].quantity).toBe('string');
     expect(createHeaders['Idempotency-Key']).toBe('create-key');
     expect(quote().id).toBe(quoteId);
-    expect(Number.isInteger(quote().totals.gross_minor)).toBe(true);
+    expect(quote().draft?.lines[0].quantity_scaled).toBe('9007199254740993');
+    expect(quote().draft?.lines[0].unit_price_minor).toBe('9007199254740995');
+    expect(preview.gross_minor).toBe('10718567113141782');
+    expectTypeOf(preview.gross_minor).toEqualTypeOf<string>();
   });
 
   it('targets only the finance-v2 quote surface and forwards caller-owned idempotency keys', async () => {

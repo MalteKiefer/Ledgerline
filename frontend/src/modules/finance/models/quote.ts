@@ -1,4 +1,11 @@
-import type { CalculatedTotals, CurrencyCode, DecimalString, MoneyTotals, TaxBreakdown } from './money';
+import type {
+  CalculatedTotals,
+  CurrencyCode,
+  DecimalIntegerString,
+  DecimalString,
+  MoneyTotals,
+  TaxBreakdown,
+} from './money';
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'converted';
 export type QuoteEffectiveStatus = QuoteStatus | 'expired';
@@ -34,23 +41,23 @@ export interface QuoteDraftInput {
   intro_text: string | null;
   outro_text: string | null;
   internal_note: string | null;
-  control_net_minor?: number | null;
-  control_vat_minor?: number | null;
-  control_gross_minor?: number | null;
+  control_net_minor?: DecimalIntegerString | null;
+  control_vat_minor?: DecimalIntegerString | null;
+  control_gross_minor?: DecimalIntegerString | null;
 }
 
 export interface QuoteLine extends QuoteLineInput {
-  quantity_scaled: number;
-  unit_price_minor: number;
+  quantity_scaled: DecimalIntegerString;
+  unit_price_minor: DecimalIntegerString;
   currency: CurrencyCode;
-  tax_rate_basis_points: number;
+  tax_rate_basis_points: DecimalIntegerString;
 }
 
 export interface QuoteDiscount {
   type: QuoteDiscountType;
   value: DecimalString | null;
-  basis_points?: number;
-  minor?: number;
+  basis_points?: DecimalIntegerString;
+  minor?: DecimalIntegerString;
   currency: CurrencyCode;
 }
 
@@ -80,7 +87,7 @@ export interface QuoteSnapshot extends Omit<QuoteDraft, 'internal_note'> {
 }
 
 export interface QuotePreview extends MoneyTotals {
-  discount_minor: number;
+  discount_minor: DecimalIntegerString;
   tax_breakdowns: TaxBreakdown[];
   issue_date: string;
   valid_until: string;

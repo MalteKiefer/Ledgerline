@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setToken } from '@spa/api/client';
-import type { Quote, QuoteDraftInput, QuotePage } from '@spa/modules/finance/models/quote';
+import type { Quote, QuoteDraftInput, QuotePage, QuoteRevision } from '@spa/modules/finance/models/quote';
 import { useQuotesStore } from '@spa/modules/finance/stores/quotes';
 
 const quoteId = '018f4ca3-224d-7d8d-9f00-848484848484';
@@ -26,7 +26,7 @@ function quote(id = quoteId, version = 0, title = 'Quote'): Quote {
     has_pending_draft: true,
     current_revision: null,
     draft: null,
-    totals: { net_minor: 10000, vat_minor: 1900, gross_minor: 11900, currency: 'EUR' },
+    totals: { net_minor: '10000', vat_minor: '1900', gross_minor: '11900', currency: 'EUR' },
     conversions: [],
     delivery: null,
     published_at: null,
@@ -107,6 +107,32 @@ describe('quotes store', () => {
     expect(store.items).toEqual([quote(quoteId, 4, 'detail')]);
     resolveList(response(200, page([quote(quoteId, 3, 'stale-list')])));
     await listing;
+    expect(store.current?.version).toBe(4);
+    expect(store.items).toEqual([quote(quoteId, 4, 'detail')]);
+    expect(store.page.data).toEqual([quote(quoteId, 4, 'detail')]);
+  });
+
+  it('binds revision history to its quote and ignores an older quote response', async () => {
+    let resolveA!: (value: Response) => void;
+    let resolveB!: (value: Response) => void;
+    const revisionA = { id: 101 } as QuoteRevision;
+    const revisionB = { id: 202 } as QuoteRevision;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveA = resolve; }))
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveB = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+    const store = useQuotesStore();
+
+    const requestA = store.loadRevisions('quote-a');
+    const requestB = store.loadRevisions('quote-b');
+    expect(((fetchMock.mock.calls[0][1] as RequestInit).signal as AbortSignal).aborted).toBe(true);
+    resolveB(response(200, [revisionB]));
+    await requestB;
+    resolveA(response(200, [revisionA]));
+    await requestA;
+
+    expect(store.revisionsQuoteId).toBe('quote-b');
+    expect(store.revisions).toEqual([revisionB]);
   });
 
   it('replaces current and list rows from a typed conflict without mixing error channels', async () => {
@@ -125,13 +151,15 @@ describe('quotes store', () => {
     expect(store.detailError).toBeNull();
   });
 
-  it('reuses an action key after failure until success and allocates a new key after final cancellation', async () => {
+  it('reuses keys only for the same canonical action payload and releases them on success or cancellation', async () => {
     const randomUUID = vi.fn()
       .mockReturnValueOnce('11111111-1111-4111-8111-111111111111')
       .mockReturnValueOnce('22222222-2222-4222-8222-222222222222')
-      .mockReturnValueOnce('33333333-3333-4333-8333-333333333333');
+      .mockReturnValueOnce('33333333-3333-4333-8333-333333333333')
+      .mockReturnValueOnce('44444444-4444-4444-8444-444444444444');
     vi.stubGlobal('crypto', { randomUUID });
     const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(500, { error: 'temporary' }))
       .mockResolvedValueOnce(response(500, { error: 'temporary' }))
       .mockResolvedValueOnce(response(200, quote(quoteId, 1)))
       .mockResolvedValueOnce(response(500, { error: 'temporary' }))
@@ -140,20 +168,44 @@ describe('quotes store', () => {
     const store = useQuotesStore();
 
     await expect(store.publish(quoteId, 0, null)).rejects.toMatchObject({ status: 500 });
-    await store.publish(quoteId, 0, null);
-    await expect(store.publish(quoteId, 1, null)).rejects.toMatchObject({ status: 500 });
+    await expect(store.publish(quoteId, 0, 'Customer correction')).rejects.toMatchObject({ status: 500 });
+    await store.publish(quoteId, 0, 'Customer correction');
+    await expect(store.publish(quoteId, 1, 'Second correction')).rejects.toMatchObject({ status: 500 });
     store.cancelAction('publish', quoteId);
-    await store.publish(quoteId, 1, null);
+    await store.publish(quoteId, 1, 'Second correction');
 
     const keys = fetchMock.mock.calls.map(([, init]) => ((init as RequestInit).headers as Record<string, string>)['Idempotency-Key']);
     expect(keys).toEqual([
       '11111111-1111-4111-8111-111111111111',
-      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
       '22222222-2222-4222-8222-222222222222',
       '33333333-3333-4333-8333-333333333333',
+      '44444444-4444-4444-8444-444444444444',
     ]);
-    expect(randomUUID).toHaveBeenCalledTimes(3);
+    expect(randomUUID).toHaveBeenCalledTimes(4);
     expect(store.actionLoading).toBe(false);
     expect(store.actionError).toBeNull();
+  });
+
+  it('uses deterministic object-key ordering when identifying an action retry', async () => {
+    const randomUUID = vi.fn().mockReturnValue('55555555-5555-4555-8555-555555555555');
+    vi.stubGlobal('crypto', { randomUUID });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(500, { error: 'temporary' }))
+      .mockResolvedValueOnce(response(201, quote()));
+    vi.stubGlobal('fetch', fetchMock);
+    const store = useQuotesStore();
+    const first = { ...draft(), customer: { name: 'Ada GmbH', email: 'billing@example.com' } };
+    const reordered = { ...first, customer: { email: 'billing@example.com', name: 'Ada GmbH' } };
+
+    await expect(store.create(first)).rejects.toMatchObject({ status: 500 });
+    await store.create(reordered);
+
+    const keys = fetchMock.mock.calls.map(([, init]) => ((init as RequestInit).headers as Record<string, string>)['Idempotency-Key']);
+    expect(keys).toEqual([
+      '55555555-5555-4555-8555-555555555555',
+      '55555555-5555-4555-8555-555555555555',
+    ]);
+    expect(randomUUID).toHaveBeenCalledTimes(1);
   });
 });

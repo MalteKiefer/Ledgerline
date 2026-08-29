@@ -16,6 +16,7 @@ import type {
 
 type StoreError = QuoteErrorCode | 'request_failed';
 type KeyedAction = 'create' | 'publish' | 'send' | 'accept' | 'decline' | 'duplicate' | 'convert';
+interface ActionKey { key: string; signature: string }
 
 const emptyPage = (): QuotePage => ({
   data: [],
@@ -29,6 +30,7 @@ export const useQuotesStore = defineStore('finance-v2-quotes', () => {
   const current = ref<Quote | null>(null);
   const currentEtag = ref<string | null>(null);
   const revisions = ref<QuoteRevision[]>([]);
+  const revisionsQuoteId = ref<string | null>(null);
   const listLoading = ref(false);
   const detailLoading = ref(false);
   const actionLoading = ref(false);
@@ -38,9 +40,11 @@ export const useQuotesStore = defineStore('finance-v2-quotes', () => {
 
   let listController: AbortController | null = null;
   let detailController: AbortController | null = null;
+  let revisionsController: AbortController | null = null;
   let listSequence = 0;
   let detailSequence = 0;
-  const actionKeys = new Map<string, string>();
+  let revisionsSequence = 0;
+  const actionKeys = new Map<string, ActionKey>();
 
   function failure(error: unknown): StoreError {
     return quoteErrorCode(error) ?? 'request_failed';
@@ -75,8 +79,18 @@ export const useQuotesStore = defineStore('finance-v2-quotes', () => {
     try {
       const result = await quoteApi.list(filters, controller.signal);
       if (sequence !== listSequence) return;
-      page.value = result;
-      items.value = result.data;
+      const cached = new Map(items.value.map((quote) => [quote.id, quote]));
+      if (current.value) {
+        const listed = cached.get(current.value.id);
+        if (! listed || current.value.version > listed.version) cached.set(current.value.id, current.value);
+      }
+      const merged = result.data.map((quote) => {
+        const newer = cached.get(quote.id);
+
+        return newer && newer.version > quote.version ? newer : quote;
+      });
+      page.value = { ...result, data: merged };
+      items.value = merged;
     } catch (error) {
       if (sequence !== listSequence || isAbort(error)) return;
       listError.value = failure(error);
@@ -108,8 +122,15 @@ export const useQuotesStore = defineStore('finance-v2-quotes', () => {
   }
 
   async function loadRevisions(id: string): Promise<QuoteRevision[]> {
-    const result = await quoteApi.revisions(id);
-    revisions.value = result;
+    revisionsController?.abort();
+    const controller = new AbortController();
+    revisionsController = controller;
+    const sequence = ++revisionsSequence;
+    const result = await quoteApi.revisions(id, controller.signal);
+    if (sequence === revisionsSequence) {
+      revisions.value = result;
+      revisionsQuoteId.value = id;
+    }
 
     return result;
   }
@@ -122,12 +143,13 @@ export const useQuotesStore = defineStore('finance-v2-quotes', () => {
     return `${action}:${id}`;
   }
 
-  function actionKey(action: KeyedAction, id?: string): string {
+  function actionKey(action: KeyedAction, payload: unknown, id?: string): string {
     const name = scope(action, id);
+    const signature = canonicalSerialize(payload);
     const existing = actionKeys.get(name);
-    if (existing) return existing;
+    if (existing?.signature === signature) return existing.key;
     const key = globalThis.crypto.randomUUID();
-    actionKeys.set(name, key);
+    actionKeys.set(name, { key, signature });
 
     return key;
   }
@@ -158,7 +180,7 @@ export const useQuotesStore = defineStore('finance-v2-quotes', () => {
   function create(input: QuoteDraftInput): Promise<Quote> {
     const name = scope('create');
 
-    return act(() => quoteApi.create(input, actionKey('create')), name);
+    return act(() => quoteApi.create(input, actionKey('create', input)), name);
   }
 
   function updateDraft(id: string, version: number, input: QuoteDraftInput): Promise<Quote> {
@@ -175,15 +197,17 @@ export const useQuotesStore = defineStore('finance-v2-quotes', () => {
 
   function publish(id: string, version: number, changeReason: string | null): Promise<Quote> {
     const name = scope('publish', id);
+    const input = { version, change_reason: changeReason };
 
-    return act(() => quoteApi.publish(id, { version, change_reason: changeReason }, actionKey('publish', id)), name);
+    return act(() => quoteApi.publish(id, input, actionKey('publish', input, id)), name);
   }
 
   function send(id: string, version: number, recipient: string | null, changeReason: string | null): Promise<QuoteSendResult> {
     const name = scope('send', id);
+    const input = { version, recipient, change_reason: changeReason };
 
     return act(async () => {
-      const result = await quoteApi.send(id, { version, recipient, change_reason: changeReason }, actionKey('send', id));
+      const result = await quoteApi.send(id, input, actionKey('send', input, id));
       select(result.quote);
 
       return result;
@@ -193,23 +217,24 @@ export const useQuotesStore = defineStore('finance-v2-quotes', () => {
   function decide(action: 'accept' | 'decline', id: string, input: QuoteDecisionInput): Promise<Quote> {
     const name = scope(action, id);
 
-    return act(() => quoteApi[action](id, input, actionKey(action, id)), name);
+    return act(() => quoteApi[action](id, input, actionKey(action, input, id)), name);
   }
 
   function duplicate(id: string, version: number, sourceRevisionId: number | null): Promise<Quote> {
     const name = scope('duplicate', id);
+    const input = { version, source_revision_id: sourceRevisionId };
 
-    return act(() => quoteApi.duplicate(id, { version, source_revision_id: sourceRevisionId }, actionKey('duplicate', id)), name);
+    return act(() => quoteApi.duplicate(id, input, actionKey('duplicate', input, id)), name);
   }
 
   function convertToInvoice(id: string, input: QuoteDecisionInput): Promise<InvoiceDraftTarget> {
     const name = scope('convert', id);
 
-    return act(() => quoteApi.convertToInvoice(id, input, actionKey('convert', id)), name);
+    return act(() => quoteApi.convertToInvoice(id, input, actionKey('convert', input, id)), name);
   }
 
   return {
-    items, page, current, currentEtag, revisions,
+    items, page, current, currentEtag, revisions, revisionsQuoteId,
     listLoading, detailLoading, actionLoading,
     listError, detailError, actionError,
     loadList, loadQuote, loadRevisions, preview,
@@ -231,4 +256,20 @@ function isQuote(value: unknown): value is Quote {
     && typeof (value as { id?: unknown }).id === 'string'
     && 'version' in value
     && typeof (value as { version?: unknown }).version === 'number';
+}
+
+function canonicalSerialize(value: unknown): string {
+  return JSON.stringify(canonicalValue(value));
+}
+
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => item === undefined ? null : canonicalValue(item));
+  if (value === null || typeof value !== 'object') return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+      .map(([key, item]) => [key, canonicalValue(item)]),
+  );
 }
