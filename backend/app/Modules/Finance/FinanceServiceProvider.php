@@ -18,6 +18,7 @@ use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentSource;
 use App\Modules\Finance\Application\Ports\Projects\ProjectFinancialSource;
 use App\Modules\Finance\Application\Ports\Projects\ProjectFromQuoteTarget;
+use App\Modules\Finance\Application\Ports\Projects\ProjectHistoryRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectOperationRepository;
 use App\Modules\Finance\Application\Ports\Projects\ProjectRateSource;
 use App\Modules\Finance\Application\Ports\Projects\ProjectReferenceResolver;
@@ -58,6 +59,7 @@ use App\Modules\Finance\Infrastructure\Persistence\EloquentDocumentRevisionRepos
 use App\Modules\Finance\Infrastructure\Persistence\EloquentIdempotencyStore;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentInvoiceRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectDocumentRepository;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectHistoryRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectOperationRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectWorkRepository;
@@ -160,6 +162,7 @@ final class FinanceServiceProvider extends ServiceProvider
         $this->app->bind(QuoteSettings::class, EloquentQuoteSettings::class);
         $this->app->bind(ProjectRepository::class, EloquentProjectRepository::class);
         $this->app->bind(ProjectDocumentRepository::class, EloquentProjectDocumentRepository::class);
+        $this->app->bind(ProjectHistoryRepository::class, EloquentProjectHistoryRepository::class);
         $this->app->singleton(ProjectDocumentCatalog::class, static fn (): ProjectDocumentCatalog => new CompositeProjectDocumentCatalog([
             new FinanceSeriesDocumentSource,
             new LegacyInvoiceDocumentSource,

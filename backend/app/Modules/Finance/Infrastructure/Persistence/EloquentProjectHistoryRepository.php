@@ -24,19 +24,25 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use LogicException;
 
 final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
 {
     private const ACTIVITY_PAYLOAD_KEYS = [
-        'amount_minor', 'availability', 'category_reference', 'changes', 'claim_reference',
-        'currency', 'direction', 'document_label', 'document_type', 'due_date', 'entry_count',
-        'error_code', 'from_status', 'gross_minor', 'invoice_uuid', 'link_id',
-        'metadata', 'net_minor', 'note_id', 'number', 'operation', 'parent_uuid', 'payment_reference',
-        'pdf_sha256', 'previous', 'project_uuid', 'quantity_scaled', 'reason_code', 'revision_id',
-        'revision_number', 'role', 'sha256', 'snapshot_sha256', 'source_reference', 'source_type',
-        'status', 'time_entry_ids', 'to_status', 'type', 'vat_minor', 'version', 'visibility',
+        'amount_minor', 'archived', 'availability', 'category_reference', 'changes', 'claim_reference',
+        'corrects_uuid', 'creation_key_sha256', 'currency', 'current_revision_id', 'delivery_id', 'direction', 'document_label',
+        'document_type', 'due_date', 'entry_count', 'error_code', 'from_status', 'gross_minor',
+        'invoice_uuid', 'ledger_entry_uuid', 'level', 'link_id', 'metadata', 'net_minor',
+        'new_parent_uuid', 'new_status', 'new_version', 'note_id', 'number', 'old_parent_uuid',
+        'old_status', 'old_version', 'operation', 'operation_id', 'ordered_uuids', 'parent_uuid',
+        'payment_reference', 'pdf_sha256', 'previous', 'previous_revision_id', 'project_uuid',
+        'quantity_scaled', 'reason_code', 'recipient_domain', 'reopened', 'retry_of_delivery_id', 'revision_id',
+        'revision_number', 'role', 'sha256', 'snapshot_sha256', 'source_line_index',
+        'source_reference', 'source_revision_id', 'source_type', 'status', 'target_quote_uuid',
+        'target_reference', 'time_entry_ids', 'time_entry_uuid', 'time_entry_uuids', 'to_status',
+        'type', 'vat_minor', 'version', 'visibility', 'work_item_uuid',
     ];
 
     public function appendProjectNote(AppendProjectNoteData $data): HistoryItemView
@@ -46,7 +52,13 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
         return DB::transaction(function () use ($data): HistoryItemView {
             $projectId = $this->projectRecordId($data->projectId, true);
             if ($data->supersedesNoteId !== null) {
-                $this->projectNoteRecord($data->projectId->ownerId, $projectId, $data->supersedesNoteId, true);
+                $this->projectNoteRecord(
+                    $data->projectId->ownerId,
+                    $projectId,
+                    $data->supersedesNoteId,
+                    true,
+                    $data->actorId,
+                );
             }
             $timestamp = $this->timestamp($data->occurredAt);
             $noteId = (int) DB::table('finance_project_notes')->insertGetId([
@@ -111,6 +123,12 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
                     ->where('user_id', $data->ownerId)
                     ->where('document_series_id', $seriesId)
                     ->where('id', $data->supersedesNoteId)
+                    ->where('created_by', $data->actorId)
+                    ->when(
+                        $data->revisionId === null,
+                        static fn (QueryBuilder $query): QueryBuilder => $query->whereNull('document_revision_id'),
+                        static fn (QueryBuilder $query): QueryBuilder => $query->where('document_revision_id', $data->revisionId),
+                    )
                     ->lockForUpdate()
                     ->exists();
                 if (! $exists) {
@@ -178,76 +196,14 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
             throw new InvalidArgumentException('project_activity_page_invalid');
         }
         $recordId = $this->projectRecordId($projectId);
-        $state = $cursor === null
-            ? $this->initialActivityState($projectId, $recordId)
-            : $this->decodeActivityCursor($projectId, $cursor);
-        $series = $this->linkedSeriesSnapshot($projectId->ownerId, $recordId, $state['link_high_water']);
 
-        $projectQuery = DB::table('finance_project_activities')
-            ->where('user_id', $projectId->ownerId)
-            ->where('project_id', $recordId)
-            ->where('id', '<=', $state['project_high_water']);
-        $this->applyActivityBoundary($projectQuery, 'project', 'occurred_at', 'id', $state['last']);
-        $projectRows = $projectQuery
-            ->orderByDesc('occurred_at')
-            ->orderByDesc('id')
-            ->limit($perPage + 1)
-            ->get();
+        return DB::transaction(function () use ($projectId, $recordId, $cursor, $perPage): HistoryPage {
+            $state = $cursor === null
+                ? $this->createActivitySnapshot($projectId, $recordId)
+                : $this->decodeActivityCursor($projectId, $recordId, $cursor);
 
-        $documentRows = collect();
-        if ($series !== []) {
-            $documentQuery = DB::table('finance_document_activities as activity')
-                ->join('finance_document_series as series', function (JoinClause $join): void {
-                    $join->on('series.id', '=', 'activity.document_series_id')
-                        ->on('series.user_id', '=', 'activity.user_id');
-                })
-                ->where('activity.user_id', $projectId->ownerId)
-                ->whereIn('activity.document_series_id', array_keys($series))
-                ->where('activity.id', '<=', $state['document_high_water'])
-                ->select([
-                    'activity.id', 'activity.type', 'activity.payload', 'activity.created_by',
-                    'activity.created_at', 'activity.document_series_id', 'activity.document_revision_id',
-                    'series.uuid as series_uuid',
-                ]);
-            $this->applyActivityBoundary($documentQuery, 'document', 'activity.created_at', 'activity.id', $state['last']);
-            $documentRows = $documentQuery
-                ->orderByDesc('activity.created_at')
-                ->orderByDesc('activity.id')
-                ->limit($perPage + 1)
-                ->get();
-        }
-
-        $items = [];
-        foreach ($projectRows as $record) {
-            if (! is_object($record)) {
-                throw new LogicException('Stored project activity is invalid.');
-            }
-            $view = $this->projectActivityView(get_object_vars($record));
-            $items['project:'.$view->sourceId] = $view;
-        }
-        foreach ($documentRows as $record) {
-            if (! is_object($record)) {
-                throw new LogicException('Stored document activity is invalid.');
-            }
-            $view = $this->documentActivityView(get_object_vars($record));
-            $items['document:'.$view->sourceId] = $view;
-        }
-        $merged = array_values($items);
-        usort($merged, $this->compareActivity(...));
-        $hasMore = count($merged) > $perPage;
-        $pageItems = array_slice($merged, 0, $perPage);
-        $nextCursor = null;
-        if ($hasMore && $pageItems !== []) {
-            $last = $pageItems[array_key_last($pageItems)];
-            $state['last'] = [
-                'occurred_at' => $this->timestamp($last->occurredAt),
-                'source_kind' => $last->sourceKind,
-                'source_id' => $last->sourceId,
-            ];
-            $nextCursor = $this->encodeActivityCursor($projectId, $state);
-        }
-
-        return new HistoryPage($pageItems, $perPage, nextCursor: $nextCursor);
+            return $this->activitySnapshotPage($projectId, $recordId, $state, $perPage);
+        });
     }
 
     /** @param array<mixed> $record */
@@ -290,103 +246,162 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
         );
     }
 
-    /**
-     * @return array{project_high_water:int,document_high_water:int,link_high_water:int,last:null}
-     */
-    private function initialActivityState(ProjectId $projectId, int $recordId): array
+    /** @return array{snapshot_uuid:string,last:null} */
+    private function createActivitySnapshot(ProjectId $projectId, int $recordId): array
     {
-        $linkHighWater = $this->optionalInt(DB::table('finance_project_document_links')
+        $snapshotUuid = strtolower((string) Str::uuid());
+        $createdAt = new DateTimeImmutable('now');
+        $snapshotId = (int) DB::table('finance_project_history_snapshots')->insertGetId([
+            'uuid' => $snapshotUuid,
+            'user_id' => $projectId->ownerId,
+            'project_id' => $recordId,
+            'expires_at' => $this->timestamp($createdAt->modify('+1 hour')),
+            'created_at' => $this->timestamp($createdAt),
+        ]);
+
+        $projectActivities = DB::table('finance_project_activities as activity')
+            ->where('activity.user_id', $projectId->ownerId)
+            ->where('activity.project_id', $recordId)
+            ->selectRaw('? as snapshot_id, ? as source_kind, activity.id as source_id, activity.occurred_at', [
+                $snapshotId, 'project',
+            ]);
+        $documentActivities = DB::table('finance_document_activities as activity')
+            ->join('finance_project_document_links as link', function (JoinClause $join): void {
+                $join->on('link.user_id', '=', 'activity.user_id')
+                    ->on('link.document_series_id', '=', 'activity.document_series_id');
+            })
+            ->where('activity.user_id', $projectId->ownerId)
+            ->where('link.project_id', $recordId)
+            ->where('link.source_type', 'finance_series')
+            ->selectRaw('? as snapshot_id, ? as source_kind, activity.id as source_id, activity.created_at as occurred_at', [
+                $snapshotId, 'document',
+            ]);
+
+        DB::table('finance_project_history_snapshot_items')->insertUsing(
+            ['snapshot_id', 'source_kind', 'source_id', 'occurred_at'],
+            $projectActivities->union($documentActivities),
+        );
+
+        return ['snapshot_uuid' => $snapshotUuid, 'last' => null];
+    }
+
+    /**
+     * @param  array{snapshot_uuid:string,last:array{occurred_at:string,source_kind:string,source_id:int}|null}  $state
+     */
+    private function activitySnapshotPage(ProjectId $projectId, int $recordId, array $state, int $perPage): HistoryPage
+    {
+        $snapshot = DB::table('finance_project_history_snapshots')
             ->where('user_id', $projectId->ownerId)
             ->where('project_id', $recordId)
-            ->max('id')) ?? 0;
-        $series = $this->linkedSeriesSnapshot($projectId->ownerId, $recordId, $linkHighWater);
-
-        return [
-            'project_high_water' => $this->optionalInt(DB::table('finance_project_activities')
-                ->where('user_id', $projectId->ownerId)
-                ->where('project_id', $recordId)
-                ->max('id')) ?? 0,
-            'document_high_water' => $series === [] ? 0 : ($this->optionalInt(DB::table('finance_document_activities')
-                ->where('user_id', $projectId->ownerId)
-                ->whereIn('document_series_id', array_keys($series))
-                ->max('id')) ?? 0),
-            'link_high_water' => $linkHighWater,
-            'last' => null,
-        ];
-    }
-
-    /** @return array<int,string> */
-    private function linkedSeriesSnapshot(int $ownerId, int $projectId, int $linkHighWater): array
-    {
-        if ($linkHighWater < 1) {
-            return [];
+            ->where('uuid', $state['snapshot_uuid'])
+            ->first(['id', 'expires_at']);
+        if ($snapshot === null) {
+            throw new InvalidArgumentException('project_activity_cursor_expired');
         }
-        $rows = DB::table('finance_project_document_links as link')
-            ->join('finance_document_series as series', function (JoinClause $join): void {
-                $join->on('series.id', '=', 'link.document_series_id')
-                    ->on('series.user_id', '=', 'link.user_id');
-            })
-            ->where('link.user_id', $ownerId)
-            ->where('link.project_id', $projectId)
-            ->where('link.id', '<=', $linkHighWater)
-            ->where('link.source_type', 'finance_series')
-            ->whereNotNull('link.document_series_id')
-            ->select(['link.document_series_id', 'series.uuid'])
-            ->distinct()
-            ->orderBy('link.document_series_id')
-            ->get();
-        $series = [];
-        foreach ($rows as $row) {
-            if (! is_object($row)) {
-                throw new LogicException('Stored document link is invalid.');
+        $snapshotValues = get_object_vars($snapshot);
+        if (new DateTimeImmutable($this->requiredString($snapshotValues['expires_at'] ?? null)) <= new DateTimeImmutable('now')) {
+            throw new InvalidArgumentException('project_activity_cursor_expired');
+        }
+        $snapshotId = $this->requiredInt($snapshotValues['id'] ?? null);
+        $query = DB::table('finance_project_history_snapshot_items')
+            ->where('snapshot_id', $snapshotId);
+        $this->applySnapshotBoundary($query, $state['last']);
+        $membership = $query
+            ->orderByDesc('occurred_at')
+            ->orderBy('source_kind')
+            ->orderByDesc('source_id')
+            ->limit($perPage + 1)
+            ->get(['source_kind', 'source_id', 'occurred_at']);
+        $hasMore = $membership->count() > $perPage;
+        $pageMembership = $membership->take($perPage)->values();
+
+        $projectIds = [];
+        $documentIds = [];
+        foreach ($pageMembership as $member) {
+            $values = get_object_vars($member);
+            $kind = $this->requiredString($values['source_kind'] ?? null);
+            $id = $this->requiredInt($values['source_id'] ?? null);
+            if ($kind === 'project') {
+                $projectIds[] = $id;
+            } elseif ($kind === 'document') {
+                $documentIds[] = $id;
+            } else {
+                throw new LogicException('Stored activity snapshot kind is invalid.');
             }
-            $values = get_object_vars($row);
-            $series[$this->requiredInt($values['document_series_id'] ?? null)] = $this->requiredString($values['uuid'] ?? null);
         }
 
-        return $series;
+        $views = [];
+        if ($projectIds !== []) {
+            foreach (DB::table('finance_project_activities')
+                ->where('user_id', $projectId->ownerId)
+                ->whereIn('id', $projectIds)
+                ->get() as $record) {
+                $view = $this->projectActivityView(get_object_vars($record));
+                $views['project:'.$view->sourceId] = $view;
+            }
+        }
+        if ($documentIds !== []) {
+            $records = DB::table('finance_document_activities as activity')
+                ->join('finance_document_series as series', function (JoinClause $join): void {
+                    $join->on('series.id', '=', 'activity.document_series_id')
+                        ->on('series.user_id', '=', 'activity.user_id');
+                })
+                ->where('activity.user_id', $projectId->ownerId)
+                ->whereIn('activity.id', $documentIds)
+                ->get([
+                    'activity.id', 'activity.type', 'activity.payload', 'activity.created_by',
+                    'activity.created_at', 'activity.document_series_id', 'activity.document_revision_id',
+                    'series.uuid as series_uuid',
+                ]);
+            foreach ($records as $record) {
+                $view = $this->documentActivityView(get_object_vars($record));
+                $views['document:'.$view->sourceId] = $view;
+            }
+        }
+
+        $items = [];
+        foreach ($pageMembership as $member) {
+            $values = get_object_vars($member);
+            $key = $this->requiredString($values['source_kind'] ?? null).':'.$this->requiredInt($values['source_id'] ?? null);
+            if (! isset($views[$key])) {
+                throw new LogicException('Snapshotted activity is unavailable.');
+            }
+            $items[] = $views[$key];
+        }
+
+        $nextCursor = null;
+        if ($hasMore && $items !== []) {
+            $last = $items[array_key_last($items)];
+            $state['last'] = [
+                'occurred_at' => $this->timestamp($last->occurredAt),
+                'source_kind' => $last->sourceKind,
+                'source_id' => $last->sourceId,
+            ];
+            $nextCursor = $this->encodeActivityCursor($projectId, $state);
+        }
+
+        return new HistoryPage($items, $perPage, nextCursor: $nextCursor);
     }
 
-    /**
-     * @param  array{occurred_at:string,source_kind:string,source_id:int}|null  $last
-     */
-    private function applyActivityBoundary(QueryBuilder $query, string $sourceKind, string $timeColumn, string $idColumn, ?array $last): void
+    /** @param array{occurred_at:string,source_kind:string,source_id:int}|null $last */
+    private function applySnapshotBoundary(QueryBuilder $query, ?array $last): void
     {
         if ($last === null) {
             return;
         }
-        $kindComparison = strcmp($sourceKind, $last['source_kind']);
-        if ($kindComparison > 0) {
-            $query->where($timeColumn, '<=', $last['occurred_at']);
-
-            return;
-        }
-        if ($kindComparison < 0) {
-            $query->where($timeColumn, '<', $last['occurred_at']);
-
-            return;
-        }
-        $query->where(function (QueryBuilder $boundary) use ($timeColumn, $idColumn, $last): void {
-            $boundary->where($timeColumn, '<', $last['occurred_at'])
-                ->orWhere(function (QueryBuilder $tie) use ($timeColumn, $idColumn, $last): void {
-                    $tie->where($timeColumn, '=', $last['occurred_at'])
-                        ->where($idColumn, '<', $last['source_id']);
+        $query->where(function (QueryBuilder $boundary) use ($last): void {
+            $boundary->where('occurred_at', '<', $last['occurred_at'])
+                ->orWhere(function (QueryBuilder $sameTime) use ($last): void {
+                    $sameTime->where('occurred_at', '=', $last['occurred_at'])
+                        ->where(function (QueryBuilder $tie) use ($last): void {
+                            $tie->where('source_kind', '>', $last['source_kind'])
+                                ->orWhere(function (QueryBuilder $sameKind) use ($last): void {
+                                    $sameKind->where('source_kind', '=', $last['source_kind'])
+                                        ->where('source_id', '<', $last['source_id']);
+                                });
+                        });
                 });
         });
-    }
-
-    private function compareActivity(HistoryItemView $left, HistoryItemView $right): int
-    {
-        $time = $right->occurredAt <=> $left->occurredAt;
-        if ($time !== 0) {
-            return $time;
-        }
-        $kind = strcmp($left->sourceKind, $right->sourceKind);
-        if ($kind !== 0) {
-            return $kind;
-        }
-
-        return $right->sourceId <=> $left->sourceId;
     }
 
     /** @return array<string,mixed> */
@@ -452,13 +467,11 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
         return $this->sanitizePayloadMap($value);
     }
 
-    /**
-     * @param  array{project_high_water:int,document_high_water:int,link_high_water:int,last:array{occurred_at:string,source_kind:string,source_id:int}|null}  $state
-     */
+    /** @param array{snapshot_uuid:string,last:array{occurred_at:string,source_kind:string,source_id:int}|null} $state */
     private function encodeActivityCursor(ProjectId $projectId, array $state): string
     {
         $payload = $this->base64UrlEncode(json_encode([
-            'v' => 1,
+            'v' => 2,
             'filter' => $this->activityDigest($projectId),
             ...$state,
         ], JSON_THROW_ON_ERROR));
@@ -466,10 +479,8 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
         return $payload.'.'.hash_hmac('sha256', $payload, $this->cursorKey());
     }
 
-    /**
-     * @return array{project_high_water:int,document_high_water:int,link_high_water:int,last:array{occurred_at:string,source_kind:string,source_id:int}|null}
-     */
-    private function decodeActivityCursor(ProjectId $projectId, string $cursor): array
+    /** @return array{snapshot_uuid:string,last:array{occurred_at:string,source_kind:string,source_id:int}} */
+    private function decodeActivityCursor(ProjectId $projectId, int $recordId, string $cursor): array
     {
         $parts = explode('.', $cursor);
         if (count($parts) !== 2 || ! hash_equals(hash_hmac('sha256', $parts[0], $this->cursorKey()), $parts[1])) {
@@ -478,14 +489,10 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
         $decoded = $this->base64UrlDecode($parts[0]);
         $payload = is_string($decoded) ? json_decode($decoded, true) : null;
         if (! is_array($payload)
-            || ($payload['v'] ?? null) !== 1
+            || ($payload['v'] ?? null) !== 2
             || ($payload['filter'] ?? null) !== $this->activityDigest($projectId)
-            || ! is_int($payload['project_high_water'] ?? null)
-            || ! is_int($payload['document_high_water'] ?? null)
-            || ! is_int($payload['link_high_water'] ?? null)
-            || $payload['project_high_water'] < 0
-            || $payload['document_high_water'] < 0
-            || $payload['link_high_water'] < 0) {
+            || ! is_string($payload['snapshot_uuid'] ?? null)
+            || ! Str::isUuid($payload['snapshot_uuid'])) {
             throw new InvalidArgumentException('project_activity_cursor_invalid');
         }
         $last = $payload['last'] ?? null;
@@ -505,10 +512,21 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
             throw new InvalidArgumentException('project_activity_cursor_invalid');
         }
 
+        $snapshot = DB::table('finance_project_history_snapshots')
+            ->where('user_id', $projectId->ownerId)
+            ->where('project_id', $recordId)
+            ->where('uuid', strtolower($payload['snapshot_uuid']))
+            ->first(['expires_at']);
+        if ($snapshot === null) {
+            throw new InvalidArgumentException('project_activity_cursor_expired');
+        }
+        $snapshotValues = get_object_vars($snapshot);
+        if (new DateTimeImmutable($this->requiredString($snapshotValues['expires_at'] ?? null)) <= new DateTimeImmutable('now')) {
+            throw new InvalidArgumentException('project_activity_cursor_expired');
+        }
+
         return [
-            'project_high_water' => $payload['project_high_water'],
-            'document_high_water' => $payload['document_high_water'],
-            'link_high_water' => $payload['link_high_water'],
+            'snapshot_uuid' => strtolower($payload['snapshot_uuid']),
             'last' => [
                 'occurred_at' => $last['occurred_at'],
                 'source_kind' => $last['source_kind'],
@@ -616,12 +634,20 @@ final class EloquentProjectHistoryRepository implements ProjectHistoryRepository
         return $query->firstOrFail(['id', 'uuid']);
     }
 
-    private function projectNoteRecord(int $ownerId, int $projectId, int $noteId, bool $lock): object
-    {
+    private function projectNoteRecord(
+        int $ownerId,
+        int $projectId,
+        int $noteId,
+        bool $lock,
+        ?int $authorId = null,
+    ): object {
         $query = DB::table('finance_project_notes')
             ->where('user_id', $ownerId)
             ->where('project_id', $projectId)
             ->where('id', $noteId);
+        if ($authorId !== null) {
+            $query->where('created_by', $authorId);
+        }
         if ($lock) {
             $query->lockForUpdate();
         }

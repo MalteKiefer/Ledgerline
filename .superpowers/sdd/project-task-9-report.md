@@ -10,7 +10,7 @@ Task 9 implementiert strikt typisierte Projekt- und Dokumentnotizen sowie eine o
 - `correction` verlangt genau eine positive `supersedes_note_id`; alle anderen Typen verbieten sie. Document-Series-UUIDs werden kleingeschrieben und strikt validiert.
 - Owner und Actor sind getrennt positive Eingaben. Da das aktuelle Finance-Auth-Modell keine delegierte Benutzerautorität besitzt, erzwingt das Repository derzeit `actorId === ownerId` und behandelt Abweichungen wie eine nicht sichtbare Ressource.
 - Project-Note-Append sperrt das owner-validierte Projekt und den optionalen Vorgänger, schreibt Note und `project.note_added` atomar und speichert Mikrosekunden.
-- Document-Note-Append sperrt die owner-validierte Series sowie optionale Revision und Vorgängernote. Revision und Vorgänger müssen exakt derselben Owner-Series angehören. Die Project Activity wird nicht dupliziert, weil die Timeline Document-Series-Aktivitäten direkt zusammenführt.
+- Document-Note-Append sperrt die owner-validierte Series sowie optionale Revision und Vorgängernote. Eine Korrektur muss exakt denselben Owner, dieselbe Series, dieselbe nullable Revision und denselben Autor wie ihr Vorgänger besitzen. Project-Notizkorrekturen verlangen ebenfalls denselben Autor. Die Project Activity wird nicht dupliziert, weil die Timeline Document-Series-Aktivitäten direkt zusammenführt.
 - `customer` ist ausschließlich gespeicherte Sichtbarkeitsmetadaten. Beide Sichtbarkeiten bleiben in dieser Version nur für den authentifizierten Owner abfragbar.
 - Projekt- und Dokumentnotizen filtern owner-gebunden nach Text, Typ, Sichtbarkeit, Autor und Datum. Die Seitengröße ist auf 1 bis 100 begrenzt; die Reihenfolge lautet `created_at DESC, id DESC`.
 
@@ -27,17 +27,20 @@ Task 9 implementiert strikt typisierte Projekt- und Dokumentnotizen sowie eine o
 - Die Timeline vereinigt append-only Project Activities mit Document Activities aller aktiven und historisch getrennten `finance_series`-Links.
 - Mehrfaches Verknüpfen derselben Series wird vor der Abfrage dedupliziert; Ergebniszeilen werden zusätzlich über `(source_kind, source_id)` dedupliziert.
 - Die feste Reihenfolge ist `occurred_at DESC, source_kind ASC, source_id DESC`. Cursor speichern den vollständigen Mikrosekunden-Zeitwert und werden mit dem Application Key signiert sowie an Owner und Project UUID gebunden.
-- Die erste Seite friert `link_high_water`, `project_high_water` und `document_high_water` ein. Später erzeugte Links oder Activities erscheinen dadurch nicht mitten in einer laufenden Pagination; alle beim Start aktiven oder historischen Links bleiben erhalten.
+- Die erste Seite materialisiert die exakte sichtbare Mitgliedschaft aus Project Activities und den Activities aller zu diesem Zeitpunkt aktiv oder historisch verknüpften Series in einer einzigen `INSERT ... SELECT ... UNION`-Anweisung. Dadurch bleiben auch bei später committeten kleineren IDs weder neue Activities noch neue Links in einer laufenden Pagination sichtbar.
+- Der signierte Cursor enthält nur Snapshot-UUID und den letzten vollständigen Sortiertupel. Snapshot-Seiten lesen ausschließlich die materialisierte Mitgliedschaft. Snapshots laufen nach einer Stunde ab; ein abgelaufener oder bereits bereinigter Snapshot liefert stabil `project_activity_cursor_expired` und startet niemals still eine neue Timeline.
 - Project-, Link-, Series- und Document-Activity-Abfragen besitzen explizite Owner-Joins. Fremde Series-Aktivitäten können nicht über einen Link oder einen manipulierten Cursor sichtbar werden.
-- Activity Payloads werden auf eine feste Liste fachlicher Schlüssel und JSON-skalare Werte begrenzt. Passwörter, Secrets, Tokens, Recipient-/SMTP-Daten, Storage-/PDF-/Blob-Pfade, OCR, Dokumenttexte, rohe Error-/Exception-Meldungen und Traces werden nicht ausgegeben. Stabile `error_code`-Werte und Hashes dürfen erhalten bleiben.
+- Activity Payloads werden auf eine feste Liste fachlicher Schlüssel und JSON-skalare Werte begrenzt. Die Allowlist umfasst die aktuellen Project-, Work-, Link-, Revision-, Quote- und Invoice-Events, darunter alte/neue Versionen und Status, Reopen-/Archive-Metadaten, UUID-/Operationsreferenzen, Delivery-Domains sowie stabile Error-Codes und Hashes. Passwörter, Secrets, Tokens, vollständige Empfänger, Storage-/PDF-/Blob-Pfade, OCR, Dokumenttexte, rohe Error-/Exception-Meldungen und Traces werden nicht ausgegeben.
 
-## Provider-Hold
+## Provider und Invoice-Audit-Follow-up
 
-`FinanceServiceProvider.php` wurde wegen paralleler Invoice-/Quote-Arbeit weder bearbeitet noch gestaged. Die Tests bauen `EloquentProjectHistoryRepository` und die Commands/Queries direkt. Nach Freigabe ist additiv folgende Bindung erforderlich, ohne bestehende Bindings zu ersetzen:
+- `ProjectHistoryRepository` ist additiv an `EloquentProjectHistoryRepository` gebunden. Ein Container-Vertragstest löst zugleich die bestehenden Project-, Document-, Invoice- und Quote-Ports sowie Commands/Queries auf und schützt deren Bindings vor versehentlichem Ersatz.
+- Der Review-Fix für Invoice-Draft-Delete ist TDD-implementiert und fokussiert grün, bleibt wegen einer parallelen, noch uncommitteten Invoice-Änderung jedoch aus diesem Commit ausgeschlossen. Er folgt als separater Task-9-Commit nach dem Payment-Vorcommit: Nur die normale Invoice-Zeile wird entfernt, Series und Revision bleiben als owner-gebundenes Audit-Aggregat erhalten, die Series wird auf `deleted` tombstoned und `invoice.draft.deleted` append-only ergänzt.
 
-```php
-$this->app->bind(ProjectHistoryRepository::class, EloquentProjectHistoryRepository::class);
-```
+## Schema
+
+- `finance_project_history_snapshots` bindet UUID, Owner, Project, Erstellungszeit und Mikrosekunden-TTL per Composite-FK an das owner-validierte Project.
+- `finance_project_history_snapshot_items` speichert die unveränderliche `(source_kind, source_id, occurred_at)`-Mitgliedschaft, dedupliziert Quellen und besitzt den vollständigen Paging-Index. Owner-Cascade und Down-Reihenfolge entfernen Items vor Headern.
 
 ## TDD und Verifikation
 
@@ -48,14 +51,16 @@ $this->app->bind(ProjectHistoryRepository::class, EloquentProjectHistoryReposito
 - Plan-Fokus `ProjectHistoryTest + DocumentPersistenceTest + DocumentCoreSchemaTest`: **55 Tests, 55 bestanden, 260 Assertions**.
 - Task-9-Pint im Check-Modus: **grün**.
 - PHPStan auf allen Task-9-Produktionsdateien mit 1 GiB: **0 Fehler**.
+- Review-Runde 1 RED: fehlendes Provider-Binding, zu breite Korrekturidentität, verworfene fachliche Payload-Felder, late-commit Aufnahme über numerische High-Water-Werte, fehlende Snapshot-Tabelle und gelöschte Invoice-Auditzeilen wurden jeweils durch fokussierte Regressionen bestätigt.
+- Review-Runde 1 Zwischen-GREEN: neue Project-History-Regressionen **5/5, 30 Assertions**; Invoice-Delete-Regressions **2/2, 10 Assertions**; gemeinsamer History-/Invoice-Lauf **25/25, 150 Assertions**. Der Invoice-Hunk ist wie oben beschrieben noch nicht Bestandteil dieses Commits.
 - Weitere einzelne Project-Dateien: Application 24/24, Documents 36/37 mit einem opt-in Skip, Persistence 45/47 mit zwei opt-in Skips, Work 15/15 und Quote Target 8/9 mit einem opt-in Skip; zusammen **136 bestanden, 774 Assertions, 4 Skips**.
 
 ## Bekannte unabhängige Baseline
 
-- Ein gemeinsamer Lauf des gesamten Projects-Ordners bricht beim Laravel-Application-Reboot ab, weil `phpunit.xml` das Speicherlimit erneut auf 128 MiB setzt; der Abbruch erfolgt beim Laden von `routes/api.php`, nicht in Task-9-Code.
+- Ein gemeinsamer Lauf des gesamten Projects-Ordners kann beim Laravel-Application-Reboot abbrechen, weil der aufgerufene CLI/Test-Runner-Prozess auf 128 MiB zurückfällt; der Wert stammt nicht aus `phpunit.xml`. Der Abbruch erfolgt beim Laden von `routes/api.php`, nicht in Task-9-Code.
 - `LegacyProjectCompatibilityTest` hat den bereits dokumentierten, unabhängigen Gallery/S3-Fehler wegen eines fehlenden Test-Buckets (15/16 bestanden, 133 Assertions).
 - `ProjectSchemaTest` enthält zwei bestehende rote SQLite-Erwartungen zur aktiven Document-Link-Eindeutigkeit beziehungsweise zum Detach-Paar (15/17 bestanden, 218 Assertions). Task 9 ändert weder Document-Link-Schema noch Migrationen.
 
 ## Scope
 
-Keine Provider-, HTTP-, Route-, OpenAPI-, Quote-Workflow-, Invoice-Workflow- oder Schemaänderung. Fremde parallele Dateien wurden nicht bearbeitet und werden nicht committed. Kein Push, Tag oder Deployment.
+Dieser Commit ändert ausschließlich die gelisteten History-Komponenten und Tests, die additive Provider-Bindung sowie die beiden Snapshot-Tabellen. Der minimale Invoice-Draft-Delete-/Testpfad bleibt als koordinierter Follow-up im Working Tree. HTTP, Routes, OpenAPI, Quote-Workflow und fremde parallele Dateien werden nicht committed. Kein Push, Tag oder Deployment.

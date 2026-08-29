@@ -11,10 +11,19 @@ use App\Modules\Finance\Application\DTOs\Projects\AppendDocumentNoteData;
 use App\Modules\Finance\Application\DTOs\Projects\AppendProjectNoteData;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectId;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectNoteFilter;
+use App\Modules\Finance\Application\Ports\InvoiceRepository;
+use App\Modules\Finance\Application\Ports\Projects\ProjectDocumentRepository;
+use App\Modules\Finance\Application\Ports\Projects\ProjectHistoryRepository;
+use App\Modules\Finance\Application\Ports\Projects\ProjectRepository;
+use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
 use App\Modules\Finance\Application\Queries\Projects\ListDocumentNotes;
 use App\Modules\Finance\Application\Queries\Projects\ListProjectActivity;
 use App\Modules\Finance\Application\Queries\Projects\ListProjectNotes;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentInvoiceRepository;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectDocumentRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectHistoryRepository;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectRepository;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteRepository;
 use App\Modules\Finance\Infrastructure\Persistence\Exception\AppendOnlyRecordMutation;
 use App\Modules\Finance\Infrastructure\Persistence\Exception\PublishedRevisionMutation;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentActivityRecord;
@@ -25,6 +34,7 @@ use DateTimeImmutable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Tests\TestCase;
@@ -32,6 +42,29 @@ use Tests\TestCase;
 final class ProjectHistoryTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_provider_binds_project_history_without_replacing_existing_finance_ports(): void
+    {
+        $this->assertInstanceOf(EloquentProjectHistoryRepository::class, $this->app->make(ProjectHistoryRepository::class));
+        $this->assertInstanceOf(EloquentProjectRepository::class, $this->app->make(ProjectRepository::class));
+        $this->assertInstanceOf(EloquentProjectDocumentRepository::class, $this->app->make(ProjectDocumentRepository::class));
+        $this->assertInstanceOf(EloquentInvoiceRepository::class, $this->app->make(InvoiceRepository::class));
+        $this->assertInstanceOf(EloquentQuoteRepository::class, $this->app->make(QuoteRepository::class));
+        $this->assertInstanceOf(AppendProjectNote::class, $this->app->make(AppendProjectNote::class));
+        $this->assertInstanceOf(ListProjectActivity::class, $this->app->make(ListProjectActivity::class));
+    }
+
+    public function test_history_snapshot_migration_round_trips_portably(): void
+    {
+        $migration = require database_path('migrations/2027_03_04_140000_create_project_history_snapshots.php');
+        $migration->down();
+        $this->assertFalse(Schema::hasTable('finance_project_history_snapshot_items'));
+        $this->assertFalse(Schema::hasTable('finance_project_history_snapshots'));
+
+        $migration->up();
+        $this->assertTrue(Schema::hasTable('finance_project_history_snapshots'));
+        $this->assertTrue(Schema::hasTable('finance_project_history_snapshot_items'));
+    }
 
     public function test_note_dtos_reject_invalid_values_and_canonicalize_series_uuid(): void
     {
@@ -165,6 +198,50 @@ final class ProjectHistoryTest extends TestCase
         ));
     }
 
+    public function test_corrections_require_the_same_author_and_exact_nullable_revision(): void
+    {
+        $owner = User::factory()->create();
+        [$project, $projectRowId] = $this->project($owner);
+        [$seriesUuid, $seriesId, $revisionId] = $this->series($owner);
+        $at = '2026-08-29 12:00:00.000001';
+        $projectNoteId = (int) DB::table('finance_project_notes')->insertGetId([
+            'user_id' => $owner->id, 'project_id' => $projectRowId, 'type' => 'note',
+            'visibility' => 'internal', 'body' => 'System project note', 'supersedes_note_id' => null,
+            'created_by' => null, 'created_at' => $at,
+        ]);
+        $documentNoteId = (int) DB::table('finance_document_notes')->insertGetId([
+            'user_id' => $owner->id, 'document_series_id' => $seriesId, 'document_revision_id' => null,
+            'type' => 'note', 'visibility' => 'internal', 'body' => 'System series note',
+            'supersedes_note_id' => null, 'created_by' => null, 'created_at' => $at, 'updated_at' => $at,
+        ]);
+        $repository = new EloquentProjectHistoryRepository;
+
+        foreach ([
+            static fn () => (new AppendProjectNote($repository))->handle(new AppendProjectNoteData(
+                $project, 'correction', 'internal', 'Owner rewrite', (int) $owner->id,
+                new DateTimeImmutable('2026-08-29 12:01:00'), $projectNoteId,
+            )),
+            static fn () => (new AppendDocumentNote($repository))->handle(new AppendDocumentNoteData(
+                (int) $owner->id, $seriesUuid, $revisionId, 'correction', 'internal', 'Revision rewrite',
+                (int) $owner->id, new DateTimeImmutable('2026-08-29 12:02:00'), $documentNoteId,
+            )),
+            static fn () => (new AppendDocumentNote($repository))->handle(new AppendDocumentNoteData(
+                (int) $owner->id, $seriesUuid, null, 'correction', 'internal', 'Author rewrite',
+                (int) $owner->id, new DateTimeImmutable('2026-08-29 12:03:00'), $documentNoteId,
+            )),
+        ] as $correction) {
+            try {
+                $correction();
+                $this->fail('A correction changed author or revision identity.');
+            } catch (ModelNotFoundException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        $this->assertSame(1, DB::table('finance_project_notes')->where('project_id', $projectRowId)->count());
+        $this->assertSame(1, DB::table('finance_document_notes')->where('document_series_id', $seriesId)->count());
+    }
+
     public function test_note_queries_filter_owner_text_type_visibility_author_date_and_page(): void
     {
         $owner = User::factory()->create();
@@ -228,6 +305,56 @@ final class ProjectHistoryTest extends TestCase
         }
         $this->assertStringContainsString('pdf_sha256', $encoded);
         $this->assertNull($page->nextCursor);
+    }
+
+    public function test_activity_payload_contract_keeps_legitimate_event_fields_and_scrubs_secrets(): void
+    {
+        $owner = User::factory()->create();
+        [$project, $projectRowId] = $this->project($owner);
+        [$seriesUuid, $seriesId, $revisionId] = $this->series($owner);
+        $this->linkSeries($owner, $projectRowId, $seriesUuid, $seriesId, $revisionId, true);
+        $projectPayloads = [
+            'project.updated' => ['old_version' => 2, 'new_version' => 3],
+            'project.status_changed' => ['old_status' => 'active', 'new_status' => 'done', 'reopened' => false],
+            'project.moved' => ['old_parent_uuid' => 'old', 'new_parent_uuid' => 'new'],
+            'work_item.reordered' => ['ordered_uuids' => ['b', 'a']],
+            'time_entries.invoiced' => ['target_reference' => 'INV-1', 'time_entry_uuids' => ['time-1']],
+            'project.document_attached' => [
+                'link_id' => 4, 'operation_id' => 5, 'source_type' => 'finance_series',
+                'source_reference' => $seriesUuid, 'role' => 'quote',
+            ],
+        ];
+        $documentPayloads = [
+            'quote.revision.superseded' => ['version' => 2, 'previous_revision_id' => 8, 'current_revision_id' => 9],
+            'quote.duplicated' => ['version' => 1, 'source_revision_id' => 9, 'target_quote_uuid' => 'quote-2'],
+            'invoice.mail.failed' => [
+                'delivery_id' => 7, 'recipient_domain' => 'example.test', 'level' => 'error', 'error_code' => 'smtp_timeout',
+            ],
+        ];
+        $second = 0;
+        foreach ($projectPayloads as $type => $payload) {
+            $this->projectActivity($owner, $projectRowId, $type, sprintf('2026-08-29 14:00:%02d.000001', $second++), [
+                ...$payload, 'password' => 'secret', 'exception' => 'raw error', 'path' => '/private/project',
+            ]);
+        }
+        foreach ($documentPayloads as $type => $payload) {
+            $this->documentActivity($owner, $seriesId, $revisionId, $type, sprintf('2026-08-29 14:00:%02d.000001', $second++), [
+                ...$payload, 'password' => 'secret', 'exception' => 'raw error', 'path' => '/private/document',
+            ]);
+        }
+
+        $page = (new ListProjectActivity(new EloquentProjectHistoryRepository))->handle($project, null, 100);
+        $actual = [];
+        foreach ($page->items as $item) {
+            $actual[$item->type] = $item->payload;
+        }
+        foreach ([...$projectPayloads, ...$documentPayloads] as $type => $payload) {
+            $this->assertSame($payload, $actual[$type]);
+        }
+        $encoded = json_encode($actual, JSON_THROW_ON_ERROR);
+        foreach (['secret', 'raw error', '/private/'] as $forbidden) {
+            $this->assertStringNotContainsString($forbidden, $encoded);
+        }
     }
 
     public function test_activity_cursor_freezes_high_water_and_link_snapshot_with_microsecond_keyset(): void
@@ -304,6 +431,52 @@ final class ProjectHistoryTest extends TestCase
             ['document', $documentTwo], ['document', $documentOne],
             ['project', $projectTwo], ['project', $projectOne],
         ], $actual);
+    }
+
+    public function test_activity_snapshot_does_not_admit_a_late_committed_lower_id(): void
+    {
+        $owner = User::factory()->create();
+        [$project, $projectRowId] = $this->project($owner);
+        foreach ([[100, '2026-08-29 15:00:00.900000'], [200, '2026-08-29 15:00:00.700000']] as [$id, $at]) {
+            DB::table('finance_project_activities')->insert([
+                'id' => $id, 'user_id' => $owner->id, 'project_id' => $projectRowId, 'type' => 'project.changed',
+                'subject_type' => null, 'subject_reference' => null, 'payload' => '{}', 'created_by' => $owner->id,
+                'occurred_at' => $at, 'created_at' => $at,
+            ]);
+        }
+        $query = new ListProjectActivity(new EloquentProjectHistoryRepository);
+        $first = $query->handle($project, null, 1);
+        $this->assertSame([100], array_map(static fn ($item): int => $item->sourceId, $first->items));
+        $this->assertNotNull($first->nextCursor);
+
+        DB::table('finance_project_activities')->insert([
+            'id' => 150, 'user_id' => $owner->id, 'project_id' => $projectRowId, 'type' => 'project.late',
+            'subject_type' => null, 'subject_reference' => null, 'payload' => '{}', 'created_by' => $owner->id,
+            'occurred_at' => '2026-08-29 15:00:00.800000', 'created_at' => '2026-08-29 15:00:00.800000',
+        ]);
+
+        $second = $query->handle($project, $first->nextCursor, 10);
+        $this->assertSame([200], array_map(static fn ($item): int => $item->sourceId, $second->items));
+        $this->assertNull($second->nextCursor);
+    }
+
+    public function test_expired_activity_snapshot_cursor_fails_instead_of_mixing_a_new_timeline(): void
+    {
+        $owner = User::factory()->create();
+        [$project, $projectRowId] = $this->project($owner);
+        $this->projectActivity($owner, $projectRowId, 'project.one', '2026-08-29 15:00:00.900000', []);
+        $this->projectActivity($owner, $projectRowId, 'project.two', '2026-08-29 15:00:00.700000', []);
+        $query = new ListProjectActivity(new EloquentProjectHistoryRepository);
+        $first = $query->handle($project, null, 1);
+        $this->assertNotNull($first->nextCursor);
+        DB::table('finance_project_history_snapshots')->update(['expires_at' => '2000-01-01 00:00:00.000000']);
+
+        try {
+            $query->handle($project, $first->nextCursor, 1);
+            $this->fail('An expired history snapshot silently started a new timeline.');
+        } catch (InvalidArgumentException $exception) {
+            $this->assertSame('project_activity_cursor_expired', $exception->getMessage());
+        }
     }
 
     public function test_project_and_document_history_models_reject_every_bulk_mutation_path(): void
