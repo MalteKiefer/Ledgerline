@@ -9,6 +9,8 @@ use InvalidArgumentException;
 
 final readonly class RecordPaymentData
 {
+    private const MAX_MINOR = 99_999_999_999_999;
+
     public function __construct(
         public int $amountMinor,
         public string $currency,
@@ -21,6 +23,9 @@ final readonly class RecordPaymentData
     ) {
         if ($amountMinor === 0) {
             throw new InvalidArgumentException('Payment amount must not be zero.');
+        }
+        if ($amountMinor > self::MAX_MINOR || $amountMinor < -self::MAX_MINOR) {
+            throw new InvalidArgumentException('Payment amount exceeds the supported minor-unit range.');
         }
         if (preg_match('/\A[A-Z]{3}\z/D', $currency) !== 1) {
             throw new InvalidArgumentException('Payment currency must be uppercase ISO format.');

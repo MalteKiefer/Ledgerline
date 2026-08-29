@@ -11,6 +11,7 @@ use App\Modules\Finance\Application\DTOs\Payments\AllocationResult;
 use App\Modules\Finance\Application\DTOs\Payments\PaymentId;
 use App\Modules\Finance\Application\DTOs\Payments\PaymentView;
 use App\Modules\Finance\Application\DTOs\Payments\RecordPaymentData;
+use DateTimeImmutable;
 
 interface PaymentRepository
 {
@@ -25,4 +26,19 @@ interface PaymentRepository
         IdempotencyKey $key,
         ?int $expectedPaymentVersion = null,
     ): AllocationResult;
+
+    /**
+     * @return array{
+     *   payment: PaymentView,
+     *   invoices: list<array{
+     *     invoice_id:int,
+     *     number:string,
+     *     currency:string,
+     *     open_minor:int,
+     *     issue_date:DateTimeImmutable,
+     *     customer:string
+     *   }>
+     * }
+     */
+    public function suggestionContext(PaymentId $id): array;
 }

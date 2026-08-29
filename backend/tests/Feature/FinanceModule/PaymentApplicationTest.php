@@ -15,13 +15,16 @@ use App\Modules\Finance\Application\DTOs\Payments\AllocationLineData;
 use App\Modules\Finance\Application\DTOs\Payments\PaymentId;
 use App\Modules\Finance\Application\DTOs\Payments\RecordPaymentData;
 use App\Modules\Finance\Application\Ports\PaymentRepository;
+use App\Modules\Finance\Application\Queries\SuggestPaymentAllocations;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentPaymentRepository;
 use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Tests\TestCase;
+use TypeError;
 
 final class PaymentApplicationTest extends TestCase
 {
@@ -61,6 +64,45 @@ final class PaymentApplicationTest extends TestCase
         $this->assertSame('statement-17:row-4', $first->sourceKey);
         $this->assertSame(0, $first->version);
         $this->assertDatabaseCount('finance_payments', 1);
+    }
+
+    public function test_record_payment_rejects_zero_minor_units_before_persistence(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new RecordPaymentData(0, 'EUR', new DateTimeImmutable('2026-08-29T10:15:00+00:00'));
+    }
+
+    public function test_record_payment_rejects_float_amounts_at_the_strict_boundary(): void
+    {
+        $this->expectException(TypeError::class);
+
+        new RecordPaymentData(119.0, 'EUR', new DateTimeImmutable('2026-08-29T10:15:00+00:00'));
+    }
+
+    public function test_record_payment_rejects_non_iso_currency_format(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new RecordPaymentData(11_900, 'eur', new DateTimeImmutable('2026-08-29T10:15:00+00:00'));
+    }
+
+    public function test_record_payment_rejects_minor_units_outside_database_range(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new RecordPaymentData(
+            100_000_000_000_000,
+            'EUR',
+            new DateTimeImmutable('2026-08-29T10:15:00+00:00'),
+        );
+    }
+
+    public function test_allocation_line_rejects_minor_units_outside_database_range(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new AllocationLineData(new InvoiceId(1), -100_000_000_000_000);
     }
 
     public function test_record_payment_rejects_a_foreign_payment_method_without_writing(): void
@@ -134,6 +176,47 @@ final class PaymentApplicationTest extends TestCase
         $this->assertDatabaseCount('finance_payments', 0);
     }
 
+    public function test_exact_record_replay_precedes_mutable_account_and_source_preflight(): void
+    {
+        $owner = User::factory()->create();
+        $methodId = DB::table('payment_methods')->insertGetId([
+            'user_id' => $owner->id,
+            'type' => 'bank',
+            'name' => 'Import account',
+            'business' => true,
+            'version' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $transactionId = DB::table('bank_transactions')->insertGetId([
+            'user_id' => $owner->id,
+            'payment_method_id' => $methodId,
+            'date' => '2026-08-29',
+            'amount' => '119.00',
+            'version' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->actingAs($owner);
+        $data = new RecordPaymentData(
+            11_900,
+            'EUR',
+            new DateTimeImmutable('2026-08-29T10:15:00+00:00'),
+            paymentMethodId: $methodId,
+            sourceType: 'bank_transaction',
+            sourceKey: (string) $transactionId,
+        );
+        $key = new IdempotencyKey('replay-deleted-payment-source');
+        $first = app(RecordPayment::class)->handle($data, $key);
+        DB::table('bank_transactions')->where('id', $transactionId)->update(['deleted_at' => now()]);
+        DB::table('payment_methods')->where('id', $methodId)->update(['deleted_at' => now()]);
+
+        $replay = app(RecordPayment::class)->handle($data, $key);
+
+        $this->assertSame($first->id->value, $replay->id->value);
+        $this->assertDatabaseCount('finance_payments', 1);
+    }
+
     public function test_partial_then_final_allocation_projects_effective_status_and_append_only_activity(): void
     {
         $owner = User::factory()->create();
@@ -198,6 +281,45 @@ final class PaymentApplicationTest extends TestCase
         );
         $this->assertSame(['paid', 'paid'], array_column($result->invoices, 'status'));
         $this->assertDatabaseCount('finance_payment_allocations', 2);
+    }
+
+    public function test_allocation_idempotency_hash_canonicalizes_line_order(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $firstInvoice = $this->invoice(
+            $owner, 11_900, 'EUR', 'sent', '000000000117', 'RE-2026-0117',
+        );
+        $secondInvoice = $this->invoice(
+            $owner, 8_100, 'EUR', 'sent', '000000000118', 'RE-2026-0118',
+        );
+        $payment = $this->recordPayment(20_000, 'canonical-line-order');
+        $key = new IdempotencyKey('canonical-line-order-key');
+
+        $first = app(AllocatePayment::class)->handle(new AllocatePaymentData(
+            $payment,
+            [
+                new AllocationLineData($secondInvoice, 8_100),
+                new AllocationLineData($firstInvoice, 11_900),
+            ],
+        ), $key);
+        $replay = app(AllocatePayment::class)->handle(new AllocatePaymentData(
+            $payment,
+            [
+                new AllocationLineData($firstInvoice, 11_900),
+                new AllocationLineData($secondInvoice, 8_100),
+            ],
+        ), $key);
+
+        $this->assertSame($first->batchId, $replay->batchId);
+        $this->assertSame(
+            array_map(static fn ($id): int => $id->value, $first->allocationIds),
+            array_map(static fn ($id): int => $id->value, $replay->allocationIds),
+        );
+        $this->assertDatabaseCount('finance_payment_allocation_batches', 1);
+        $this->assertDatabaseCount('finance_payment_allocations', 2);
+        $this->assertSame(2, DB::table('finance_document_activities')
+            ->where('type', 'payment.allocated')->count());
     }
 
     public function test_overpayment_remains_unapplied_instead_of_overallocating_invoice(): void
@@ -347,6 +469,42 @@ final class PaymentApplicationTest extends TestCase
             ->where('type', 'payment.allocated')->count());
     }
 
+    public function test_exact_allocation_replay_precedes_version_cas_but_changed_payload_conflicts(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $invoice = $this->invoice(
+            $owner, 11_900, 'EUR', 'sent', '000000000116', 'RE-2026-0116',
+        );
+        $payment = $this->recordPayment(11_900, 'allocation-replay');
+        $key = new IdempotencyKey('allocation-replay-key');
+        $data = new AllocatePaymentData(
+            $payment,
+            [new AllocationLineData($invoice, 5_000)],
+            expectedVersion: 0,
+        );
+
+        $first = app(AllocatePayment::class)->handle($data, $key);
+        $replay = app(AllocatePayment::class)->handle($data, $key);
+
+        $this->assertSame($first->batchId, $replay->batchId);
+        $this->assertSame($first->allocationIds[0]->value, $replay->allocationIds[0]->value);
+        try {
+            app(AllocatePayment::class)->handle(new AllocatePaymentData(
+                $payment,
+                [new AllocationLineData($invoice, 4_000)],
+                expectedVersion: 0,
+            ), $key);
+            $this->fail('A payment allocation idempotency key was reused for a changed amount.');
+        } catch (DomainException $exception) {
+            $this->assertSame('idempotency_key_reused', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('finance_payment_allocation_batches', 1);
+        $this->assertDatabaseCount('finance_payment_allocations', 1);
+        $this->assertSame(1, DB::table('finance_document_activities')
+            ->where('type', 'payment.allocated')->count());
+    }
+
     public function test_reversal_appends_exact_negation_once_and_replays_without_duplicate_activity(): void
     {
         $owner = User::factory()->create();
@@ -397,6 +555,37 @@ final class PaymentApplicationTest extends TestCase
             $this->assertSame('allocation_already_reversed', $exception->getMessage());
         }
         $this->assertDatabaseCount('finance_payment_allocations', 2);
+    }
+
+    public function test_equal_suggestions_are_deterministic_ambiguous_and_never_auto_applied(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $first = $this->invoice(
+            $owner, 11_900, 'EUR', 'sent', '000000000114', 'RE-2026-0114',
+        );
+        $second = $this->invoice(
+            $owner, 11_900, 'EUR', 'sent', '000000000115', 'RE-2026-0115',
+        );
+        $payment = app(RecordPayment::class)->handle(new RecordPaymentData(
+            11_900,
+            'EUR',
+            new DateTimeImmutable('2026-08-29T10:15:00+00:00'),
+            counterparty: 'Customer GmbH',
+        ), new IdempotencyKey('record-ambiguous-suggestion'));
+
+        $result = app(SuggestPaymentAllocations::class)->forPayment($payment->id);
+
+        $this->assertSame('ambiguous', $result->status);
+        $this->assertTrue($result->requiresConfirmation);
+        $this->assertSame(
+            [$first->value, $second->value],
+            array_map(static fn ($candidate): int => $candidate->invoiceId->value, $result->candidates),
+        );
+        $this->assertDatabaseCount('finance_payment_allocation_batches', 0);
+        $this->assertDatabaseCount('finance_payment_allocations', 0);
+        $this->assertDatabaseMissing('finance_document_activities', ['type' => 'payment.allocated']);
+        $this->assertSame(0, DB::table('finance_payments')->where('id', $payment->id->value)->value('version'));
     }
 
     private function invoice(

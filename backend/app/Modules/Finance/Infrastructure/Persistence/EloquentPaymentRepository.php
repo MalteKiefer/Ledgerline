@@ -31,6 +31,8 @@ use DateTimeInterface;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -52,26 +54,6 @@ final class EloquentPaymentRepository implements PaymentRepository
 
     public function record(RecordPaymentData $data, IdempotencyKey $key): PaymentView
     {
-        if ($data->paymentMethodId !== null && ! DB::table('payment_methods')
-            ->where('id', $data->paymentMethodId)
-            ->where('user_id', $this->ownerId())
-            ->whereNull('deleted_at')
-            ->exists()) {
-            throw (new ModelNotFoundException)->setModel(PaymentMethod::class, [$data->paymentMethodId]);
-        }
-        if ($data->sourceType === 'bank_transaction') {
-            $sourceId = filter_var($data->sourceKey, FILTER_VALIDATE_INT);
-            if (! is_int($sourceId) || $sourceId < 1 || ! DB::table('bank_transactions')
-                ->where('id', $sourceId)
-                ->where('user_id', $this->ownerId())
-                ->whereNull('deleted_at')
-                ->exists()) {
-                throw (new ModelNotFoundException)->setModel(
-                    BankTransaction::class,
-                    [$data->sourceKey ?? ''],
-                );
-            }
-        }
         $requestHash = $this->requestHash([
             'amount_minor' => $data->amountMinor,
             'currency' => $data->currency,
@@ -98,6 +80,7 @@ final class EloquentPaymentRepository implements PaymentRepository
                 if ($reservation['status'] !== 'new') {
                     throw new DomainException('idempotency_'.$reservation['status']);
                 }
+                $this->assertOwnedRecordReferences($data);
 
                 $payment = new PaymentRecord;
                 $payment->forceFill([
@@ -135,12 +118,17 @@ final class EloquentPaymentRepository implements PaymentRepository
 
     public function allocate(AllocatePaymentData $data, IdempotencyKey $key): AllocationResult
     {
+        $canonicalLines = array_map(static fn (AllocationLineData $line): array => [
+            'invoice_id' => $line->invoiceId->value,
+            'amount_minor' => $line->amountMinor,
+        ], $data->lines);
+        usort(
+            $canonicalLines,
+            static fn (array $left, array $right): int => $left['invoice_id'] <=> $right['invoice_id'],
+        );
         $requestHash = $this->requestHash([
             'payment_id' => $data->paymentId->value,
-            'lines' => array_map(static fn (AllocationLineData $line): array => [
-                'invoice_id' => $line->invoiceId->value,
-                'amount_minor' => $line->amountMinor,
-            ], $data->lines),
+            'lines' => $canonicalLines,
             'expected_version' => $data->expectedVersion,
         ]);
 
@@ -322,6 +310,63 @@ final class EloquentPaymentRepository implements PaymentRepository
         }, 1);
     }
 
+    public function suggestionContext(PaymentId $id): array
+    {
+        $ownerId = $this->ownerId();
+        $payment = $this->get($id);
+        if ($payment->unappliedMinor === 0) {
+            return ['payment' => $payment, 'invoices' => []];
+        }
+        $rows = DB::table('finance_invoices as invoices')
+            ->join('finance_document_revisions as revisions', function (JoinClause $join): void {
+                $join->on('revisions.user_id', '=', 'invoices.user_id')
+                    ->on('revisions.document_series_id', '=', 'invoices.document_series_id')
+                    ->on('revisions.id', '=', 'invoices.current_revision_id');
+            })
+            ->where('invoices.user_id', $ownerId)
+            ->whereIn('invoices.workflow_status', ['finalized', 'sent'])
+            ->where('revisions.currency', $payment->currency)
+            ->where('invoices.open_minor', $payment->unappliedMinor > 0 ? '>' : '<', 0)
+            ->whereNotExists(function (QueryBuilder $query) use ($ownerId): void {
+                $query->selectRaw('1')
+                    ->from('finance_invoices as cancellations')
+                    ->whereColumn('cancellations.cancels_invoice_id', 'invoices.id')
+                    ->where('cancellations.user_id', $ownerId)
+                    ->where('cancellations.workflow_status', '!=', 'draft');
+            })
+            ->orderBy('invoices.number')
+            ->orderBy('invoices.id')
+            ->get([
+                'invoices.id', 'invoices.number', 'invoices.open_minor',
+                'invoices.issue_date', 'revisions.currency', 'revisions.snapshot',
+            ]);
+        $invoices = [];
+        foreach ($rows as $row) {
+            $number = $row->number;
+            $currency = $row->currency;
+            $snapshot = is_string($row->snapshot)
+                ? json_decode($row->snapshot, true, 512, JSON_THROW_ON_ERROR)
+                : $row->snapshot;
+            $customerData = is_array($snapshot) && is_array($snapshot['customer'] ?? null)
+                ? $snapshot['customer']
+                : [];
+            $customer = is_string($customerData['name'] ?? null) ? $customerData['name'] : '';
+            if (! is_string($number) || ! is_string($currency)) {
+                throw new LogicException('Payment suggestion invoice projection is incomplete.');
+            }
+            $invoices[] = [
+                'invoice_id' => $this->exactInteger($row->id, 'Suggestion invoice ID'),
+                'number' => $number,
+                'currency' => $currency,
+                'open_minor' => $this->exactInteger($row->open_minor, 'Suggestion open amount'),
+                'issue_date' => $this->immutableDate($row->issue_date),
+                'customer' => $customer,
+            ];
+        }
+
+        return ['payment' => $payment, 'invoices' => $invoices];
+    }
+
     private function ownedPayment(PaymentId $id): PaymentRecord
     {
         return PaymentRecord::query()
@@ -339,6 +384,31 @@ final class EloquentPaymentRepository implements PaymentRepository
         }
 
         return (int) $ownerId;
+    }
+
+    private function assertOwnedRecordReferences(RecordPaymentData $data): void
+    {
+        if ($data->paymentMethodId !== null && ! DB::table('payment_methods')
+            ->where('id', $data->paymentMethodId)
+            ->where('user_id', $this->ownerId())
+            ->whereNull('deleted_at')
+            ->exists()) {
+            throw (new ModelNotFoundException)->setModel(PaymentMethod::class, [$data->paymentMethodId]);
+        }
+        if ($data->sourceType !== 'bank_transaction') {
+            return;
+        }
+        $sourceId = filter_var($data->sourceKey, FILTER_VALIDATE_INT);
+        if (! is_int($sourceId) || $sourceId < 1 || ! DB::table('bank_transactions')
+            ->where('id', $sourceId)
+            ->where('user_id', $this->ownerId())
+            ->whereNull('deleted_at')
+            ->exists()) {
+            throw (new ModelNotFoundException)->setModel(
+                BankTransaction::class,
+                [$data->sourceKey ?? ''],
+            );
+        }
     }
 
     private function view(PaymentRecord $payment): PaymentView
@@ -602,6 +672,18 @@ final class EloquentPaymentRepository implements PaymentRepository
         }
 
         throw new LogicException("{$field} must be an exact integer.");
+    }
+
+    private function immutableDate(mixed $value): DateTimeImmutable
+    {
+        if ($value instanceof DateTimeInterface) {
+            return DateTimeImmutable::createFromInterface($value);
+        }
+        if (is_string($value)) {
+            return new DateTimeImmutable($value);
+        }
+
+        throw new LogicException('Payment suggestion date is incomplete.');
     }
 
     /** @return list<int> */
