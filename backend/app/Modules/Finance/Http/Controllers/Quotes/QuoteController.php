@@ -13,6 +13,8 @@ use App\Modules\Finance\Application\Queries\Quotes\ListQuoteRevisions;
 use App\Modules\Finance\Application\Queries\Quotes\ListQuotes;
 use App\Modules\Finance\Application\Queries\Quotes\PreviewQuoteTotals;
 use App\Modules\Finance\Domain\Quotes\Exception\InvalidQuoteAction;
+use App\Modules\Finance\Domain\Shared\Exception\InvalidMoney;
+use App\Modules\Finance\Domain\Shared\Exception\InvalidQuantity;
 use App\Modules\Finance\Http\Requests\Quotes\QuoteDraftRequest;
 use App\Modules\Finance\Http\Requests\Quotes\QuoteListRequest;
 use App\Modules\Finance\Http\Resources\Quotes\QuotePageResource;
@@ -113,7 +115,7 @@ class QuoteController
         QuoteId $id,
         GetQuote $getQuote,
     ): JsonResponse {
-        $code = $exception instanceof InvalidQuoteAction ? $exception->errorCode : $exception->getMessage();
+        $code = $this->errorCode($exception);
         $status = $this->conflictCode($code) ? 409 : 422;
         $payload = ['error' => $code];
 
@@ -129,7 +131,7 @@ class QuoteController
 
     protected function failure(DomainException|InvalidArgumentException $exception): JsonResponse
     {
-        $code = $exception instanceof InvalidQuoteAction ? $exception->errorCode : $exception->getMessage();
+        $code = $this->errorCode($exception);
 
         return response()->json(['error' => $code], $this->conflictCode($code) ? 409 : 422);
     }
@@ -147,5 +149,40 @@ class QuoteController
             'quote_publication_in_progress',
             'quote_delivery_in_progress',
         ], true);
+    }
+
+    private function errorCode(DomainException|InvalidArgumentException $exception): string
+    {
+        if ($exception instanceof InvalidQuoteAction) {
+            return $exception->errorCode;
+        }
+        if ($exception instanceof DomainException && in_array($exception->getMessage(), [
+            'idempotency_key_reused',
+            'operation_in_progress',
+            'version_conflict',
+        ], true)) {
+            return $exception->getMessage();
+        }
+        if ($exception->getMessage() === 'control_totals_mismatch') {
+            return 'control_totals_mismatch';
+        }
+        if ($exception instanceof InvalidMoney) {
+            return 'invalid_money';
+        }
+        if ($exception instanceof InvalidQuantity) {
+            return 'invalid_quantity';
+        }
+
+        $message = $exception->getMessage();
+
+        return match (true) {
+            str_contains($message, 'tax rate') => 'invalid_tax_rate',
+            str_contains($message, 'discount') => 'invalid_discount',
+            str_contains($message, 'validity'), str_contains($message, 'dates') => 'invalid_validity_period',
+            str_contains($message, 'customer') => 'invalid_customer',
+            str_contains($message, 'partner') => 'invalid_partner',
+            str_contains($message, 'product') => 'invalid_product',
+            default => 'invalid_quote_input',
+        };
     }
 }

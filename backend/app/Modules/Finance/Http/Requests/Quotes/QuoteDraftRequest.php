@@ -33,7 +33,7 @@ final class QuoteDraftRequest extends FormRequest
             'lines.*.unit' => ['required', 'string', 'max:50'],
             'lines.*.unit_price' => ['required', 'string', 'regex:/\A-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?\z/D'],
             'lines.*.tax_rate' => ['required', 'string', 'regex:/\A-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?\z/D'],
-            'lines.*.kind' => ['required', 'string', 'in:service,hardware,expense'],
+            'lines.*.kind' => ['required', 'string', 'in:service,hardware'],
             'lines.*.product_id' => ['nullable', 'integer', 'min:1'],
             'discount_type' => ['required', 'string', 'in:none,percent,fixed'],
             'discount_value' => ['nullable', 'string', 'regex:/\A-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?\z/D'],

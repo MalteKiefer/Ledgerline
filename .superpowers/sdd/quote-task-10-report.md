@@ -2,46 +2,41 @@
 
 ## Status
 
-Implemented the additive `/api/v1/finance-v2/quotes` HTTP surface with UUID route constraints and the existing authenticated, device-capability, 2FA, Finance-module, and throttling middleware stack. The legacy API remains registered and documented.
+Implemented and review-hardened the additive `/api/v1/finance-v2/quotes` HTTP surface. Controllers remain thin adapters over Quote commands and queries; UUID/owner scoping, authentication, device capability, Finance module gating, throttling, ETags, optimistic versions, revision identities, and header-sourced idempotency keys are enforced at the boundary.
 
-The HTTP layer is limited to validation, owner identity construction, command/query dispatch, resource serialization, ETag/status selection, and documented exception mapping. Exact decimal inputs remain strings; totals are returned only as authoritative integer minor units.
+The review findings are resolved:
 
-## Delivered
+- `QuoteToInvoicePort` is bound to `LegacyInvoiceDraftAdapter`; a container/API regression publishes, accepts, and converts an immutable quote revision into a real owner-owned legacy invoice draft.
+- Send hashes now include canonical nullable `change_reason` and the raw nullable recipient. Completed exact replays are resolved before SMTP configuration and mutable workflow preflight; a changed reason with the same key returns `idempotency_key_reused`.
+- Unsupported `expense` lines are rejected by request validation and removed from the v2 OpenAPI contract.
+- Non-workflow `InvalidArgumentException` failures map to stable machine codes and never expose exception prose.
+- Preview, quote, draft, canonical snapshot, revision, delivery, conversion, and page schemas specify exact fields, nullable required keys, types, and closed top-level objects. Quote 422 responses use the documented validation-or-domain-error union.
+- Every mutation has a successful HTTP regression; every mutation hides foreign-owner aggregates with 404; revision history is included in the route matrix and exercised.
+- The pre-existing duplicate legacy `kind` YAML key was removed, and OpenAPI now parses with strict duplicate-key checks.
 
-- Four quote FormRequests covering exact decimals, dates, filters, pagination, optimistic versions, revision identities, and header-sourced idempotency keys.
-- Seven thin quote controllers covering list/show/preview/create, draft/version actions, publish, send, accept/decline, duplicate, and invoice conversion.
-- Stable quote, page, revision, and delivery resources. Storage paths, SMTP data, message IDs, operation payloads, and owner IDs are not serialized.
-- Owner-scoped bulk read projections for latest delivery and conversion summaries without N+1 queries.
-- ETag responses on resources and version conflicts, including the current resource on 409 action conflicts.
-- A typed `SendQuoteResult` outcome. Existing application callers keep `SendQuote::handle(): QuoteView`; HTTP uses `handleResult()` so first queueing returns 202 and exact idempotent replay returns 200 without duplicating operation hashes in the controller.
-- Parallel Finance v2 OpenAPI paths and `FinanceV2*` schemas while retaining the legacy contract. No v2 client-PDF upload is described.
+## TDD evidence
 
-## TDD and verification
+- RED: expense preview returned a domain prose body instead of a field validation error.
+- RED: invalid tax input returned exception prose instead of `invalid_tax_rate`.
+- RED: a completed Send replay consulted changed SMTP/state first, and `change_reason` reuse was not detected.
+- RED: strict YAML parsing stopped on the duplicate legacy `kind` key.
+- RED: `QuoteToInvoicePort` was not instantiable from the container.
+- RED: the full Quote suite exposed one Task 8 crash-recovery fixture still using the pre-review Send hash; the fixture was updated to the canonical nullable request shape.
+- GREEN: all focused and full verification listed below.
 
-- RED: `QuoteApiTest` initially failed with missing routes (404), missing resources, missing validation, and absent OpenAPI paths.
-- RED: send replay regression proved the second exact request incorrectly returned 202 before the typed send outcome was added.
-- PASS: `FILES_DISK=local vendor/bin/phpunit -d memory_limit=1G tests/Feature/FinanceModule/Quotes tests/Unit/Modules/Finance/Domain/Quotes` — 179 tests, 176 passed, 3 skipped, 1112 assertions.
-- PASS: `QuoteApiTest`, quote persistence/decision suites, and `ApiSurfaceGuardTest` — 55 tests, 53 passed, 2 skipped, 464 assertions (earlier focused gate).
-- PASS: `QuoteDeliveryTest` — 18 tests, 17 passed, 1 skipped, 131 assertions.
-- PASS: task-scoped PHPStan — zero errors.
-- PASS: task-scoped Pint check.
-- PASS: `git diff --check`.
-- PASS: OpenAPI parses with the repository's installed `yaml` package when the pre-existing duplicate-key check is relaxed; all 521 paths and the new `FinanceV2Quote` schema load. The standing `ApiSurfaceGuardTest` passes.
-- PASS: route inspection lists all 15 quote-v2 routes with the complete middleware stack.
+## Verification
 
-## Wider-suite observations
+- `QuoteApiTest` plus `ApiSurfaceGuardTest`: 22 tests passed, 297 assertions.
+- Full Quote feature, Quote domain, and API surface suite with `php -d memory_limit=1G`: 190 tests; 187 passed, 3 PostgreSQL/environment skips, 1202 assertions.
+- Strict OpenAPI parsing uses the repository-installed `yaml` package with default duplicate-key rejection and passes.
+- Task production files PHPStan (`--memory-limit=1G`): zero errors.
+- Task files Pint: passed.
+- `git diff --check`: passed.
 
-The combined FinanceModule/Finance Domain run reached 778 tests (762 passed, 14 skipped) and failed only two concurrently edited Project schema tests:
+The normal Artisan wrapper retains the repository-wide 128 MB test-process limit and exhausted it in Dompdf during the combined suite. Re-running the identical suite through PHPUnit with a 1 GB process limit completed successfully; this is a runner-memory constraint, not a functional failure.
 
-- `ProjectSchemaTest::test_document_links_enforce_source_owner_revision_pairing_and_active_uniqueness`
-- `ProjectSchemaTest::test_detach_actor_requires_a_timestamp_but_system_detach_is_allowed`
+## Scope and integration
 
-Both failures are outside Quote Task 10 files. Running the combined suite through the normal Artisan wrapper also exhausts the repository's fixed 128 MB PHPUnit limit during repeated application boot; the direct PHPUnit run with 1 GB reaches the two unrelated Project failures above.
+Only the reviewed Quote command/request/controller tests, the one Task 8 Send recovery fixture, the Quote conversion binding, OpenAPI, and this report are included. Concurrent Payment work visible in the shared worktree is excluded from the explicit-path commit. No push, tag, deploy, or history rewrite was performed.
 
-## Integration concern
-
-`QuoteToInvoicePort` is still not bound in `FinanceServiceProvider`. Per coordination instructions, this task did not touch or stage the provider while Invoice Task 9 owns it. The conversion route validates and is documented, but a successful conversion request requires the eventual binding:
-
-`QuoteToInvoicePort::class => LegacyInvoiceDraftAdapter::class`
-
-The OpenAPI document also contains a pre-existing duplicate `kind` key around line 1015. Task 10 did not alter that unrelated legacy schema; the repository guard checks balanced flow mappings and remains green.
+No unresolved functional concern remains. The three full-suite skips are the existing opt-in PostgreSQL/runtime concurrency paths and remain available through their documented environment configuration.

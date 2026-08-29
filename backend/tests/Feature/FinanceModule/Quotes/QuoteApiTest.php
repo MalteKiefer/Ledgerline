@@ -8,15 +8,21 @@ use App\Models\User;
 use App\Modules\Finance\Application\Commands\Quotes\CreateQuote;
 use App\Modules\Finance\Application\Commands\Quotes\PublishQuote;
 use App\Modules\Finance\Application\Commands\Quotes\SendQuote;
+use App\Modules\Finance\Application\DTOs\Quotes\InvoiceDraftTarget;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteDraftData;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteLineData;
 use App\Modules\Finance\Application\DTOs\Quotes\QuoteRevisionRef;
+use App\Modules\Finance\Application\Ports\DocumentRenderer;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteMailer;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteOperationRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
+use App\Modules\Finance\Application\Ports\Quotes\QuoteToInvoicePort;
+use App\Modules\Finance\Domain\Quotes\Exception\InvalidQuoteAction;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 final class QuoteApiTest extends TestCase
@@ -30,6 +36,7 @@ final class QuoteApiTest extends TestCase
             'api.finance-v2.quotes.preview' => ['POST', 'api/v1/finance-v2/quotes/preview'],
             'api.finance-v2.quotes.store' => ['POST', 'api/v1/finance-v2/quotes'],
             'api.finance-v2.quotes.show' => ['GET', 'api/v1/finance-v2/quotes/{quote}'],
+            'api.finance-v2.quotes.revisions.index' => ['GET', 'api/v1/finance-v2/quotes/{quote}/revisions'],
             'api.finance-v2.quotes.draft.update' => ['PUT', 'api/v1/finance-v2/quotes/{quote}/draft'],
             'api.finance-v2.quotes.draft.discard' => ['DELETE', 'api/v1/finance-v2/quotes/{quote}/draft'],
             'api.finance-v2.quotes.versions.store' => ['POST', 'api/v1/finance-v2/quotes/{quote}/versions'],
@@ -125,6 +132,28 @@ final class QuoteApiTest extends TestCase
         $this->assertSame(0, DB::table('finance_quote_series')->where('user_id', $owner->id)->count());
     }
 
+    public function test_unsupported_expense_lines_are_rejected_at_the_http_boundary(): void
+    {
+        [, $token] = $this->ownerAndToken();
+        $payload = $this->draftPayload();
+        $payload['lines'][0]['kind'] = 'expense';
+
+        $this->withToken($token)->postJson('/api/v1/finance-v2/quotes/preview', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['lines.0.kind']);
+    }
+
+    public function test_domain_input_failures_use_stable_machine_codes_instead_of_exception_prose(): void
+    {
+        [, $token] = $this->ownerAndToken();
+        $payload = $this->draftPayload();
+        $payload['lines'][0]['tax_rate'] = '100.01';
+
+        $this->withToken($token)->postJson('/api/v1/finance-v2/quotes/preview', $payload)
+            ->assertUnprocessable()
+            ->assertExactJson(['error' => 'invalid_tax_rate']);
+    }
+
     public function test_list_validates_filters_and_returns_stable_pagination_without_other_owner_data(): void
     {
         [$owner, $token] = $this->ownerAndToken();
@@ -178,6 +207,22 @@ final class QuoteApiTest extends TestCase
         $this->withToken($token)->getJson('/api/v1/finance-v2/quotes/'.$quote->id->uuid.'/revisions')
             ->assertOk()
             ->assertExactJson([]);
+    }
+
+    public function test_revision_history_endpoint_returns_the_owner_scoped_immutable_projection(): void
+    {
+        [$owner, $token] = $this->ownerAndToken();
+        $quote = $this->createQuote($owner, 'Revision history');
+        $seriesId = (int) DB::table('finance_document_series')->where('uuid', $quote->id->uuid)->value('id');
+        $revisionId = $this->publishFixture($owner, $seriesId);
+
+        $this->withToken($token)->getJson('/api/v1/finance-v2/quotes/'.$quote->id->uuid.'/revisions')
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.id', $revisionId)
+            ->assertJsonPath('0.pdf_sha256', str_repeat('a', 64))
+            ->assertJsonMissingPath('0.pdf_path')
+            ->assertJsonMissingPath('0.user_id');
     }
 
     public function test_delivery_and_conversion_summaries_are_owner_safe_and_exposed_without_sensitive_fields(): void
@@ -275,15 +320,207 @@ final class QuoteApiTest extends TestCase
             app(PublishQuote::class),
         ));
         $url = '/api/v1/finance-v2/quotes/'.$quote->id->uuid.'/send';
-        $payload = ['version' => 0, 'recipient' => 'billing@example.com'];
+        $payload = ['version' => 0, 'recipient' => 'billing@example.com', 'change_reason' => null];
 
         $this->withToken($token)->withHeader('Idempotency-Key', 'api-send-replay')->postJson($url, $payload)
             ->assertAccepted();
+
+        DB::table('finance_document_series')->where('id', $seriesId)->update(['status' => 'accepted']);
+        $mailer->configured = false;
         $this->withToken($token)->withHeader('Idempotency-Key', 'api-send-replay')->postJson($url, $payload)
             ->assertOk();
 
+        $changed = $payload;
+        $changed['change_reason'] = 'Changed after the successful request';
+        $this->withToken($token)->withHeader('Idempotency-Key', 'api-send-replay')->postJson($url, $changed)
+            ->assertJsonPath('error', 'idempotency_key_reused')
+            ->assertConflict();
+
         $this->assertSame(1, $mailer->dispatches);
+        $this->assertSame(1, $mailer->configuredChecks);
         $this->assertSame(1, DB::table('finance_quote_deliveries')->count());
+    }
+
+    public function test_every_quote_mutation_has_a_successful_http_path(): void
+    {
+        [$owner, $token] = $this->ownerAndToken();
+
+        $updated = $this->createQuote($owner, 'Update');
+        $updatePayload = $this->draftPayload('Updated through HTTP');
+        $updatePayload['version'] = 0;
+        $this->withToken($token)->putJson('/api/v1/finance-v2/quotes/'.$updated->id->uuid.'/draft', $updatePayload)
+            ->assertOk()->assertJsonPath('version', 1)->assertJsonPath('draft.title', 'Updated through HTTP');
+
+        $discarded = $this->createQuote($owner, 'Discard');
+        $discardSeries = (int) DB::table('finance_document_series')->where('uuid', $discarded->id->uuid)->value('id');
+        $discardRevision = $this->publishFixture($owner, $discardSeries);
+        DB::table('finance_quote_drafts')->where('document_series_id', $discardSeries)->update(['based_on_revision_id' => $discardRevision]);
+        $this->withToken($token)->deleteJson('/api/v1/finance-v2/quotes/'.$discarded->id->uuid.'/draft', ['version' => 0])
+            ->assertOk()->assertJsonPath('version', 1)->assertJsonPath('has_pending_draft', false);
+
+        $versioned = $this->createQuote($owner, 'Version');
+        $versionSeries = (int) DB::table('finance_document_series')->where('uuid', $versioned->id->uuid)->value('id');
+        $this->publishFixture($owner, $versionSeries);
+        DB::table('finance_quote_drafts')->where('document_series_id', $versionSeries)->delete();
+        $this->withToken($token)->postJson('/api/v1/finance-v2/quotes/'.$versioned->id->uuid.'/versions', ['version' => 0])
+            ->assertCreated()->assertJsonPath('version', 1)->assertJsonPath('has_pending_draft', true);
+
+        config()->set('files.disk', 'local');
+        app()->instance(DocumentRenderer::class, new ApiDocumentRenderer);
+        $published = $this->createQuote($owner, 'Publish');
+        $this->withToken($token)->withHeader('Idempotency-Key', 'api-publish-success')
+            ->postJson('/api/v1/finance-v2/quotes/'.$published->id->uuid.'/publish', ['version' => 0, 'change_reason' => null])
+            ->assertOk()->assertJsonPath('status', 'sent')->assertJsonPath('version', 1);
+
+        $accepted = $this->publishedQuote($owner, 'Accept');
+        $this->withToken($token)->withHeader('Idempotency-Key', 'api-accept-success')
+            ->postJson('/api/v1/finance-v2/quotes/'.$accepted['quote']->id->uuid.'/accept', [
+                'version' => 0,
+                'expected_revision_id' => $accepted['revision'],
+            ])->assertOk()->assertJsonPath('status', 'accepted')->assertJsonPath('version', 1);
+
+        $declined = $this->publishedQuote($owner, 'Decline');
+        $this->withToken($token)->withHeader('Idempotency-Key', 'api-decline-success')
+            ->postJson('/api/v1/finance-v2/quotes/'.$declined['quote']->id->uuid.'/decline', [
+                'version' => 0,
+                'expected_revision_id' => $declined['revision'],
+            ])->assertOk()->assertJsonPath('status', 'declined')->assertJsonPath('version', 1);
+
+        $source = $this->createQuote($owner, 'Duplicate');
+        $duplicate = $this->withToken($token)->withHeader('Idempotency-Key', 'api-duplicate-success')
+            ->postJson('/api/v1/finance-v2/quotes/'.$source->id->uuid.'/duplicate', ['version' => 0])
+            ->assertCreated()->assertJsonPath('status', 'draft')->assertJsonPath('version', 0);
+        $this->assertNotSame($source->id->uuid, $duplicate->json('id'));
+
+        app()->instance(QuoteToInvoicePort::class, new ApiQuoteToInvoicePort);
+        $converted = $this->publishedQuote($owner, 'Convert');
+        DB::table('finance_document_series')->where('uuid', $converted['quote']->id->uuid)->update(['status' => 'accepted']);
+        $this->withToken($token)->withHeader('Idempotency-Key', 'api-convert-success')
+            ->postJson('/api/v1/finance-v2/quotes/'.$converted['quote']->id->uuid.'/conversions/invoice', [
+                'version' => 0,
+                'expected_revision_id' => $converted['revision'],
+            ])->assertCreated()->assertExactJson([
+                'target_reference' => 'invoice-draft:4242',
+                'target_id' => null,
+            ]);
+    }
+
+    public function test_every_quote_mutation_hides_a_foreign_owner_aggregate_with_404(): void
+    {
+        [$owner] = $this->ownerAndToken();
+        [, $foreignToken] = $this->ownerAndToken();
+        $quote = $this->createQuote($owner, 'Foreign mutations');
+        $base = '/api/v1/finance-v2/quotes/'.$quote->id->uuid;
+        $draft = $this->draftPayload('Foreign update');
+        $draft['version'] = 0;
+
+        app()->instance(QuoteMailer::class, new ApiQuoteMailer);
+        app()->instance(QuoteToInvoicePort::class, new ApiQuoteToInvoicePort);
+
+        $this->withToken($foreignToken)->putJson($base.'/draft', $draft)->assertNotFound();
+        $this->withToken($foreignToken)->deleteJson($base.'/draft', ['version' => 0])->assertNotFound();
+        $this->withToken($foreignToken)->postJson($base.'/versions', ['version' => 0])->assertNotFound();
+
+        foreach ([
+            ['publish', ['version' => 0]],
+            ['send', ['version' => 0, 'recipient' => 'billing@example.com']],
+            ['accept', ['version' => 0, 'expected_revision_id' => 1]],
+            ['decline', ['version' => 0, 'expected_revision_id' => 1]],
+            ['duplicate', ['version' => 0]],
+            ['conversions/invoice', ['version' => 0, 'expected_revision_id' => 1]],
+        ] as $index => [$path, $payload]) {
+            $this->withToken($foreignToken)->withHeader('Idempotency-Key', 'foreign-action-'.$index)
+                ->postJson($base.'/'.$path, $payload)
+                ->assertNotFound();
+        }
+    }
+
+    public function test_container_bound_legacy_adapter_converts_an_accepted_quote_through_the_api(): void
+    {
+        $this->assertInstanceOf(LegacyInvoiceDraftAdapter::class, app(QuoteToInvoicePort::class));
+
+        [$owner, $token] = $this->ownerAndToken();
+        config()->set('files.disk', 'local');
+        app()->instance(DocumentRenderer::class, new ApiDocumentRenderer);
+        $quote = $this->createQuote($owner, 'Container conversion');
+        $base = '/api/v1/finance-v2/quotes/'.$quote->id->uuid;
+        $published = $this->withToken($token)->withHeader('Idempotency-Key', 'api-convert-publish')
+            ->postJson($base.'/publish', ['version' => 0])
+            ->assertOk();
+        $revisionId = $published->json('current_revision.id');
+        $this->assertIsInt($revisionId);
+
+        $this->withToken($token)->withHeader('Idempotency-Key', 'api-convert-accept')
+            ->postJson($base.'/accept', ['version' => 1, 'expected_revision_id' => $revisionId])
+            ->assertOk()->assertJsonPath('status', 'accepted')->assertJsonPath('version', 2);
+
+        $response = $this->withToken($token)->withHeader('Idempotency-Key', 'api-convert-real')
+            ->postJson($base.'/conversions/invoice', ['version' => 2, 'expected_revision_id' => $revisionId])
+            ->assertCreated();
+        $invoiceId = $response->json('target_id');
+        $this->assertIsInt($invoiceId);
+        $response->assertJsonPath('target_reference', 'legacy-invoice:'.$invoiceId);
+        $this->assertDatabaseHas('invoices', [
+            'id' => $invoiceId,
+            'user_id' => $owner->id,
+            'status' => 'draft',
+        ]);
+    }
+
+    public function test_openapi_is_strict_yaml_and_quote_schemas_require_every_emitted_nullable_key(): void
+    {
+        $script = <<<'JS'
+const fs = require('fs');
+const YAML = require(process.argv[1]);
+const document = YAML.parse(fs.readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(JSON.stringify(document));
+JS;
+        $process = new Process([
+            'node',
+            '-e',
+            $script,
+            base_path('../frontend/node_modules/yaml'),
+            base_path('../openapi.yaml'),
+        ]);
+        $process->mustRun();
+        $document = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+        $schemas = $document['components']['schemas'];
+
+        $expectedRequired = [
+            'FinanceV2QuotePreview' => ['net_minor', 'vat_minor', 'gross_minor', 'discount_minor', 'currency', 'tax_breakdowns', 'issue_date', 'valid_until'],
+            'FinanceV2Quote' => ['id', 'status', 'effective_status', 'partner_id', 'number', 'version', 'has_pending_draft', 'current_revision', 'draft', 'totals', 'conversions', 'delivery', 'published_at', 'accepted_at', 'declined_at', 'converted_at', 'created_at', 'updated_at'],
+            'FinanceV2QuoteRevision' => ['id', 'revision_number', 'previous_revision_id', 'status', 'snapshot', 'totals', 'pdf_sha256', 'pdf_url', 'pdf_download_url', 'published_at', 'created_at'],
+            'FinanceV2QuoteDelivery' => ['uuid', 'revision_id', 'state', 'attempts', 'last_error_code', 'queued_at', 'sent_at', 'failed_at'],
+            'FinanceV2QuotePage' => ['data', 'links', 'meta'],
+        ];
+        foreach ($expectedRequired as $schema => $required) {
+            $this->assertEqualsCanonicalizing($required, $schemas[$schema]['required'] ?? [], $schema);
+        }
+        $this->assertEqualsCanonicalizing(['first', 'last', 'prev', 'next'], $schemas['FinanceV2QuotePage']['properties']['links']['required'] ?? []);
+        $this->assertEqualsCanonicalizing(['current_page', 'per_page', 'total', 'last_page'], $schemas['FinanceV2QuotePage']['properties']['meta']['required'] ?? []);
+        $this->assertSame(['service', 'hardware'], $schemas['FinanceV2QuoteLineInput']['properties']['kind']['enum']);
+        $this->assertSame('#/components/schemas/FinanceV2QuoteSnapshot', $schemas['FinanceV2QuoteRevision']['properties']['snapshot']['$ref']);
+        $this->assertSame('#/components/schemas/FinanceV2QuoteDraft', $schemas['FinanceV2Quote']['properties']['draft']['anyOf'][0]['$ref']);
+        $this->assertFalse($schemas['FinanceV2QuoteSnapshot']['additionalProperties']);
+        $this->assertFalse($schemas['FinanceV2QuoteDraft']['additionalProperties']);
+        $this->assertContains('target_id', $schemas['FinanceV2Quote']['properties']['conversions']['items']['required']);
+        $this->assertArrayHasKey('oneOf', $schemas['FinanceV2QuoteUnprocessable']);
+        foreach ([
+            '/finance-v2/quotes',
+            '/finance-v2/quotes/preview',
+            '/finance-v2/quotes/{quote}/publish',
+            '/finance-v2/quotes/{quote}/send',
+            '/finance-v2/quotes/{quote}/accept',
+            '/finance-v2/quotes/{quote}/decline',
+            '/finance-v2/quotes/{quote}/duplicate',
+            '/finance-v2/quotes/{quote}/conversions/invoice',
+        ] as $path) {
+            $this->assertSame(
+                '#/components/responses/FinanceV2QuoteUnprocessable',
+                $document['paths'][$path]['post']['responses']['422']['$ref'],
+                $path,
+            );
+        }
     }
 
     public function test_openapi_documents_every_quote_v2_route_and_never_documents_client_pdf_upload(): void
@@ -367,9 +604,10 @@ final class QuoteApiTest extends TestCase
 
     private function publishFixture(User $owner, int $seriesId): int
     {
+        $number = 'AN-2026-'.str_pad((string) $seriesId, 4, '0', STR_PAD_LEFT);
         $snapshot = $this->draftPayload('Published');
-        $snapshot['document_number'] = 'AN-2026-0001';
-        $snapshot['revision_label'] = 'AN-2026-0001';
+        $snapshot['document_number'] = $number;
+        $snapshot['revision_label'] = $number;
         $revisionId = (int) DB::table('finance_document_revisions')->insertGetId([
             'user_id' => $owner->id,
             'document_series_id' => $seriesId,
@@ -390,14 +628,25 @@ final class QuoteApiTest extends TestCase
         ]);
         DB::table('finance_quote_series')->where('document_series_id', $seriesId)->update([
             'current_revision_id' => $revisionId,
-            'number' => 'AN-2026-0001',
+            'number' => $number,
             'sequence_year' => 2026,
-            'sequence_number' => 1,
+            'sequence_number' => $seriesId,
             'published_at' => now(),
         ]);
         DB::table('finance_document_series')->where('id', $seriesId)->update(['status' => 'sent']);
 
         return $revisionId;
+    }
+
+    /** @return array{quote: mixed, revision: int} */
+    private function publishedQuote(User $owner, string $title): array
+    {
+        $quote = $this->createQuote($owner, $title);
+        $seriesId = (int) DB::table('finance_document_series')->where('uuid', $quote->id->uuid)->value('id');
+        $revision = $this->publishFixture($owner, $seriesId);
+        DB::table('finance_quote_drafts')->where('document_series_id', $seriesId)->delete();
+
+        return compact('quote', 'revision');
     }
 }
 
@@ -405,12 +654,38 @@ final class ApiQuoteMailer implements QuoteMailer
 {
     public int $dispatches = 0;
 
-    public function assertConfigured(int $ownerId): void {}
+    public int $configuredChecks = 0;
+
+    public bool $configured = true;
+
+    public function assertConfigured(int $ownerId): void
+    {
+        $this->configuredChecks++;
+        if (! $this->configured) {
+            throw new InvalidQuoteAction('smtp_not_configured');
+        }
+    }
 
     public function assertRevisionReady(QuoteRevisionRef $revision): void {}
 
     public function dispatch(int $ownerId, int $deliveryId): void
     {
         $this->dispatches++;
+    }
+}
+
+final class ApiDocumentRenderer implements DocumentRenderer
+{
+    public function render(array $snapshot): string
+    {
+        return "%PDF-1.4\n% quote-api-test\n";
+    }
+}
+
+final class ApiQuoteToInvoicePort implements QuoteToInvoicePort
+{
+    public function createDraft(int $ownerId, QuoteRevisionRef $source, array $immutableSnapshot): InvoiceDraftTarget
+    {
+        return new InvoiceDraftTarget('invoice-draft:4242', null);
     }
 }

@@ -212,11 +212,11 @@ final class QuoteDeliveryTest extends TestCase
         $this->configureSmtp($ownerId);
         $quote = app(CreateQuote::class)->handle($ownerId, 'create-publication-gap', $this->draft());
         $sendKey = 'resume-publication-gap';
-        $recipient = 'billing@example.com';
         $requestSha256 = hash('sha256', json_encode([
+            'change_reason' => null,
             'expected_version' => $quote->version,
             'quote_uuid' => $quote->id->uuid,
-            'recipient' => $recipient,
+            'recipient' => null,
         ], JSON_THROW_ON_ERROR));
         app(QuoteOperationRepository::class)->reserve(
             $ownerId,

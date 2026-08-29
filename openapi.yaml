@@ -300,6 +300,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ValidationError" }
+    FinanceV2QuoteUnprocessable:
+      description: Quote input validation or a stable quote-domain rejection.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/FinanceV2QuoteUnprocessable" }
     VersionConflict:
       description: >
         Optimistic-concurrency conflict — the stored `version` no longer matches the
@@ -1001,7 +1006,6 @@ components:
         user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
         name: { type: string }
         category: { type: [string, "null"] }
-        kind: { type: [string, "null"] }
         url: { type: [string, "null"] }
         logo: { type: [string, "null"] }
         note: { type: [string, "null"] }
@@ -2804,7 +2808,7 @@ components:
         unit: { type: string, maxLength: 50 }
         unit_price: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact currency decimal string; JSON numbers are rejected." }
         tax_rate: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact percentage decimal string; JSON numbers are rejected." }
-        kind: { type: string, enum: [service, hardware, expense] }
+        kind: { type: string, enum: [service, hardware] }
         product_id: { type: [integer, "null"], minimum: 1 }
 
     FinanceV2QuoteDraftInput:
@@ -2835,16 +2839,132 @@ components:
         control_vat_minor: { type: [integer, "null"], format: int64, description: "Optional assertion only; never authoritative." }
         control_gross_minor: { type: [integer, "null"], format: int64, description: "Optional assertion only; never authoritative." }
 
+    FinanceV2QuotePreview:
+      type: object
+      additionalProperties: false
+      required: [net_minor, vat_minor, gross_minor, discount_minor, currency, tax_breakdowns, issue_date, valid_until]
+      properties:
+        net_minor: { type: integer, format: int64 }
+        vat_minor: { type: integer, format: int64 }
+        gross_minor: { type: integer, format: int64 }
+        discount_minor: { type: integer, format: int64 }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        tax_breakdowns:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [tax_rate_basis_points, net_minor, vat_minor, gross_minor]
+            properties:
+              tax_rate_basis_points: { type: integer }
+              net_minor: { type: integer, format: int64 }
+              vat_minor: { type: integer, format: int64 }
+              gross_minor: { type: integer, format: int64 }
+        issue_date: { type: string, format: date }
+        valid_until: { type: string, format: date }
+
+    FinanceV2QuoteLine:
+      type: object
+      additionalProperties: false
+      required: [description, quantity, quantity_scaled, unit, unit_price, unit_price_minor, currency, tax_rate, tax_rate_basis_points, kind, product_id]
+      properties:
+        description: { type: string }
+        quantity: { type: string }
+        quantity_scaled: { type: integer, format: int64 }
+        unit: { type: string }
+        unit_price: { type: string }
+        unit_price_minor: { type: integer, format: int64 }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        tax_rate: { type: string }
+        tax_rate_basis_points: { type: integer, minimum: 0, maximum: 10000 }
+        kind: { type: string, enum: [service, hardware] }
+        product_id: { type: [integer, "null"], minimum: 1 }
+
+    FinanceV2QuoteCalculatedTotals:
+      type: object
+      additionalProperties: false
+      required: [net_minor, vat_minor, gross_minor, discount_minor, currency, tax_breakdowns]
+      properties:
+        net_minor: { type: integer, format: int64 }
+        vat_minor: { type: integer, format: int64 }
+        gross_minor: { type: integer, format: int64 }
+        discount_minor: { type: integer, format: int64 }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        tax_breakdowns:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [tax_rate_basis_points, net_minor, vat_minor, gross_minor]
+            properties:
+              tax_rate_basis_points: { type: integer }
+              net_minor: { type: integer, format: int64 }
+              vat_minor: { type: integer, format: int64 }
+              gross_minor: { type: integer, format: int64 }
+
+    FinanceV2QuoteDiscount:
+      type: object
+      additionalProperties: false
+      required: [type, value, currency]
+      properties:
+        type: { type: string, enum: [none, percent, fixed] }
+        value: { type: [string, "null"] }
+        basis_points: { type: integer }
+        minor: { type: integer, format: int64 }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+
+    FinanceV2QuoteDraft:
+      type: object
+      additionalProperties: false
+      required: [title, customer, partner_id, issue_date, valid_until, currency, lines, discount, totals, intro_text, outro_text, internal_note]
+      properties:
+        title: { type: string }
+        customer: { type: object, additionalProperties: true }
+        partner_id: { type: [integer, "null"] }
+        issue_date: { type: string, format: date }
+        valid_until: { type: string, format: date }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        lines: { type: array, items: { $ref: '#/components/schemas/FinanceV2QuoteLine' } }
+        discount: { $ref: '#/components/schemas/FinanceV2QuoteDiscount' }
+        totals: { $ref: '#/components/schemas/FinanceV2QuoteCalculatedTotals' }
+        intro_text: { type: [string, "null"] }
+        outro_text: { type: [string, "null"] }
+        internal_note: { type: [string, "null"] }
+
+    FinanceV2QuoteSnapshot:
+      type: object
+      additionalProperties: false
+      required: [schema_version, document_type, series_uuid, document_number, revision_number, revision_label, title, customer, partner_id, issue_date, valid_until, currency, lines, discount, totals, intro_text, outro_text, customer_note]
+      properties:
+        schema_version: { type: integer, enum: [1] }
+        document_type: { type: string, enum: [quote] }
+        series_uuid: { type: string, format: uuid }
+        document_number: { type: string }
+        revision_number: { type: integer, minimum: 1 }
+        revision_label: { type: string }
+        title: { type: string }
+        customer: { type: object, additionalProperties: true }
+        partner_id: { type: [integer, "null"] }
+        issue_date: { type: string, format: date }
+        valid_until: { type: string, format: date }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        lines: { type: array, items: { $ref: '#/components/schemas/FinanceV2QuoteLine' } }
+        discount: { $ref: '#/components/schemas/FinanceV2QuoteDiscount' }
+        totals: { $ref: '#/components/schemas/FinanceV2QuoteCalculatedTotals' }
+        intro_text: { type: [string, "null"] }
+        outro_text: { type: [string, "null"] }
+        customer_note: { type: [string, "null"] }
+
     FinanceV2QuoteRevision:
       type: object
       additionalProperties: false
-      required: [id, revision_number, status, snapshot, totals, created_at]
+      required: [id, revision_number, previous_revision_id, status, snapshot, totals, pdf_sha256, pdf_url, pdf_download_url, published_at, created_at]
       properties:
         id: { type: integer, format: int64 }
         revision_number: { type: integer, minimum: 1 }
         previous_revision_id: { type: [integer, "null"], format: int64 }
         status: { type: string, enum: [draft, published] }
-        snapshot: { type: object, additionalProperties: true }
+        snapshot: { $ref: '#/components/schemas/FinanceV2QuoteSnapshot' }
         totals: { $ref: '#/components/schemas/FinanceV2Money' }
         pdf_sha256: { type: [string, "null"], pattern: "^[a-f0-9]{64}$" }
         pdf_url: { type: [string, "null"], format: uri }
@@ -2855,7 +2975,7 @@ components:
     FinanceV2QuoteDelivery:
       type: object
       additionalProperties: false
-      required: [uuid, revision_id, state, attempts, queued_at]
+      required: [uuid, revision_id, state, attempts, last_error_code, queued_at, sent_at, failed_at]
       properties:
         uuid: { type: string, format: uuid }
         revision_id: { type: integer, format: int64 }
@@ -2869,7 +2989,7 @@ components:
     FinanceV2Quote:
       type: object
       additionalProperties: false
-      required: [id, status, effective_status, version, has_pending_draft, totals, conversions, created_at, updated_at]
+      required: [id, status, effective_status, partner_id, number, version, has_pending_draft, current_revision, draft, totals, conversions, delivery, published_at, accepted_at, declined_at, converted_at, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         status: { type: string, enum: [draft, sent, accepted, declined, converted] }
@@ -2879,9 +2999,9 @@ components:
         version: { type: integer, minimum: 0 }
         has_pending_draft: { type: boolean }
         current_revision: { anyOf: [{ $ref: '#/components/schemas/FinanceV2QuoteRevision' }, { type: "null" }] }
-        draft: { type: [object, "null"], additionalProperties: true }
+        draft: { anyOf: [{ $ref: '#/components/schemas/FinanceV2QuoteDraft' }, { type: "null" }] }
         totals: { $ref: '#/components/schemas/FinanceV2Money' }
-        conversions: { type: array, items: { type: object, additionalProperties: false, properties: { source_revision_id: { type: integer }, target_type: { type: string, enum: [invoice] }, target_reference: { type: string }, target_id: { type: [integer, "null"] }, created_at: { type: string, format: date-time } }, required: [source_revision_id, target_type, target_reference, created_at] } }
+        conversions: { type: array, items: { type: object, additionalProperties: false, properties: { source_revision_id: { type: integer }, target_type: { type: string, enum: [invoice] }, target_reference: { type: string }, target_id: { type: [integer, "null"] }, created_at: { type: string, format: date-time } }, required: [source_revision_id, target_type, target_reference, target_id, created_at] } }
         delivery: { anyOf: [{ $ref: '#/components/schemas/FinanceV2QuoteDelivery' }, { type: "null" }] }
         published_at: { type: [string, "null"], format: date-time }
         accepted_at: { type: [string, "null"], format: date-time }
@@ -2896,7 +3016,7 @@ components:
       required: [data, links, meta]
       properties:
         data: { type: array, items: { $ref: '#/components/schemas/FinanceV2Quote' } }
-        links: { type: object, additionalProperties: false, properties: { first: { type: string, format: uri }, last: { type: string, format: uri }, prev: { type: [string, "null"], format: uri }, next: { type: [string, "null"], format: uri } }, required: [first, last] }
+        links: { type: object, additionalProperties: false, properties: { first: { type: string, format: uri }, last: { type: string, format: uri }, prev: { type: [string, "null"], format: uri }, next: { type: [string, "null"], format: uri } }, required: [first, last, prev, next] }
         meta: { type: object, additionalProperties: false, properties: { current_page: { type: integer }, per_page: { type: integer }, total: { type: integer }, last_page: { type: integer } }, required: [current_page, per_page, total, last_page] }
 
     FinanceV2QuoteConflict:
@@ -2906,6 +3026,20 @@ components:
       properties:
         error: { type: string, enum: [version_conflict, idempotency_key_reused, operation_in_progress, quote_locked, quote_revision_stale, quote_revision_replaced, quote_draft_pending, quote_publication_in_progress, quote_delivery_in_progress] }
         current: { $ref: '#/components/schemas/FinanceV2Quote' }
+
+    FinanceV2QuoteDomainError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [control_totals_mismatch, initial_draft_cannot_be_discarded, invalid_customer, invalid_discount, invalid_money, invalid_partner, invalid_product, invalid_quantity, invalid_quote_input, invalid_tax_rate, invalid_transition, invalid_validity_period, no_pdf, no_recipient, no_smtp, quote_draft_base_mismatch, quote_draft_missing, quote_expired, quote_not_accepted, quote_not_published, quote_publish_not_allowed, quote_revision_base_mismatch, quote_revision_not_published, quote_version_not_allowed]
+
+    FinanceV2QuoteUnprocessable:
+      oneOf:
+        - { $ref: '#/components/schemas/ValidationError' }
+        - { $ref: '#/components/schemas/FinanceV2QuoteDomainError' }
 
 paths:
 
@@ -5672,7 +5806,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { description: Idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/preview:
@@ -5684,10 +5818,10 @@ paths:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteDraftInput' } } }
       responses:
-        "200": { description: Server-authoritative totals., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "200": { description: Server-authoritative totals., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuotePreview' } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}:
@@ -5739,7 +5873,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Finance]
@@ -5754,7 +5888,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}/versions:
@@ -5771,7 +5905,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}/publish:
@@ -5789,7 +5923,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Version, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}/send:
@@ -5808,7 +5942,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Version, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}/accept:
@@ -5826,7 +5960,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Version, revision, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}/decline:
@@ -5844,7 +5978,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Version, revision, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}/duplicate:
@@ -5862,7 +5996,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Version, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}/conversions/invoice:
@@ -5875,12 +6009,12 @@ paths:
         - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version, expected_revision_id], properties: { version: { type: integer, minimum: 0 }, expected_revision_id: { type: integer, minimum: 1 } } } } } }
       responses:
-        "201": { description: Invoice draft target created., content: { application/json: { schema: { type: object, required: [target_reference], properties: { target_reference: { type: string }, target_id: { type: [integer, "null"] } } } } } }
+        "201": { description: Invoice draft target created., content: { application/json: { schema: { type: object, additionalProperties: false, required: [target_reference, target_id], properties: { target_reference: { type: string }, target_id: { type: [integer, "null"] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Version, revision, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance-v2/quotes/{quote}/revisions/{revision}/pdf:

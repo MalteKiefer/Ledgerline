@@ -31,13 +31,11 @@ final readonly class SendQuote
 
     public function handleResult(SendQuoteData $data): SendQuoteResult
     {
-        $candidate = $this->quotes->get($data->quoteId);
-        $recipient = $this->recipient($data, $candidate);
-        $this->mailer->assertConfigured($data->quoteId->ownerId);
         $requestSha256 = hash('sha256', json_encode([
+            'change_reason' => $data->changeReason === null ? null : trim($data->changeReason),
             'expected_version' => $data->expectedVersion,
             'quote_uuid' => $data->quoteId->uuid,
-            'recipient' => $recipient,
+            'recipient' => $data->recipient === null ? null : trim($data->recipient),
         ], JSON_THROW_ON_ERROR));
         $operation = $this->operations->existing(
             $data->quoteId->ownerId,
@@ -45,7 +43,15 @@ final readonly class SendQuote
             $data->idempotencyKey,
             $requestSha256,
             $data->quoteId,
-        ) ?? $this->operations->reserve(
+        );
+        if ($operation?->status === 'replay') {
+            return new SendQuoteResult($this->quotes->get($data->quoteId), true);
+        }
+
+        $candidate = $this->quotes->get($data->quoteId);
+        $recipient = $this->recipient($data, $candidate);
+        $this->mailer->assertConfigured($data->quoteId->ownerId);
+        $operation ??= $this->operations->reserve(
             $data->quoteId->ownerId,
             'send',
             $data->idempotencyKey,
@@ -53,9 +59,6 @@ final readonly class SendQuote
             $data->quoteId,
         );
 
-        if ($operation->status === 'replay') {
-            return new SendQuoteResult($this->quotes->get($data->quoteId), true);
-        }
         if ($operation->status === 'failed') {
             throw new InvalidQuoteAction($operation->errorCode ?? 'quote_send_failed');
         }
