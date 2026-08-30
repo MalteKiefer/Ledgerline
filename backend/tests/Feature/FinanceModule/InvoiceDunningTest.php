@@ -21,6 +21,7 @@ use App\Modules\Finance\Infrastructure\Mail\CompanySmtpMailer;
 use App\Modules\Finance\Infrastructure\Mail\InvoiceRevisionMail;
 use App\Modules\Finance\Infrastructure\Scheduling\SendInvoiceDeliveryJob;
 use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\DB;
@@ -118,7 +119,15 @@ final class InvoiceDunningTest extends TestCase
         $this->assertSame(1, $transport->calls);
         $this->assertTrue($transport->mail?->reminder ?? false);
         $this->assertSame('Customer', $transport->mail?->customer);
-        $this->assertSame(28, $transport->mail?->daysOverdue);
+        // SendInvoiceDeliveryJob::daysOverdue() deliberately measures from the
+        // real send-time clock (a reminder mailed days after being queued must
+        // report how overdue the invoice is *now*, not when it was queued) —
+        // it does not read $at. A hardcoded day count here would drift by one
+        // every day this test runs on a date other than the day it was written.
+        $expectedDaysOverdue = (int) (new DateTimeImmutable('2026-08-01'))
+            ->diff(new DateTimeImmutable('today', new DateTimeZone('UTC')))
+            ->format('%a');
+        $this->assertSame($expectedDaysOverdue, $transport->mail?->daysOverdue);
         $this->assertSame('119.00 EUR', $transport->mail?->openAmount);
         $activities = DB::table('finance_document_activities')
             ->where('type', 'invoice.reminder.sent')
