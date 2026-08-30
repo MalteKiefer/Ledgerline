@@ -17,6 +17,7 @@ use App\Modules\Finance\Domain\Shared\Exception\InvalidMoney;
 use App\Modules\Finance\Domain\Shared\Exception\InvalidQuantity;
 use App\Modules\Finance\Domain\Shared\Money;
 use App\Modules\Finance\Infrastructure\Compatibility\Exception\LegacyProjectExpenseMalformed;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Produces a deterministic, per-project mapping plan plus diagnostics from
@@ -226,6 +227,23 @@ final class LegacyProjectMapper
             if ($entry->invoiced_invoice_id !== null) {
                 $invoiceTargetReference = "legacy-invoice:{$entry->invoiced_invoice_id}";
                 $diagnostics[] = new LegacyProjectDiagnostic('time_entry_invoice_unresolved', false, "Legacy time entry #{$entry->id} was invoiced under legacy invoice #{$entry->invoiced_invoice_id}; the migrated row keeps an opaque unresolved invoice target.", ['invoice_id' => $entry->invoiced_invoice_id]);
+            } elseif ($entry->invoiced_finance_invoice_id !== null) {
+                // The invoices/payments/recurring cutover moved project-time
+                // invoicing onto the finance-v2 pipeline: a row invoiced
+                // through that path stamps `invoiced_finance_invoice_id`
+                // instead of the legacy `invoiced_invoice_id`, and already
+                // points at a live `finance_invoices` row rather than a
+                // legacy `invoices` row, so the reference is resolved
+                // (`finance-invoice:{uuid}`), not opaque, and needs no
+                // `time_entry_invoice_unresolved` diagnostic.
+                $invoiceUuid = DB::table('finance_invoices')
+                    ->where('id', $entry->invoiced_finance_invoice_id)
+                    ->value('uuid');
+                if (is_string($invoiceUuid)) {
+                    $invoiceTargetReference = "finance-invoice:{$invoiceUuid}";
+                } else {
+                    $diagnostics[] = new LegacyProjectDiagnostic('time_entry_invoice_unresolved', true, "Legacy time entry #{$entry->id} points at finance invoice #{$entry->invoiced_finance_invoice_id}, which no longer exists.", ['finance_invoice_id' => $entry->invoiced_finance_invoice_id]);
+                }
             }
 
             $entries[] = [
@@ -238,7 +256,7 @@ final class LegacyProjectMapper
                 'hourly_rate_minor' => $rateMinor,
                 'currency' => $currency,
                 'invoice_target_reference' => $invoiceTargetReference,
-                'invoiced' => $entry->invoiced_invoice_id !== null,
+                'invoiced' => $entry->invoiced_invoice_id !== null || $entry->invoiced_finance_invoice_id !== null,
                 'deleted' => $entry->trashed(),
             ];
         }

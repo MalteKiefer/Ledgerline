@@ -146,6 +146,7 @@ final class LegacyProjectMapperTest extends TestCase
         ])->assertCreated()->json('entry.id');
         $invoiceResponse = $this->postJson(route('api.finance.projects.invoice-time', $project))->assertCreated();
         $invoiceId = (int) $invoiceResponse->json('invoice.id');
+        $invoiceUuid = DB::table('finance_invoices')->where('id', $invoiceId)->value('uuid');
         $invoiced = FinanceTimeEntry::query()->findOrFail($invoicedId);
 
         $result = (new LegacyProjectMapper)->map($project);
@@ -155,12 +156,17 @@ final class LegacyProjectMapperTest extends TestCase
         $this->assertSame(9500, $mapped[$normal->id]['hourly_rate_minor']);
         $this->assertSame(-5000, $mapped[$correction->id]['quantity_scaled']);
         $this->assertNull($mapped[$missingRate->id]['hourly_rate_minor']);
-        $this->assertSame("legacy-invoice:{$invoiceId}", $mapped[$invoiced->id]['invoice_target_reference']);
+        // The invoices/payments/recurring cutover moved project-time
+        // invoicing onto the finance-v2 pipeline (it now stamps
+        // `invoiced_finance_invoice_id`, not the legacy `invoiced_invoice_id`),
+        // so the mapped reference already resolves to a live finance-v2
+        // invoice instead of staying an opaque legacy pointer.
+        $this->assertSame("finance-invoice:{$invoiceUuid}", $mapped[$invoiced->id]['invoice_target_reference']);
         $this->assertTrue($mapped[$invoiced->id]['invoiced']);
         $this->assertFalse(LegacyProjectMapper::isBlocking($result));
         $codes = array_map(static fn ($d) => $d->code, $result['diagnostics']);
         $this->assertContains('time_entry_rate_missing', $codes);
-        $this->assertContains('time_entry_invoice_unresolved', $codes);
+        $this->assertNotContains('time_entry_invoice_unresolved', $codes);
     }
 
     public function test_rejects_a_zero_hours_time_entry_as_blocking(): void
