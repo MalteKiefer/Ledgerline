@@ -33,6 +33,7 @@ use App\Modules\Finance\Application\Ports\Quotes\QuoteReferenceResolver;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteRepository;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteSettings;
 use App\Modules\Finance\Application\Ports\Quotes\QuoteToInvoicePort;
+use App\Modules\Finance\Application\Ports\RecurringInvoiceRepository;
 use App\Modules\Finance\Infrastructure\Catalog\CompositeProjectDocumentCatalog;
 use App\Modules\Finance\Infrastructure\Compatibility\FinanceSeriesDocumentSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyBankReceiptDocumentSource;
@@ -70,6 +71,7 @@ use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectWorkRepository
 use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteOperationRepository;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteReferenceResolver;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentQuoteRepository;
+use App\Modules\Finance\Infrastructure\Persistence\EloquentRecurringInvoiceRepository;
 use App\Modules\Finance\Infrastructure\Persistence\LockedInvoiceNumberAllocator;
 use App\Modules\Finance\Infrastructure\Persistence\OrphanDocumentReconciler;
 use App\Modules\Finance\Infrastructure\Settings\EloquentQuoteSettings;
@@ -149,6 +151,7 @@ final class FinanceServiceProvider extends ServiceProvider
         $this->app->bind(IdempotencyStore::class, EloquentIdempotencyStore::class);
         $this->app->bind(InvoiceRepository::class, EloquentInvoiceRepository::class);
         $this->app->bind(PaymentRepository::class, EloquentPaymentRepository::class);
+        $this->app->bind(RecurringInvoiceRepository::class, EloquentRecurringInvoiceRepository::class);
         $this->app->bind(InvoiceMailer::class, CompanyInvoiceMailer::class);
         $this->app->bind(InvoiceNumberAllocator::class, LockedInvoiceNumberAllocator::class);
         $this->app->bind(InventoryMovementPort::class, LegacyStockLedgerAdapter::class);

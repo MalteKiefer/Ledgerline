@@ -67,6 +67,49 @@ final readonly class RecurrenceSchedule
         return new self($interval, $start, $end);
     }
 
+    public static function fromLocal(
+        RecurrenceInterval $interval,
+        string $localDate,
+        string $localTime,
+        string $timezone,
+        ?string $endLocalDate = null,
+    ): self {
+        if (preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $localDate) !== 1
+            || preg_match('/\A(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\z/D', $localTime) !== 1
+            || ($endLocalDate !== null && preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $endLocalDate) !== 1)) {
+            throw new InvalidArgumentException('A recurrence requires canonical local dates and time.');
+        }
+
+        $zone = new DateTimeZone($timezone);
+        if ($zone->getName() !== 'UTC' && $zone->getLocation() === false) {
+            throw new InvalidArgumentException('A recurrence schedule requires an IANA timezone.');
+        }
+
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $localDate, new DateTimeZone('UTC'));
+        $endDate = $endLocalDate === null
+            ? null
+            : DateTimeImmutable::createFromFormat('!Y-m-d', $endLocalDate, $zone);
+        if ($date === false || ($endLocalDate !== null && $endDate === false)
+            || $date->format('Y-m-d') !== $localDate
+            || ($endDate !== null && $endDate->format('Y-m-d') !== $endLocalDate)) {
+            throw new InvalidArgumentException('A recurrence local date is invalid.');
+        }
+
+        [$hour, $minute, $second] = array_map(intval(...), explode(':', $localTime));
+        $start = self::resolveWallTime(
+            $zone,
+            (int) $date->format('Y'),
+            (int) $date->format('n'),
+            (int) $date->format('j'),
+            $hour,
+            $minute,
+            $second,
+            0,
+        );
+
+        return new self($interval, $start, $endDate);
+    }
+
     public function start(): DateTimeImmutable
     {
         return $this->start;
@@ -132,15 +175,36 @@ final readonly class RecurrenceSchedule
      */
     private function resolveLocalDateTime(int $year, int $month, int $day): DateTimeImmutable
     {
-        $microseconds = (int) $this->start->format('u');
-        $wallTime = sprintf(
-            '%04d-%02d-%02d %02d:%02d:%02d.%06d',
+        return self::resolveWallTime(
+            $this->timezone,
             $year,
             $month,
             $day,
             (int) $this->start->format('H'),
             (int) $this->start->format('i'),
             (int) $this->start->format('s'),
+            (int) $this->start->format('u'),
+        );
+    }
+
+    private static function resolveWallTime(
+        DateTimeZone $timezone,
+        int $year,
+        int $month,
+        int $day,
+        int $hour,
+        int $minute,
+        int $second,
+        int $microseconds,
+    ): DateTimeImmutable {
+        $wallTime = sprintf(
+            '%04d-%02d-%02d %02d:%02d:%02d.%06d',
+            $year,
+            $month,
+            $day,
+            $hour,
+            $minute,
+            $second,
             $microseconds,
         );
         $utc = new DateTimeZone('UTC');
@@ -150,12 +214,12 @@ final readonly class RecurrenceSchedule
             throw new InvalidArgumentException('The recurrence calendar target is invalid.');
         }
 
-        if ($this->timezone->getName() === 'UTC') {
+        if ($timezone->getName() === 'UTC') {
             return $naiveWallClock;
         }
 
         $naiveTimestamp = $naiveWallClock->getTimestamp();
-        $transitions = $this->timezone->getTransitions(
+        $transitions = $timezone->getTransitions(
             $naiveTimestamp - (3 * 86_400),
             $naiveTimestamp + (3 * 86_400),
         );
@@ -176,7 +240,7 @@ final readonly class RecurrenceSchedule
 
         foreach (array_keys($offsets) as $offset) {
             $candidate = self::instantFromTimestamp($naiveTimestamp - $offset, $microseconds)
-                ->setTimezone($this->timezone);
+                ->setTimezone($timezone);
 
             if ($candidate->format('Y-m-d H:i:s.u') === $wallTime) {
                 $matches[] = $candidate;
@@ -205,7 +269,7 @@ final readonly class RecurrenceSchedule
                     return self::instantFromTimestamp(
                         $naiveTimestamp - $previousOffset,
                         $microseconds,
-                    )->setTimezone($this->timezone);
+                    )->setTimezone($timezone);
                 }
             }
 
