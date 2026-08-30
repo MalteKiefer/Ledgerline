@@ -9,7 +9,7 @@ import { useProjectsStore } from '@spa/modules/finance/stores/projects';
 
 type DetailError = ProjectErrorCode | 'request_failed';
 export type ProjectPanelName = 'project' | 'totals' | 'work' | 'time' | 'ledger' | 'documents' | 'notes' | 'activity';
-interface Panel<T, Q> { data: T | null; query: Q; loading: boolean; error: DetailError | null; nextCursor?: string | null }
+interface Panel<T, Q> { data: T | null; query: Q; loading: boolean; error: DetailError | null; nextCursor?: string | null; etag?: string | null }
 interface PageQuery { page: number; per_page: number }
 interface ActivityQuery { cursor: string | null; per_page: number }
 
@@ -49,7 +49,7 @@ export function useProjectDetail() {
     activity.nextCursor = null;
   }
 
-  async function load<T, Q>(name: ProjectPanelName, target: Panel<T, Q>, id: string, operation: (signal: AbortSignal) => Promise<T>): Promise<void> {
+  async function load<T, Q>(name: ProjectPanelName, target: Panel<T, Q>, id: string, operation: (signal: AbortSignal) => Promise<T>, onSuccess?: (result: T) => void): Promise<void> {
     ensureProject(id);
     controllers.get(name)?.abort();
     const controller = new AbortController();
@@ -63,6 +63,7 @@ export function useProjectDetail() {
       if (sequences.get(name) !== sequence || state.projectId !== id) return;
       target.data = result;
       if (name === 'activity') target.nextCursor = (result as HistoryCursorPage).next_cursor;
+      onSuccess?.(result);
     } catch (error) {
       if (sequences.get(name) !== sequence || isAbort(error)) return;
       target.error = projectErrorCode(error) ?? 'request_failed';
@@ -72,10 +73,14 @@ export function useProjectDetail() {
     }
   }
 
-  const loadProject = (id: string) => load('project', project, id, async (signal) => {
-    const response = await projectApi.showResponse(id, signal);
-    return response.data;
-  });
+  const loadProject = (id: string) => {
+    let etag: string | null = null;
+    return load('project', project, id, async () => {
+      const result = await projects.loadProject(id);
+      etag = projects.currentEtag;
+      return result;
+    }, () => { project.etag = etag; });
+  };
   const loadTotals = (id: string) => load('totals', totals, id, (signal) => projectApi.getTotals(id, signal));
   const loadWork = (id: string) => load('work', work, id, (signal) => projectApi.listWorkItems(id, { ...work.query }, signal));
   const loadTime = (id: string) => load('time', time, id, (signal) => projectApi.listTimeEntries(id, { ...time.query }, signal));
@@ -137,5 +142,5 @@ export function useProjectDetail() {
 }
 
 function panel<T, Q>(query: Q): Panel<T, Q> { return reactive({ data: null, query, loading: false, error: null }) as Panel<T, Q>; }
-function reset<T, Q>(target: Panel<T, Q>, query: Q): void { target.data = null; target.query = query; target.loading = false; target.error = null; target.nextCursor = null; }
+function reset<T, Q>(target: Panel<T, Q>, query: Q): void { target.data = null; target.query = query; target.loading = false; target.error = null; target.nextCursor = null; target.etag = null; }
 function isAbort(error: unknown): boolean { return error instanceof DOMException && error.name === 'AbortError'; }

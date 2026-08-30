@@ -8,6 +8,7 @@ import type { ProjectDocument, ProjectDocumentInput } from '@spa/modules/finance
 type StoreError = ProjectErrorCode | 'request_failed';
 export type ProjectKeyedAction = 'invoice' | 'attach' | 'detach';
 interface ActionKey { key: string; signature: string }
+interface ScopedActionState { sequence: number; loading: boolean; error: StoreError | null }
 
 const emptyPage = (): ProjectPage => ({ data: [], links: { first: '', last: '', prev: null, next: null }, meta: { current_page: 1, per_page: 20, total: 0, last_page: 1 } });
 
@@ -29,6 +30,12 @@ export const useProjectsStore = defineStore('finance-v2-projects', () => {
   let detailSequence = 0;
   let activeActions = 0;
   const actionKeys = new Map<string, ActionKey>();
+  const scopedActions = new Map<string, ScopedActionState>();
+
+  function actionState(action: string, id: string): { loading: boolean; error: StoreError | null } {
+    const state = scopedActions.get(scope(action, id));
+    return { loading: state?.loading ?? false, error: state?.error ?? null };
+  }
 
   const failure = (error: unknown): StoreError => projectErrorCode(error) ?? 'request_failed';
 
@@ -81,6 +88,10 @@ export const useProjectsStore = defineStore('finance-v2-projects', () => {
     const controller = new AbortController();
     const sequence = ++detailSequence;
     detailController = controller;
+    if (current.value && current.value.id !== id) {
+      current.value = null;
+      currentEtag.value = null;
+    }
     detailLoading.value = true;
     detailError.value = null;
     try {
@@ -95,7 +106,7 @@ export const useProjectsStore = defineStore('finance-v2-projects', () => {
     }
   }
 
-  function scope(action: ProjectKeyedAction, id: string): string { return `${action}:${id}`; }
+  function scope(action: string, id: string): string { return `${action}:${id}`; }
   function actionKey(action: ProjectKeyedAction, id: string, payload: unknown): string {
     const name = scope(action, id);
     const signature = canonicalSerialize(payload);
@@ -111,18 +122,35 @@ export const useProjectsStore = defineStore('finance-v2-projects', () => {
     actionError.value = null;
   }
 
-  async function act<T>(operation: () => Promise<T>, keyedScope?: string): Promise<T> {
+  async function act<T>(operation: () => Promise<T>, keyedScope?: string, stateScope?: string): Promise<T> {
     activeActions++;
     actionLoading.value = true;
     actionError.value = null;
+    let scopedState: ScopedActionState | null = null;
+    let mySequence = 0;
+    if (stateScope) {
+      scopedState = scopedActions.get(stateScope) ?? { sequence: 0, loading: false, error: null };
+      scopedActions.set(stateScope, scopedState);
+      mySequence = ++scopedState.sequence;
+      scopedState.loading = true;
+      scopedState.error = null;
+    }
     try {
       const result = await operation();
-      if (keyedScope) actionKeys.delete(keyedScope);
       if (isProject(result)) select(result);
+      if (! scopedState || mySequence === scopedState.sequence) {
+        if (keyedScope) actionKeys.delete(keyedScope);
+        if (scopedState) { scopedState.loading = false; scopedState.error = null; }
+        actionError.value = null;
+      }
       return result;
     } catch (error) {
       applyConflict(error);
-      actionError.value = failure(error);
+      const code = failure(error);
+      if (! scopedState || mySequence === scopedState.sequence) {
+        if (scopedState) { scopedState.loading = false; scopedState.error = code; }
+        actionError.value = code;
+      }
       throw error;
     } finally {
       activeActions--;
@@ -130,32 +158,32 @@ export const useProjectsStore = defineStore('finance-v2-projects', () => {
     }
   }
 
-  const create = (input: ProjectInput): Promise<Project> => act(() => projectApi.create(input));
-  const update = (id: string, input: ProjectUpdateInput): Promise<Project> => act(() => projectApi.update(id, input));
-  const changeStatus = (id: string, version: number, status: Project['status']): Promise<Project> => act(() => projectApi.changeStatus(id, { version, status }));
-  const move = (id: string, version: number, parentId: string | null): Promise<Project> => act(() => projectApi.move(id, { version, parent_id: parentId }));
-  const archive = (id: string, version: number): Promise<Project> => act(() => projectApi.archive(id, version));
-  const restore = (id: string, version: number): Promise<Project> => act(() => projectApi.restore(id, version));
+  const create = (input: ProjectInput): Promise<Project> => act(() => projectApi.create(input), undefined, scope('create', 'new'));
+  const update = (id: string, input: ProjectUpdateInput): Promise<Project> => act(() => projectApi.update(id, input), undefined, scope('update', id));
+  const changeStatus = (id: string, version: number, status: Project['status']): Promise<Project> => act(() => projectApi.changeStatus(id, { version, status }), undefined, scope('changeStatus', id));
+  const move = (id: string, version: number, parentId: string | null): Promise<Project> => act(() => projectApi.move(id, { version, parent_id: parentId }), undefined, scope('move', id));
+  const archive = (id: string, version: number): Promise<Project> => act(() => projectApi.archive(id, version), undefined, scope('archive', id));
+  const restore = (id: string, version: number): Promise<Project> => act(() => projectApi.restore(id, version), undefined, scope('restore', id));
 
   function createInvoiceDraft(id: string, timeEntryIds: string[]): Promise<InvoiceDraftTarget> {
     const input = { time_entry_ids: timeEntryIds };
     const name = scope('invoice', id);
-    return act(() => projectApi.createInvoiceDraft(id, input, actionKey('invoice', id, input)), name);
+    return act(() => projectApi.createInvoiceDraft(id, input, actionKey('invoice', id, input)), name, name);
   }
   function attachDocument(id: string, input: ProjectDocumentInput): Promise<ProjectDocument> {
     const name = scope('attach', id);
-    return act(() => projectApi.attachDocument(id, input, actionKey('attach', id, input)), name);
+    return act(() => projectApi.attachDocument(id, input, actionKey('attach', id, input)), name, name);
   }
   function detachDocument(id: string, link: number): Promise<ProjectDocument> {
     const payload = { link };
     const name = scope('detach', id);
-    return act(() => projectApi.detachDocument(id, link, actionKey('detach', id, payload)), name);
+    return act(() => projectApi.detachDocument(id, link, actionKey('detach', id, payload)), name, name);
   }
 
   return {
     items, page, current, currentEtag, listLoading, detailLoading, actionLoading, listError, detailError, actionError,
     loadList, loadProject, create, update, changeStatus, move, archive, restore,
-    createInvoiceDraft, attachDocument, detachDocument, cancelAction,
+    createInvoiceDraft, attachDocument, detachDocument, cancelAction, actionState,
   };
 });
 

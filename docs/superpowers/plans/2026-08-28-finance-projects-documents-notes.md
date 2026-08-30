@@ -942,23 +942,23 @@ git commit -m "feat(finance): add modular project client state"
 - Consumes: Task 11 store/composables and existing shared UI primitives.
 - Produces: unmounted project routes with truthful async/conflict states and accessible project workflows.
 
-- [ ] **Step 1: Write failing page/component tests**
+- [x] **Step 1: Write failing page/component tests**
 
 Cover URL filters and server pagination; create/edit; named status transitions/reopen; hierarchy move/cycle feedback; separately paged tasks/time/ledger; invoiced-time locks; server-provided multi-currency totals and integer formatting; document source filtering and attach/detach; missing-source snapshot display; append-only note composer with correction; activity cursor loading; owner-safe capability links; panel-specific errors; action-key retry; and version-conflict replacement requiring explicit retry.
 
-- [ ] **Step 2: Implement list and edit pages**
+- [x] **Step 2: Implement list and edit pages**
 
 The list is server-paginated and does not rebuild the entire hierarchy in memory. Show parent breadcrumbs and direct-child navigation from API data. The editor never exposes status as a generic field; status buttons invoke named actions. Budget form converts decimal text to minor units at the boundary without using it for authoritative arithmetic.
 
-- [ ] **Step 3: Implement detail panels**
+- [x] **Step 3: Implement detail panels**
 
 Use tabs `overview`, `work`, `ledger`, `documents`, `notes`, and `activity`. Documents display source/role, revision label, MIME/size/hash, attached/detached state, availability, and current-vs-snapshot metadata. Notes have no edit/delete controls; correction creates a new entry and visibly links to the original. Activities label project versus linked-document events.
 
-- [ ] **Step 4: Export but do not mount routes**
+- [x] **Step 4: Export but do not mount routes**
 
 `routes.ts` exports children for `finance/projects`, `finance/projects/new`, `finance/projects/:project`, and `finance/projects/:project/edit`. Do not modify `frontend/src/router/index.ts`, `frontend/src/stores/finance.ts`, or `frontend/src/views/Finance.vue`; mounting/removal belongs to frontend cutover.
 
-- [ ] **Step 5: Run frontend and translation gates**
+- [x] **Step 5: Run frontend and translation gates**
 
 Run:
 
@@ -974,7 +974,7 @@ php artisan test tests/Feature/Guards/TranslationUsageGuardTest.php tests/Featur
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/modules/finance backend/lang/de/finance-projects.php backend/lang/en/finance-projects.php backend/lang/ru/finance-projects.php
@@ -995,11 +995,11 @@ git commit -m "feat(finance): add project workspace interface"
 - Consumes: legacy project/task/time/expense data and owner-scoped file/photo/receipt/transaction/quote/invoice references.
 - Produces: deterministic per-project mapping plus diagnostics and activation gates for the global migration plan; it does not run bulk migration.
 
-- [ ] **Step 1: Write failing legacy fixtures**
+- [x] **Step 1: Write failing legacy fixtures**
 
 Cover root/subproject, missing/deleted parent, every status/kind, archived row, partner/quote reference, null/negative/large budget, mutable note, valid and malformed expense JSON, legacy rows without direction/title/id, numeric and string decimals, unsupported scale/exponent, tasks/milestones, negative time correction, frozen/missing rate, invoiced time, files, photos, standalone receipts, transaction receipts, bank transactions, missing blobs, foreign references, and repeated `(user_id, source_type, source_id)` mapping.
 
-- [ ] **Step 2: Implement exact expense parsing**
+- [x] **Step 2: Implement exact expense parsing**
 
 Read `FinanceProject::getRawOriginal('expenses')`, tokenize JSON strings/escapes/delimiters/numeric lexemes, and pass amount lexemes to `Money::fromDecimal`; never hydrate authoritative amounts through PHP float. Preserve unknown keys under `legacy_metadata`. Reject malformed JSON, exponent notation, more than two decimal places, invalid direction, or currency ambiguity with a blocking diagnostic.
 
@@ -1011,11 +1011,11 @@ final class LegacyProjectExpenseParser
 }
 ```
 
-- [ ] **Step 3: Implement idempotent project mapping**
+- [x] **Step 3: Implement idempotent project mapping**
 
 Use `source_type=legacy.finance_project` and legacy ID. Map the mutable note once to initial internal `project_note`; tasks/time/ledger to structured rows; quote as unresolved pinned source until quote migration resolves its revision; invoiced time to an opaque unresolved target; and external evidence to document links with verified metadata/hash when available. Missing files, cross-owner links, unknown currency, broken task/project links, and amounts that cannot be exact are blocking diagnostics rather than silent skips.
 
-- [ ] **Step 4: Document compatibility and activation gates**
+- [x] **Step 4: Document compatibility and activation gates**
 
 Record schema, DTOs, commands, route contracts, status maps, source adapters, note/activity rules, link history, lock order, idempotency, and these cutover gates:
 
@@ -1031,7 +1031,7 @@ Record schema, DTOs, commands, route contracts, status maps, source adapters, no
 9. Remove Finance.vue project code, finance-store project methods, FinanceProjectPlanController, and legacy project runtime routes only in finance-legacy-removal.
 ```
 
-- [ ] **Step 5: Run mapper and compatibility tests**
+- [x] **Step 5: Run mapper and compatibility tests**
 
 Run:
 
@@ -1043,7 +1043,7 @@ vendor/bin/pint --test app/Modules/Finance/Infrastructure/Compatibility tests/Fe
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/Modules/Finance/Infrastructure/Compatibility backend/tests/Feature/FinanceModule/Projects/LegacyProjectMapperTest.php docs/finance/projects-documents-notes.md
@@ -1060,7 +1060,7 @@ git commit -m "docs(finance): define project migration boundary"
 - Consumes: Tasks 1–13.
 - Produces: verified handoff for quote integration, invoices/payments, global migration, frontend cutover, legacy removal, and release.
 
-- [ ] **Step 1: Run focused backend suites**
+- [x] **Step 1: Run focused backend suites**
 
 Run:
 
@@ -1071,7 +1071,7 @@ FILES_DISK=local php artisan test tests/Feature/FinanceModule tests/Unit/Modules
 
 Expected: PASS.
 
-- [ ] **Step 2: Run backend quality gates**
+- [x] **Step 2: Run backend quality gates**
 
 Run:
 
@@ -1083,7 +1083,7 @@ vendor/bin/phpstan analyse app/Modules/Finance --memory-limit=1G
 
 Expected: both commands exit zero.
 
-- [ ] **Step 3: Run frontend gates**
+- [x] **Step 3: Run frontend gates**
 
 Run:
 
@@ -1097,17 +1097,17 @@ yarn build
 
 Expected: all commands exit zero.
 
-- [ ] **Step 4: Run the full backend suite**
+- [x] **Step 4: Run the full backend suite**
 
 Run: `cd backend && FILES_DISK=local php artisan test`
 
 Expected: PASS. If an unrelated environment failure exists, record the exact failing test, environment requirement, and proof that it also fails on this plan's base commit; do not mark the step complete without that evidence.
 
-- [ ] **Step 5: Update verification record and completed checkboxes**
+- [x] **Step 5: Update verification record and completed checkboxes**
 
 Record commands, date, test/assertion counts, formatter/static-analysis results, frontend results, quote-port/invoice-port bindings, and clean status. Mark a checkbox only after its command succeeds.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/finance/projects-documents-notes.md docs/superpowers/plans/2026-08-28-finance-projects-documents-notes.md
