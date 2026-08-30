@@ -164,22 +164,30 @@ abstract class DiskArchiveSource implements BackupSource
         }
     }
 
-    /** Absolute root of the files disk if it is a local filesystem, else null. */
+    /**
+     * Absolute root of the files disk if it is (or currently resolves to,
+     * e.g. under `Storage::fake()` in tests) a local filesystem, else null.
+     *
+     * Deliberately asks the resolved disk adapter for its real path instead
+     * of reading `config('filesystems.disks.*.driver')`: `Storage::fake()`
+     * swaps in a local Flysystem adapter for the disk name without touching
+     * that config value, so a driver-name check alone stays stuck on the
+     * disk's production driver (e.g. "s3") even when the resolved adapter is
+     * actually local — sending every faked-disk test down the far less
+     * exercised remote staging path in build() instead of this one.
+     */
     private function localRoot(): ?string
     {
         $name = config('files.disk');
         $name = is_string($name) && $name !== '' ? $name : 'local';
-        if (config('filesystems.disks.'.$name.'.driver') !== 'local') {
+        $disk = Storage::disk($name);
+        if (! method_exists($disk, 'path')) {
             return null;
         }
-        $root = config('filesystems.disks.'.$name.'.root');
-        if (is_string($root) && $root !== '' && is_dir($root)) {
-            return $root;
-        }
-        // Fall back to the adapter's path() if the config root is unusual.
-        $disk = Storage::disk($name);
 
-        return method_exists($disk, 'path') ? rtrim($disk->path(''), '/') : null;
+        $root = rtrim($disk->path(''), '/');
+
+        return is_dir($root) ? $root : null;
     }
 
     private function makeDir(string $dir): void
