@@ -7,9 +7,11 @@ namespace App\Modules\Finance\Application\Ports;
 use App\Modules\Finance\Application\DTOs\IdempotencyKey;
 use App\Modules\Finance\Application\DTOs\Invoices\DeliveryId;
 use App\Modules\Finance\Application\DTOs\Invoices\FinalizedInvoice;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDeliveryView;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftData;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftSource;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoicePage;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceView;
 use App\Modules\Finance\Application\DTOs\StoredDocument;
 use Closure;
@@ -18,6 +20,15 @@ use DateTimeImmutable;
 interface InvoiceRepository
 {
     public function get(InvoiceId $id): InvoiceView;
+
+    /**
+     * Resolves the owner-scoped internal ID for a public invoice UUID.
+     * Throws (not-found) when the UUID does not belong to the current owner.
+     */
+    public function idForUuid(string $uuid): InvoiceId;
+
+    /** @param array<string, mixed> $filters */
+    public function page(array $filters, int $page, int $perPage): InvoicePage;
 
     public function createDraft(InvoiceDraftData $data): InvoiceId;
 
@@ -109,4 +120,7 @@ interface InvoiceRepository
      * @return array{status: string, last_error_code: ?string}
      */
     public function deliveryStatus(DeliveryId $id): array;
+
+    /** Owner-scoped read of a delivery's full state for API responses. */
+    public function deliveryView(DeliveryId $id): InvoiceDeliveryView;
 }

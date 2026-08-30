@@ -9,8 +9,11 @@ use App\Models\FinanceProduct;
 use App\Models\FinanceProject;
 use App\Modules\Finance\Application\DTOs\IdempotencyKey;
 use App\Modules\Finance\Application\DTOs\Recurring\RecurringRunId;
+use App\Modules\Finance\Application\DTOs\Recurring\RecurringRunPage;
+use App\Modules\Finance\Application\DTOs\Recurring\RecurringRunView;
 use App\Modules\Finance\Application\DTOs\Recurring\RecurringTemplateData;
 use App\Modules\Finance\Application\DTOs\Recurring\RecurringTemplateId;
+use App\Modules\Finance\Application\DTOs\Recurring\RecurringTemplatePage;
 use App\Modules\Finance\Application\DTOs\Recurring\RecurringTemplateVersionConflict;
 use App\Modules\Finance\Application\DTOs\Recurring\RecurringTemplateVersionData;
 use App\Modules\Finance\Application\DTOs\Recurring\RecurringTemplateView;
@@ -44,6 +47,28 @@ final class EloquentRecurringInvoiceRepository implements RecurringInvoiceReposi
     {
         $this->idempotency = $idempotency ?? app(IdempotencyStore::class);
         $this->clock = $clock ?? app(Clock::class);
+    }
+
+    public function templateIdForUuid(string $uuid): RecurringTemplateId
+    {
+        $template = RecurringInvoiceTemplateRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->where('uuid', $uuid)
+            ->firstOrFail(['id']);
+
+        return new RecurringTemplateId((int) $template->id);
+    }
+
+    public function runIdForUuid(string $uuid): RecurringRunId
+    {
+        $run = RecurringInvoiceRunRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->where('uuid', $uuid)
+            ->firstOrFail(['id']);
+
+        return new RecurringRunId((int) $run->id);
     }
 
     public function createTemplate(RecurringTemplateData $data, IdempotencyKey $key): RecurringTemplateView
@@ -229,36 +254,103 @@ final class EloquentRecurringInvoiceRepository implements RecurringInvoiceReposi
         return $this->runData($this->ownedRun($id));
     }
 
-    public function templates(int $page = 1, int $perPage = 25): array
+    public function getView(RecurringTemplateId $id): RecurringTemplateView
+    {
+        return $this->view($this->ownedTemplate($id));
+    }
+
+    public function getRunView(RecurringRunId $id): RecurringRunView
+    {
+        return $this->runView($this->ownedRun($id));
+    }
+
+    public function templates(array $filters, int $page, int $perPage): RecurringTemplatePage
     {
         $this->assertPagination($page, $perPage);
         $query = RecurringInvoiceTemplateRecord::query()
             ->withoutGlobalScopes()
             ->where('user_id', $this->ownerId());
+
+        $status = $filters['status'] ?? null;
+        if (is_string($status) && $status !== '') {
+            $query->where('status', $status);
+        }
+        $mode = $filters['mode'] ?? null;
+        if (is_string($mode) && $mode !== '') {
+            $query->where('mode', $mode);
+        }
+
         $total = (clone $query)->count();
         $items = array_values($query->orderBy('id')
             ->forPage($page, $perPage)
             ->get()
-            ->map(fn (RecurringInvoiceTemplateRecord $template): array => $this->templateData($template))
+            ->map(fn (RecurringInvoiceTemplateRecord $template): RecurringTemplateView => $this->view($template))
             ->all());
 
-        return ['items' => $items, 'page' => $page, 'per_page' => $perPage, 'total' => $total];
+        return new RecurringTemplatePage($items, $page, $perPage, $total);
     }
 
-    public function runs(int $page = 1, int $perPage = 25): array
+    public function runsForTemplate(RecurringTemplateId $id, array $filters, int $page, int $perPage): RecurringRunPage
     {
         $this->assertPagination($page, $perPage);
+        $this->ownedTemplate($id);
         $query = RecurringInvoiceRunRecord::query()
             ->withoutGlobalScopes()
-            ->where('user_id', $this->ownerId());
+            ->where('user_id', $this->ownerId())
+            ->where('template_id', $id->value);
+
+        $status = $filters['status'] ?? null;
+        if (is_string($status) && $status !== '') {
+            $query->where('status', $status);
+        }
+
         $total = (clone $query)->count();
-        $items = array_values($query->orderBy('id')
+        $items = array_values($query->orderByDesc('scheduled_for')
+            ->orderByDesc('id')
             ->forPage($page, $perPage)
             ->get()
-            ->map(fn (RecurringInvoiceRunRecord $run): array => $this->runData($run))
+            ->map(fn (RecurringInvoiceRunRecord $run): RecurringRunView => $this->runView($run))
             ->all());
 
-        return ['items' => $items, 'page' => $page, 'per_page' => $perPage, 'total' => $total];
+        return new RecurringRunPage($items, $page, $perPage, $total);
+    }
+
+    private function runView(RecurringInvoiceRunRecord $run): RecurringRunView
+    {
+        $scheduledFor = $run->getAttribute('scheduled_for');
+        $createdAt = $run->getAttribute('created_at');
+        $updatedAt = $run->getAttribute('updated_at');
+        if (! $scheduledFor instanceof DateTimeImmutable
+            || ! $createdAt instanceof DateTimeImmutable
+            || ! $updatedAt instanceof DateTimeImmutable) {
+            throw new LogicException('Recurring run timestamp metadata is incomplete.');
+        }
+
+        return new RecurringRunView(
+            new RecurringRunId((int) $run->id),
+            (string) $run->uuid,
+            new RecurringTemplateId((int) $run->template_id),
+            (int) $run->template_version_id,
+            $scheduledFor,
+            $this->dateValue($run->getAttribute('scheduled_local_date')),
+            (string) $run->status,
+            is_string($run->last_completed_step) ? $run->last_completed_step : null,
+            $run->invoice_id !== null ? (int) $run->invoice_id : null,
+            $run->delivery_id !== null ? (int) $run->delivery_id : null,
+            (int) $run->attempts,
+            $this->nullableDateTimeValue($run->getAttribute('claimed_at')),
+            $this->nullableDateTimeValue($run->getAttribute('claim_expires_at')),
+            $this->nullableDateTimeValue($run->getAttribute('next_retry_at')),
+            is_string($run->last_error_code) ? $run->last_error_code : null,
+            is_string($run->last_error_detail) ? $run->last_error_detail : null,
+            $createdAt,
+            $updatedAt,
+        );
+    }
+
+    private function nullableDateTimeValue(mixed $value): ?DateTimeImmutable
+    {
+        return $value instanceof DateTimeImmutable ? $value : null;
     }
 
     public function withLockedTemplate(RecurringTemplateId $id, Closure $callback): mixed

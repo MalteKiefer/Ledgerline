@@ -406,15 +406,16 @@ final class FinanceInvoicePersistenceTest extends TestCase
         $this->actingAs($owner);
         $repository = new EloquentRecurringInvoiceRepository;
 
-        $templatePageOne = $repository->templates(1, 1);
-        $templatePageTwo = $repository->templates(2, 1);
-        $runPage = $repository->runs(1, 100);
+        $templatePageOne = $repository->templates([], 1, 1);
+        $templatePageTwo = $repository->templates([], 2, 1);
+        $firstRunPage = $repository->runsForTemplate(new RecurringTemplateId($first['template_id']), [], 1, 100);
+        $secondRunPage = $repository->runsForTemplate(new RecurringTemplateId($second['template_id']), [], 1, 100);
 
-        $this->assertSame(2, $templatePageOne['total']);
-        $this->assertSame($first['template_id'], $templatePageOne['items'][0]['id']);
-        $this->assertSame($second['template_id'], $templatePageTwo['items'][0]['id']);
-        $this->assertSame([$first['run_id'], $second['run_id']], array_column($runPage['items'], 'id'));
-        $this->assertArrayNotHasKey('idempotency_key_hash', $runPage['items'][0]);
+        $this->assertSame(2, $templatePageOne->total);
+        $this->assertSame($first['template_id'], $templatePageOne->items[0]->id->value);
+        $this->assertSame($second['template_id'], $templatePageTwo->items[0]->id->value);
+        $this->assertSame([$first['run_id']], array_map(static fn ($run) => $run->id->value, $firstRunPage->items));
+        $this->assertSame([$second['run_id']], array_map(static fn ($run) => $run->id->value, $secondRunPage->items));
 
         $this->assertSame(
             $first['template_id'],
@@ -433,7 +434,7 @@ final class FinanceInvoicePersistenceTest extends TestCase
 
         foreach ([[0, 25], [1, 0], [1, 101]] as [$page, $perPage]) {
             try {
-                $repository->templates($page, $perPage);
+                $repository->templates([], $page, $perPage);
                 $this->fail('Invalid recurring pagination was accepted.');
             } catch (InvalidArgumentException) {
                 $this->addToAssertionCount(1);
@@ -1155,6 +1156,9 @@ final class FinanceInvoicePersistenceTest extends TestCase
             'created_by' => $ownerId,
             'created_at' => $now,
         ]);
+        DB::table('finance_recurring_invoice_templates')
+            ->where('id', $templateId)
+            ->update(['current_version_id' => $templateVersionId]);
         $runUuid = sprintf('018f4ca3-224d-7d8d-9f06-%012d', $suffix);
         $runId = (int) DB::table('finance_recurring_invoice_runs')->insertGetId([
             'user_id' => $ownerId,

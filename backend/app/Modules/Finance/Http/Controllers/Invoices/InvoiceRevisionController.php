@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Http\Controllers\Invoices;
 
 use App\Models\User;
+use App\Modules\Finance\Http\Resources\InvoiceRevisionResource;
 use App\Modules\Finance\Infrastructure\Persistence\Models\DocumentRevisionRecord;
 use App\Modules\Finance\Infrastructure\Persistence\Models\InvoiceRecord;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\HeaderUtils;
@@ -18,28 +20,29 @@ final class InvoiceRevisionController
 {
     private const string MAX_REVISION_ID = '9223372036854775807';
 
+    public function index(Request $request, string $invoice): JsonResponse
+    {
+        $ownerId = $this->ownerId($request);
+        $invoiceRecord = $this->ownedInvoiceByUuid($ownerId, $invoice);
+
+        $revisions = DocumentRevisionRecord::query()
+            ->where('user_id', $ownerId)
+            ->where('document_series_id', (int) $invoiceRecord->document_series_id)
+            ->orderByDesc('revision_number')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (DocumentRevisionRecord $revision): array => (new InvoiceRevisionResource($revision, $invoice))->resolve($request))
+            ->all();
+
+        return response()->json(array_values($revisions));
+    }
+
     public function __invoke(Request $request, string $invoice, string $revision): StreamedResponse
     {
         $request->validate(['download' => ['sometimes', 'boolean']]);
         $revisionId = $this->revisionId($revision);
-        $owner = $request->user();
-        if (! $owner instanceof User) {
-            abort(401);
-        }
-        $ownerId = (int) $owner->id;
-        $invoiceRecord = InvoiceRecord::query()
-            ->select('finance_invoices.*')
-            ->join(
-                'finance_document_series',
-                'finance_document_series.id',
-                '=',
-                'finance_invoices.document_series_id',
-            )
-            ->where('finance_invoices.user_id', $ownerId)
-            ->where('finance_document_series.user_id', $ownerId)
-            ->where('finance_invoices.uuid', $invoice)
-            ->where('finance_document_series.document_type', 'invoice')
-            ->firstOrFail();
+        $ownerId = $this->ownerId($request);
+        $invoiceRecord = $this->ownedInvoiceByUuid($ownerId, $invoice);
 
         $document = DocumentRevisionRecord::query()
             ->where('user_id', $ownerId)
@@ -80,6 +83,33 @@ final class InvoiceRevisionController
                 'ETag' => '"'.$sha256.'"',
             ],
         );
+    }
+
+    private function ownerId(Request $request): int
+    {
+        $owner = $request->user();
+        if (! $owner instanceof User) {
+            abort(401);
+        }
+
+        return (int) $owner->id;
+    }
+
+    private function ownedInvoiceByUuid(int $ownerId, string $uuid): InvoiceRecord
+    {
+        return InvoiceRecord::query()
+            ->select('finance_invoices.*')
+            ->join(
+                'finance_document_series',
+                'finance_document_series.id',
+                '=',
+                'finance_invoices.document_series_id',
+            )
+            ->where('finance_invoices.user_id', $ownerId)
+            ->where('finance_document_series.user_id', $ownerId)
+            ->where('finance_invoices.uuid', $uuid)
+            ->where('finance_document_series.document_type', 'invoice')
+            ->firstOrFail();
     }
 
     private function verifiedBytes(string $path, string $sha256): string
