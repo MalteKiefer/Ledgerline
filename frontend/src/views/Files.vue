@@ -1367,8 +1367,13 @@ const layout = ref<'grid' | 'list'>('list');
 // and mixing them by size puts an empty folder between two documents.
 const SORT_KEYS = ['name', 'size', 'modified', 'type'] as const;
 type SortKey = (typeof SORT_KEYS)[number];
-const sortKey = ref<SortKey>((localStorage.getItem('ll_files_sort') as SortKey) || 'modified');
-const sortAsc = ref(localStorage.getItem('ll_files_sort_asc') === '1');
+const sortKey = ref<SortKey>((localStorage.getItem('ll_files_sort') as SortKey) || 'name');
+// Matches setSort's own convention: name/type default ascending (A-Z), size/modified default descending.
+const sortAsc = ref(
+  localStorage.getItem('ll_files_sort_asc') != null
+    ? localStorage.getItem('ll_files_sort_asc') === '1'
+    : sortKey.value === 'name' || sortKey.value === 'type',
+);
 
 function setSort(k: SortKey) {
   // Same column twice reverses it; a new column starts in the direction that

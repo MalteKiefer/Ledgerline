@@ -519,6 +519,9 @@ Kind regards
     'quote_mail_failed' => 'Could not send — check the company SMTP and the recipient.',
     'print_title_quote' => 'Quote',
     'valid_until' => 'Valid until',
+    'quote_number' => 'Quote no.',
+    'quote_thanks_line' => 'Thank you for your interest.',
+    'quote_valid_note' => 'This quote is valid until :date.',
 
     // Invoice/payment/recurring module (finance-v2 preview).
     'payments_title' => 'Payments',
