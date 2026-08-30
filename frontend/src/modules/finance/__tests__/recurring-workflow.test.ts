@@ -86,7 +86,7 @@ describe('recurring run retry', () => {
     await wrapper.get('button[data-action="retry"]').trigger('click');
     await flushPromises();
 
-    expect(fetchMock.mock.calls[1]![0]).toBe(`/api/v1/finance-v2/recurring-invoice-runs/${runId}/retry`);
+    expect(fetchMock.mock.calls[1]![0]).toBe(`/api/v1/finance/recurring-invoice-runs/${runId}/retry`);
     expect(wrapper.text()).toContain('Pending');
     expect(wrapper.text()).not.toContain('invoice_finalization_conflict');
   });

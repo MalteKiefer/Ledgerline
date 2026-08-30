@@ -199,6 +199,7 @@ return [
     'inbox_upload' => 'Capture documents',
     'upload_receipt' => 'Upload receipt',
     'upload_invoice' => 'Upload invoice',
+    'pdf_upload_moved' => 'This drop-a-PDF invoice upload has been retired. Create the invoice on the new Invoices page instead.',
     'upload_drop_receipt' => 'Receipt (incoming)',
     'upload_drop_receipt_hint' => 'PDF or image — recognised and matched',
     'upload_drop_invoice' => 'Invoice (outgoing)',

@@ -10,8 +10,8 @@ import type {
   RecurringInvoiceTemplateVersionInput,
 } from '@spa/modules/finance/models/recurring';
 
-const BASE = '/api/v1/finance-v2/recurring-invoice-templates';
-const RUNS_BASE = '/api/v1/finance-v2/recurring-invoice-runs';
+const BASE = '/api/v1/finance/recurring-invoice-templates';
+const RUNS_BASE = '/api/v1/finance/recurring-invoice-runs';
 
 export const RECURRING_ERROR_CODES = [
   'idempotency_conflict',

@@ -20,6 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -259,14 +260,46 @@ class FinanceRelationalTest extends TestCase
         $this->assertSame(2, BankTransaction::query()->count());
     }
 
-    // Client-uploaded, per-invoice PDF storage (with its owner-scoped streaming)
-    // used to be tested here against the legacy FinanceController::
-    // uploadInvoicePdf/invoicePdf routes, now deleted (Task 17 cutover).
-    // finance-v2 has no client-writable PDF path at all -- every invoice PDF is
-    // server-rendered and stored by CreateInvoiceDraftFromSource's finalize
-    // pipeline, eliminating this entire mechanism (and the IDOR surface it
-    // carried) by design; its owner-scoped streaming is covered by
-    // tests/Feature/FinanceModule/InvoicePdfTest.php.
+    // Client-uploaded, per-invoice PDF storage used to be tested here against
+    // the legacy FinanceController::uploadInvoicePdf route, now deleted (Task
+    // 17 cutover). finance-v2 has no client-writable PDF path at all -- every
+    // invoice PDF is server-rendered and stored by CreateInvoiceDraftFromSource's
+    // finalize pipeline, eliminating this entire mechanism (and the IDOR
+    // surface it carried) by design; its owner-scoped streaming is covered by
+    // tests/Feature/FinanceModule/InvoicePdfTest.php. Streaming a PRE-CUTOVER
+    // invoice's own already-stored PDF is still possible (GoBD requires it
+    // stay reachable) -- see test_legacy_invoice_pdf_is_readable_but_never_writable().
+
+    public function test_legacy_invoice_pdf_is_readable_but_never_writable(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+
+        $path = 'invoices/'.Str::uuid()->toString();
+        Storage::disk(config('files.disk'))->put($path, '%PDF-1.4 pre-cutover bytes');
+        $inv = Invoice::create([
+            'status' => 'sent', 'issue_date' => '2026-02-01', 'currency' => 'EUR', 'imported' => false,
+            'customer' => ['name' => 'ACME'], 'lines' => [['qty' => 1, 'unitPrice' => 100, 'vatRate' => 19]],
+        ]);
+        // pdf_path is server-managed, never mass-assignable (see Invoice's own
+        // docblock) -- set it the same way the deleted uploadInvoicePdf() did.
+        $inv->forceFill(['pdf_path' => $path])->save();
+
+        $this->get(route('finance.invoices.pdf', $inv->id))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+
+        // Owner-scoped: another user gets 404, not the bytes.
+        $this->actingAs(User::factory()->create());
+        $this->get(route('finance.invoices.pdf', $inv->id))->assertNotFound();
+
+        // No write route exists for it any more -- only GET is registered.
+        $this->assertFalse(Route::has('finance.invoices.pdf.upload'));
+        $this->assertFalse(Route::has('api.finance.invoices.pdf.upload'));
+        $this->assertFalse(Route::has('api.finance.invoices.store'));
+    }
 
     public function test_receipt_attach_stream_and_delete(): void
     {

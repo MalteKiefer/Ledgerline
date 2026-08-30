@@ -285,6 +285,11 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/finance/time-entries/{entry}', [FinanceProjectPlanController::class, 'destroyTime'])->whereNumber('entry')->middleware('throttle:600,1')->name('api.finance.time-entries.destroy');
             Route::post('/finance/projects/{project}/invoice-time', [FinanceProjectPlanController::class, 'invoiceTime'])->whereNumber('project')->middleware('throttle:120,1')->name('api.finance.projects.invoice-time');
             Route::post('/finance/quotes/{quote}/project', [FinanceProjectPlanController::class, 'projectFromQuote'])->whereNumber('quote')->middleware('throttle:120,1')->name('api.finance.quotes.project');
+            // Read-only: a pre-cutover invoice's own PDF (and, per its GoBD
+            // correction trail, one historical version's own PDF). whereNumber
+            // keeps this disambiguated from the finance-v2 uuid-scoped
+            // /finance/invoices/{invoice}/... routes at the same path shape.
+            Route::get('/finance/invoices/{invoice}/pdf', [FinanceController::class, 'legacyInvoicePdf'])->whereNumber('invoice')->middleware('throttle:3000,1')->name('api.finance.invoices.legacy-pdf');
             Route::post('/finance/categories', [FinanceController::class, 'storeCategory'])->middleware('throttle:600,1')->name('api.finance.categories.store');
             Route::put('/finance/categories/{category}', [FinanceController::class, 'updateCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('api.finance.categories.update');
             Route::delete('/finance/categories/{category}', [FinanceController::class, 'destroyCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('api.finance.categories.destroy');

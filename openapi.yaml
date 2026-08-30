@@ -7187,6 +7187,31 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /finance/invoices/{invoice}/pdf:
+    get:
+      tags: [Finance]
+      operationId: financeLegacyInvoicePdf
+      summary: Stream a pre-cutover (legacy) invoice's own stored PDF
+      description: >
+        Read-only survivor of the legacy invoice write surface removed in the
+        Task 17 cutover: GoBD requires an already-issued invoice's document
+        stay reachable for the statutory retention period, so this streams the
+        exact bytes stored before the cutover. `invoice` is the legacy
+        `invoices.id` (a plain integer, never a finance-v2 uuid). With
+        `version_seq` it streams that GoBD correction-trail version's own PDF
+        instead of the current one. No corresponding write route exists.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: integer } }
+        - { name: version_seq, in: query, required: false, schema: { type: integer, minimum: 1 }, description: "Stream this versions[].seq entry's own PDF instead of the current invoice PDF." }
+        - { name: download, in: query, required: false, schema: { type: boolean }, description: "true → Content-Disposition: attachment; default inline." }
+      responses:
+        "200": { description: PDF bytes., content: { application/pdf: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /finance/payments:
     get:
       tags: [Finance]

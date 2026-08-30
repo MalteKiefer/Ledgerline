@@ -9,8 +9,8 @@ import type {
   RecordPaymentInput,
 } from '@spa/modules/finance/models/payment';
 
-const BASE = '/api/v1/finance-v2/payments';
-const ALLOCATIONS_BASE = '/api/v1/finance-v2/payment-allocations';
+const BASE = '/api/v1/finance/payments';
+const ALLOCATIONS_BASE = '/api/v1/finance/payment-allocations';
 
 export const PAYMENT_ERROR_CODES = [
   'allocation_already_reversed',

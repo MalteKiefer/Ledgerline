@@ -744,6 +744,62 @@ class FinanceController extends Controller
     // /api/v1/finance/invoices/*). The legacy invoices table and model stay
     // solely as historical record -- LegacyInvoiceReadProjection still reads
     // it for Home/reports, and it is never written to again.
+    //
+    // One read-only exception: streaming a pre-cutover invoice's own PDF
+    // (and, per its GoBD correction trail, one of its historical versions'
+    // own PDF). GoBD requires an already-issued invoice's exact document stay
+    // reachable for the statutory retention period -- losing the ability to
+    // VIEW a historical PDF just because it predates this cutover would be a
+    // real compliance regression, not a UI nicety. Nothing here ever writes
+    // to the invoice; it is the same blob-serving logic the deleted
+    // invoicePdf() had, kept deliberately narrow to GET.
+    public function legacyInvoicePdf(Request $request, Invoice $invoice): StreamedResponse
+    {
+        $versionSeq = $request->filled('version_seq') ? $request->integer('version_seq') : null;
+        if ($versionSeq !== null) {
+            $path = $this->safeBlobPath($this->legacyVersionPdfPath($invoice, $versionSeq));
+            $label = $this->legacyVersionLabel($invoice, $versionSeq) ?? ($invoice->number ?? 'invoice');
+        } else {
+            $path = $this->safeBlobPath($invoice->pdf_path);
+            $label = $invoice->number ?? 'invoice';
+        }
+        if ($path === null || ! $this->fs()->exists($path)) {
+            abort(404);
+        }
+
+        return $this->fs()->response($path, $this->safeName($label.'.pdf'), [
+            'Content-Type' => 'application/pdf',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, max-age=3600',
+        ], $request->boolean('download') ? 'attachment' : 'inline');
+    }
+
+    private function legacyVersionPdfPath(Invoice $invoice, int $seq): ?string
+    {
+        foreach (is_array($invoice->versions) ? $invoice->versions : [] as $entry) {
+            if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $seq) {
+                $pdf = $entry['pdf'] ?? null;
+
+                return is_string($pdf) ? $pdf : null;
+            }
+        }
+
+        return null;
+    }
+
+    private function legacyVersionLabel(Invoice $invoice, int $seq): ?string
+    {
+        foreach (is_array($invoice->versions) ? $invoice->versions : [] as $entry) {
+            if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $seq) {
+                $label = $entry['label'] ?? null;
+
+                return is_string($label) && $label !== '' ? $label : null;
+            }
+        }
+
+        return null;
+    }
 
     /**
      * Mail a quote to the customer.

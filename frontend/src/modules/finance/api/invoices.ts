@@ -8,7 +8,7 @@ import type {
   InvoiceRevision,
 } from '@spa/modules/finance/models/invoice';
 
-const BASE = '/api/v1/finance-v2/invoices';
+const BASE = '/api/v1/finance/invoices';
 
 export const INVOICE_ERROR_CODES = [
   'credit_note_cannot_be_cancelled',

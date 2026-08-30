@@ -199,6 +199,7 @@ return [
     'inbox_upload' => 'Belege erfassen',
     'upload_receipt' => 'Beleg hochladen',
     'upload_invoice' => 'Rechnung hochladen',
+    'pdf_upload_moved' => 'Der Rechnungs-PDF-Upload per Drag & Drop wurde entfernt. Erstelle die Rechnung stattdessen auf der neuen Rechnungsseite.',
     'upload_drop_receipt' => 'Beleg (Eingang)',
     'upload_drop_receipt_hint' => 'PDF oder Bild — wird erkannt und zugeordnet',
     'upload_drop_invoice' => 'Rechnung (Ausgang)',

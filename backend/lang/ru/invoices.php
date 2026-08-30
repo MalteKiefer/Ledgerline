@@ -199,6 +199,7 @@ return [
     'inbox_upload' => 'Документы захватить',
     'upload_receipt' => 'Загрузить чек',
     'upload_invoice' => 'Загрузить счёт',
+    'pdf_upload_moved' => 'Загрузка счёта через перетаскивание PDF отключена. Создайте счёт на новой странице «Счета».',
     'upload_drop_receipt' => 'Чек (входящий)',
     'upload_drop_receipt_hint' => 'PDF или изображение — распознаётся и привязывается',
     'upload_drop_invoice' => 'Счёт (исходящий)',
