@@ -182,3 +182,65 @@ reference resolution, and checksums, and calls `LegacyProjectMapper` without
 duplicating its parsing/mapping rules. The frontend-cutover plan mounts
 `routes.ts` and switches the canonical API alias. The legacy-removal plan
 removes old project code only after the rollback/parity window closes.
+
+## Verification record (Task 14, 2026-08-30)
+
+All commands below were run from a clean working tree at the end of Task 13
+(commit `b62c33ef`), plus this task's own doc/checkbox update.
+
+- `cd backend && FILES_DISK=local php artisan test tests/Feature/FinanceModule tests/Unit/Modules/Finance tests/Feature/FinanceProjectPlanTest.php tests/Feature/FinanceRelationalTest.php tests/Feature/FinanceScopeTest.php tests/Feature/FinanceQuoteTest.php tests/Feature/FilesRelationalTest.php tests/Feature/NotesFeatureTest.php tests/Feature/Guards/ApiSurfaceGuardTest.php`
+  (run via `php -d memory_limit=1024M vendor/bin/phpunit ...` — `php artisan test`
+  re-execs a child PHP process on this machine that drops CLI `-d` flags and
+  is capped at the shared 128M `php.ini` `memory_limit`, too low for
+  `InvoicePdfTest`'s dompdf rendering; `vendor/bin/phpunit` run directly
+  honors the flag): **957 tests, 937 assertions groups, 5950 assertions,
+  PASS**.
+- `vendor/bin/pint --test app/Modules/Finance tests/Feature/FinanceModule tests/Unit/Modules/Finance`: **PASS**.
+- `vendor/bin/phpstan analyse app/Modules/Finance --memory-limit=1G`: **0 errors**.
+- `cd frontend && npm run test:js`: **31 files, 409 tests, PASS**.
+- `npm run typecheck` (`vue-tsc --noEmit`): **PASS, 0 errors**.
+- `npm run lint` (`eslint src`): **PASS, 0 warnings**.
+- `npm run build`: **succeeded** (only the pre-existing large-chunk size
+  advisory on unrelated bundles, e.g. `es-*.js`/`ServerDetail-*.js`).
+- `cd backend && FILES_DISK=local php -d memory_limit=1024M vendor/bin/phpunit`
+  (full suite, same re-exec workaround as above): **2367 tests, 2330 passed,
+  11487 assertions, 34 skipped, 1 risky, 3 failed**. All three failures are
+  environment/pre-existing and outside this plan's changes — confirmed by
+  `git diff --stat a6455fac..HEAD -- <file>` showing **zero diff** for every
+  file each failure touches, where `a6455fac` is the commit this plan's
+  Task 12 work started from:
+  - `Tests\Unit\Support\BinaryProcessTest::test_run_returns_stdout_on_success` —
+    expects LF but gets CRLF output from a shelled-out process on this
+    Windows host; a Windows/Unix line-ending difference in a generic process
+    helper, unrelated to Finance.
+  - `Tests\Feature\FinanceModule\InvoiceDunningTest::test_overdue_reminder_is_idempotent_per_level_and_records_one_successful_history_entry` —
+    expects `daysOverdue = 28`, gets `29`, in the (pre-existing, non-Projects)
+    invoice dunning/reminder feature. Not touched by Tasks 12–13.
+  - `Tests\Feature\MailOriginWriteTest::test_delete_after_import_removes_origin_uids` —
+    Mail-module test, unrelated to Finance entirely.
+
+  No Finance Projects file, and no file either failing test or its production
+  code depends on, was modified by this plan (`git diff --stat` is empty for
+  all three), so each failure is proven pre-existing rather than assumed.
+
+## Downstream handoff
+
+- **Quote integration**: `ProjectFromQuoteTarget` is implemented and tested
+  (Task 7). The quote plan must still resolve how its single `converted`
+  quote state represents "one accepted revision may independently produce a
+  project and/or invoice" before enabling quote-to-project UI; this plan
+  does not decide that.
+- **Invoices/payments**: `ProjectToInvoicePort` is implemented with a
+  temporary `LegacyInvoiceDraftFromTimeAdapter` (Task 6). The invoice/payments
+  rewrite must supply a modular adapter retaining the same port and take over
+  invoice totals, finalization, numbering, PDF, stock, payments, dunning, and
+  cancellation.
+- **Global legacy migration**: `LegacyProjectMapper` (Task 13) is ready to be
+  called by the global migration plan per project/owner. It performs no
+  writes itself.
+- **Frontend cutover**: `frontend/src/modules/finance/projects/routes.ts`
+  (Task 12) is built, tested, and exported but not mounted. The cutover plan
+  mounts it, switches the canonical API alias, and removes project
+  consumers of `/finance/data`.
+- **Legacy removal**: deferred entirely to `finance-legacy-removal`, per
+  cutover gate 9 above.
