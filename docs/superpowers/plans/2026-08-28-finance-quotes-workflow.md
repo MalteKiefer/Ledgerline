@@ -755,19 +755,19 @@ git commit -m "feat(finance): add modular quote client state"
 - Consumes: Task 11 store and existing shared UI primitives.
 - Produces: unmounted routes for list/detail/edit, accessible workflow controls, immutable revision/PDF history, and explicit async/conflict states.
 
-- [ ] **Step 1: Write failing component/page tests**
+- [x] **Step 1: Write failing component/page tests**
 
 With jsdom and Vue Test Utils, cover URL filters/pagination, create/edit strings, debounced server preview, server totals, publish-before-send, failed save preventing publish/send, version conflict replacing current data and requiring explicit retry, expired/replaced badges, pending-draft restrictions, revision PDF links, mail queued/sent/failed states, same-key retry, duplicate navigation, and conversion navigation from `InvoiceDraftTarget`.
 
-- [ ] **Step 2: Implement pages and components**
+- [x] **Step 2: Implement pages and components**
 
 `QuoteEditPage` never uses `printComputeTotals`, `html2canvas`, `jspdf`, or client PDF upload. It shows the last server preview and marks totals stale while inputs differ. `QuoteDetailPage` renders current effective state and a timeline of every revision with number/label, change reason, hash, publication time, superseded relation, delivery attempts, and immutable PDF view/download links.
 
-- [ ] **Step 3: Export but do not mount routes**
+- [x] **Step 3: Export but do not mount routes**
 
 `routes.ts` exports children for `finance/quotes`, `finance/quotes/new`, `finance/quotes/:quote`, and `finance/quotes/:quote/edit`. Do not modify `frontend/src/router/index.ts` and do not remove the quote section from `Finance.vue`; the later frontend-cutover plan mounts these records after migration controls pass.
 
-- [ ] **Step 4: Run frontend verification**
+- [x] **Step 4: Run frontend verification**
 
 Run:
 
@@ -783,7 +783,7 @@ php artisan test tests/Feature/Guards/TranslationUsageGuardTest.php tests/Featur
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/modules/finance backend/lang/de/invoices.php backend/lang/en/invoices.php backend/lang/ru/invoices.php
@@ -802,15 +802,15 @@ git commit -m "feat(finance): add quote revision interface"
 - Consumes: legacy `finance_quotes`, legacy PDF bytes, foundation `source_type/source_id`, and the new quote commands.
 - Produces: a deterministic per-row mapper and explicit gates for the later resumable migration/cutover plans; it does not run a bulk migration.
 
-- [ ] **Step 1: Write failing legacy fixture tests**
+- [x] **Step 1: Write failing legacy fixture tests**
 
 Cover unnumbered draft, numbered sent, accepted, declined, expired-by-date, soft-deleted, converted invoice/project references, missing PDF, invalid MIME/path, foreign partner/product links, unsupported numeric scale, unknown currency, server-total mismatch, and repeated mapping of the same `(user_id, source_type, source_id)`.
 
-- [ ] **Step 2: Implement deterministic mapping**
+- [x] **Step 2: Implement deterministic mapping**
 
 Map `source_type=legacy.finance_quote` and `source_id={legacy id}`. Unnumbered rows become mutable drafts. Numbered rows become one published revision preserving number, timestamps, snapshot, original PDF path, and verified SHA-256. Conversion IDs become unresolved external references for the later invoice/project migration. Convert legacy decimal strings and JSON numeric tokens without introducing floats; return a blocking diagnostic when exact scale or authoritative totals cannot be preserved.
 
-- [ ] **Step 3: Document compatibility and activation gates**
+- [x] **Step 3: Document compatibility and activation gates**
 
 Document schemas, commands, route contracts, error codes, lock order, idempotency semantics, SMTP residual risk, PDF retention, and these later cutover prerequisites:
 
@@ -828,7 +828,7 @@ Document schemas, commands, route contracts, error codes, lock order, idempotenc
    legacy QuoteMail, and legacy runtime routes only in finance-legacy-removal.
 ```
 
-- [ ] **Step 4: Run mapper and documentation checks**
+- [x] **Step 4: Run mapper and documentation checks**
 
 Run:
 
@@ -840,7 +840,7 @@ vendor/bin/pint --test app/Modules/Finance/Infrastructure/Compatibility tests/Fe
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/Modules/Finance/Infrastructure/Compatibility backend/tests/Feature/FinanceModule/Quotes/LegacyQuoteMapperTest.php docs/finance/quotes-workflow.md
@@ -857,7 +857,7 @@ git commit -m "docs(finance): define quote migration boundary"
 - Consumes: Tasks 1–13.
 - Produces: verified quote-module handoff for projects, invoice/payments, migration, frontend cutover, and legacy removal.
 
-- [ ] **Step 1: Run focused backend suites**
+- [x] **Step 1: Run focused backend suites**
 
 Run:
 
@@ -868,7 +868,7 @@ FILES_DISK=local php artisan test tests/Feature/FinanceModule tests/Unit/Modules
 
 Expected: PASS.
 
-- [ ] **Step 2: Run backend quality gates**
+- [x] **Step 2: Run backend quality gates**
 
 Run:
 
@@ -880,7 +880,7 @@ vendor/bin/phpstan analyse app/Modules/Finance --memory-limit=1G
 
 Expected: both commands exit zero.
 
-- [ ] **Step 3: Run frontend gates**
+- [x] **Step 3: Run frontend gates**
 
 Run:
 
@@ -894,17 +894,17 @@ yarn build
 
 Expected: all commands exit zero.
 
-- [ ] **Step 4: Run the full backend suite**
+- [x] **Step 4: Run the full backend suite**
 
 Run: `cd backend && FILES_DISK=local php artisan test`
 
 Expected: PASS. If an unrelated pre-existing environment failure remains, record the exact test, environment requirement, and proof that the same failure occurs on this plan's base commit; do not mark this step complete without that evidence.
 
-- [ ] **Step 5: Update verification record and completed checkboxes**
+- [x] **Step 5: Update verification record and completed checkboxes**
 
 Record command, date, test/assertion counts, formatter/static-analysis results, frontend results, and clean status in `docs/finance/quotes-workflow.md`. Mark a checkbox in this plan only after its command has passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/finance/quotes-workflow.md docs/superpowers/plans/2026-08-28-finance-quotes-workflow.md

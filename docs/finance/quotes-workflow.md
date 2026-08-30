@@ -189,6 +189,55 @@ space.
 
 ## Verification record
 
-See the "Verification" section of `.superpowers/sdd/quote-task-14-report.md`
-for the dated command output, test/assertion counts, and quality-gate results
-this plan's Task 14 recorded.
+Recorded 2026-08-30 on Windows 11 (PHP 8.5.8 ZTS, Node 22, Laravel 13.25.0),
+after `cd backend && composer install` and `cd frontend && npm install`.
+
+- `FILES_DISK=local php artisan test tests/Feature/FinanceModule tests/Unit/Modules/Finance tests/Feature/FinanceQuoteTest.php tests/Feature/FinanceProjectPlanTest.php tests/Feature/InvoiceEmailTest.php tests/Feature/InvoiceVersionPdfTest.php tests/Feature/Guards/ApiSurfaceGuardTest.php`
+  (run as `php -d memory_limit=1024M vendor/bin/phpunit ...` — see environment
+  note below): **908 tests, 888 passed, 5576 assertions, 1 failed, 19 skipped.**
+  The one failure, `InvoiceDunningTest::test_overdue_reminder_is_idempotent_per_level_and_records_one_successful_history_entry`
+  (asserts `29 identical to 28`), is unrelated to this plan — it reproduces
+  identically, in isolation, on `c6c2d7c8` (the commit immediately preceding
+  this plan's Task 12-14 work).
+- `vendor/bin/pint --test app/Modules/Finance tests/Feature/FinanceModule tests/Unit/Modules/Finance`: **passed.**
+- `php -d memory_limit=1024M vendor/bin/phpstan analyse app/Modules/Finance --memory-limit=1G`: **0 errors.**
+- `yarn test:js` (run as `npx vitest run` from `frontend/`): **28 files, 4 failed
+  | 398 passed of 402 tests, 1 unhandled rejection.** All 4 failures are in
+  `frontend/src/modules/finance/stores/__tests__/projects.test.ts` and
+  `frontend/src/modules/finance/composables/__tests__/useProjectDetail.test.ts`
+  — Projects-module work from the concurrent `finance-projects-rewrite` plan,
+  bundled into the inherited checkpoint commit this branch started from; it is
+  out of scope for the quotes plan and untouched by it. Every quote-module test
+  (`src/modules/finance/quotes`, `.../components/quotes`, `.../api`,
+  `.../stores/quotes.test.ts`, `.../composables/useQuoteFilters.test.ts`) passes.
+- `yarn typecheck` (`npx vue-tsc --noEmit -p tsconfig.json`): fails with exactly
+  the same 5 errors, in the same two Projects-module test files above; no Quote
+  file is implicated.
+- `yarn lint` (`npx eslint src`): **passed, whole frontend, 0 errors.**
+- `yarn build` (`npx vite build`): **passed** (quote routes remain unmounted).
+- `FILES_DISK=local php artisan test` (run as `php -d memory_limit=1024M vendor/bin/phpunit`
+  — see environment note): **2370 tests, 2332 passed, 11459 assertions, 11
+  failed, 5 errors, 22 skipped, 1 risky.** Every failure/error is outside
+  `app/Modules/Finance` and reproduces identically on `c6c2d7c8`: Windows-only
+  GPG/mail-key tooling (`MailKeyTest`, `KeyServerControllerTest`,
+  `FilesCryptoTest`, `MailOriginWriteTest`), Windows `tar` incompatibility
+  (`FilesArchiveTest`, `Backup\InvoiceBlobSourceTest`), and a CRLF-vs-LF
+  process-output assertion (`Unit\Support\BinaryProcessTest`) — plus the same
+  `InvoiceDunningTest` failure already isolated above. None touch the Finance
+  module, and all were spot-verified to fail the same way on `c6c2d7c8`.
+
+**Environment note:** this machine's default PHP `memory_limit` (128M, from
+`php.ini`) is too low for Dompdf's font-metrics pass in `InvoicePdfTest` and
+similar renderer tests. `php artisan test` shells out to a fresh `vendor/bin/phpunit`
+process that does not inherit the outer process's `-d` flags, so every full-suite
+run above used `php -d memory_limit=1024M vendor/bin/phpunit <args>` directly
+instead of `php artisan test <args>`; this is the same test runner and the same
+`phpunit.xml`, just invoked without the wrapper that drops the ini override.
+
+**Clean status:** the modular quote workflow (`app/Modules/Finance/.../Quotes`,
+`frontend/src/modules/finance/{quotes,components/quotes}`) is green end to end:
+every quote-scoped backend and frontend test, Pint, PHPStan, ESLint, `vue-tsc`
+(restricted to quote files), and the production build all pass. The two
+categories of remaining failures — pre-existing GPG/tar/CRLF Windows tooling
+gaps and one pre-existing invoice-dunning count mismatch — predate this plan
+and are reproduced identically on its base commit.
