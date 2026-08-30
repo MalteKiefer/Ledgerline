@@ -24,17 +24,17 @@ final class InvoiceApiTest extends TestCase
     public function test_invoice_routes_are_additive_uuid_scoped_and_protected_by_the_finance_stack(): void
     {
         $routes = [
-            'api.finance-v2.invoices.index' => ['GET', 'api/v1/finance-v2/invoices'],
-            'api.finance-v2.invoices.store' => ['POST', 'api/v1/finance-v2/invoices'],
-            'api.finance-v2.invoices.show' => ['GET', 'api/v1/finance-v2/invoices/{invoice}'],
-            'api.finance-v2.invoices.update' => ['PATCH', 'api/v1/finance-v2/invoices/{invoice}'],
-            'api.finance-v2.invoices.destroy' => ['DELETE', 'api/v1/finance-v2/invoices/{invoice}'],
-            'api.finance-v2.invoices.finalize' => ['POST', 'api/v1/finance-v2/invoices/{invoice}/finalize'],
-            'api.finance-v2.invoices.deliveries.store' => ['POST', 'api/v1/finance-v2/invoices/{invoice}/deliveries'],
-            'api.finance-v2.invoices.reminders.store' => ['POST', 'api/v1/finance-v2/invoices/{invoice}/reminders'],
-            'api.finance-v2.invoices.cancel' => ['POST', 'api/v1/finance-v2/invoices/{invoice}/cancel'],
-            'api.finance-v2.invoices.revisions.index' => ['GET', 'api/v1/finance-v2/invoices/{invoice}/revisions'],
-            'api.finance-v2.invoices.revisions.pdf' => ['GET', 'api/v1/finance-v2/invoices/{invoice}/revisions/{revision}/pdf'],
+            'api.finance-v2.invoices.index' => ['GET', 'api/v1/finance/invoices'],
+            'api.finance-v2.invoices.store' => ['POST', 'api/v1/finance/invoices'],
+            'api.finance-v2.invoices.show' => ['GET', 'api/v1/finance/invoices/{invoice}'],
+            'api.finance-v2.invoices.update' => ['PATCH', 'api/v1/finance/invoices/{invoice}'],
+            'api.finance-v2.invoices.destroy' => ['DELETE', 'api/v1/finance/invoices/{invoice}'],
+            'api.finance-v2.invoices.finalize' => ['POST', 'api/v1/finance/invoices/{invoice}/finalize'],
+            'api.finance-v2.invoices.deliveries.store' => ['POST', 'api/v1/finance/invoices/{invoice}/deliveries'],
+            'api.finance-v2.invoices.reminders.store' => ['POST', 'api/v1/finance/invoices/{invoice}/reminders'],
+            'api.finance-v2.invoices.cancel' => ['POST', 'api/v1/finance/invoices/{invoice}/cancel'],
+            'api.finance-v2.invoices.revisions.index' => ['GET', 'api/v1/finance/invoices/{invoice}/revisions'],
+            'api.finance-v2.invoices.revisions.pdf' => ['GET', 'api/v1/finance/invoices/{invoice}/revisions/{revision}/pdf'],
         ];
 
         foreach ($routes as $name => [$method, $uri]) {
@@ -49,11 +49,11 @@ final class InvoiceApiTest extends TestCase
             $this->assertContains('throttle:120,1', $middleware);
         }
 
-        $this->getJson('/api/v1/finance-v2/invoices')->assertUnauthorized();
+        $this->getJson('/api/v1/finance/invoices')->assertUnauthorized();
 
         $disabled = User::factory()->create(['role' => 'user', 'modules' => ['reports']]);
         $disabledToken = $disabled->createToken('device', ['device'])->plainTextToken;
-        $this->withToken($disabledToken)->getJson('/api/v1/finance-v2/invoices')->assertForbidden();
+        $this->withToken($disabledToken)->getJson('/api/v1/finance/invoices')->assertForbidden();
     }
 
     public function test_create_requires_exact_input_and_never_accepts_workflow_fields(): void
@@ -63,7 +63,7 @@ final class InvoiceApiTest extends TestCase
         $payload['status'] = 'paid';
         $payload['number'] = 'RE-2026-9999';
 
-        $response = $this->withToken($token)->postJson('/api/v1/finance-v2/invoices', $payload)
+        $response = $this->withToken($token)->postJson('/api/v1/finance/invoices', $payload)
             ->assertCreated()
             ->assertJsonPath('status', 'draft')
             ->assertJsonPath('number', null)
@@ -79,7 +79,7 @@ final class InvoiceApiTest extends TestCase
 
         $bad = $this->draftPayload();
         $bad['lines'][0]['quantity'] = 2.5;
-        $this->withToken($token)->postJson('/api/v1/finance-v2/invoices', $bad)
+        $this->withToken($token)->postJson('/api/v1/finance/invoices', $bad)
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['lines.0.quantity']);
     }
@@ -87,21 +87,21 @@ final class InvoiceApiTest extends TestCase
     public function test_list_supports_filters_and_pagination_envelope(): void
     {
         [, $token] = $this->ownerAndToken();
-        $this->withToken($token)->postJson('/api/v1/finance-v2/invoices', $this->draftPayload())->assertCreated();
-        $this->withToken($token)->postJson('/api/v1/finance-v2/invoices', $this->draftPayload())->assertCreated();
+        $this->withToken($token)->postJson('/api/v1/finance/invoices', $this->draftPayload())->assertCreated();
+        $this->withToken($token)->postJson('/api/v1/finance/invoices', $this->draftPayload())->assertCreated();
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/invoices?per_page=1&page=1')
+        $this->withToken($token)->getJson('/api/v1/finance/invoices?per_page=1&page=1')
             ->assertOk()
             ->assertJsonPath('meta.total', 2)
             ->assertJsonPath('meta.per_page', 1)
             ->assertJsonPath('meta.last_page', 2)
             ->assertJsonCount(1, 'data');
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/invoices?status=draft')
+        $this->withToken($token)->getJson('/api/v1/finance/invoices?status=draft')
             ->assertOk()
             ->assertJsonPath('meta.total', 2);
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/invoices?status=sent')
+        $this->withToken($token)->getJson('/api/v1/finance/invoices?status=sent')
             ->assertOk()
             ->assertJsonPath('meta.total', 0);
     }
@@ -110,44 +110,44 @@ final class InvoiceApiTest extends TestCase
     {
         [, $token] = $this->ownerAndToken();
         [, $otherToken] = $this->ownerAndToken();
-        $created = $this->withToken($token)->postJson('/api/v1/finance-v2/invoices', $this->draftPayload())
+        $created = $this->withToken($token)->postJson('/api/v1/finance/invoices', $this->draftPayload())
             ->assertCreated();
         $uuid = $created->json('id');
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/invoices/'.$uuid)
+        $this->withToken($token)->getJson('/api/v1/finance/invoices/'.$uuid)
             ->assertOk()
             ->assertJsonPath('id', $uuid);
 
         app('auth')->forgetGuards();
-        $this->withToken($otherToken)->getJson('/api/v1/finance-v2/invoices/'.$uuid)
+        $this->withToken($otherToken)->getJson('/api/v1/finance/invoices/'.$uuid)
             ->assertNotFound();
     }
 
     public function test_update_and_delete_draft_use_optimistic_versioning(): void
     {
         [, $token] = $this->ownerAndToken();
-        $created = $this->withToken($token)->postJson('/api/v1/finance-v2/invoices', $this->draftPayload())
+        $created = $this->withToken($token)->postJson('/api/v1/finance/invoices', $this->draftPayload())
             ->assertCreated();
         $uuid = $created->json('id');
 
         $payload = $this->draftPayload('Updated line');
         $payload['version'] = 0;
-        $this->withToken($token)->patchJson('/api/v1/finance-v2/invoices/'.$uuid, $payload)
+        $this->withToken($token)->patchJson('/api/v1/finance/invoices/'.$uuid, $payload)
             ->assertOk()
             ->assertJsonPath('version', 1);
 
         $stale = $this->draftPayload();
         $stale['version'] = 0;
-        $this->withToken($token)->patchJson('/api/v1/finance-v2/invoices/'.$uuid, $stale)
+        $this->withToken($token)->patchJson('/api/v1/finance/invoices/'.$uuid, $stale)
             ->assertConflict()
             ->assertJsonPath('error', 'invoice_version_conflict')
             ->assertJsonPath('current.version', 1);
 
-        $this->withToken($token)->deleteJson('/api/v1/finance-v2/invoices/'.$uuid, ['version' => 0])
+        $this->withToken($token)->deleteJson('/api/v1/finance/invoices/'.$uuid, ['version' => 0])
             ->assertConflict();
-        $this->withToken($token)->deleteJson('/api/v1/finance-v2/invoices/'.$uuid, ['version' => 1])
+        $this->withToken($token)->deleteJson('/api/v1/finance/invoices/'.$uuid, ['version' => 1])
             ->assertNoContent();
-        $this->withToken($token)->getJson('/api/v1/finance-v2/invoices/'.$uuid)->assertNotFound();
+        $this->withToken($token)->getJson('/api/v1/finance/invoices/'.$uuid)->assertNotFound();
     }
 
     public function test_finalize_deliver_and_cancel_use_idempotency_and_expose_no_storage_internals(): void
@@ -162,17 +162,17 @@ final class InvoiceApiTest extends TestCase
 
             public function assertDocumentReady(string $path, string $sha256): void {}
         });
-        $created = $this->withToken($token)->postJson('/api/v1/finance-v2/invoices', $this->draftPayload())
+        $created = $this->withToken($token)->postJson('/api/v1/finance/invoices', $this->draftPayload())
             ->assertCreated();
         $uuid = $created->json('id');
 
-        $this->withToken($token)->postJson('/api/v1/finance-v2/invoices/'.$uuid.'/finalize')
+        $this->withToken($token)->postJson('/api/v1/finance/invoices/'.$uuid.'/finalize')
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['idempotency_key']);
 
         $finalized = $this->withToken($token)
             ->withHeader('Idempotency-Key', 'finalize-1')
-            ->postJson('/api/v1/finance-v2/invoices/'.$uuid.'/finalize')
+            ->postJson('/api/v1/finance/invoices/'.$uuid.'/finalize')
             ->assertOk()
             ->assertJsonPath('status', 'finalized')
             ->assertJsonMissingPath('revision.pdf_path')
@@ -182,13 +182,13 @@ final class InvoiceApiTest extends TestCase
 
         $replay = $this->withToken($token)
             ->withHeader('Idempotency-Key', 'finalize-1')
-            ->postJson('/api/v1/finance-v2/invoices/'.$uuid.'/finalize')
+            ->postJson('/api/v1/finance/invoices/'.$uuid.'/finalize')
             ->assertOk();
         $this->assertSame($finalized->json('number'), $replay->json('number'));
 
         $delivery = $this->withToken($token)
             ->withHeader('Idempotency-Key', 'send-1')
-            ->postJson('/api/v1/finance-v2/invoices/'.$uuid.'/deliveries', ['recipient' => 'customer@example.test'])
+            ->postJson('/api/v1/finance/invoices/'.$uuid.'/deliveries', ['recipient' => 'customer@example.test'])
             ->assertStatus(202)
             ->assertJsonPath('kind', 'invoice')
             ->assertJsonPath('recipient', 'customer@example.test')
@@ -197,18 +197,18 @@ final class InvoiceApiTest extends TestCase
 
         $cancelled = $this->withToken($token)
             ->withHeader('Idempotency-Key', 'cancel-1')
-            ->postJson('/api/v1/finance-v2/invoices/'.$uuid.'/cancel')
+            ->postJson('/api/v1/finance/invoices/'.$uuid.'/cancel')
             ->assertCreated()
             ->assertJsonPath('kind', 'credit_note');
         $this->assertNotSame($uuid, $cancelled->json('id'));
 
-        $original = $this->withToken($token)->getJson('/api/v1/finance-v2/invoices/'.$uuid)->assertOk();
+        $original = $this->withToken($token)->getJson('/api/v1/finance/invoices/'.$uuid)->assertOk();
         $this->assertSame('cancelled', $original->json('status'));
         $this->assertSame('29750', $original->json('totals.gross_minor'));
 
         $this->withToken($token)
             ->withHeader('Idempotency-Key', 'cancel-2')
-            ->postJson('/api/v1/finance-v2/invoices/'.$cancelled->json('id').'/cancel')
+            ->postJson('/api/v1/finance/invoices/'.$cancelled->json('id').'/cancel')
             ->assertUnprocessable()
             ->assertJsonPath('error', 'credit_note_cannot_be_cancelled');
     }

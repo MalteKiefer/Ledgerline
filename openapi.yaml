@@ -6972,7 +6972,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/invoices/{invoice}/revisions/{revision}/pdf:
+  /finance/invoices/{invoice}/revisions/{revision}/pdf:
     get:
       tags: [Finance]
       operationId: financeV2InvoiceRevisionPdf
@@ -7018,7 +7018,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/invoices:
+  /finance/invoices:
     get:
       tags: [Finance]
       operationId: financeV2InvoicesIndex
@@ -7052,7 +7052,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/invoices/{invoice}:
+  /finance/invoices/{invoice}:
     get:
       tags: [Finance]
       operationId: financeV2InvoicesShow
@@ -7103,7 +7103,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/invoices/{invoice}/finalize:
+  /finance/invoices/{invoice}/finalize:
     post:
       tags: [Finance]
       operationId: financeV2InvoicesFinalize
@@ -7120,7 +7120,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/invoices/{invoice}/deliveries:
+  /finance/invoices/{invoice}/deliveries:
     post:
       tags: [Finance]
       operationId: financeV2InvoiceDeliveriesCreate
@@ -7138,7 +7138,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/invoices/{invoice}/reminders:
+  /finance/invoices/{invoice}/reminders:
     post:
       tags: [Finance]
       operationId: financeV2InvoiceRemindersCreate
@@ -7156,7 +7156,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/invoices/{invoice}/cancel:
+  /finance/invoices/{invoice}/cancel:
     post:
       tags: [Finance]
       operationId: financeV2InvoicesCancel
@@ -7173,7 +7173,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/invoices/{invoice}/revisions:
+  /finance/invoices/{invoice}/revisions:
     get:
       tags: [Finance]
       operationId: financeV2InvoiceRevisionsIndex
@@ -7187,7 +7187,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/payments:
+  /finance/payments:
     get:
       tags: [Finance]
       operationId: financeV2PaymentsIndex
@@ -7222,7 +7222,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2PaymentUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/payments/{payment}:
+  /finance/payments/{payment}:
     get:
       tags: [Finance]
       operationId: financeV2PaymentsShow
@@ -7236,7 +7236,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/payments/{payment}/suggestions:
+  /finance/payments/{payment}/suggestions:
     get:
       tags: [Finance]
       operationId: financeV2PaymentSuggestionsShow
@@ -7250,7 +7250,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/payments/{payment}/allocations:
+  /finance/payments/{payment}/allocations:
     post:
       tags: [Finance]
       operationId: financeV2PaymentAllocationsCreate
@@ -7278,7 +7278,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2PaymentUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/payment-allocations/{allocation}/reverse:
+  /finance/payment-allocations/{allocation}/reverse:
     post:
       tags: [Finance]
       operationId: financeV2PaymentAllocationsReverse
@@ -7296,7 +7296,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2PaymentUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/recurring-invoice-templates:
+  /finance/recurring-invoice-templates:
     get:
       tags: [Finance]
       operationId: financeV2RecurringInvoiceTemplatesIndex
@@ -7329,7 +7329,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2RecurringUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/recurring-invoice-templates/{template}:
+  /finance/recurring-invoice-templates/{template}:
     get:
       tags: [Finance]
       operationId: financeV2RecurringInvoiceTemplatesShow
@@ -7343,7 +7343,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/recurring-invoice-templates/{template}/versions:
+  /finance/recurring-invoice-templates/{template}/versions:
     post:
       tags: [Finance]
       operationId: financeV2RecurringInvoiceTemplateVersionsCreate
@@ -7363,7 +7363,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2RecurringUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/recurring-invoice-templates/{template}/pause:
+  /finance/recurring-invoice-templates/{template}/pause:
     post:
       tags: [Finance]
       operationId: financeV2RecurringInvoiceTemplatesPause
@@ -7381,7 +7381,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2RecurringUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/recurring-invoice-templates/{template}/resume:
+  /finance/recurring-invoice-templates/{template}/resume:
     post:
       tags: [Finance]
       operationId: financeV2RecurringInvoiceTemplatesResume
@@ -7399,7 +7399,7 @@ paths:
         "422": { $ref: "#/components/responses/FinanceV2RecurringUnprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/recurring-invoice-templates/{template}/runs:
+  /finance/recurring-invoice-templates/{template}/runs:
     get:
       tags: [Finance]
       operationId: financeV2RecurringInvoiceTemplateRunsIndex
@@ -7417,7 +7417,7 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /finance-v2/recurring-invoice-runs/{run}/retry:
+  /finance/recurring-invoice-runs/{run}/retry:
     post:
       tags: [Finance]
       operationId: financeV2RecurringInvoiceRunsRetry
@@ -7801,311 +7801,6 @@ paths:
         "200": { description: "Trashed sets — same keys as /finance/data EXCEPT financeCategories (hard-deleted, not trashable) and standaloneReceipts (not surfaced in trash), each an array of soft-deleted rows.", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /finance/invoices:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceStore
-      summary: Create an invoice
-      description: "Create an owner-scoped invoice row. On create status/type/currency default (draft/invoice/EUR); self-issued invoices are numbered server-side later via /finalize. Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceInput" } } } }
-      responses:
-        "201": { description: Created., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}:
-    put:
-      tags: [Finance]
-      operationId: financeInvoiceUpdate
-      summary: Update an invoice (optimistic concurrency)
-      description: "Per-row update; send `version` for optimistic concurrency (409 on mismatch). Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceInput" } } } }
-      responses:
-        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/VersionConflict" }
-        "422":
-          description: >
-            Standard Laravel validation body ({ message, errors }) OR a GoBD business
-            rejection — a numbered invoice cannot revert to draft ({ error: status_draft_blocked }),
-            or a paid invoice cannot revert to an earlier status ({ error: status_paid_locked };
-            paid is terminal, a correction goes through /storno instead).
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: "#/components/schemas/ValidationError"
-                  - allOf:
-                      - $ref: "#/components/schemas/FinanceError"
-                      - properties: { error: { enum: [status_draft_blocked, status_paid_locked] } }
-        "429": { $ref: "#/components/responses/RateLimited" }
-    delete:
-      tags: [Finance]
-      operationId: financeInvoiceDestroy
-      summary: Soft-delete an invoice
-      description: "Move the invoice to trash (soft delete). Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{id}/restore:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceRestore
-      summary: Restore a trashed invoice
-      description: "Restore a soft-deleted invoice (404 if no trashed invoice with that id is owned by the caller). Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Restored., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422":
-          description: "Cannot restore — the invoice number is now used by a live invoice ({ error: number_conflict })."
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - properties: { error: { enum: [number_conflict] } }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{id}/force:
-    delete:
-      tags: [Finance]
-      operationId: financeInvoiceForce
-      summary: Permanently delete a trashed invoice
-      description: "Permanently delete a trashed invoice and its stored PDF blobs. Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/finalize:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceFinalize
-      summary: Assign the GoBD invoice number (atomic, per-year, idempotent)
-      description: "Server-authoritative GoBD numbering: locks the year's numbered rows, takes max(seq)+1 (never below the configured floor), writes it atomically. Idempotent — an already-numbered invoice is returned unchanged. Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Numbered invoice., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409":
-          description: "Numbering race could not be resolved after retries — retriable. Body { error: number_conflict } (NOT a version conflict)."
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - properties: { error: { enum: [number_conflict] } }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/email:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceEmail
-      summary: Email a finalized invoice's stored PDF to the customer
-      description: >
-        Sends the invoice's stored PDF (pdf_path) to the customer over the user's OWN
-        company SMTP (settings.company company_smtp_*), deliberately independent of
-        the workspace notification SMTP. Only finalized invoices (status sent|paid or
-        already numbered) may be sent. Stamps sent_at without bumping the optimistic
-        version. Throttled 10/min.
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                to: { type: string, format: email, description: "Recipient email; falls back to the customer snapshot email." }
-      responses:
-        "200":
-          description: Sent.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [ok, sent_at]
-                properties:
-                  ok: { type: boolean }
-                  sent_at: { type: string, format: date-time }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422":
-          description: >
-            Business rejection with a machine-readable `error` code (one of
-            not_finalized, no_pdf, no_recipient, no_smtp) — OR, for an invalid `to`
-            address, the standard Laravel validation body { message, errors }.
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - $ref: "#/components/schemas/ValidationError"
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/storno:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceStorno
-      summary: Cancel a finalized invoice with a credit note (Storno / Gutschrift)
-      description: >
-        Creates a NEW invoice with type=credit_note, cancels_invoice_id set to the
-        original, the same customer/partner, the original lines with NEGATED
-        amounts and the same discount terms — so it exactly reverses the original's
-        net/VAT/gross. The credit note runs the same GoBD numbering path (its own
-        number). The original invoice is never edited or deleted (its cancelled
-        state is derived). Only a finalized (sent|paid or numbered), non-credit-note,
-        not-already-cancelled invoice can be cancelled. Throttled 30/min.
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "201":
-          description: The created credit note.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [invoice]
-                properties:
-                  invoice: { $ref: "#/components/schemas/Invoice" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422":
-          description: "Cannot cancel — `error` is one of not_finalized, already_cancelled, already_credit_note."
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - properties: { error: { enum: [not_finalized, already_cancelled, already_credit_note] } }
-        "409":
-          description: "Credit-note numbering race could not be resolved — retriable. Body { error: number_conflict }."
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - properties: { error: { enum: [number_conflict] } }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/dun:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceDun
-      summary: Send the customer a payment reminder (Mahnung) for an overdue invoice
-      description: >
-        Sends a dunning email (with the stored PDF attached) to the customer over
-        the user's OWN company SMTP. Only overdue invoices (status=sent AND
-        due_date < today) with a recipient + PDF may be dunned. Increments the
-        dunning level (reminder_count) and stamps reminded_at (does not bump the
-        optimistic version). Distinct from the owner-facing invoices:remind command.
-        Throttled 10/min.
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                to: { type: string, format: email, description: "Recipient email; falls back to the customer snapshot email." }
-      responses:
-        "200":
-          description: Reminder sent.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [ok, level, reminded_at]
-                properties:
-                  ok: { type: boolean }
-                  level: { type: integer, description: "The new dunning level (Mahnstufe)." }
-                  reminded_at: { type: string, format: date-time }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422":
-          description: >
-            Business rejection with a machine-readable `error` code (one of
-            not_overdue, no_pdf, no_recipient, no_smtp) — OR, for an invalid `to`
-            address, the standard Laravel validation body { message, errors }.
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - $ref: "#/components/schemas/ValidationError"
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/pdf:
-    post:
-      tags: [Finance]
-      operationId: financeInvoicePdfUpload
-      summary: Attach/replace the invoice PDF (multipart)
-      description: >
-        Upload a PDF blob (max files.max_upload_mb). Without `version_seq` it becomes
-        the invoice's current pdf_path. With `version_seq` it is attached to that
-        versions[] entry's own PDF (GoBD per-version correction trail) and pdf_path is
-        left untouched; if no such version exists the upload is discarded and the
-        invoice is returned unchanged. Throttle 1200/min.
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file: { type: string, format: binary, description: "PDF blob (max files.max_upload_mb)." }
-                version_seq: { type: integer, minimum: 1, description: "Attach to this versions[].seq entry instead of the main pdf_path." }
-      responses:
-        "200": { description: Updated invoice., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-    get:
-      tags: [Finance]
-      operationId: financeInvoicePdf
-      summary: Stream the invoice PDF
-      description: >
-        Streams the invoice's PDF inline (sandboxed). With `version_seq` it streams
-        that GoBD version's own stored PDF instead of the current one (404 if that
-        version has no PDF). Throttle 3000/min.
-      security: [ { bearerAuth: [] } ]
-      parameters:
-        - { name: invoice, in: path, required: true, schema: { type: integer } }
-        - { name: version_seq, in: query, required: false, schema: { type: integer, minimum: 1 }, description: "Stream this versions[].seq entry's own PDF instead of the current invoice PDF." }
-        - { name: download, in: query, required: false, schema: { type: boolean }, description: "true → Content-Disposition: attachment; default inline." }
-      responses:
-        "200": { description: PDF bytes., content: { application/pdf: { schema: { type: string, format: binary } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/partners:
     post:
       tags: [Finance]

@@ -553,13 +553,16 @@ final class QuoteDecisionConversionTest extends TestCase
             ->assertJsonMissingPath('invoices.0.lines.0.unit_price');
 
         $this->assertSame(1, FinanceStockMovement::query()->count());
-        $this->postJson(route('api.finance.invoices.finalize', $invoice))->assertOk();
-        $this->assertSame('7.5000', (string) $product->fresh()?->stock_qty);
-        $sale = FinanceStockMovement::query()->where('reason', 'sale')->sole();
-        $this->assertSame('-2.5000', (string) $sale->qty);
-        $this->assertSame('invoice', $sale->ref_type);
-        $this->assertSame((string) $invoice->id, $sale->ref_id);
-        $this->assertSame(0, DB::table('finance_payments')->count());
+        // Finalizing this legacy-adapter invoice and its stock booking used to be
+        // asserted here against the now-deleted legacy FinanceController::
+        // finalizeInvoice route (bookGoodsOut()). That specific mechanism no longer
+        // exists for ANY invoice after the Task 17 cutover; hardware stock booking
+        // on finalize is covered equivalently -- and more thoroughly -- against the
+        // finance-v2 invoice module by tests/Feature/FinanceModule/
+        // InvoiceFinalizationTest.php::
+        // test_inventory_sale_is_scale_four_owner_scoped_hardware_only_and_idempotent().
+        // This test's own purpose (LegacyInvoiceDraftAdapter's snapshot -> legacy
+        // shape mapping) is fully covered above.
     }
 
     public function test_legacy_adapter_maps_no_discount_to_legacy_nulls(): void

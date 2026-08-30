@@ -9,6 +9,7 @@ use App\Modules\Finance\Application\DTOs\Payments\AllocatePaymentData;
 use App\Modules\Finance\Application\DTOs\Payments\AllocationId;
 use App\Modules\Finance\Application\DTOs\Payments\AllocationResult;
 use App\Modules\Finance\Application\DTOs\Payments\PaymentId;
+use App\Modules\Finance\Application\DTOs\Payments\PaymentPage;
 use App\Modules\Finance\Application\DTOs\Payments\PaymentView;
 use App\Modules\Finance\Application\DTOs\Payments\RecordPaymentData;
 use App\Modules\Finance\Application\Ports\PaymentRepository;
@@ -166,6 +167,16 @@ final readonly class SuggestionPaymentRepository implements PaymentRepository
         ?int $expectedPaymentVersion = null,
     ): AllocationResult {
         throw new LogicException('Suggestion queries must not reverse allocations.');
+    }
+
+    public function idForUuid(string $uuid): PaymentId
+    {
+        throw new LogicException('Suggestion queries must not resolve a payment by uuid.');
+    }
+
+    public function page(array $filters, int $page, int $perPage): PaymentPage
+    {
+        throw new LogicException('Suggestion queries must not list payments.');
     }
 
     /**

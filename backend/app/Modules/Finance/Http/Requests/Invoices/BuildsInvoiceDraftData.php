@@ -30,6 +30,10 @@ trait BuildsInvoiceDraftData
             $prefix.'customer' => ['required', 'array'],
             $prefix.'customer.name' => ['required', 'string', 'max:255'],
             $prefix.'customer.email' => ['nullable', 'string', 'email:rfc', 'max:320'],
+            // The dedicated billing contact (Rechnungs-E-Mail): preferred over
+            // customer.email as the delivery recipient when present — see
+            // EloquentInvoiceRepository::assertDeliveryReady().
+            $prefix.'customer.invoiceEmail' => ['nullable', 'string', 'email:rfc', 'max:320'],
             $prefix.'partner_id' => ['nullable', 'integer', 'min:1'],
             $prefix.'project_id' => ['nullable', 'integer', 'min:1'],
             $prefix.'lines' => ['required', 'array', 'min:1', 'max:200'],

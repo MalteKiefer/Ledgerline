@@ -7,8 +7,6 @@ namespace App\Http\Controllers;
 use App\Console\Commands\FetchExchangeRates;
 use App\Http\Controllers\Concerns\HandlesFinanceBlobs;
 use App\Http\Controllers\Concerns\OptimisticUpdates;
-use App\Mail\InvoiceMail;
-use App\Mail\InvoiceReminderMail;
 use App\Mail\QuoteMail;
 use App\Models\AuditLog;
 use App\Models\BankTransaction;
@@ -24,18 +22,18 @@ use App\Models\GalleryPhoto;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\UserSetting;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceReadProjection;
 use App\Modules\Finance\Infrastructure\Mail\CompanySmtpMailer;
-use App\Services\Finance\StockLedger;
 use App\Support\DocumentNumber;
 use App\Support\FinanceScope;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -64,7 +62,10 @@ class FinanceController extends Controller
     use HandlesFinanceBlobs;
     use OptimisticUpdates;
 
-    public function __construct(private readonly CompanySmtpMailer $companySmtp) {}
+    public function __construct(
+        private readonly CompanySmtpMailer $companySmtp,
+        private readonly LegacyInvoiceReadProjection $financeV2Invoices = new LegacyInvoiceReadProjection,
+    ) {}
 
     // ---- Storage helpers ----
 
@@ -97,7 +98,7 @@ class FinanceController extends Controller
     private function snapshot(): array
     {
         return [
-            'invoices' => Invoice::query()->orderByDesc('issue_date')->orderByDesc('id')->get(),
+            'invoices' => $this->allInvoices(),
             'partners' => FinancePartner::query()->orderBy('name')->get(),
             'paymentMethods' => PaymentMethod::query()->orderBy('name')->get(),
             'projects' => FinanceProject::query()->orderBy('name')->get(),
@@ -117,6 +118,26 @@ class FinanceController extends Controller
             // daily; the config values are the fallback until it first succeeds.
             'fxRates' => $this->fxRates(),
         ];
+    }
+
+    /**
+     * Every invoice of the current owner: historical legacy rows plus every
+     * finance-v2 invoice created since the Task 17 cutover, projected into
+     * the same legacy shape the Home screen already expects. Both sources,
+     * newest first — a home dashboard that only showed one after the cutover
+     * would quietly stop reflecting new work.
+     *
+     * @return Collection<int, Invoice>
+     */
+    private function allInvoices(): Collection
+    {
+        $legacy = Invoice::query()->get();
+        $userId = auth()->id();
+        $financeV2 = is_int($userId) ? $this->financeV2Invoices->asInvoiceModels($userId) : collect();
+
+        return $legacy->concat($financeV2)
+            ->sortByDesc(fn (Invoice $i): string => (string) $i->issue_date?->format('Y-m-d'))
+            ->values();
     }
 
     /**
@@ -715,381 +736,15 @@ class FinanceController extends Controller
     }
 
     // ---- Invoices ----
+    //
+    // Every invoice CRUD/finalize/storno/email/dun/PDF method that used to
+    // live here was removed in the Task 17 cutover: invoice creation and
+    // lifecycle management moved to the finance-v2 module
+    // (App\Modules\Finance\Http\Controllers\Invoices\*, canonical routes at
+    // /api/v1/finance/invoices/*). The legacy invoices table and model stay
+    // solely as historical record -- LegacyInvoiceReadProjection still reads
+    // it for Home/reports, and it is never written to again.
 
-    public function storeInvoice(Request $request): JsonResponse
-    {
-        $request->validate($this->invoiceRules($request, true));
-        $uid = (int) $this->requireUser($request)->id;
-        $settings = UserSetting::for($uid);
-        $fmt = is_string($settings->invoice_number_format) ? $settings->invoice_number_format : null;
-        try {
-            $invoice = DB::transaction(function () use ($request, $fmt): Invoice {
-                $patch = $this->invoicePatch($request, true);
-                $this->reserveImportedInvoiceSequence($patch, $fmt);
-
-                // `number` and `seq` are intentionally guarded against all regular
-                // request patches. A historical import is the one audited exception:
-                // persist its source number only after reserveImportedInvoiceSequence()
-                // has validated the derived slot under the same transaction lock.
-                $importNumber = ($patch['imported'] ?? false) === true && is_string($patch['number'] ?? null)
-                    ? $patch['number'] : null;
-                $importSeq = is_int($patch['seq'] ?? null) ? $patch['seq'] : null;
-                unset($patch['number'], $patch['seq']);
-
-                $invoice = Invoice::create($patch);
-                if ($importNumber !== null) {
-                    $invoice->forceFill(['number' => $importNumber, 'seq' => $importSeq])->save();
-                }
-
-                return $invoice;
-            });
-        } catch (\DomainException) {
-            return response()->json(['error' => 'invoice_number_reserved'], 422);
-        }
-
-        return response()->json(['invoice' => $invoice], 201);
-    }
-
-    public function updateInvoice(Request $request, Invoice $invoice): JsonResponse
-    {
-        $request->validate($this->invoiceRules($request, false) + ['version' => ['sometimes', 'integer', 'min:0']]);
-        // GoBD: a numbered (issued) invoice can never revert to draft — the number is
-        // permanent. Reject a status→draft on a numbered invoice server-side (the client
-        // guards too, but the server is authoritative for the gapless numbering trail).
-        if ($request->filled('status') && $request->string('status')->value() === 'draft'
-            && is_string($invoice->number) && $invoice->number !== '') {
-            return response()->json(['error' => 'status_draft_blocked'], 422);
-        }
-        // GoBD: once settled, "paid" is terminal — it never reverts to an earlier
-        // status via a plain edit (a correction goes through Storno/credit-note,
-        // which never mutates the original). The client already hides the status
-        // selector once paid; this is the authoritative guard.
-        if ($invoice->status === 'paid' && $request->filled('status')
-            && $request->string('status')->value() !== 'paid') {
-            return response()->json(['error' => 'status_paid_locked'], 422);
-        }
-        $expected = $request->has('version') ? $request->integer('version') : null;
-        $result = $this->optimistic(Invoice::class, $invoice->id, $this->invoicePatch($request, false, $invoice), $expected);
-
-        return $this->optimisticJson($result, Invoice::class, $invoice->id, 'invoice');
-    }
-
-    /**
-     * Assign a gapless, unique per-year invoice number (GoBD). Server-authoritative:
-     * inside a transaction it locks the user's numbered rows for the target year,
-     * takes max(seq)+1 (never below the configured floor) and writes it atomically —
-     * so two finalisations can never mint the same number. Idempotent: an invoice
-     * that already carries a number is returned unchanged.
-     */
-    public function finalizeInvoice(Request $request, Invoice $invoice): JsonResponse
-    {
-        $uid = (int) $this->requireUser($request)->id;
-        $settings = UserSetting::for($uid);
-        $fmt = is_string($settings->invoice_number_format) ? $settings->invoice_number_format : null;
-        $floor = max(1, (int) $settings->invoice_next_number);
-
-        // Whether THIS call is the one that issues the invoice. Only then do
-        // goods leave the shelf; a second finalise must not book stock twice.
-        $issuedNow = false;
-
-        $fresh = $this->withNumberRetry(function () use ($invoice, $fmt, $floor, &$issuedNow): Invoice {
-            $issuedNow = false;
-
-            return DB::transaction(function () use ($invoice, $fmt, $floor, &$issuedNow): Invoice {
-                $current = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
-                if (is_string($current->number) && $current->number !== '') {
-                    return $current; // already numbered → idempotent
-                }
-                $issuedNow = true;
-
-                $year = $current->year ?? ($current->issue_date instanceof Carbon ? (int) $current->issue_date->format('Y') : (int) Carbon::now()->format('Y'));
-                $seq = $this->nextSeqForYear($year, $floor, $fmt);
-
-                $current->forceFill([
-                    'number' => $this->formatNumber($fmt, $seq, $current->issue_date),
-                    'seq' => $seq,
-                    'year' => $year,
-                    // Finalising ISSUES the invoice (number, immutable, counts as revenue) →
-                    // status 'final' (Open). It does NOT mean "sent"; only an actual send does.
-                    'status' => $current->status === 'draft' ? 'final' : $current->status,
-                ]);
-                $current->version = $current->version + 1;
-                $current->save();
-
-                return $current;
-            });
-        });
-
-        if ($fresh === false) {
-            return response()->json(['error' => 'number_conflict'], 409);
-        }
-
-        if ($issuedNow) {
-            $this->bookGoodsOut($fresh);
-        }
-
-        return response()->json(['invoice' => $fresh]);
-    }
-
-    /**
-     * Record that the hardware on an invoice left the shelf.
-     *
-     * Issuing the invoice is the moment goods go out, not the moment a customer
-     * accepts a price — so this hangs off finalise, once, on the call that
-     * actually assigned the number.
-     *
-     * It never refuses. Selling something the shelf does not have is real
-     * information, and blocking an invoice over a stock figure would be worse
-     * than recording a negative one: we record that goods left, we do not police
-     * whether they were there. Best-effort by the same reasoning — a stock
-     * hiccup must not undo a numbered invoice.
-     */
-    private function bookGoodsOut(Invoice $invoice): void
-    {
-        $lines = is_array($invoice->lines) ? $invoice->lines : [];
-        foreach ($lines as $line) {
-            if (! is_array($line)) {
-                continue;
-            }
-            $productId = $line['productId'] ?? null;
-            $qty = $line['qty'] ?? null;
-            if (! is_numeric($productId) || ! is_numeric($qty) || (float) $qty === 0.0) {
-                continue;
-            }
-            $product = FinanceProduct::query()->find((int) $productId);
-            // Services have no shelf, and an article nobody counts has no figure
-            // to carry — StockLedger still records the movement for the latter.
-            if (! $product instanceof FinanceProduct || $product->kind !== 'hardware') {
-                continue;
-            }
-            try {
-                StockLedger::move(
-                    $product,
-                    -1 * (float) $qty,
-                    'sale',
-                    'invoice',
-                    (string) $invoice->id,
-                    is_string($invoice->number) ? $invoice->number : null,
-                );
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
-    }
-
-    /**
-     * The next gapless per-year sequence number (never below the floor). Counts
-     * SOFT-DELETED numbered invoices too (withTrashed) so a trashed invoice's
-     * number can NEVER be reused — GoBD forbids reusing a burned number even
-     * across a soft delete. The partial unique index deliberately excludes
-     * trashed rows (a hard-deleted row leaves no trace), so this numbering path
-     * is the authoritative reuse guard. Locks the year's numbered rows to
-     * serialise concurrent finalisations.
-     */
-    private function nextSeqForYear(int $year, int $floor, ?string $fmt): int
-    {
-        $invoices = Invoice::withTrashed()->where('year', $year)->lockForUpdate()->get(['seq', 'number', 'issue_date']);
-        $maxSeq = 0;
-        foreach ($invoices as $invoice) {
-            if (is_numeric($invoice->seq)) {
-                $maxSeq = max($maxSeq, (int) $invoice->seq);
-
-                continue;
-            }
-            if (is_string($invoice->number)) {
-                $derived = $this->sequenceFromNumber($fmt, $invoice->number, $invoice->issue_date);
-                if ($derived !== null) {
-                    $maxSeq = max($maxSeq, $derived);
-                }
-            }
-        }
-
-        return max($floor, $maxSeq + 1);
-    }
-
-    /**
-     * Run a numbering transaction, retrying on the unique-number constraint. The
-     * per-year lock only covers rows that already match (FOR UPDATE takes no
-     * predicate/gap lock at READ COMMITTED), so the FIRST invoice of a new year
-     * can still race two concurrent finalisations onto the same number; the
-     * partial unique index catches the loser. Rather than surfacing that as a raw
-     * 500, retry a bounded number of times (each attempt re-reads max(seq)+1),
-     * then return false so the caller responds 409 (retriable).
-     *
-     * @param  \Closure(): Invoice  $fn
-     */
-    private function withNumberRetry(\Closure $fn): Invoice|false
-    {
-        for ($attempt = 0; $attempt <= 4; $attempt++) {
-            try {
-                return $fn();
-            } catch (QueryException $e) {
-                if (! $this->isUniqueNumberViolation($e)) {
-                    throw $e;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /** Whether a QueryException is a unique-constraint violation (pgsql 23505 / sqlite 23000). */
-    private function isUniqueNumberViolation(QueryException $e): bool
-    {
-        $sqlState = is_string($e->getCode()) ? $e->getCode() : '';
-
-        return in_array($sqlState, ['23505', '23000'], true);
-    }
-
-    /**
-     * Cancel a finalized invoice with a credit note (Storno / Gutschrift). Creates
-     * a NEW invoice with type='credit_note', cancels_invoice_id=original, the same
-     * customer/partner, the original lines with NEGATED amounts and the same
-     * discount terms — so it exactly reverses the original's net/VAT/gross. The
-     * credit note is a real numbered document: it runs the SAME GoBD numbering path
-     * (locked per-year max(seq)+1) so it takes its own slot in the sequence.
-     *
-     * The original invoice is NEVER edited or deleted (GoBD immutability); its
-     * "cancelled" state is DERIVED (a credit note referencing it exists). Only a
-     * finalized (sent|paid or numbered), non-credit-note, not-already-cancelled
-     * invoice can be cancelled. Owner-scoped via the route-model binding + gate;
-     * type/cancels_invoice_id/number/seq/year are server-set via forceFill.
-     */
-    public function stornoInvoice(Request $request, Invoice $invoice): JsonResponse
-    {
-        $uid = (int) $this->requireUser($request)->id;
-
-        if ($invoice->type === 'credit_note') {
-            return response()->json(['error' => 'already_credit_note'], 422);
-        }
-        $finalized = in_array($invoice->status, ['sent', 'paid'], true)
-            || (is_string($invoice->number) && $invoice->number !== '');
-        if (! $finalized) {
-            return response()->json(['error' => 'not_finalized'], 422);
-        }
-        if (Invoice::query()->where('cancels_invoice_id', $invoice->id)->exists()) {
-            return response()->json(['error' => 'already_cancelled'], 422);
-        }
-
-        // Negate the line amounts (net = qty * unitPrice → flip unitPrice sign).
-        $lines = [];
-        foreach (is_array($invoice->lines) ? $invoice->lines : [] as $l) {
-            if (! is_array($l)) {
-                continue;
-            }
-            $up = is_numeric($l['unitPrice'] ?? null) ? -(float) $l['unitPrice'] : 0.0;
-            $lines[] = array_merge($l, ['unitPrice' => $up]);
-        }
-
-        $settings = UserSetting::for($uid);
-        $fmt = is_string($settings->invoice_number_format) ? $settings->invoice_number_format : null;
-        $floor = max(1, (int) $settings->invoice_next_number);
-        $issueDate = Carbon::today();
-
-        $credit = $this->withNumberRetry(fn (): Invoice => DB::transaction(function () use ($invoice, $lines, $fmt, $floor, $issueDate): Invoice {
-            $year = (int) $issueDate->format('Y');
-            $seq = $this->nextSeqForYear($year, $floor, $fmt);
-
-            $credit = Invoice::create([
-                'status' => 'sent',
-                'issue_date' => $issueDate,
-                'currency' => $invoice->currency,
-                'imported' => false,
-                'customer' => is_array($invoice->customer) ? $invoice->customer : null,
-                'partner_id' => $invoice->partner_id,
-                'lines' => $lines,
-                'note' => $invoice->note,
-                // A credit note reverses the original including its discount, so it
-                // carries the same discount terms over the negated lines.
-                'discount_type' => $invoice->discount_type,
-                'discount_value' => $invoice->discount_value,
-            ]);
-
-            // Money columns = the exact reverse of the original (already discounted).
-            $credit->forceFill([
-                'type' => 'credit_note',
-                'cancels_invoice_id' => $invoice->id,
-                'number' => $this->formatNumber($fmt, $seq, $issueDate),
-                'seq' => $seq,
-                'year' => $year,
-                'gross' => is_numeric($invoice->gross) ? -(float) $invoice->gross : null,
-                'net' => is_numeric($invoice->net) ? -(float) $invoice->net : null,
-                'vat' => is_numeric($invoice->vat) ? -(float) $invoice->vat : null,
-            ]);
-            $credit->version = $credit->version + 1;
-            $credit->save();
-
-            return $credit;
-        }));
-
-        if ($credit === false) {
-            return response()->json(['error' => 'number_conflict'], 409);
-        }
-
-        AuditLog::record('invoice.storno', $credit, ['cancels' => $invoice->id]);
-
-        return response()->json(['invoice' => $credit], 201);
-    }
-
-    /**
-     * Email a finalized invoice's stored PDF to the customer. Owner-scoped (route
-     * model binding sits behind the owner global scope + module:finance gate).
-     *
-     * Only finalized invoices (status sent|paid OR already numbered) may be sent.
-     * The recipient is the validated `to` field or the customer snapshot email
-     * (422 if neither). The stored PDF (server-owned pdf_path) is attached (422 if
-     * missing). Refuses (422) when SMTP is not configured (mirrors the
-     * ChannelNotifier::mailTo gate). Stamps sent_at via forceFill/saveQuietly so it
-     * does NOT bump the optimistic `version`, then writes a secret-free audit row.
-     */
-    public function emailInvoice(Request $request, Invoice $invoice): JsonResponse
-    {
-        $uid = (int) $this->requireUser($request)->id;
-        $request->validate(['to' => ['nullable', 'email:rfc']]);
-
-        $finalized = in_array($invoice->status, ['sent', 'paid'], true)
-            || (is_string($invoice->number) && $invoice->number !== '');
-        if (! $finalized) {
-            return response()->json(['error' => 'not_finalized'], 422);
-        }
-
-        $path = $this->safeBlobPath($invoice->pdf_path);
-        if ($path === null || ! $this->fs()->exists($path)) {
-            return response()->json(['error' => 'no_pdf'], 422);
-        }
-
-        $to = $request->filled('to') ? $request->string('to')->value() : $this->customerEmail($invoice);
-        if ($to === null || $to === '') {
-            return response()->json(['error' => 'no_recipient'], 422);
-        }
-
-        // Invoices go out over the user's OWN company SMTP (settings.company),
-        // deliberately independent of the workspace notification SMTP.
-        if (! $this->companySmtp->configured($uid)) {
-            return response()->json(['error' => 'no_smtp'], 422);
-        }
-
-        $this->companySmtp->send($uid, $to, new InvoiceMail($invoice));
-
-        $sentAt = Carbon::now();
-        $invoice->forceFill(['sent_at' => $sentAt])->saveQuietly();
-        // Secret-free: the recipient domain only, never the full address.
-        AuditLog::record('invoice.emailed', $invoice, ['to_domain' => Str::after($to, '@')]);
-
-        return response()->json(['ok' => true, 'sent_at' => $sentAt->toIso8601String()]);
-    }
-
-    /**
-     * Send a customer-facing payment reminder (Mahnung) for an OVERDUE invoice.
-     * Distinct from the owner-facing `invoices:remind` command — this is a manual,
-     * customer-directed dunning email over the user's OWN company SMTP.
-     *
-     * Only overdue invoices (status='sent' AND due_date < today) with a recipient +
-     * stored PDF may be dunned. The reminder level (Mahnstufe) reuses reminder_count
-     * (incremented) and reminded_at is stamped via forceFill/saveQuietly so it does
-     * NOT bump the optimistic `version`. 422 codes mirror emailInvoice
-     * (not_overdue / no_pdf / no_recipient / no_smtp). Writes a secret-free audit row.
-     */
     /**
      * Mail a quote to the customer.
      *
@@ -1133,457 +788,6 @@ class FinanceController extends Controller
         AuditLog::record('quote.emailed', $quote, ['to_domain' => Str::after($to, '@')]);
 
         return response()->json(['ok' => true, 'sent_at' => $sentAt->toIso8601String()]);
-    }
-
-    public function dunInvoice(Request $request, Invoice $invoice): JsonResponse
-    {
-        $uid = (int) $this->requireUser($request)->id;
-        $request->validate(['to' => ['nullable', 'email:rfc']]);
-
-        $overdue = $invoice->status === 'sent'
-            && $invoice->due_date instanceof Carbon
-            && $invoice->due_date->lt(Carbon::today());
-        if (! $overdue) {
-            return response()->json(['error' => 'not_overdue'], 422);
-        }
-
-        $path = $this->safeBlobPath($invoice->pdf_path);
-        if ($path === null || ! $this->fs()->exists($path)) {
-            return response()->json(['error' => 'no_pdf'], 422);
-        }
-
-        $to = $request->filled('to') ? $request->string('to')->value() : $this->customerEmail($invoice);
-        if ($to === null || $to === '') {
-            return response()->json(['error' => 'no_recipient'], 422);
-        }
-
-        if (! $this->companySmtp->configured($uid)) {
-            return response()->json(['error' => 'no_smtp'], 422);
-        }
-
-        $level = (int) $invoice->reminder_count + 1;
-        $this->companySmtp->send($uid, $to, new InvoiceReminderMail($invoice, $level));
-
-        $now = Carbon::now();
-        $invoice->forceFill(['reminded_at' => $now, 'reminder_count' => $level])->saveQuietly();
-        AuditLog::record('invoice.dunned', $invoice, ['to_domain' => Str::after($to, '@'), 'level' => $level]);
-
-        return response()->json(['ok' => true, 'level' => $level, 'reminded_at' => $now->toIso8601String()]);
-    }
-
-    /**
-     * The recipient for a finalized invoice: prefer the customer snapshot's
-     * dedicated invoice email (Rechnungs-E-Mail) if it is a valid-looking address,
-     * else fall back to the general customer email.
-     */
-    private function customerEmail(Invoice $invoice): ?string
-    {
-        $customer = is_array($invoice->customer) ? $invoice->customer : [];
-
-        return $this->validEmail($customer['invoiceEmail'] ?? null)
-            ?? $this->validEmail($customer['email'] ?? null);
-    }
-
-    /** A trimmed address if it looks like an email, else null. */
-    private function validEmail(mixed $email): ?string
-    {
-        return is_string($email) && str_contains($email, '@') && trim($email) !== '' ? trim($email) : null;
-    }
-
-    /**
-     * Imported, already-issued invoices reserve their recognised sequence slot.
-     *
-     * A historical upload may not be renumbered, but if its visible number fits
-     * the configured scheme it must block that ordinal from future finalisation.
-     * This also refuses a second spelling of the same sequence (for example
-     * 2026-006 vs. 2026-0006) before it becomes a GoBD conflict.
-     *
-     * @param  array<string, mixed>  $patch
-     */
-    private function reserveImportedInvoiceSequence(array &$patch, ?string $fmt): void
-    {
-        if (($patch['imported'] ?? false) !== true || ! is_string($patch['number'] ?? null)
-            || ! is_int($patch['year'] ?? null)) {
-            return;
-        }
-
-        $issueDate = $patch['issue_date'] ?? null;
-        $date = $issueDate instanceof Carbon ? $issueDate : null;
-        $seq = $this->sequenceFromNumber($fmt, $patch['number'], $date);
-        if ($seq === null) {
-            return;
-        }
-
-        $reserved = Invoice::withTrashed()
-            ->where('year', $patch['year'])
-            ->lockForUpdate()
-            ->get(['seq', 'number', 'issue_date']);
-        foreach ($reserved as $invoice) {
-            $existing = is_numeric($invoice->seq) ? (int) $invoice->seq
-                : (is_string($invoice->number) ? $this->sequenceFromNumber($fmt, $invoice->number, $invoice->issue_date) : null);
-            if ($existing === $seq) {
-                throw new \DomainException('The number reserves an already-issued sequence slot.');
-            }
-        }
-
-        $patch['seq'] = $seq;
-    }
-
-    /** Derive a sequence from a number generated by the active format (padding is optional for legacy imports). */
-    private function sequenceFromNumber(?string $fmt, string $number, ?Carbon $issueDate): ?int
-    {
-        return DocumentNumber::sequenceFrom($fmt, $number, $issueDate);
-    }
-
-    /** Render a number template (YYYY/YY/MM/DD + a run of N's → zero-padded seq). */
-    private function formatNumber(?string $fmt, int $seq, ?Carbon $issueDate): string
-    {
-        return DocumentNumber::format($fmt, $seq, $issueDate);
-    }
-
-    public function destroyInvoice(Invoice $invoice): JsonResponse
-    {
-        $invoice->delete();
-
-        return response()->json(['ok' => true]);
-    }
-
-    public function restoreInvoice(int $id): JsonResponse
-    {
-        $invoice = Invoice::onlyTrashed()->findOrFail($id);
-
-        // Restoring re-enters the row into the partial unique index
-        // (user_id, year, number) WHERE number IS NOT NULL AND deleted_at IS NULL.
-        // If the number was reused by a live invoice while this one was trashed
-        // (legacy data from before the withTrashed() numbering fix), the restore
-        // would violate the index and 500. Refuse gracefully with a 422 instead.
-        if (is_string($invoice->number) && $invoice->number !== '' && $invoice->year !== null
-            && Invoice::query()->where('year', $invoice->year)->where('number', $invoice->number)->exists()) {
-            return response()->json(['error' => 'number_conflict'], 422);
-        }
-
-        $invoice->restore();
-
-        return response()->json(['invoice' => $invoice]);
-    }
-
-    public function forceDeleteInvoice(int $id): JsonResponse
-    {
-        $invoice = Invoice::withTrashed()->findOrFail($id);
-        DB::transaction(function () use ($invoice): void {
-            foreach ($this->invoiceBlobPaths($invoice) as $path) {
-                $this->fs()->delete($path);
-            }
-            $invoice->forceDelete();
-        });
-
-        return response()->json(['ok' => true]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function invoiceRules(Request $request, bool $create): array
-    {
-        $uid = (int) $this->requireUser($request)->id;
-
-        return [
-            'number' => ['nullable', 'string', 'max:64'],
-            'status' => ['sometimes', 'string', Rule::in(['draft', 'final', 'sent', 'paid'])],
-            'type' => ['sometimes', 'string', Rule::in(['invoice', 'credit_note'])],
-            'issue_date' => ['nullable', 'date'],
-            'due_date' => ['nullable', 'date'],
-            'currency' => ['sometimes', 'string', 'max:8'],
-            'vat_rate' => ['nullable', 'numeric'],
-            'gross' => ['nullable', 'numeric'],
-            'net' => ['nullable', 'numeric'],
-            'vat' => ['nullable', 'numeric'],
-            'discount_type' => ['nullable', 'string', Rule::in(['percent', 'amount'])],
-            'discount_value' => ['nullable', 'numeric', 'min:0'],
-            'skonto_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'skonto_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
-            'imported' => ['sometimes', 'boolean'],
-            'paid_at' => ['nullable', 'date'],
-            'payment_account' => ['nullable', 'string', 'max:200'],
-            'partner_id' => ['nullable', 'integer', Rule::exists('finance_partners', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
-            'customer' => ['nullable', 'array'],
-            'lines' => ['nullable', 'array', 'max:1000'],
-            'note' => ['nullable', 'string', 'max:100000'],
-            'versions' => ['nullable', 'array', 'max:1000'],
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function invoicePatch(Request $request, bool $create, ?Invoice $existing = null): array
-    {
-        $patch = [];
-        if ($create || $request->has('payment_account')) {
-            $patch['payment_account'] = $request->filled('payment_account') ? $request->string('payment_account')->value() : null;
-        }
-        // GoBD: `number` is server-authoritative — finalizeInvoice owns the gapless
-        // per-year sequence. Accept a client-supplied number ONLY when CREATING an
-        // imported (historical) invoice; never on a normal create or on any update,
-        // so the finalize path stays the sole numbering authority.
-        if ($create && $request->boolean('imported')) {
-            $patch['number'] = $request->filled('number') ? $request->string('number')->value() : null;
-        }
-        if ($create || $request->has('status')) {
-            $patch['status'] = $request->filled('status') ? $request->string('status')->value() : 'draft';
-        }
-        if ($create || $request->has('type')) {
-            // cancels_invoice_id is never mass-assigned; the Storno action sets both.
-            $patch['type'] = $request->filled('type') ? $request->string('type')->value() : 'invoice';
-        }
-        if ($create || $request->has('discount_type')) {
-            $patch['discount_type'] = $request->filled('discount_type') ? $request->string('discount_type')->value() : null;
-        }
-        foreach (['discount_value', 'skonto_percent'] as $field) {
-            if ($create || $request->has($field)) {
-                $patch[$field] = $request->filled($field) ? $request->float($field) : null;
-            }
-        }
-        if ($create || $request->has('skonto_days')) {
-            $patch['skonto_days'] = $request->filled('skonto_days') ? $request->integer('skonto_days') : null;
-        }
-        if ($create || $request->has('currency')) {
-            $patch['currency'] = $request->filled('currency') ? $request->string('currency')->value() : 'EUR';
-        }
-        foreach (['issue_date', 'due_date', 'paid_at'] as $field) {
-            if ($create || $request->has($field)) {
-                $patch[$field] = $request->filled($field) ? $request->date($field) : null;
-            }
-        }
-        // Populate `year` on create from the issue date. Imported invoices arrive
-        // with a number + issue_date but no year; without this the (user_id, year,
-        // number) unique index does NOT catch duplicate imports, because Postgres
-        // treats each NULL year as distinct — so the same invoice could be imported
-        // twice. Finalisation may still overwrite year for self-issued invoices.
-        if ($create && ($patch['issue_date'] ?? null) instanceof Carbon) {
-            $patch['year'] = (int) $patch['issue_date']->format('Y');
-        }
-        foreach (['vat_rate', 'gross', 'net', 'vat'] as $field) {
-            if ($create || $request->has($field)) {
-                $patch[$field] = $request->filled($field) ? $request->float($field) : null;
-            }
-        }
-        if ($create || $request->has('imported')) {
-            $patch['imported'] = $request->boolean('imported');
-        }
-        if ($create || $request->has('partner_id')) {
-            $patch['partner_id'] = $request->filled('partner_id') ? $request->integer('partner_id') : null;
-        }
-        if ($create || $request->has('note')) {
-            $patch['note'] = $request->filled('note') ? $request->string('note')->value() : null;
-        }
-        foreach (['customer', 'lines'] as $field) {
-            if ($create || $request->has($field)) {
-                $patch[$field] = $request->filled($field) ? $request->array($field) : null;
-            }
-        }
-        if ($create || $request->has('versions')) {
-            // SECURITY (mirrors sanitizeReceipts): the per-version `pdf` blob path is
-            // SERVER-owned — only uploadInvoicePdf ever assigns it (matched by seq).
-            // A client-supplied `pdf` is always dropped + restored from the stored row
-            // by seq, so a version can't point at another invoice/user's blob (an
-            // arbitrary-file read via invoicePdf and a destructive delete via
-            // forceDeleteInvoice on the shared, non-per-user `invoices/` namespace).
-            $incoming = $request->filled('versions') ? $request->array('versions') : [];
-            $patch['versions'] = $this->sanitizeVersions($incoming, $create ? null : $existing) ?: null;
-        }
-
-        return $patch;
-    }
-
-    /**
-     * Merge client version entries against the stored invoice: a version's `pdf`
-     * blob path is SERVER-owned (only ever set by uploadInvoicePdf, matched by
-     * seq). Any client-supplied `pdf` is dropped and restored from the stored row
-     * by seq; all other version metadata (seq/label/reason/…) passes through.
-     * Prevents pointing a version at a blob outside this invoice.
-     *
-     * @param  array<array-key, mixed>  $incoming
-     * @return list<array<array-key, mixed>>
-     */
-    private function sanitizeVersions(array $incoming, ?Invoice $existing): array
-    {
-        $storedPdfBySeq = [];
-        foreach (is_array($existing?->versions) ? $existing->versions : [] as $v) {
-            if (is_array($v) && isset($v['seq']) && is_numeric($v['seq'])) {
-                $safe = $this->safeBlobPath($v['pdf'] ?? null);
-                if ($safe !== null) {
-                    $storedPdfBySeq[(int) $v['seq']] = $safe;
-                }
-            }
-        }
-        $out = [];
-        foreach ($incoming as $entry) {
-            if (! is_array($entry)) {
-                continue;
-            }
-            unset($entry['pdf']); // never from the client
-            if (isset($entry['seq']) && is_numeric($entry['seq'])) {
-                $seq = (int) $entry['seq'];
-                if (isset($storedPdfBySeq[$seq])) {
-                    $entry['pdf'] = $storedPdfBySeq[$seq]; // server-owned path
-                }
-            }
-            $out[] = $entry;
-        }
-
-        return $out;
-    }
-
-    // ---- Invoice PDF (plaintext blob on disk) ----
-
-    public function uploadInvoicePdf(Request $request, Invoice $invoice): JsonResponse
-    {
-        $request->validate([
-            // Invoice document is always a PDF. Extension allowlist (no svg/html) is
-            // defense-in-depth on top of the sandbox CSP applied when the blob is served.
-            'file' => ['required', 'file', 'mimes:pdf', 'max:'.$this->maxUploadKb()],
-            'version_seq' => ['sometimes', 'nullable', 'integer', 'min:1'],
-        ]);
-        $upload = $request->file('file');
-        if (! $upload instanceof UploadedFile) {
-            abort(422);
-        }
-        $versionSeq = $request->filled('version_seq') ? $request->integer('version_seq') : null;
-
-        $path = 'invoices/'.Str::uuid()->toString();
-        $this->fs()->putFileAs('invoices', $upload, basename($path));
-
-        try {
-            $fresh = DB::transaction(function () use ($invoice, $path, $versionSeq): Invoice {
-                $current = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
-
-                // Per-version PDF: attach the uploaded document to the matching versions[]
-                // entry (GoBD correction trail — each version keeps its own PDF). The shared
-                // pdf_path is left untouched so historical versions never clobber each other.
-                if ($versionSeq !== null) {
-                    $versions = is_array($current->versions) ? $current->versions : [];
-                    $matched = false;
-                    foreach ($versions as &$entry) {
-                        if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $versionSeq) {
-                            $old = $this->safeBlobPath($entry['pdf'] ?? null);
-                            if ($old !== null && $old !== $path) {
-                                $this->fs()->delete($old);
-                            }
-                            $entry['pdf'] = $path;
-                            $matched = true;
-                            break;
-                        }
-                    }
-                    unset($entry);
-                    if (! $matched) {
-                        // No such version yet → nothing to attach; drop the orphan blob.
-                        $this->fs()->delete($path);
-
-                        return $current;
-                    }
-                    $current->versions = $versions;
-                    $current->save();
-
-                    return $current;
-                }
-
-                // No version_seq → the invoice's current/original PDF (unchanged behaviour).
-                if (is_string($current->pdf_path) && $current->pdf_path !== '' && $current->pdf_path !== $path) {
-                    $this->fs()->delete($current->pdf_path);
-                }
-                $current->forceFill(['pdf_path' => $path]);
-                $current->save();
-
-                return $current;
-            });
-        } catch (\Throwable $e) {
-            // The blob was written before the row lock; if the txn failed (e.g. the
-            // invoice was deleted between binding and the lock → 404) unlink it so it
-            // is not orphaned on the shared `invoices/` disk with no sweep.
-            $this->fs()->delete($path);
-
-            throw $e;
-        }
-
-        return response()->json(['invoice' => $fresh]);
-    }
-
-    public function invoicePdf(Request $request, Invoice $invoice): StreamedResponse
-    {
-        $versionSeq = $request->filled('version_seq') ? $request->integer('version_seq') : null;
-
-        // A version_seq streams that version's own stored PDF; otherwise the invoice's
-        // current/original PDF. The version path comes from the (client-writable)
-        // versions[] json, so it is prefix-guarded via safeBlobPath — never a raw path.
-        if ($versionSeq !== null) {
-            $path = $this->safeBlobPath($this->versionPdfPath($invoice, $versionSeq));
-            $label = $this->versionLabel($invoice, $versionSeq) ?? ($invoice->number ?? 'invoice');
-        } else {
-            $path = $this->safeBlobPath($invoice->pdf_path);
-            $label = $invoice->number ?? 'invoice';
-        }
-        if ($path === null || ! $this->fs()->exists($path)) {
-            abort(404);
-        }
-        $filename = $this->safeName($label.'.pdf');
-
-        return $this->fs()->response($path, $filename, [
-            'Content-Type' => 'application/pdf',
-            'X-Content-Type-Options' => 'nosniff',
-            'Content-Security-Policy' => "default-src 'none'; sandbox",
-            'Cache-Control' => 'private, max-age=3600',
-        ], $request->boolean('download') ? 'attachment' : 'inline');
-    }
-
-    /** The stored blob path of a version entry's own PDF (or null if none / no such version). */
-    private function versionPdfPath(Invoice $invoice, int $seq): ?string
-    {
-        foreach (is_array($invoice->versions) ? $invoice->versions : [] as $entry) {
-            if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $seq) {
-                $pdf = $entry['pdf'] ?? null;
-
-                return is_string($pdf) ? $pdf : null;
-            }
-        }
-
-        return null;
-    }
-
-    /** The display label of a version entry (for the download filename). */
-    private function versionLabel(Invoice $invoice, int $seq): ?string
-    {
-        foreach (is_array($invoice->versions) ? $invoice->versions : [] as $entry) {
-            if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $seq) {
-                $label = $entry['label'] ?? null;
-
-                return is_string($label) && $label !== '' ? $label : null;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Every stored PDF blob path owned by an invoice (pdf_path + per-version pdfs).
-     *
-     * @return list<string>
-     */
-    private function invoiceBlobPaths(Invoice $invoice): array
-    {
-        $paths = [];
-        $main = $this->safeBlobPath($invoice->pdf_path);
-        if ($main !== null) {
-            $paths[] = $main;
-        }
-        foreach (is_array($invoice->versions) ? $invoice->versions : [] as $entry) {
-            $safe = $this->safeBlobPath(is_array($entry) ? ($entry['pdf'] ?? null) : null);
-            if ($safe !== null) {
-                $paths[] = $safe;
-            }
-        }
-
-        return array_values(array_unique($paths));
     }
 
     // ---- Bank transactions ----

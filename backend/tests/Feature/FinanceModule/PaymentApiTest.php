@@ -22,12 +22,12 @@ final class PaymentApiTest extends TestCase
     public function test_payment_routes_are_additive_uuid_scoped_and_protected_by_the_finance_stack(): void
     {
         $routes = [
-            'api.finance-v2.payments.index' => ['GET', 'api/v1/finance-v2/payments'],
-            'api.finance-v2.payments.store' => ['POST', 'api/v1/finance-v2/payments'],
-            'api.finance-v2.payments.show' => ['GET', 'api/v1/finance-v2/payments/{payment}'],
-            'api.finance-v2.payments.suggestions.show' => ['GET', 'api/v1/finance-v2/payments/{payment}/suggestions'],
-            'api.finance-v2.payments.allocations.store' => ['POST', 'api/v1/finance-v2/payments/{payment}/allocations'],
-            'api.finance-v2.payment-allocations.reverse' => ['POST', 'api/v1/finance-v2/payment-allocations/{allocation}/reverse'],
+            'api.finance-v2.payments.index' => ['GET', 'api/v1/finance/payments'],
+            'api.finance-v2.payments.store' => ['POST', 'api/v1/finance/payments'],
+            'api.finance-v2.payments.show' => ['GET', 'api/v1/finance/payments/{payment}'],
+            'api.finance-v2.payments.suggestions.show' => ['GET', 'api/v1/finance/payments/{payment}/suggestions'],
+            'api.finance-v2.payments.allocations.store' => ['POST', 'api/v1/finance/payments/{payment}/allocations'],
+            'api.finance-v2.payment-allocations.reverse' => ['POST', 'api/v1/finance/payment-allocations/{allocation}/reverse'],
         ];
 
         foreach ($routes as $name => [$method, $uri]) {
@@ -42,30 +42,30 @@ final class PaymentApiTest extends TestCase
             $this->assertContains('throttle:120,1', $middleware);
         }
 
-        $this->getJson('/api/v1/finance-v2/payments')->assertUnauthorized();
+        $this->getJson('/api/v1/finance/payments')->assertUnauthorized();
 
         $disabled = User::factory()->create(['role' => 'user', 'modules' => ['reports']]);
         $disabledToken = $disabled->createToken('device', ['device'])->plainTextToken;
-        $this->withToken($disabledToken)->getJson('/api/v1/finance-v2/payments')->assertForbidden();
+        $this->withToken($disabledToken)->getJson('/api/v1/finance/payments')->assertForbidden();
     }
 
     public function test_record_requires_idempotency_and_exact_decimal_amount(): void
     {
         [, $token] = $this->ownerAndToken();
 
-        $this->withToken($token)->postJson('/api/v1/finance-v2/payments', $this->paymentPayload())
+        $this->withToken($token)->postJson('/api/v1/finance/payments', $this->paymentPayload())
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['idempotency_key']);
 
         $bad = $this->paymentPayload();
         $bad['amount'] = 119.0;
         $this->withToken($token)->withHeader('Idempotency-Key', 'record-1')
-            ->postJson('/api/v1/finance-v2/payments', $bad)
+            ->postJson('/api/v1/finance/payments', $bad)
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['amount']);
 
         $created = $this->withToken($token)->withHeader('Idempotency-Key', 'record-1')
-            ->postJson('/api/v1/finance-v2/payments', $this->paymentPayload())
+            ->postJson('/api/v1/finance/payments', $this->paymentPayload())
             ->assertCreated()
             ->assertJsonPath('amount_minor', '11900')
             ->assertJsonPath('allocated_minor', '0')
@@ -75,14 +75,14 @@ final class PaymentApiTest extends TestCase
         $this->assertIsString($created->json('id'));
 
         $replay = $this->withToken($token)->withHeader('Idempotency-Key', 'record-1')
-            ->postJson('/api/v1/finance-v2/payments', $this->paymentPayload())
+            ->postJson('/api/v1/finance/payments', $this->paymentPayload())
             ->assertCreated();
         $this->assertSame($created->json('id'), $replay->json('id'));
 
         $refund = $this->paymentPayload();
         $refund['amount'] = '-50.00';
         $this->withToken($token)->withHeader('Idempotency-Key', 'record-refund')
-            ->postJson('/api/v1/finance-v2/payments', $refund)
+            ->postJson('/api/v1/finance/payments', $refund)
             ->assertCreated()
             ->assertJsonPath('amount_minor', '-5000');
     }
@@ -90,12 +90,12 @@ final class PaymentApiTest extends TestCase
     public function test_list_supports_pagination_envelope(): void
     {
         [, $token] = $this->ownerAndToken();
-        $this->withToken($token)->withHeader('Idempotency-Key', 'k1')->postJson('/api/v1/finance-v2/payments', $this->paymentPayload())->assertCreated();
+        $this->withToken($token)->withHeader('Idempotency-Key', 'k1')->postJson('/api/v1/finance/payments', $this->paymentPayload())->assertCreated();
         $second = $this->paymentPayload();
         $second['reference'] = 'second';
-        $this->withToken($token)->withHeader('Idempotency-Key', 'k2')->postJson('/api/v1/finance-v2/payments', $second)->assertCreated();
+        $this->withToken($token)->withHeader('Idempotency-Key', 'k2')->postJson('/api/v1/finance/payments', $second)->assertCreated();
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/payments?per_page=1&page=1')
+        $this->withToken($token)->getJson('/api/v1/finance/payments?per_page=1&page=1')
             ->assertOk()
             ->assertJsonPath('meta.total', 2)
             ->assertJsonPath('meta.per_page', 1)
@@ -108,13 +108,13 @@ final class PaymentApiTest extends TestCase
         [, $token] = $this->ownerAndToken();
         [, $otherToken] = $this->ownerAndToken();
         $created = $this->withToken($token)->withHeader('Idempotency-Key', 'k1')
-            ->postJson('/api/v1/finance-v2/payments', $this->paymentPayload())->assertCreated();
+            ->postJson('/api/v1/finance/payments', $this->paymentPayload())->assertCreated();
         $uuid = $created->json('id');
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/payments/'.$uuid)->assertOk();
+        $this->withToken($token)->getJson('/api/v1/finance/payments/'.$uuid)->assertOk();
 
         app('auth')->forgetGuards();
-        $this->withToken($otherToken)->getJson('/api/v1/finance-v2/payments/'.$uuid)->assertNotFound();
+        $this->withToken($otherToken)->getJson('/api/v1/finance/payments/'.$uuid)->assertNotFound();
     }
 
     public function test_allocate_reverse_and_suggest_use_exact_signed_minor_units(): void
@@ -124,22 +124,22 @@ final class PaymentApiTest extends TestCase
         $invoiceUuid = $this->finalizedInvoice($token);
 
         $payment = $this->withToken($token)->withHeader('Idempotency-Key', 'record-1')
-            ->postJson('/api/v1/finance-v2/payments', $this->paymentPayload())
+            ->postJson('/api/v1/finance/payments', $this->paymentPayload())
             ->assertCreated();
         $paymentUuid = $payment->json('id');
 
-        $suggestions = $this->withToken($token)->getJson('/api/v1/finance-v2/payments/'.$paymentUuid.'/suggestions')
+        $suggestions = $this->withToken($token)->getJson('/api/v1/finance/payments/'.$paymentUuid.'/suggestions')
             ->assertOk();
         $this->assertContains($suggestions->json('status'), ['suggested', 'ambiguous', 'none']);
 
         $this->withToken($token)->withHeader('Idempotency-Key', 'allocate-bad')
-            ->postJson('/api/v1/finance-v2/payments/'.$paymentUuid.'/allocations', [
+            ->postJson('/api/v1/finance/payments/'.$paymentUuid.'/allocations', [
                 'lines' => [['invoice_id' => $invoiceUuid, 'amount' => '5000.00']],
             ])
             ->assertUnprocessable();
 
         $allocated = $this->withToken($token)->withHeader('Idempotency-Key', 'allocate-1')
-            ->postJson('/api/v1/finance-v2/payments/'.$paymentUuid.'/allocations', [
+            ->postJson('/api/v1/finance/payments/'.$paymentUuid.'/allocations', [
                 'lines' => [['invoice_id' => $invoiceUuid, 'amount' => '119.00']],
             ])
             ->assertCreated()
@@ -150,14 +150,14 @@ final class PaymentApiTest extends TestCase
         $allocationId = $this->firstAllocationId();
 
         $reversed = $this->withToken($token)->withHeader('Idempotency-Key', 'reverse-1')
-            ->postJson('/api/v1/finance-v2/payment-allocations/'.$allocationId.'/reverse')
+            ->postJson('/api/v1/finance/payment-allocations/'.$allocationId.'/reverse')
             ->assertOk()
             ->assertJsonPath('payment.unapplied_minor', '11900')
             ->assertJsonPath('invoices.0.status', 'finalized')
             ->assertJsonPath('invoices.0.open_minor', '11900');
 
         $this->withToken($token)->withHeader('Idempotency-Key', 'reverse-2')
-            ->postJson('/api/v1/finance-v2/payment-allocations/'.$allocationId.'/reverse')
+            ->postJson('/api/v1/finance/payment-allocations/'.$allocationId.'/reverse')
             ->assertUnprocessable();
 
         $this->assertNotSame($allocated->json('payment.version'), $reversed->json('payment.version'));
@@ -173,11 +173,11 @@ final class PaymentApiTest extends TestCase
 
     private function finalizedInvoice(string $token): string
     {
-        $created = $this->withToken($token)->postJson('/api/v1/finance-v2/invoices', $this->invoiceDraftPayload())
+        $created = $this->withToken($token)->postJson('/api/v1/finance/invoices', $this->invoiceDraftPayload())
             ->assertCreated();
         $uuid = $created->json('id');
         $this->withToken($token)->withHeader('Idempotency-Key', 'finalize-for-payment')
-            ->postJson('/api/v1/finance-v2/invoices/'.$uuid.'/finalize')
+            ->postJson('/api/v1/finance/invoices/'.$uuid.'/finalize')
             ->assertOk();
 
         return $uuid;

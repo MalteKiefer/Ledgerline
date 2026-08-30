@@ -1112,7 +1112,14 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             $customer = is_array($snapshot) && is_array($snapshot['customer'] ?? null)
                 ? $snapshot['customer']
                 : [];
-            $recipient = is_string($customer['email'] ?? null) ? $customer['email'] : null;
+            // A dedicated Rechnungs-E-Mail (billing contact) takes precedence over
+            // the customer's general address, matching the legacy behaviour this
+            // module's cutover carries forward — a customer who set one expects
+            // invoices to reach that inbox specifically, not whoever reads the
+            // general one.
+            $recipient = is_string($customer['invoiceEmail'] ?? null) && trim($customer['invoiceEmail']) !== ''
+                ? $customer['invoiceEmail']
+                : (is_string($customer['email'] ?? null) ? $customer['email'] : null);
         }
         $recipient = is_string($recipient) ? trim($recipient) : '';
         if ($recipient === '' || filter_var($recipient, FILTER_VALIDATE_EMAIL) === false) {

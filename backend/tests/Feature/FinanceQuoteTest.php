@@ -143,55 +143,14 @@ class FinanceQuoteTest extends TestCase
         $this->assertSame(1, DB::table('finance_invoices')->where('source_type', 'legacy_quote_snapshot')->count());
     }
 
-    public function test_goods_leave_the_shelf_when_the_invoice_is_finalised_once(): void
-    {
-        $this->signIn();
-        $switch = $this->article(['kind' => 'hardware', 'track_stock' => true]);
-        $service = $this->article(['kind' => 'service', 'name' => 'Beratung', 'track_stock' => false]);
-        $this->postJson(route('api.finance.products.stock', $switch), ['qty' => 10, 'reason' => 'purchase'])->assertCreated();
-
-        $invoice = new Invoice;
-        $invoice->fill([
-            'status' => 'draft',
-            'issue_date' => '2026-05-04',
-            'lines' => [
-                ['desc' => 'Switch', 'qty' => 3, 'unitPrice' => 100, 'vatRate' => 19, 'kind' => 'hardware', 'productId' => $switch->id],
-                ['desc' => 'Beratung', 'qty' => 8, 'unitPrice' => 120, 'vatRate' => 19, 'kind' => 'service', 'productId' => $service->id],
-            ],
-        ]);
-        $invoice->save();
-
-        $this->postJson(route('api.finance.invoices.finalize', $invoice))->assertOk();
-
-        // Hardware went out; a service has no shelf.
-        $this->assertSame('7.0000', (string) $switch->fresh()?->stock_qty);
-        $this->assertSame(0, FinanceStockMovement::query()->where('finance_product_id', $service->id)->count());
-        $sale = FinanceStockMovement::query()->where('reason', 'sale')->firstOrFail();
-        $this->assertSame('invoice', (string) $sale->ref_type);
-
-        // Finalising again is idempotent and must not book the goods twice.
-        $this->postJson(route('api.finance.invoices.finalize', $invoice))->assertOk();
-        $this->assertSame('7.0000', (string) $switch->fresh()?->stock_qty);
-    }
-
-    public function test_selling_more_than_the_shelf_holds_is_recorded_not_refused(): void
-    {
-        // Negative stock is real information. Blocking a numbered invoice over a
-        // stock figure would be worse than recording the truth.
-        $this->signIn();
-        $switch = $this->article(['kind' => 'hardware', 'track_stock' => true]);
-
-        $invoice = new Invoice;
-        $invoice->fill([
-            'status' => 'draft',
-            'issue_date' => '2026-05-04',
-            'lines' => [['desc' => 'Switch', 'qty' => 2, 'unitPrice' => 100, 'vatRate' => 19, 'kind' => 'hardware', 'productId' => $switch->id]],
-        ]);
-        $invoice->save();
-
-        $this->postJson(route('api.finance.invoices.finalize', $invoice))->assertOk();
-        $this->assertSame('-2.0000', (string) $switch->fresh()?->stock_qty);
-    }
+    // Hardware-stock-booking-on-finalize (goods leave the shelf once, idempotently,
+    // negative stock recorded not refused) used to be tested here against the
+    // now-deleted legacy FinanceController::finalizeInvoice route. It is covered
+    // equivalently -- and considerably more thoroughly, including scale-4
+    // quantities and owner-scoping -- by
+    // tests/Feature/FinanceModule/InvoiceFinalizationTest.php::
+    // test_inventory_sale_is_scale_four_owner_scoped_hardware_only_and_idempotent()
+    // against the finance-v2 invoice module, which is now the only invoice writer.
 
     public function test_a_decision_needs_a_sent_quote(): void
     {

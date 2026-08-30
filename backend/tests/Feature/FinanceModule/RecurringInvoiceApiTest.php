@@ -17,14 +17,14 @@ final class RecurringInvoiceApiTest extends TestCase
     public function test_recurring_routes_are_additive_uuid_scoped_and_protected_by_the_finance_stack(): void
     {
         $routes = [
-            'api.finance-v2.recurring-invoice-templates.index' => ['GET', 'api/v1/finance-v2/recurring-invoice-templates'],
-            'api.finance-v2.recurring-invoice-templates.store' => ['POST', 'api/v1/finance-v2/recurring-invoice-templates'],
-            'api.finance-v2.recurring-invoice-templates.show' => ['GET', 'api/v1/finance-v2/recurring-invoice-templates/{template}'],
-            'api.finance-v2.recurring-invoice-templates.versions.store' => ['POST', 'api/v1/finance-v2/recurring-invoice-templates/{template}/versions'],
-            'api.finance-v2.recurring-invoice-templates.pause' => ['POST', 'api/v1/finance-v2/recurring-invoice-templates/{template}/pause'],
-            'api.finance-v2.recurring-invoice-templates.resume' => ['POST', 'api/v1/finance-v2/recurring-invoice-templates/{template}/resume'],
-            'api.finance-v2.recurring-invoice-templates.runs.index' => ['GET', 'api/v1/finance-v2/recurring-invoice-templates/{template}/runs'],
-            'api.finance-v2.recurring-invoice-runs.retry' => ['POST', 'api/v1/finance-v2/recurring-invoice-runs/{run}/retry'],
+            'api.finance-v2.recurring-invoice-templates.index' => ['GET', 'api/v1/finance/recurring-invoice-templates'],
+            'api.finance-v2.recurring-invoice-templates.store' => ['POST', 'api/v1/finance/recurring-invoice-templates'],
+            'api.finance-v2.recurring-invoice-templates.show' => ['GET', 'api/v1/finance/recurring-invoice-templates/{template}'],
+            'api.finance-v2.recurring-invoice-templates.versions.store' => ['POST', 'api/v1/finance/recurring-invoice-templates/{template}/versions'],
+            'api.finance-v2.recurring-invoice-templates.pause' => ['POST', 'api/v1/finance/recurring-invoice-templates/{template}/pause'],
+            'api.finance-v2.recurring-invoice-templates.resume' => ['POST', 'api/v1/finance/recurring-invoice-templates/{template}/resume'],
+            'api.finance-v2.recurring-invoice-templates.runs.index' => ['GET', 'api/v1/finance/recurring-invoice-templates/{template}/runs'],
+            'api.finance-v2.recurring-invoice-runs.retry' => ['POST', 'api/v1/finance/recurring-invoice-runs/{run}/retry'],
         ];
 
         foreach ($routes as $name => [$method, $uri]) {
@@ -39,23 +39,23 @@ final class RecurringInvoiceApiTest extends TestCase
             $this->assertContains('throttle:120,1', $middleware);
         }
 
-        $this->getJson('/api/v1/finance-v2/recurring-invoice-templates')->assertUnauthorized();
+        $this->getJson('/api/v1/finance/recurring-invoice-templates')->assertUnauthorized();
 
         $disabled = User::factory()->create(['role' => 'user', 'modules' => ['reports']]);
         $disabledToken = $disabled->createToken('device', ['device'])->plainTextToken;
-        $this->withToken($disabledToken)->getJson('/api/v1/finance-v2/recurring-invoice-templates')->assertForbidden();
+        $this->withToken($disabledToken)->getJson('/api/v1/finance/recurring-invoice-templates')->assertForbidden();
     }
 
     public function test_create_requires_idempotency_and_the_initial_version_is_one(): void
     {
         [, $token] = $this->ownerAndToken();
 
-        $this->withToken($token)->postJson('/api/v1/finance-v2/recurring-invoice-templates', $this->templatePayload())
+        $this->withToken($token)->postJson('/api/v1/finance/recurring-invoice-templates', $this->templatePayload())
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['idempotency_key']);
 
         $created = $this->withToken($token)->withHeader('Idempotency-Key', 'template-1')
-            ->postJson('/api/v1/finance-v2/recurring-invoice-templates', $this->templatePayload())
+            ->postJson('/api/v1/finance/recurring-invoice-templates', $this->templatePayload())
             ->assertCreated()
             ->assertJsonPath('mode', 'draft')
             ->assertJsonPath('interval', 'monthly')
@@ -65,7 +65,7 @@ final class RecurringInvoiceApiTest extends TestCase
         $this->assertIsString($created->json('id'));
 
         $replay = $this->withToken($token)->withHeader('Idempotency-Key', 'template-1')
-            ->postJson('/api/v1/finance-v2/recurring-invoice-templates', $this->templatePayload())
+            ->postJson('/api/v1/finance/recurring-invoice-templates', $this->templatePayload())
             ->assertCreated();
         $this->assertSame($created->json('id'), $replay->json('id'));
         $this->assertSame(1, DB::table('finance_recurring_invoice_templates')->count());
@@ -76,20 +76,20 @@ final class RecurringInvoiceApiTest extends TestCase
         [, $token] = $this->ownerAndToken();
         [, $otherToken] = $this->ownerAndToken();
         $created = $this->withToken($token)->withHeader('Idempotency-Key', 'template-1')
-            ->postJson('/api/v1/finance-v2/recurring-invoice-templates', $this->templatePayload())
+            ->postJson('/api/v1/finance/recurring-invoice-templates', $this->templatePayload())
             ->assertCreated();
         $uuid = $created->json('id');
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/recurring-invoice-templates/'.$uuid)
+        $this->withToken($token)->getJson('/api/v1/finance/recurring-invoice-templates/'.$uuid)
             ->assertOk()
             ->assertJsonPath('id', $uuid);
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/recurring-invoice-templates?mode=draft')
+        $this->withToken($token)->getJson('/api/v1/finance/recurring-invoice-templates?mode=draft')
             ->assertOk()
             ->assertJsonPath('meta.total', 1);
 
         app('auth')->forgetGuards();
-        $this->withToken($otherToken)->getJson('/api/v1/finance-v2/recurring-invoice-templates/'.$uuid)
+        $this->withToken($otherToken)->getJson('/api/v1/finance/recurring-invoice-templates/'.$uuid)
             ->assertNotFound();
     }
 
@@ -97,7 +97,7 @@ final class RecurringInvoiceApiTest extends TestCase
     {
         [, $token] = $this->ownerAndToken();
         $created = $this->withToken($token)->withHeader('Idempotency-Key', 'template-1')
-            ->postJson('/api/v1/finance-v2/recurring-invoice-templates', $this->templatePayload())
+            ->postJson('/api/v1/finance/recurring-invoice-templates', $this->templatePayload())
             ->assertCreated();
         $uuid = $created->json('id');
 
@@ -105,7 +105,7 @@ final class RecurringInvoiceApiTest extends TestCase
         $versionPayload['lines'][0]['unit_price'] = '150.00';
 
         $added = $this->withToken($token)->withHeader('Idempotency-Key', 'version-1')
-            ->postJson('/api/v1/finance-v2/recurring-invoice-templates/'.$uuid.'/versions', [
+            ->postJson('/api/v1/finance/recurring-invoice-templates/'.$uuid.'/versions', [
                 'effective_from' => '2026-09-28',
                 'expected_version' => 0,
                 'draft' => $versionPayload,
@@ -115,7 +115,7 @@ final class RecurringInvoiceApiTest extends TestCase
             ->assertJsonPath('version', 1);
 
         $stale = $this->withToken($token)->withHeader('Idempotency-Key', 'version-stale')
-            ->postJson('/api/v1/finance-v2/recurring-invoice-templates/'.$uuid.'/versions', [
+            ->postJson('/api/v1/finance/recurring-invoice-templates/'.$uuid.'/versions', [
                 'effective_from' => '2026-10-28',
                 'expected_version' => 0,
                 'draft' => $versionPayload,
@@ -124,13 +124,13 @@ final class RecurringInvoiceApiTest extends TestCase
             ->assertJsonPath('error', 'recurring_template_version_conflict');
 
         $paused = $this->withToken($token)->withHeader('Idempotency-Key', 'pause-1')
-            ->postJson('/api/v1/finance-v2/recurring-invoice-templates/'.$uuid.'/pause', ['expected_version' => 1])
+            ->postJson('/api/v1/finance/recurring-invoice-templates/'.$uuid.'/pause', ['expected_version' => 1])
             ->assertOk()
             ->assertJsonPath('status', 'paused');
         $this->assertIsString($paused->json('paused_at'));
 
         $this->withToken($token)->withHeader('Idempotency-Key', 'resume-1')
-            ->postJson('/api/v1/finance-v2/recurring-invoice-templates/'.$uuid.'/resume', ['expected_version' => 2])
+            ->postJson('/api/v1/finance/recurring-invoice-templates/'.$uuid.'/resume', ['expected_version' => 2])
             ->assertOk()
             ->assertJsonPath('status', 'active')
             ->assertJsonPath('paused_at', null);
@@ -140,7 +140,7 @@ final class RecurringInvoiceApiTest extends TestCase
     {
         [$owner, $token] = $this->ownerAndToken();
         $created = $this->withToken($token)->withHeader('Idempotency-Key', 'template-1')
-            ->postJson('/api/v1/finance-v2/recurring-invoice-templates', $this->templatePayload())
+            ->postJson('/api/v1/finance/recurring-invoice-templates', $this->templatePayload())
             ->assertCreated();
         $templateUuid = $created->json('id');
         $templateId = (int) DB::table('finance_recurring_invoice_templates')->where('uuid', $templateUuid)->value('id');
@@ -164,19 +164,19 @@ final class RecurringInvoiceApiTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/recurring-invoice-templates/'.$templateUuid.'/runs')
+        $this->withToken($token)->getJson('/api/v1/finance/recurring-invoice-templates/'.$templateUuid.'/runs')
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.id', $runUuid)
             ->assertJsonPath('data.0.status', 'failed')
             ->assertJsonMissingPath('data.0.idempotency_key_hash');
 
-        $this->withToken($token)->getJson('/api/v1/finance-v2/recurring-invoice-templates/'.$templateUuid.'/runs?status=sent')
+        $this->withToken($token)->getJson('/api/v1/finance/recurring-invoice-templates/'.$templateUuid.'/runs?status=sent')
             ->assertOk()
             ->assertJsonPath('meta.total', 0);
 
         $this->withToken($token)
-            ->postJson('/api/v1/finance-v2/recurring-invoice-runs/'.$runUuid.'/retry')
+            ->postJson('/api/v1/finance/recurring-invoice-runs/'.$runUuid.'/retry')
             ->assertStatus(202)
             ->assertJsonPath('status', 'pending')
             ->assertJsonPath('id', $runUuid);

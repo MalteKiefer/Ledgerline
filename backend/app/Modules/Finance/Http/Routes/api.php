@@ -102,6 +102,32 @@ Route::prefix('api/v1/finance-v2')
             ->whereUuid('quote')
             ->whereNumber('revision')
             ->name('quotes.revisions.pdf');
+    });
+
+/**
+ * Canonical finance-v2 invoice/payment/recurring-invoice surface (Task 17
+ * cutover). Distinct route group from finance-v2 above so these move to
+ * their permanent `/api/v1/finance/*` home without disturbing the still-
+ * preview `projects`/`quotes` paths above, which stay on `finance-v2` until
+ * their own later cutover. Route *names* intentionally keep the
+ * `api.finance-v2.` prefix — `FinanceSeriesDocumentSource` and every test in
+ * `tests/Feature/FinanceModule/{Invoice,Payment,RecurringInvoice}ApiTest.php`
+ * already address these controllers by name; renaming would touch dozens of
+ * call sites for no behavioural gain, since the *path* is what a client
+ * actually depends on.
+ */
+Route::prefix('api/v1/finance')
+    ->name('api.finance-v2.')
+    ->middleware([
+        'api',
+        'auth:sanctum',
+        'abilities:device',
+        UpdateTokenIp::class,
+        EnsureTwoFactorEnrolled::class,
+        'module:finance',
+        'throttle:120,1',
+    ])
+    ->group(function (): void {
         Route::get('/invoices', [InvoiceController::class, 'index'])->name('invoices.index');
         Route::post('/invoices', [InvoiceController::class, 'store'])->name('invoices.store');
         Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->whereUuid('invoice')->name('invoices.show');
