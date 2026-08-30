@@ -300,6 +300,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ValidationError" }
+    FinanceV2QuoteUnprocessable:
+      description: Quote input validation or a stable quote-domain rejection.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/FinanceV2QuoteUnprocessable" }
     VersionConflict:
       description: >
         Optimistic-concurrency conflict — the stored `version` no longer matches the
@@ -1001,7 +1006,6 @@ components:
         user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
         name: { type: string }
         category: { type: [string, "null"] }
-        kind: { type: [string, "null"] }
         url: { type: [string, "null"] }
         logo: { type: [string, "null"] }
         note: { type: [string, "null"] }
@@ -2783,6 +2787,854 @@ components:
         message: { type: [string, "null"] }
         created_at: { type: [string, "null"], format: date-time }
       required: [id, level, event]
+
+    FinanceV2Money:
+      type: object
+      additionalProperties: false
+      required: [net_minor, vat_minor, gross_minor, currency]
+      properties:
+        net_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "9007199254740993", description: "Exact signed minor-unit integer string; JSON numbers are rejected." }
+        vat_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "1711367858400789", description: "Exact signed minor-unit integer string; JSON numbers are rejected." }
+        gross_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "10718567113141782", description: "Exact signed minor-unit integer string; JSON numbers are rejected." }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+
+    FinanceV2QuoteLineInput:
+      type: object
+      additionalProperties: false
+      required: [description, quantity, unit, unit_price, tax_rate, kind]
+      properties:
+        description: { type: string, maxLength: 1000 }
+        quantity: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,4})?$", description: "Exact scale-4 decimal string; JSON numbers are rejected." }
+        unit: { type: string, maxLength: 50 }
+        unit_price: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact currency decimal string; JSON numbers are rejected." }
+        tax_rate: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact percentage decimal string; JSON numbers are rejected." }
+        kind: { type: string, enum: [service, hardware] }
+        product_id: { type: [integer, "null"], minimum: 1 }
+
+    FinanceV2QuoteDraftInput:
+      type: object
+      additionalProperties: false
+      required: [title, customer, currency, lines, discount_type]
+      properties:
+        title: { type: string, maxLength: 255 }
+        partner_id: { type: [integer, "null"], minimum: 1 }
+        customer:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string, maxLength: 255 }
+            email: { type: [string, "null"], format: email }
+          additionalProperties: true
+        issue_date: { type: [string, "null"], format: date }
+        valid_until: { type: [string, "null"], format: date }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        lines: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/FinanceV2QuoteLineInput' } }
+        discount_type: { type: string, enum: [none, percent, fixed] }
+        discount_value: { type: [string, "null"], pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$" }
+        intro_text: { type: [string, "null"] }
+        outro_text: { type: [string, "null"] }
+        internal_note: { type: [string, "null"] }
+        version: { type: integer, minimum: 0, description: "Required only for draft update." }
+        control_net_minor: { type: [string, "null"], pattern: '^(?:0|-?[1-9][0-9]*)$', example: "9007199254740993", description: "Optional exact signed minor-unit assertion within the server integer range; JSON numbers are rejected and the value is never authoritative." }
+        control_vat_minor: { type: [string, "null"], pattern: '^(?:0|-?[1-9][0-9]*)$', example: "1711367858400789", description: "Optional exact signed minor-unit assertion within the server integer range; JSON numbers are rejected and the value is never authoritative." }
+        control_gross_minor: { type: [string, "null"], pattern: '^(?:0|-?[1-9][0-9]*)$', example: "10718567113141782", description: "Optional exact signed minor-unit assertion within the server integer range; JSON numbers are rejected and the value is never authoritative." }
+
+    FinanceV2QuotePreview:
+      type: object
+      additionalProperties: false
+      required: [net_minor, vat_minor, gross_minor, discount_minor, currency, tax_breakdowns, issue_date, valid_until]
+      properties:
+        net_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "9007199254740993" }
+        vat_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "1711367858400789" }
+        gross_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "10718567113141782" }
+        discount_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "1000000000000000" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        tax_breakdowns:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [tax_rate_basis_points, net_minor, vat_minor, gross_minor]
+            properties:
+              tax_rate_basis_points: { type: string, pattern: '^(?:0|[1-9][0-9]*)$', example: "1900" }
+              net_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "9007199254740993" }
+              vat_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "1711367858400789" }
+              gross_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "10718567113141782" }
+        issue_date: { type: string, format: date }
+        valid_until: { type: string, format: date }
+
+    FinanceV2QuoteLine:
+      type: object
+      additionalProperties: false
+      required: [description, quantity, quantity_scaled, unit, unit_price, unit_price_minor, currency, tax_rate, tax_rate_basis_points, kind, product_id]
+      properties:
+        description: { type: string }
+        quantity: { type: string }
+        quantity_scaled: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "9007199254740993" }
+        unit: { type: string }
+        unit_price: { type: string }
+        unit_price_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "9007199254740993" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        tax_rate: { type: string }
+        tax_rate_basis_points: { type: string, pattern: '^(?:0|[1-9][0-9]*)$', example: "1900", description: "Exact non-negative basis-point integer string; domain maximum is 10000." }
+        kind: { type: string, enum: [service, hardware] }
+        product_id: { type: [integer, "null"], minimum: 1 }
+
+    FinanceV2QuoteCalculatedTotals:
+      type: object
+      additionalProperties: false
+      required: [net_minor, vat_minor, gross_minor, discount_minor, currency, tax_breakdowns]
+      properties:
+        net_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "9007199254740993" }
+        vat_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "1711367858400789" }
+        gross_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "10718567113141782" }
+        discount_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "1000000000000000" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        tax_breakdowns:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [tax_rate_basis_points, net_minor, vat_minor, gross_minor]
+            properties:
+              tax_rate_basis_points: { type: string, pattern: '^(?:0|[1-9][0-9]*)$', example: "1900" }
+              net_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "9007199254740993" }
+              vat_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "1711367858400789" }
+              gross_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', example: "10718567113141782" }
+
+    FinanceV2QuoteDiscount:
+      type: object
+      additionalProperties: false
+      required: [type, value, currency]
+      properties:
+        type: { type: string, enum: [none, percent, fixed] }
+        value: { type: [string, "null"] }
+        basis_points: { type: string, pattern: '^(?:0|[1-9][0-9]*)$', example: "1900" }
+        minor: { type: string, pattern: '^(?:0|[1-9][0-9]*)$', example: "1000000000000000" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+
+    FinanceV2QuoteDraft:
+      type: object
+      additionalProperties: false
+      required: [title, customer, partner_id, issue_date, valid_until, currency, lines, discount, totals, intro_text, outro_text, internal_note]
+      properties:
+        title: { type: string }
+        customer: { type: object, additionalProperties: true }
+        partner_id: { type: [integer, "null"] }
+        issue_date: { type: string, format: date }
+        valid_until: { type: string, format: date }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        lines: { type: array, items: { $ref: '#/components/schemas/FinanceV2QuoteLine' } }
+        discount: { $ref: '#/components/schemas/FinanceV2QuoteDiscount' }
+        totals: { $ref: '#/components/schemas/FinanceV2QuoteCalculatedTotals' }
+        intro_text: { type: [string, "null"] }
+        outro_text: { type: [string, "null"] }
+        internal_note: { type: [string, "null"] }
+
+    FinanceV2QuoteSnapshot:
+      type: object
+      additionalProperties: false
+      required: [schema_version, document_type, series_uuid, document_number, revision_number, revision_label, title, customer, partner_id, issue_date, valid_until, currency, lines, discount, totals, intro_text, outro_text, customer_note]
+      properties:
+        schema_version: { type: integer, enum: [1] }
+        document_type: { type: string, enum: [quote] }
+        series_uuid: { type: string, format: uuid }
+        document_number: { type: string }
+        revision_number: { type: integer, minimum: 1 }
+        revision_label: { type: string }
+        title: { type: string }
+        customer: { type: object, additionalProperties: true }
+        partner_id: { type: [integer, "null"] }
+        issue_date: { type: string, format: date }
+        valid_until: { type: string, format: date }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        lines: { type: array, items: { $ref: '#/components/schemas/FinanceV2QuoteLine' } }
+        discount: { $ref: '#/components/schemas/FinanceV2QuoteDiscount' }
+        totals: { $ref: '#/components/schemas/FinanceV2QuoteCalculatedTotals' }
+        intro_text: { type: [string, "null"] }
+        outro_text: { type: [string, "null"] }
+        customer_note: { type: [string, "null"] }
+
+    FinanceV2QuoteRevision:
+      type: object
+      additionalProperties: false
+      required: [id, revision_number, previous_revision_id, status, snapshot, totals, pdf_sha256, pdf_url, pdf_download_url, published_at, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        revision_number: { type: integer, minimum: 1 }
+        previous_revision_id: { type: [integer, "null"], format: int64 }
+        status: { type: string, enum: [draft, published] }
+        snapshot: { $ref: '#/components/schemas/FinanceV2QuoteSnapshot' }
+        totals: { $ref: '#/components/schemas/FinanceV2Money' }
+        pdf_sha256: { type: [string, "null"], pattern: "^[a-f0-9]{64}$" }
+        pdf_url: { type: [string, "null"], format: uri }
+        pdf_download_url: { type: [string, "null"], format: uri }
+        published_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+
+    FinanceV2QuoteDelivery:
+      type: object
+      additionalProperties: false
+      required: [uuid, revision_id, state, attempts, last_error_code, queued_at, sent_at, failed_at]
+      properties:
+        uuid: { type: string, format: uuid }
+        revision_id: { type: integer, format: int64 }
+        state: { type: string, enum: [queued, sending, sent, failed] }
+        attempts: { type: integer, minimum: 0 }
+        last_error_code: { type: [string, "null"] }
+        queued_at: { type: string, format: date-time }
+        sent_at: { type: [string, "null"], format: date-time }
+        failed_at: { type: [string, "null"], format: date-time }
+
+    FinanceV2Quote:
+      type: object
+      additionalProperties: false
+      required: [id, status, effective_status, partner_id, number, version, has_pending_draft, current_revision, draft, totals, conversions, delivery, published_at, accepted_at, declined_at, converted_at, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [draft, sent, accepted, declined, converted] }
+        effective_status: { type: string, enum: [draft, sent, accepted, declined, converted, expired] }
+        partner_id: { type: [integer, "null"] }
+        number: { type: [string, "null"] }
+        version: { type: integer, minimum: 0 }
+        has_pending_draft: { type: boolean }
+        current_revision: { anyOf: [{ $ref: '#/components/schemas/FinanceV2QuoteRevision' }, { type: "null" }] }
+        draft: { anyOf: [{ $ref: '#/components/schemas/FinanceV2QuoteDraft' }, { type: "null" }] }
+        totals: { $ref: '#/components/schemas/FinanceV2Money' }
+        conversions: { type: array, items: { type: object, additionalProperties: false, properties: { source_revision_id: { type: integer }, target_type: { type: string, enum: [invoice] }, target_reference: { type: string }, target_id: { type: [integer, "null"] }, created_at: { type: string, format: date-time } }, required: [source_revision_id, target_type, target_reference, target_id, created_at] } }
+        delivery: { anyOf: [{ $ref: '#/components/schemas/FinanceV2QuoteDelivery' }, { type: "null" }] }
+        published_at: { type: [string, "null"], format: date-time }
+        accepted_at: { type: [string, "null"], format: date-time }
+        declined_at: { type: [string, "null"], format: date-time }
+        converted_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    FinanceV2QuotePage:
+      type: object
+      additionalProperties: false
+      required: [data, links, meta]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/FinanceV2Quote' } }
+        links: { type: object, additionalProperties: false, properties: { first: { type: string, format: uri }, last: { type: string, format: uri }, prev: { type: [string, "null"], format: uri }, next: { type: [string, "null"], format: uri } }, required: [first, last, prev, next] }
+        meta: { type: object, additionalProperties: false, properties: { current_page: { type: integer }, per_page: { type: integer }, total: { type: integer }, last_page: { type: integer } }, required: [current_page, per_page, total, last_page] }
+
+    FinanceV2QuoteConflict:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [version_conflict, idempotency_key_reused, operation_in_progress, quote_locked, quote_revision_stale, quote_revision_replaced, quote_draft_pending, quote_publication_in_progress, quote_delivery_in_progress] }
+        current: { $ref: '#/components/schemas/FinanceV2Quote' }
+
+    FinanceV2QuoteDomainError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [control_totals_mismatch, initial_draft_cannot_be_discarded, invalid_customer, invalid_discount, invalid_money, invalid_partner, invalid_product, invalid_quantity, invalid_quote_input, invalid_tax_rate, invalid_transition, invalid_validity_period, no_pdf, no_recipient, no_smtp, quote_draft_base_mismatch, quote_draft_missing, quote_expired, quote_not_accepted, quote_not_published, quote_publish_not_allowed, quote_revision_base_mismatch, quote_revision_not_published, quote_version_not_allowed]
+
+    FinanceV2QuoteUnprocessable:
+      oneOf:
+        - { $ref: '#/components/schemas/ValidationError' }
+        - { $ref: '#/components/schemas/FinanceV2QuoteDomainError' }
+
+    FinanceV2InvoiceLineInput:
+      type: object
+      additionalProperties: false
+      required: [description, quantity, unit, unit_price, tax_rate, kind]
+      properties:
+        description: { type: string, maxLength: 1000 }
+        quantity: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,4})?$", description: "Exact scale-4 decimal string; JSON numbers are rejected." }
+        unit: { type: string, maxLength: 50 }
+        unit_price: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact currency decimal string; JSON numbers are rejected." }
+        tax_rate: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact percentage decimal string; JSON numbers are rejected." }
+        kind: { type: string, enum: [service, hardware] }
+        product_id: { type: [integer, "null"], minimum: 1 }
+
+    FinanceV2InvoiceDraftInput:
+      type: object
+      additionalProperties: false
+      required: [issue_date, due_date, currency, customer, lines, discount_type]
+      properties:
+        issue_date: { type: string, format: date }
+        due_date: { type: string, format: date }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        customer:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string, maxLength: 255 }
+            email: { type: [string, "null"], format: email }
+          additionalProperties: true
+        partner_id: { type: [integer, "null"], minimum: 1 }
+        project_id: { type: [integer, "null"], minimum: 1 }
+        lines: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/FinanceV2InvoiceLineInput' } }
+        discount_type: { type: string, enum: [none, percent, fixed] }
+        discount_value: { type: [string, "null"], pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$" }
+        version: { type: integer, minimum: 0, description: "Required only for PATCH update." }
+        control_net_minor: { type: [string, "null"], pattern: '^(?:0|-?[1-9][0-9]*)$', description: "Optional exact signed minor-unit assertion; never authoritative." }
+        control_vat_minor: { type: [string, "null"], pattern: '^(?:0|-?[1-9][0-9]*)$', description: "Optional exact signed minor-unit assertion; never authoritative." }
+        control_gross_minor: { type: [string, "null"], pattern: '^(?:0|-?[1-9][0-9]*)$', description: "Optional exact signed minor-unit assertion; never authoritative." }
+
+    FinanceV2InvoiceSourceRef:
+      type: object
+      additionalProperties: false
+      required: [type, key]
+      properties:
+        type: { type: string, enum: [quote_revision, legacy_quote_snapshot, project_time_batch, recurring_run, cancellation, legacy_invoice] }
+        key: { type: string }
+
+    FinanceV2Invoice:
+      type: object
+      additionalProperties: false
+      required: [id, kind, number, status, issue_date, due_date, partner_id, project_id, totals, allocated_minor, paid_minor, open_minor, source, snapshot, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [invoice, credit_note] }
+        number: { type: [string, "null"] }
+        status: { type: string, enum: [draft, finalized, sent, partially_paid, paid, cancelled] }
+        issue_date: { type: string, format: date }
+        due_date: { type: string, format: date }
+        partner_id: { type: [integer, "null"] }
+        project_id: { type: [integer, "null"] }
+        totals: { $ref: '#/components/schemas/FinanceV2Money' }
+        allocated_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', description: "Signed sum of active allocation entries." }
+        paid_minor: { type: string, pattern: '^(?:0|[1-9][0-9]*)$', description: "Non-negative magnitude applied to a normal invoice." }
+        open_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$' }
+        source: { anyOf: [{ $ref: '#/components/schemas/FinanceV2InvoiceSourceRef' }, { type: "null" }] }
+        snapshot: { type: object, additionalProperties: true, description: "Canonical calculated draft/revision snapshot; never includes storage paths." }
+        version: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    FinanceV2InvoicePage:
+      type: object
+      additionalProperties: false
+      required: [data, links, meta]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/FinanceV2Invoice' } }
+        links: { type: object, additionalProperties: false, properties: { first: { type: string, format: uri }, last: { type: string, format: uri }, prev: { type: [string, "null"], format: uri }, next: { type: [string, "null"], format: uri } }, required: [first, last, prev, next] }
+        meta: { type: object, additionalProperties: false, properties: { current_page: { type: integer }, per_page: { type: integer }, total: { type: integer }, last_page: { type: integer } }, required: [current_page, per_page, total, last_page] }
+
+    FinanceV2InvoiceFinalizeResult:
+      allOf:
+        - { $ref: '#/components/schemas/FinanceV2Invoice' }
+        - type: object
+          additionalProperties: false
+          required: [revision]
+          properties:
+            revision:
+              type: object
+              additionalProperties: false
+              required: [id, pdf_sha256, finalized_at]
+              properties:
+                id: { type: integer, format: int64 }
+                pdf_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+                finalized_at: { type: string, format: date-time }
+
+    FinanceV2InvoiceRevision:
+      type: object
+      additionalProperties: false
+      required: [id, revision_number, status, snapshot, net_minor, vat_minor, gross_minor, currency, pdf_sha256, pdf_url, published_at]
+      properties:
+        id: { type: integer, format: int64 }
+        revision_number: { type: integer, minimum: 1 }
+        status: { type: string, enum: [draft, published] }
+        snapshot: { type: object, additionalProperties: true }
+        net_minor: { type: integer }
+        vat_minor: { type: integer }
+        gross_minor: { type: integer }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        pdf_sha256: { type: [string, "null"], pattern: "^[a-f0-9]{64}$" }
+        pdf_url: { type: string, format: uri }
+        published_at: { type: [string, "null"], format: date-time }
+
+    FinanceV2InvoiceDelivery:
+      type: object
+      additionalProperties: false
+      required: [id, kind, recipient, status, attempts, last_attempt_at, sent_at, next_retry_at, last_error_code, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [invoice, reminder] }
+        recipient: { type: string, format: email }
+        status: { type: string, enum: [pending, sending, sent, failed, unknown] }
+        attempts: { type: integer, minimum: 0 }
+        last_attempt_at: { type: [string, "null"], format: date-time }
+        sent_at: { type: [string, "null"], format: date-time }
+        next_retry_at: { type: [string, "null"], format: date-time }
+        last_error_code: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    FinanceV2InvoiceConflict:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [version_conflict, invoice_version_conflict, invoice_delete_conflict, invoice_finalization_conflict, idempotency_key_reused, idempotency_conflict, operation_in_progress, source_snapshot_conflict, delivery_idempotency_conflict, delivery_state_conflict, delivery_invoice_state_conflict, delivery_revision_stale] }
+        current: { $ref: '#/components/schemas/FinanceV2Invoice' }
+
+    FinanceV2InvoiceDomainError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [document_totals_mismatch, invalid_customer, invalid_discount, invalid_invoice_dates, invalid_invoice_input, invalid_money, invalid_partner, invalid_product, invalid_quantity, invalid_tax_rate, invoice_not_cancellable, invoice_not_deletable, invoice_not_editable, invoice_not_finalizable, invoice_not_overdue, credit_note_cannot_be_cancelled, delivery_invoice_not_eligible, delivery_kind_invalid, delivery_pdf_unavailable, delivery_recipient_missing, delivery_retry_not_allowed, delivery_smtp_unavailable]
+
+    FinanceV2InvoiceUnprocessable:
+      oneOf:
+        - { $ref: '#/components/schemas/ValidationError' }
+        - { $ref: '#/components/schemas/FinanceV2InvoiceDomainError' }
+
+    FinanceV2Payment:
+      type: object
+      additionalProperties: false
+      required: [id, amount_minor, allocated_minor, unapplied_minor, currency, received_at, reference, counterparty, payment_method_id, source, version]
+      properties:
+        id: { type: string, format: uuid }
+        amount_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$', description: "Signed minor-unit integer string; positive is incoming money, negative is a refund." }
+        allocated_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$' }
+        unapplied_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$' }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        received_at: { type: string, format: date-time }
+        reference: { type: [string, "null"] }
+        counterparty: { type: [string, "null"] }
+        payment_method_id: { type: [integer, "null"] }
+        source: { anyOf: [{ $ref: '#/components/schemas/FinanceV2InvoiceSourceRef' }, { type: "null" }] }
+        version: { type: integer, minimum: 0 }
+
+    FinanceV2PaymentPage:
+      type: object
+      additionalProperties: false
+      required: [data, links, meta]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/FinanceV2Payment' } }
+        links: { type: object, additionalProperties: false, properties: { first: { type: string, format: uri }, last: { type: string, format: uri }, prev: { type: [string, "null"], format: uri }, next: { type: [string, "null"], format: uri } }, required: [first, last, prev, next] }
+        meta: { type: object, additionalProperties: false, properties: { current_page: { type: integer }, per_page: { type: integer }, total: { type: integer }, last_page: { type: integer } }, required: [current_page, per_page, total, last_page] }
+
+    FinanceV2RecordPaymentInput:
+      type: object
+      additionalProperties: false
+      required: [amount, currency, received_at]
+      properties:
+        amount: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact signed decimal string; positive is incoming money, negative is a refund." }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        received_at: { type: string, format: date-time }
+        reference: { type: [string, "null"], maxLength: 255 }
+        counterparty: { type: [string, "null"], maxLength: 255 }
+        payment_method_id: { type: [integer, "null"], minimum: 1 }
+        source_type: { type: [string, "null"], maxLength: 64 }
+        source_key: { type: [string, "null"], maxLength: 255 }
+
+    FinanceV2AllocationLineInput:
+      type: object
+      additionalProperties: false
+      required: [invoice_id, amount]
+      properties:
+        invoice_id: { type: string, format: uuid }
+        amount: { type: string, pattern: "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$", description: "Exact signed decimal string; sign must match the payment's sign." }
+
+    FinanceV2AllocationResult:
+      type: object
+      additionalProperties: false
+      required: [payment, invoices]
+      properties:
+        payment: { $ref: '#/components/schemas/FinanceV2Payment' }
+        invoices: { type: array, items: { $ref: '#/components/schemas/FinanceV2Invoice' } }
+
+    FinanceV2PaymentSuggestions:
+      type: object
+      additionalProperties: false
+      required: [status, requires_confirmation, candidates]
+      properties:
+        status: { type: string, enum: [none, suggested, ambiguous] }
+        requires_confirmation: { type: boolean }
+        candidates:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [invoice_id, number, open_minor, currency, score, reason]
+            properties:
+              invoice_id: { type: string, format: uuid }
+              number: { type: string }
+              open_minor: { type: string, pattern: '^(?:0|-?[1-9][0-9]*)$' }
+              currency: { type: string, pattern: "^[A-Z]{3}$" }
+              score: { type: integer }
+              reason: { type: string }
+
+    FinanceV2PaymentConflict:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [idempotency_key_reused, idempotency_conflict, invoice_version_conflict, payment_version_conflict, allocation_reversal_conflict] }
+
+    FinanceV2PaymentDomainError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [invalid_payment_input, invalid_money, invalid_currency, invalid_reference, invalid_counterparty, invalid_source, allocation_currency_mismatch, allocation_over_limit, allocation_sign_mismatch, allocation_target_not_finalized, allocation_target_cancelled, allocation_zero_amount, allocation_already_reversed]
+
+    FinanceV2PaymentUnprocessable:
+      oneOf:
+        - { $ref: '#/components/schemas/ValidationError' }
+        - { $ref: '#/components/schemas/FinanceV2PaymentDomainError' }
+
+    FinanceV2RecurringInvoiceTemplateInput:
+      type: object
+      additionalProperties: false
+      required: [mode, interval, timezone, start_date, run_time, draft]
+      properties:
+        mode: { type: string, enum: [draft, auto_send] }
+        interval: { type: string, enum: [monthly, quarterly, semiannual, annual] }
+        timezone: { type: string, description: "IANA timezone identifier." }
+        start_date: { type: string, format: date }
+        end_date: { type: [string, "null"], format: date }
+        run_time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$' }
+        draft: { $ref: '#/components/schemas/FinanceV2InvoiceDraftInput' }
+
+    FinanceV2RecurringInvoiceTemplateVersionInput:
+      type: object
+      additionalProperties: false
+      required: [effective_from, expected_version, draft]
+      properties:
+        effective_from: { type: string, format: date }
+        expected_version: { type: integer, minimum: 0 }
+        draft: { $ref: '#/components/schemas/FinanceV2InvoiceDraftInput' }
+
+    FinanceV2RecurringInvoiceTemplate:
+      type: object
+      additionalProperties: false
+      required: [id, mode, interval, timezone, start_date, end_date, run_time, anchor_day, month_end_anchor, next_run_at, status, paused_at, current_version, version]
+      properties:
+        id: { type: string, format: uuid }
+        mode: { type: string, enum: [draft, auto_send] }
+        interval: { type: string, enum: [monthly, quarterly, semiannual, annual] }
+        timezone: { type: string }
+        start_date: { type: string, format: date }
+        end_date: { type: [string, "null"], format: date }
+        run_time: { type: string }
+        anchor_day: { type: integer, minimum: 1, maximum: 31 }
+        month_end_anchor: { type: boolean }
+        next_run_at: { type: string, format: date-time }
+        status: { type: string, enum: [active, paused, completed] }
+        paused_at: { type: [string, "null"], format: date-time }
+        current_version:
+          type: object
+          additionalProperties: false
+          required: [number, effective_from, snapshot_sha256]
+          properties:
+            number: { type: integer, minimum: 1 }
+            effective_from: { type: string, format: date }
+            snapshot_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        version: { type: integer, minimum: 0 }
+
+    FinanceV2RecurringInvoiceTemplatePage:
+      type: object
+      additionalProperties: false
+      required: [data, links, meta]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplate' } }
+        links: { type: object, additionalProperties: false, properties: { first: { type: string, format: uri }, last: { type: string, format: uri }, prev: { type: [string, "null"], format: uri }, next: { type: [string, "null"], format: uri } }, required: [first, last, prev, next] }
+        meta: { type: object, additionalProperties: false, properties: { current_page: { type: integer }, per_page: { type: integer }, total: { type: integer }, last_page: { type: integer } }, required: [current_page, per_page, total, last_page] }
+
+    FinanceV2RecurringInvoiceRun:
+      type: object
+      additionalProperties: false
+      required: [id, scheduled_for, scheduled_local_date, status, last_completed_step, attempts, claimed_at, claim_expires_at, next_retry_at, last_error_code, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        scheduled_for: { type: string, format: date-time }
+        scheduled_local_date: { type: string, format: date }
+        status: { type: string, enum: [pending, creating_draft, draft_created, finalizing, finalized, sending, sent, failed] }
+        last_completed_step: { type: [string, "null"] }
+        attempts: { type: integer, minimum: 0 }
+        claimed_at: { type: [string, "null"], format: date-time }
+        claim_expires_at: { type: [string, "null"], format: date-time }
+        next_retry_at: { type: [string, "null"], format: date-time }
+        last_error_code: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    FinanceV2RecurringInvoiceRunPage:
+      type: object
+      additionalProperties: false
+      required: [data, links, meta]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceRun' } }
+        links: { type: object, additionalProperties: false, properties: { first: { type: string, format: uri }, last: { type: string, format: uri }, prev: { type: [string, "null"], format: uri }, next: { type: [string, "null"], format: uri } }, required: [first, last, prev, next] }
+        meta: { type: object, additionalProperties: false, properties: { current_page: { type: integer }, per_page: { type: integer }, total: { type: integer }, last_page: { type: integer } }, required: [current_page, per_page, total, last_page] }
+
+    FinanceV2RecurringConflict:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [version_conflict, recurring_template_version_conflict, idempotency_key_reused, idempotency_conflict, operation_in_progress] }
+        current: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplate' }
+
+    FinanceV2RecurringDomainError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [invalid_recurring_template_input, invalid_timezone, invalid_interval, invalid_effective_date, invalid_recurring_mode, invalid_money, invalid_quantity, recurring_template_completed, recurring_template_effective_date_before_start, recurring_template_effective_date_conflict]
+
+    FinanceV2RecurringUnprocessable:
+      oneOf:
+        - { $ref: '#/components/schemas/ValidationError' }
+        - { $ref: '#/components/schemas/FinanceV2RecurringDomainError' }
+
+    FinanceV2ProjectInput:
+      type: object
+      additionalProperties: false
+      required: [name, kind, currency]
+      properties:
+        name: { type: string, maxLength: 255 }
+        kind: { type: string, enum: [business, private] }
+        budget_minor: { type: string, nullable: true, pattern: '^-?\d+$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        partner_reference: { type: [string, "null"], maxLength: 255 }
+        parent_id: { type: [string, "null"], format: uuid, description: Create only. }
+        starts_on: { type: [string, "null"], format: date }
+        due_on: { type: [string, "null"], format: date }
+        version: { type: integer, minimum: 0, description: Required for update. }
+
+    FinanceV2ProjectActionInput:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: { type: integer, minimum: 0 }
+        status: { type: string, enum: [planned, active, on_hold, done, cancelled] }
+        parent_id: { type: [string, "null"], format: uuid }
+
+    FinanceV2WorkItemInput:
+      type: object
+      additionalProperties: false
+      required: [title, status, is_milestone]
+      properties:
+        title: { type: string, maxLength: 255 }
+        description: { type: [string, "null"], maxLength: 10000 }
+        status: { type: string, enum: [open, in_progress, done] }
+        starts_on: { type: [string, "null"], format: date }
+        due_on: { type: [string, "null"], format: date }
+        estimate_hours: { type: [string, "null"], pattern: '^-?(0|[1-9][0-9]*)(\.[0-9]{1,4})?$' }
+        is_milestone: { type: boolean }
+        product_reference: { type: [string, "null"] }
+        version: { type: integer, minimum: 0, description: Required for update. }
+
+    FinanceV2TimeEntryInput:
+      type: object
+      additionalProperties: false
+      required: [worked_on, hours, billable, currency]
+      properties:
+        work_item_id: { type: [string, "null"], format: uuid }
+        worked_on: { type: string, format: date }
+        hours: { type: string, pattern: '^-?(0|[1-9][0-9]*)(\.[0-9]{1,4})?$' }
+        description: { type: [string, "null"], maxLength: 10000 }
+        billable: { type: boolean }
+        hourly_rate_minor: { type: string, nullable: true, pattern: '^-?\d+$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        version: { type: integer, minimum: 0, description: Required for update. }
+
+    FinanceV2LedgerEntryInput:
+      type: object
+      additionalProperties: false
+      required: [direction, amount_minor, currency]
+      properties:
+        direction: { type: string, enum: [in, out] }
+        amount_minor: { type: string, pattern: '^-?\d+$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        occurred_on: { type: [string, "null"], format: date }
+        title: { type: [string, "null"], maxLength: 255 }
+        note: { type: [string, "null"], maxLength: 10000 }
+        category_reference: { type: [string, "null"] }
+        payment_method_reference: { type: [string, "null"] }
+        version: { type: integer, minimum: 0, description: Required for update. }
+
+    FinanceV2ProjectDocumentInput:
+      type: object
+      additionalProperties: false
+      required: [source_type, source_reference, role]
+      properties:
+        source_type: { type: string, enum: [finance_series, legacy_invoice, file, gallery_photo, finance_receipt, bank_transaction, bank_transaction_receipt] }
+        source_reference: { type: string, maxLength: 255, description: Opaque owner-scoped reference. }
+        pinned_revision_id: { type: [integer, "null"], minimum: 1 }
+        role: { type: string, enum: [source_quote, quote, invoice, payment, receipt, file, photo, other] }
+
+    FinanceV2ProjectNoteInput:
+      type: object
+      additionalProperties: false
+      required: [type, visibility, body]
+      properties:
+        revision_id: { type: [integer, "null"], minimum: 1, description: Document-series notes only. }
+        type: { type: string, enum: [note, decision, call, email, meeting, correction] }
+        visibility: { type: string, enum: [internal, customer] }
+        body: { type: string, minLength: 1, maxLength: 100000 }
+        supersedes_note_id: { type: [integer, "null"], minimum: 1 }
+
+    FinanceV2Project:
+      type: object
+      additionalProperties: false
+      required: [id, parent_id, parent_available, name, kind, status, partner_reference, starts_on, due_on, budget_minor, currency, version, archived, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        parent_id: { type: [string, "null"], format: uuid }
+        parent_available: { type: boolean }
+        name: { type: string }
+        kind: { type: string, enum: [business, private] }
+        status: { type: string, enum: [planned, active, on_hold, done, cancelled] }
+        partner_reference: { type: [string, "null"] }
+        starts_on: { type: [string, "null"], format: date }
+        due_on: { type: [string, "null"], format: date }
+        budget_minor: { type: string, nullable: true, pattern: '^-?\d+$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        version: { type: integer, minimum: 0 }
+        archived: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    FinanceV2ProjectPage:
+      type: object
+      additionalProperties: false
+      required: [data, meta, links]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/FinanceV2Project' } }
+        meta: { type: object, required: [current_page, per_page, total, last_page], properties: { current_page: { type: integer }, per_page: { type: integer }, total: { type: integer }, last_page: { type: integer } } }
+        links: { type: object, required: [first, last, prev, next], properties: { first: { type: string, format: uri }, last: { type: string, format: uri }, prev: { type: [string, "null"], format: uri }, next: { type: [string, "null"], format: uri } } }
+
+    FinanceV2WorkItem:
+      type: object
+      additionalProperties: false
+      required: [resource_type, id, title, status, estimate_quantity_scaled, is_milestone, sort, version]
+      properties:
+        resource_type: { type: string, enum: [work_item] }
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: [string, "null"] }
+        status: { type: string, enum: [open, in_progress, done] }
+        starts_on: { type: [string, "null"], format: date }
+        due_on: { type: [string, "null"], format: date }
+        estimate_quantity_scaled: { type: string, nullable: true, pattern: '^-?\d+$' }
+        is_milestone: { type: boolean }
+        sort: { type: integer }
+        product_reference: { type: [string, "null"] }
+        version: { type: integer, minimum: 0 }
+
+    FinanceV2TimeEntry:
+      type: object
+      additionalProperties: false
+      required: [resource_type, id, work_item_id, worked_on, quantity_scaled, billable, hourly_rate_minor, currency, version]
+      properties:
+        resource_type: { type: string, enum: [time_entry] }
+        id: { type: string, format: uuid }
+        work_item_id: { type: [string, "null"], format: uuid }
+        worked_on: { type: string, format: date }
+        quantity_scaled: { type: string, pattern: '^-?\d+$' }
+        description: { type: [string, "null"] }
+        billable: { type: boolean }
+        hourly_rate_minor: { type: string, nullable: true, pattern: '^-?\d+$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        invoice_target_reference: { type: [string, "null"] }
+        invoiced_at: { type: [string, "null"], format: date-time }
+        version: { type: integer, minimum: 0 }
+
+    FinanceV2LedgerEntry:
+      type: object
+      additionalProperties: false
+      required: [resource_type, id, direction, amount_minor, currency, version]
+      properties:
+        resource_type: { type: string, enum: [ledger_entry] }
+        id: { type: string, format: uuid }
+        direction: { type: string, enum: [in, out] }
+        amount_minor: { type: string, pattern: '^-?\d+$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        occurred_on: { type: [string, "null"], format: date }
+        title: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        category_reference: { type: [string, "null"] }
+        payment_method_reference: { type: [string, "null"] }
+        version: { type: integer, minimum: 0 }
+
+    FinanceV2ProjectTotals:
+      type: object
+      additionalProperties: false
+      required: [project_id, currencies]
+      properties:
+        project_id: { type: string, format: uuid }
+        currencies:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            required: [hours_scaled, time_value_minor, ledger_minor, financial_minor]
+            properties:
+              hours_scaled: { type: string, pattern: '^-?\d+$' }
+              time_value_minor: { type: string, pattern: '^-?\d+$' }
+              ledger_minor: { type: string, pattern: '^-?\d+$' }
+              financial_minor: { type: string, pattern: '^-?\d+$' }
+
+    FinanceV2ProjectDocument:
+      type: object
+      additionalProperties: false
+      required: [link_id, project_id, source, role, snapshot, current, availability, attached_at, detached, detached_at]
+      properties:
+        link_id: { type: integer, minimum: 1 }
+        project_id: { type: string, format: uuid }
+        source: { type: object, required: [source_type, source_reference, pinned_revision_id], properties: { source_type: { type: string }, source_reference: { type: string }, pinned_revision_id: { type: [integer, "null"] } } }
+        role: { type: string }
+        snapshot: { type: object, description: Strict allowlist; storage paths and OCR payloads are never returned. }
+        current: { type: [object, "null"] }
+        availability: { type: string, enum: [available, deleted, missing] }
+        attached_at: { type: string, format: date-time }
+        detached: { type: boolean }
+        detached_at: { type: [string, "null"], format: date-time }
+
+    FinanceV2HistoryItem:
+      type: object
+      additionalProperties: false
+      required: [id, source_kind, type, visibility, body, supersedes_note_id, payload, author_id, occurred_at, series_id, revision_id]
+      properties:
+        id: { type: integer, minimum: 1 }
+        source_kind: { type: string, enum: [project_note, document_note, project_activity, document_activity] }
+        type: { type: string }
+        visibility: { type: [string, "null"], enum: [internal, customer, null] }
+        body: { type: [string, "null"] }
+        supersedes_note_id: { type: [integer, "null"], minimum: 1 }
+        subject_type: { type: [string, "null"] }
+        subject_reference: { type: [string, "null"] }
+        payload: { type: object, description: Allowlisted audit payload; secrets and raw errors are scrubbed. }
+        author_id: { type: [integer, "null"], minimum: 1 }
+        occurred_at: { type: string, format: date-time }
+        series_id: { type: [string, "null"], format: uuid }
+        revision_id: { type: [integer, "null"], minimum: 1 }
+
+    FinanceV2ProjectConflict:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [project_archived, time_invoiced, document_already_attached, document_not_attached, idempotency_key_reused, version_conflict, operation_in_progress] }
+        current: { $ref: '#/components/schemas/FinanceV2Project' }
+
+    FinanceV2ProjectDomainError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [invalid_transition, invalid_project_input] }
 
 paths:
 
@@ -5487,6 +6339,1125 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /finance-v2/health:
+    get:
+      tags: [Finance]
+      operationId: financeV2Health
+      summary: Finance v2 module contract and schema version
+      description: >
+        Authenticated readiness contract for the isolated finance-v2 module.
+        Requires a Sanctum bearer with the `device` ability, completed mandatory
+        2FA enrollment, and the Finance module enabled for the account. Throttle:
+        120 requests/minute.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Finance v2 is enabled and reports its schema contract.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [module, schemaVersion]
+                properties:
+                  module: { type: string, enum: [finance] }
+                  schemaVersion: { type: integer, enum: [1] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/projects:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectsIndex
+      summary: List owner-scoped projects
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 255 } }
+        - { name: status, in: query, schema: { type: string, enum: [planned, active, on_hold, done, cancelled] } }
+        - { name: kind, in: query, schema: { type: string, enum: [business, private] } }
+        - { name: partner_reference, in: query, schema: { type: string } }
+        - { name: parent_id, in: query, schema: { type: string, format: uuid } }
+        - { name: archived, in: query, schema: { type: boolean, default: false } }
+        - { name: starts_from, in: query, schema: { type: string, format: date } }
+        - { name: starts_to, in: query, schema: { type: string, format: date } }
+        - { name: due_from, in: query, schema: { type: string, format: date } }
+        - { name: due_to, in: query, schema: { type: string, format: date } }
+        - { name: sort, in: query, schema: { type: string, enum: [updated_at, name, starts_on, due_on, status] } }
+        - { name: direction, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200": { description: Project page., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectPage' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectsCreate
+      summary: Create a project
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectInput' } } } }
+      responses:
+        "201": { description: Project created., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Project' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/projects/{project}:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectsShow
+      summary: Read an owned project
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Project., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Project' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    put:
+      tags: [Finance]
+      operationId: financeV2ProjectsUpdate
+      summary: Update an owned project with optimistic versioning
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectInput' } } } }
+      responses:
+        "200": { description: Updated project., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Project' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Finance]
+      operationId: financeV2ProjectsArchive
+      summary: Archive an owned project
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectActionInput' } } } }
+      responses:
+        "200": { description: Archived project., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Project' } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /finance-v2/projects/{project}/status:
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectsStatus
+      summary: Change project status
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectActionInput' } } } }
+      responses:
+        "200": { description: Updated project., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Project' } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectConflict' } } } }
+        "422": { description: Invalid transition., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectDomainError' } } } }
+
+  /finance-v2/projects/{project}/move:
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectsMove
+      summary: Move project in the owned hierarchy
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectActionInput' } } } }
+      responses:
+        "200": { description: Moved project., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Project' } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /finance-v2/projects/{project}/restore:
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectsRestore
+      summary: Restore an archived project
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectActionInput' } } } }
+      responses:
+        "200": { description: Restored project., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Project' } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /finance-v2/projects/{project}/work-items:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectWorkItemsIndex
+      summary: List project work items
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: page, in: query, schema: { type: integer, minimum: 1 } }, { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }]
+      responses:
+        "200": { description: Work item page., content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/FinanceV2WorkItem' } }, meta: { type: object } } } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectWorkItemsCreate
+      summary: Create a work item
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2WorkItemInput' } } } }
+      responses:
+        "201": { description: Work item created., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2WorkItem' } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Project archived., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /finance-v2/projects/{project}/work-items/{workItem}:
+    put:
+      tags: [Finance]
+      operationId: financeV2ProjectWorkItemsUpdate
+      summary: Update a project work item
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: workItem, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2WorkItemInput' } } } }
+      responses:
+        "200": { description: Work item updated., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2WorkItem' } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Finance]
+      operationId: financeV2ProjectWorkItemsDelete
+      summary: Delete a project work item
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: workItem, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } } } } }
+      responses: { "204": { description: Deleted. }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Version conflict. }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/work-items/reorder:
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectWorkItemsReorder
+      summary: Reorder all project work items
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, items: { type: string, format: uuid } } } } } } }
+      responses: { "200": { description: Reordered work items. }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Project archived. }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/time-entries:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectTimeEntriesIndex
+      summary: List project time entries
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: page, in: query, schema: { type: integer, minimum: 1 } }, { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }]
+      responses: { "200": { description: Time entry page. }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectTimeEntriesCreate
+      summary: Log project time
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2TimeEntryInput' } } } }
+      responses: { "201": { description: Time entry created., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2TimeEntry' } } } }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Project archived. }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/time-entries/{entry}:
+    put:
+      tags: [Finance]
+      operationId: financeV2ProjectTimeEntriesUpdate
+      summary: Update uninvoiced project time
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: entry, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2TimeEntryInput' } } } }
+      responses: { "200": { description: Time entry updated., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2TimeEntry' } } } }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Version, archive, or invoiced conflict. }, "422": { $ref: "#/components/responses/ValidationError" } }
+    delete:
+      tags: [Finance]
+      operationId: financeV2ProjectTimeEntriesDelete
+      summary: Delete uninvoiced project time
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: entry, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } } } } }
+      responses: { "204": { description: Deleted. }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Version, archive, or invoiced conflict. }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/invoice-drafts:
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectInvoiceDraftsCreate
+      summary: Create an idempotent invoice draft from project time
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [time_entry_ids], properties: { time_entry_ids: { type: array, minItems: 1, items: { type: string, format: uuid } } } } } } }
+      responses: { "201": { description: Invoice draft target. }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Idempotency, archive, or invoiced conflict. }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/totals:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectTotalsShow
+      summary: Read server-calculated project totals
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Exact totals., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectTotals' } } } }, "404": { $ref: "#/components/responses/NotFound" } }
+
+  /finance-v2/projects/{project}/ledger:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectLedgerIndex
+      summary: List project ledger entries
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: direction, in: query, schema: { type: string, enum: [in, out] } }, { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } }, { name: category_reference, in: query, schema: { type: string } }, { name: page, in: query, schema: { type: integer, minimum: 1 } }, { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }]
+      responses: { "200": { description: Ledger page. }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectLedgerCreate
+      summary: Create a project ledger entry
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2LedgerEntryInput' } } } }
+      responses: { "201": { description: Ledger entry created., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2LedgerEntry' } } } }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/ledger/{entry}:
+    put:
+      tags: [Finance]
+      operationId: financeV2ProjectLedgerUpdate
+      summary: Correct a project ledger entry
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: entry, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2LedgerEntryInput' } } } }
+      responses: { "200": { description: Corrected ledger entry., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2LedgerEntry' } } } }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Version conflict. }, "422": { $ref: "#/components/responses/ValidationError" } }
+    delete:
+      tags: [Finance]
+      operationId: financeV2ProjectLedgerDelete
+      summary: Delete a project ledger entry
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: entry, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } } } } }
+      responses: { "204": { description: Deleted. }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Version conflict. }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/documents:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectDocumentsIndex
+      summary: List active or historical project document links
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: state, in: query, schema: { type: string, enum: [active, detached, all] } }, { name: page, in: query, schema: { type: integer, minimum: 1 } }, { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }]
+      responses: { "200": { description: Document link page. }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectDocumentsAttach
+      summary: Attach an owner-validated document source
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectDocumentInput' } } } }
+      responses: { "201": { description: Link attached., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectDocument' } } } }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Idempotency or duplicate conflict. }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/documents/{link}:
+    delete:
+      tags: [Finance]
+      operationId: financeV2ProjectDocumentsDetach
+      summary: Detach a project document while preserving history
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: link, in: path, required: true, schema: { type: integer, minimum: 1 } }, { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }]
+      responses: { "200": { description: Historical detached link., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectDocument' } } } }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: Idempotency or attachment-state conflict. }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/document-sources:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectDocumentSourcesIndex
+      summary: Search owner-validated attachable document sources
+      description: Authorized API capability URL; storage metadata paths are never returned.
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: cursor, in: query, schema: { type: string, maxLength: 4096 } }, { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }]
+      responses: { "200": { description: Source page with opaque next_cursor. }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/notes:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectNotesIndex
+      summary: List append-only project notes
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: page, in: query, schema: { type: integer, minimum: 1 } }, { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }]
+      responses: { "200": { description: Note page. }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+    post:
+      tags: [Finance]
+      operationId: financeV2ProjectNotesCreate
+      summary: Append a project note or correction
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectNoteInput' } } } }
+      responses: { "201": { description: Note appended., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2HistoryItem' } } } }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/projects/{project}/activities:
+    get:
+      tags: [Finance]
+      operationId: financeV2ProjectActivitiesIndex
+      summary: List stable merged project and linked-document activity
+      parameters: [{ name: project, in: path, required: true, schema: { type: string, format: uuid } }, { name: cursor, in: query, schema: { type: string, maxLength: 4096 } }, { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }]
+      responses: { "200": { description: Activity page with opaque next_cursor and scrubbed payloads. }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/document-series/{series}/notes:
+    get:
+      tags: [Finance]
+      operationId: financeV2DocumentSeriesNotesIndex
+      summary: List append-only notes for an owned document series
+      parameters: [{ name: series, in: path, required: true, schema: { type: string, format: uuid } }, { name: page, in: query, schema: { type: integer, minimum: 1 } }, { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }]
+      responses: { "200": { description: Document note page. }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+    post:
+      tags: [Finance]
+      operationId: financeV2DocumentSeriesNotesCreate
+      summary: Append a note or correction to an owned document series
+      parameters: [{ name: series, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2ProjectNoteInput' } } } }
+      responses: { "201": { description: Document note appended., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2HistoryItem' } } } }, "404": { $ref: "#/components/responses/NotFound" }, "422": { $ref: "#/components/responses/ValidationError" } }
+
+  /finance-v2/quotes:
+    get:
+      tags: [Finance]
+      operationId: financeV2QuotesIndex
+      summary: List owner-scoped quotes with stable pagination
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 255 } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, sent, accepted, declined, converted] } }
+        - { name: effective_status, in: query, schema: { type: string, enum: [draft, sent, accepted, declined, converted, expired] } }
+        - { name: published_from, in: query, schema: { type: string, format: date } }
+        - { name: published_to, in: query, schema: { type: string, format: date } }
+        - { name: sort, in: query, schema: { type: string, enum: [published_at] } }
+        - { name: direction, in: query, schema: { type: string, enum: [desc] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: Quote page., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuotePage' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Finance]
+      operationId: financeV2QuotesCreate
+      summary: Create an idempotent server-calculated quote draft
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteDraftInput' } } }
+      responses:
+        "201": { description: Draft created., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/preview:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuotesPreview
+      summary: Calculate quote totals without writing state
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteDraftInput' } } }
+      responses:
+        "200": { description: Server-authoritative totals., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuotePreview' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}:
+    get:
+      tags: [Finance]
+      operationId: financeV2QuotesShow
+      summary: Read one owner-scoped quote aggregate
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Quote aggregate., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/revisions:
+    get:
+      tags: [Finance]
+      operationId: financeV2QuoteRevisionsIndex
+      summary: List immutable quote revision history newest first
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Revision history., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FinanceV2QuoteRevision' } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/draft:
+    put:
+      tags: [Finance]
+      operationId: financeV2QuoteDraftUpdate
+      summary: Update a quote draft using optimistic version CAS
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/FinanceV2QuoteDraftInput' }
+                - { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } }
+      responses:
+        "200": { description: Draft updated., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Finance]
+      operationId: financeV2QuoteDraftDiscard
+      summary: Discard a later-version draft using optimistic version CAS
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "200": { description: Draft discarded., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/versions:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteVersionCreate
+      summary: Start a later quote version
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "201": { description: Draft version started., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/publish:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuotePublish
+      summary: Publish the current draft as an immutable revision
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 }, change_reason: { type: [string, "null"], maxLength: 1000 } } } } } }
+      responses:
+        "200": { description: Published or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/send:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteSend
+      summary: Publish when needed and queue immutable quote delivery
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 }, recipient: { type: [string, "null"], format: email }, change_reason: { type: [string, "null"], maxLength: 1000 } } } } } }
+      responses:
+        "200": { description: Existing idempotent result replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "202": { description: Immutable revision delivery queued., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/accept:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteAccept
+      summary: Accept the exact current quote revision
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version, expected_revision_id], properties: { version: { type: integer, minimum: 0 }, expected_revision_id: { type: integer, minimum: 1 } } } } } }
+      responses:
+        "200": { description: Accepted or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, revision, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/decline:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteDecline
+      summary: Decline the exact current quote revision
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version, expected_revision_id], properties: { version: { type: integer, minimum: 0 }, expected_revision_id: { type: integer, minimum: 1 } } } } } }
+      responses:
+        "200": { description: Declined or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, revision, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/duplicate:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteDuplicate
+      summary: Duplicate an exact quote draft or immutable revision into a new draft
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 }, source_revision_id: { type: [integer, "null"], minimum: 1 } } } } } }
+      responses:
+        "201": { description: Duplicate draft created., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Quote' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/conversions/invoice:
+    post:
+      tags: [Finance]
+      operationId: financeV2QuoteConvertInvoice
+      summary: Convert an accepted exact immutable quote revision to an invoice draft
+      parameters:
+        - { name: quote, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version, expected_revision_id], properties: { version: { type: integer, minimum: 0 }, expected_revision_id: { type: integer, minimum: 1 } } } } } }
+      responses:
+        "201": { description: Invoice draft target created., content: { application/json: { schema: { type: object, additionalProperties: false, required: [target_reference, target_id], properties: { target_reference: { type: string }, target_id: { type: [integer, "null"] } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, revision, idempotency, or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2QuoteConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2QuoteUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance-v2/quotes/{quote}/revisions/{revision}/pdf:
+    get:
+      tags: [Finance]
+      operationId: financeV2QuoteRevisionPdf
+      summary: Stream an immutable published quote revision PDF
+      description: >
+        Streams server-rendered PDF bytes for one published revision belonging
+        to the authenticated owner. Deleted and foreign quotes, revisions from
+        another series, unsafe storage metadata, missing objects, and digest
+        mismatches all return 404. Set `download=true` for attachment disposition;
+        otherwise the PDF is shown inline. Throttle: 120 requests/minute.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - name: quote
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: revision
+          in: path
+          required: true
+          schema: { type: integer, format: int64, minimum: 1, maximum: 9223372036854775807 }
+        - name: download
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Immutable quote revision PDF bytes.
+          headers:
+            ETag:
+              description: Quoted SHA-256 digest of the exact response bytes.
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string, example: "private, max-age=31536000, immutable" }
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/invoices/{invoice}/revisions/{revision}/pdf:
+    get:
+      tags: [Finance]
+      operationId: financeV2InvoiceRevisionPdf
+      summary: Stream an immutable published invoice revision PDF
+      description: >
+        Streams server-rendered PDF bytes for one published revision belonging
+        to the authenticated owner. Foreign invoices, revisions from another
+        series, unsafe storage metadata, missing objects, non-PDF bytes, and
+        digest mismatches all return 404. Set `download=true` for attachment
+        disposition; otherwise the PDF is shown inline. Throttle: 120
+        requests/minute.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - name: invoice
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: revision
+          in: path
+          required: true
+          schema: { type: integer, format: int64, minimum: 1, maximum: 9223372036854775807 }
+        - name: download
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Immutable invoice revision PDF bytes.
+          headers:
+            ETag:
+              description: Quoted SHA-256 digest of the exact response bytes.
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string, example: "private, max-age=31536000, immutable" }
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/invoices:
+    get:
+      tags: [Finance]
+      operationId: financeV2InvoicesIndex
+      summary: List owner-scoped invoices with stable pagination
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 255 } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, finalized, sent, partially_paid, paid, cancelled] } }
+        - { name: kind, in: query, schema: { type: string, enum: [invoice, credit_note] } }
+        - { name: overdue, in: query, schema: { type: boolean } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: Invoice page., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoicePage' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Finance]
+      operationId: financeV2InvoicesCreate
+      summary: Create an exact server-calculated invoice draft
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceDraftInput' } } }
+      responses:
+        "201": { description: Draft created., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Invoice' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/invoices/{invoice}:
+    get:
+      tags: [Finance]
+      operationId: financeV2InvoicesShow
+      summary: Read one owner-scoped invoice aggregate
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Invoice aggregate., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Invoice' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    patch:
+      tags: [Finance]
+      operationId: financeV2InvoicesUpdate
+      summary: Update a draft invoice using optimistic version CAS
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/FinanceV2InvoiceDraftInput' }
+                - { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } }
+      responses:
+        "200": { description: Draft updated., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Invoice' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Finance]
+      operationId: financeV2InvoicesDestroy
+      summary: Delete a draft-only invoice using optimistic version CAS
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "204": { description: Draft deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or not-a-draft conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceConflict' } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/invoices/{invoice}/finalize:
+    post:
+      tags: [Finance]
+      operationId: financeV2InvoicesFinalize
+      summary: Atomically finalize a draft into an immutable numbered revision and PDF
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      responses:
+        "200": { description: Finalized or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceFinalizeResult' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Idempotency or workflow conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/invoices/{invoice}/deliveries:
+    post:
+      tags: [Finance]
+      operationId: financeV2InvoiceDeliveriesCreate
+      summary: Queue idempotent immutable-revision invoice email delivery
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: false, properties: { recipient: { type: [string, "null"], format: email } } } } } }
+      responses:
+        "202": { description: Delivery queued or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceDelivery' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/invoices/{invoice}/reminders:
+    post:
+      tags: [Finance]
+      operationId: financeV2InvoiceRemindersCreate
+      summary: Queue an idempotent overdue-invoice reminder at a numbered level
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: false, required: [level], properties: { level: { type: integer, minimum: 1, maximum: 3 }, recipient: { type: [string, "null"], format: email } } } } } }
+      responses:
+        "202": { description: Reminder queued or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceDelivery' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/invoices/{invoice}/cancel:
+    post:
+      tags: [Finance]
+      operationId: financeV2InvoicesCancel
+      summary: Cancel a finalized invoice with a separately numbered immutable credit document
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      responses:
+        "201": { description: Credit document created or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceFinalizeResult' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2InvoiceConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2InvoiceUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/invoices/{invoice}/revisions:
+    get:
+      tags: [Finance]
+      operationId: financeV2InvoiceRevisionsIndex
+      summary: List invoice revision history newest first
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Revision history., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FinanceV2InvoiceRevision' } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/invoices/{invoice}/pdf:
+    get:
+      tags: [Finance]
+      operationId: financeLegacyInvoicePdf
+      summary: Stream a pre-cutover (legacy) invoice's own stored PDF
+      description: >
+        Read-only survivor of the legacy invoice write surface removed in the
+        Task 17 cutover: GoBD requires an already-issued invoice's document
+        stay reachable for the statutory retention period, so this streams the
+        exact bytes stored before the cutover. `invoice` is the legacy
+        `invoices.id` (a plain integer, never a finance-v2 uuid). With
+        `version_seq` it streams that GoBD correction-trail version's own PDF
+        instead of the current one. No corresponding write route exists.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: integer } }
+        - { name: version_seq, in: query, required: false, schema: { type: integer, minimum: 1 }, description: "Stream this versions[].seq entry's own PDF instead of the current invoice PDF." }
+        - { name: download, in: query, required: false, schema: { type: boolean }, description: "true → Content-Disposition: attachment; default inline." }
+      responses:
+        "200": { description: PDF bytes., content: { application/pdf: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/payments:
+    get:
+      tags: [Finance]
+      operationId: financeV2PaymentsIndex
+      summary: List owner-scoped payments with stable pagination
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 255 } }
+        - { name: unallocated, in: query, schema: { type: boolean } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: Payment page., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2PaymentPage' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Finance]
+      operationId: financeV2PaymentsCreate
+      summary: Record an idempotent exact signed payment
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecordPaymentInput' } } }
+      responses:
+        "201": { description: Payment recorded or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Payment' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2PaymentConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2PaymentUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/payments/{payment}:
+    get:
+      tags: [Finance]
+      operationId: financeV2PaymentsShow
+      summary: Read one owner-scoped payment
+      parameters:
+        - { name: payment, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Payment., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2Payment' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/payments/{payment}/suggestions:
+    get:
+      tags: [Finance]
+      operationId: financeV2PaymentSuggestionsShow
+      summary: Score non-mutating candidate invoices for a payment; never auto-confirms
+      parameters:
+        - { name: payment, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Ranked suggestions., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2PaymentSuggestions' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/payments/{payment}/allocations:
+    post:
+      tags: [Finance]
+      operationId: financeV2PaymentAllocationsCreate
+      summary: Append idempotent exact signed payment allocations under owner lock
+      parameters:
+        - { name: payment, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [lines]
+              properties:
+                lines: { type: array, minItems: 1, maxItems: 100, items: { $ref: '#/components/schemas/FinanceV2AllocationLineInput' } }
+                expected_version: { type: [integer, "null"], minimum: 0 }
+      responses:
+        "201": { description: Allocated or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2AllocationResult' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Idempotency or version conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2PaymentConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2PaymentUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/payment-allocations/{allocation}/reverse:
+    post:
+      tags: [Finance]
+      operationId: financeV2PaymentAllocationsReverse
+      summary: Append the exact append-only reversal of one allocation entry
+      parameters:
+        - { name: allocation, in: path, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: false, properties: { expected_payment_version: { type: [integer, "null"], minimum: 0 } } } } } }
+      responses:
+        "200": { description: Reversed or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2AllocationResult' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Idempotency, version, or already-reversed conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2PaymentConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2PaymentUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/recurring-invoice-templates:
+    get:
+      tags: [Finance]
+      operationId: financeV2RecurringInvoiceTemplatesIndex
+      summary: List owner-scoped recurring invoice templates with stable pagination
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [active, paused, completed] } }
+        - { name: mode, in: query, schema: { type: string, enum: [draft, auto_send] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: Template page., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplatePage' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Finance]
+      operationId: financeV2RecurringInvoiceTemplatesCreate
+      summary: Create an idempotent versioned recurring invoice template
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplateInput' } } }
+      responses:
+        "201": { description: Template created or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplate' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2RecurringUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/recurring-invoice-templates/{template}:
+    get:
+      tags: [Finance]
+      operationId: financeV2RecurringInvoiceTemplatesShow
+      summary: Read one owner-scoped recurring invoice template
+      parameters:
+        - { name: template, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Template., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplate' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/recurring-invoice-templates/{template}/versions:
+    post:
+      tags: [Finance]
+      operationId: financeV2RecurringInvoiceTemplateVersionsCreate
+      summary: Add a later effective-dated content version using optimistic version CAS
+      parameters:
+        - { name: template, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplateVersionInput' } } }
+      responses:
+        "201": { description: Version added or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplate' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version, idempotency, or effective-date conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2RecurringUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/recurring-invoice-templates/{template}/pause:
+    post:
+      tags: [Finance]
+      operationId: financeV2RecurringInvoiceTemplatesPause
+      summary: Pause a template using optimistic version CAS, preserving its next due occurrence
+      parameters:
+        - { name: template, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [expected_version], properties: { expected_version: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "200": { description: Paused or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplate' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2RecurringUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/recurring-invoice-templates/{template}/resume:
+    post:
+      tags: [Finance]
+      operationId: financeV2RecurringInvoiceTemplatesResume
+      summary: Resume a paused template using optimistic version CAS without skipping overdue occurrences
+      parameters:
+        - { name: template, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [expected_version], properties: { expected_version: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "200": { description: Resumed or idempotently replayed., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceTemplate' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Version or idempotency conflict., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringConflict' } } } }
+        "422": { $ref: "#/components/responses/FinanceV2RecurringUnprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/recurring-invoice-templates/{template}/runs:
+    get:
+      tags: [Finance]
+      operationId: financeV2RecurringInvoiceTemplateRunsIndex
+      summary: List one template's scheduler runs with stable pagination
+      parameters:
+        - { name: template, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, creating_draft, draft_created, finalizing, finalized, sending, sent, failed] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: Run page., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceRunPage' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /finance/recurring-invoice-runs/{run}/retry:
+    post:
+      tags: [Finance]
+      operationId: financeV2RecurringInvoiceRunsRetry
+      summary: Retry a failed run from its persisted safe step, never repeating a completed step
+      parameters:
+        - { name: run, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "202": { description: Retry accepted; run resumes from its safe step., content: { application/json: { schema: { $ref: '#/components/schemas/FinanceV2RecurringInvoiceRun' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Invalid run-state transition., content: { application/json: { schema: { type: object, additionalProperties: false, required: [error], properties: { error: { type: string } } } } } }
+        "422": { description: Invalid run-state transition., content: { application/json: { schema: { type: object, additionalProperties: false, required: [error], properties: { error: { type: string } } } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /finance/data:
     get:
       tags: [Finance]
@@ -5855,311 +7826,6 @@ paths:
         "200": { description: "Trashed sets — same keys as /finance/data EXCEPT financeCategories (hard-deleted, not trashable) and standaloneReceipts (not surfaced in trash), each an array of soft-deleted rows.", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /finance/invoices:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceStore
-      summary: Create an invoice
-      description: "Create an owner-scoped invoice row. On create status/type/currency default (draft/invoice/EUR); self-issued invoices are numbered server-side later via /finalize. Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceInput" } } } }
-      responses:
-        "201": { description: Created., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}:
-    put:
-      tags: [Finance]
-      operationId: financeInvoiceUpdate
-      summary: Update an invoice (optimistic concurrency)
-      description: "Per-row update; send `version` for optimistic concurrency (409 on mismatch). Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceInput" } } } }
-      responses:
-        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/VersionConflict" }
-        "422":
-          description: >
-            Standard Laravel validation body ({ message, errors }) OR a GoBD business
-            rejection — a numbered invoice cannot revert to draft ({ error: status_draft_blocked }),
-            or a paid invoice cannot revert to an earlier status ({ error: status_paid_locked };
-            paid is terminal, a correction goes through /storno instead).
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: "#/components/schemas/ValidationError"
-                  - allOf:
-                      - $ref: "#/components/schemas/FinanceError"
-                      - properties: { error: { enum: [status_draft_blocked, status_paid_locked] } }
-        "429": { $ref: "#/components/responses/RateLimited" }
-    delete:
-      tags: [Finance]
-      operationId: financeInvoiceDestroy
-      summary: Soft-delete an invoice
-      description: "Move the invoice to trash (soft delete). Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{id}/restore:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceRestore
-      summary: Restore a trashed invoice
-      description: "Restore a soft-deleted invoice (404 if no trashed invoice with that id is owned by the caller). Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Restored., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422":
-          description: "Cannot restore — the invoice number is now used by a live invoice ({ error: number_conflict })."
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - properties: { error: { enum: [number_conflict] } }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{id}/force:
-    delete:
-      tags: [Finance]
-      operationId: financeInvoiceForce
-      summary: Permanently delete a trashed invoice
-      description: "Permanently delete a trashed invoice and its stored PDF blobs. Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/finalize:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceFinalize
-      summary: Assign the GoBD invoice number (atomic, per-year, idempotent)
-      description: "Server-authoritative GoBD numbering: locks the year's numbered rows, takes max(seq)+1 (never below the configured floor), writes it atomically. Idempotent — an already-numbered invoice is returned unchanged. Throttle 600/min."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Numbered invoice., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409":
-          description: "Numbering race could not be resolved after retries — retriable. Body { error: number_conflict } (NOT a version conflict)."
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - properties: { error: { enum: [number_conflict] } }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/email:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceEmail
-      summary: Email a finalized invoice's stored PDF to the customer
-      description: >
-        Sends the invoice's stored PDF (pdf_path) to the customer over the user's OWN
-        company SMTP (settings.company company_smtp_*), deliberately independent of
-        the workspace notification SMTP. Only finalized invoices (status sent|paid or
-        already numbered) may be sent. Stamps sent_at without bumping the optimistic
-        version. Throttled 10/min.
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                to: { type: string, format: email, description: "Recipient email; falls back to the customer snapshot email." }
-      responses:
-        "200":
-          description: Sent.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [ok, sent_at]
-                properties:
-                  ok: { type: boolean }
-                  sent_at: { type: string, format: date-time }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422":
-          description: >
-            Business rejection with a machine-readable `error` code (one of
-            not_finalized, no_pdf, no_recipient, no_smtp) — OR, for an invalid `to`
-            address, the standard Laravel validation body { message, errors }.
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - $ref: "#/components/schemas/ValidationError"
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/storno:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceStorno
-      summary: Cancel a finalized invoice with a credit note (Storno / Gutschrift)
-      description: >
-        Creates a NEW invoice with type=credit_note, cancels_invoice_id set to the
-        original, the same customer/partner, the original lines with NEGATED
-        amounts and the same discount terms — so it exactly reverses the original's
-        net/VAT/gross. The credit note runs the same GoBD numbering path (its own
-        number). The original invoice is never edited or deleted (its cancelled
-        state is derived). Only a finalized (sent|paid or numbered), non-credit-note,
-        not-already-cancelled invoice can be cancelled. Throttled 30/min.
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "201":
-          description: The created credit note.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [invoice]
-                properties:
-                  invoice: { $ref: "#/components/schemas/Invoice" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422":
-          description: "Cannot cancel — `error` is one of not_finalized, already_cancelled, already_credit_note."
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - properties: { error: { enum: [not_finalized, already_cancelled, already_credit_note] } }
-        "409":
-          description: "Credit-note numbering race could not be resolved — retriable. Body { error: number_conflict }."
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - properties: { error: { enum: [number_conflict] } }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/dun:
-    post:
-      tags: [Finance]
-      operationId: financeInvoiceDun
-      summary: Send the customer a payment reminder (Mahnung) for an overdue invoice
-      description: >
-        Sends a dunning email (with the stored PDF attached) to the customer over
-        the user's OWN company SMTP. Only overdue invoices (status=sent AND
-        due_date < today) with a recipient + PDF may be dunned. Increments the
-        dunning level (reminder_count) and stamps reminded_at (does not bump the
-        optimistic version). Distinct from the owner-facing invoices:remind command.
-        Throttled 10/min.
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                to: { type: string, format: email, description: "Recipient email; falls back to the customer snapshot email." }
-      responses:
-        "200":
-          description: Reminder sent.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [ok, level, reminded_at]
-                properties:
-                  ok: { type: boolean }
-                  level: { type: integer, description: "The new dunning level (Mahnstufe)." }
-                  reminded_at: { type: string, format: date-time }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422":
-          description: >
-            Business rejection with a machine-readable `error` code (one of
-            not_overdue, no_pdf, no_recipient, no_smtp) — OR, for an invalid `to`
-            address, the standard Laravel validation body { message, errors }.
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: "#/components/schemas/FinanceError"
-                  - $ref: "#/components/schemas/ValidationError"
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/invoices/{invoice}/pdf:
-    post:
-      tags: [Finance]
-      operationId: financeInvoicePdfUpload
-      summary: Attach/replace the invoice PDF (multipart)
-      description: >
-        Upload a PDF blob (max files.max_upload_mb). Without `version_seq` it becomes
-        the invoice's current pdf_path. With `version_seq` it is attached to that
-        versions[] entry's own PDF (GoBD per-version correction trail) and pdf_path is
-        left untouched; if no such version exists the upload is discarded and the
-        invoice is returned unchanged. Throttle 1200/min.
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file: { type: string, format: binary, description: "PDF blob (max files.max_upload_mb)." }
-                version_seq: { type: integer, minimum: 1, description: "Attach to this versions[].seq entry instead of the main pdf_path." }
-      responses:
-        "200": { description: Updated invoice., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-    get:
-      tags: [Finance]
-      operationId: financeInvoicePdf
-      summary: Stream the invoice PDF
-      description: >
-        Streams the invoice's PDF inline (sandboxed). With `version_seq` it streams
-        that GoBD version's own stored PDF instead of the current one (404 if that
-        version has no PDF). Throttle 3000/min.
-      security: [ { bearerAuth: [] } ]
-      parameters:
-        - { name: invoice, in: path, required: true, schema: { type: integer } }
-        - { name: version_seq, in: query, required: false, schema: { type: integer, minimum: 1 }, description: "Stream this versions[].seq entry's own PDF instead of the current invoice PDF." }
-        - { name: download, in: query, required: false, schema: { type: boolean }, description: "true → Content-Disposition: attachment; default inline." }
-      responses:
-        "200": { description: PDF bytes., content: { application/pdf: { schema: { type: string, format: binary } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/partners:
     post:
       tags: [Finance]

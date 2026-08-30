@@ -9,8 +9,9 @@ use App\Models\FinanceProject;
 use App\Models\FinanceProjectTask;
 use App\Models\FinanceQuote;
 use App\Models\FinanceTimeEntry;
-use App\Models\Invoice;
 use App\Models\UserSetting;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoiceView;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectPlanInvoiceSource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -264,7 +265,7 @@ class FinanceProjectPlanController extends Controller
 
     public function updateTime(Request $request, FinanceTimeEntry $entry): JsonResponse
     {
-        if ($entry->invoiced_invoice_id !== null) {
+        if ($entry->isInvoiced()) {
             // Already on an invoice. Editing the hours behind a document someone
             // has been sent would make the two disagree.
             return response()->json(['error' => 'time_invoiced'], 422);
@@ -317,7 +318,7 @@ class FinanceProjectPlanController extends Controller
 
     public function destroyTime(FinanceTimeEntry $entry): JsonResponse
     {
-        if ($entry->invoiced_invoice_id !== null) {
+        if ($entry->isInvoiced()) {
             return response()->json(['error' => 'time_invoiced'], 422);
         }
         $entry->delete();
@@ -433,7 +434,8 @@ class FinanceProjectPlanController extends Controller
         $query = FinanceTimeEntry::query()
             ->where('finance_project_id', $project->getKey())
             ->where('billable', true)
-            ->whereNull('invoiced_invoice_id');
+            ->whereNull('invoiced_invoice_id')
+            ->whereNull('invoiced_finance_invoice_id');
         if (is_string($until) && $until !== '') {
             $query->whereDate('date', '<=', $until);
         }
@@ -479,46 +481,95 @@ class FinanceProjectPlanController extends Controller
         }
         $net = round($net, 2);
         $vat = round($net * $vatRate / 100, 2);
+        $customer = $partner !== null ? [
+            'name' => $partner->name,
+            'address' => $partner->address,
+            'email' => $partner->invoice_email ?? $partner->email,
+            'vatId' => $partner->vat_id,
+            'partnerId' => $partner->id,
+        ] : ['name' => (string) $project->name];
 
-        $invoice = DB::transaction(function () use ($project, $partner, $lines, $net, $vat, $vatRate, $terms, $entries): Invoice {
-            $invoice = new Invoice;
-            $invoice->fill([
-                'status' => 'draft',
-                'type' => 'invoice',
-                'issue_date' => Carbon::today(),
-                'due_date' => Carbon::today()->addDays($terms),
-                'currency' => 'EUR',
-                'vat_rate' => $vatRate,
-                'partner_id' => $project->partner_id,
-                'customer' => $partner !== null ? [
-                    'name' => $partner->name,
-                    'address' => $partner->address,
-                    'email' => $partner->invoice_email ?? $partner->email,
-                    'vatId' => $partner->vat_id,
-                    'partnerId' => $partner->id,
-                ] : null,
-                'lines' => $lines,
-                'net' => $net,
-                'vat' => $vat,
-                'gross' => round($net + $vat, 2),
-            ]);
-            $invoice->save();
+        $idempotencyKey = 'entries:'.$entries->pluck('id')->sort()->implode(',');
+
+        $projectId = $project->id;
+        if (! is_int($projectId)) {
+            throw new \LogicException('Project identifier is invalid.');
+        }
+
+        $view = DB::transaction(function () use ($project, $customer, $lines, $terms, $entries, $idempotencyKey, $projectId): InvoiceView {
+            $view = app(LegacyProjectPlanInvoiceSource::class)->convert(
+                $projectId,
+                $lines,
+                $customer,
+                $project->partner_id,
+                'EUR',
+                $terms,
+                $idempotencyKey,
+            );
 
             // Stamp inside the transaction: an entry that is on an invoice must
             // never be available to a second one.
             foreach ($entries as $entry) {
                 $entry->forceFill([
-                    'invoiced_invoice_id' => $invoice->getKey(),
+                    'invoiced_finance_invoice_id' => $view->id->value,
                     'version' => (int) $entry->version + 1,
                 ])->save();
             }
 
-            return $invoice;
+            return $view;
         });
 
         return response()->json([
-            'invoice' => $invoice->fresh(),
+            'invoice' => $this->invoiceJson($view),
             'entries' => $entries->count(),
         ], 201);
+    }
+
+    /** @return array<string, mixed> */
+    private function invoiceJson(InvoiceView $view): array
+    {
+        $snapshot = $view->snapshot;
+        $customer = is_array($snapshot['customer'] ?? null) ? $snapshot['customer'] : [];
+        $rawLines = is_array($snapshot['lines'] ?? null) ? $snapshot['lines'] : [];
+        $lines = array_map(static function (mixed $line): array {
+            $line = is_array($line) ? $line : [];
+
+            return [
+                'desc' => is_string($line['description'] ?? null) ? $line['description'] : '',
+                'qty' => is_numeric($line['quantity'] ?? null) ? (float) $line['quantity'] : 0.0,
+                'unit' => is_string($line['unit'] ?? null) ? $line['unit'] : null,
+                'unitPrice' => is_int($line['unit_price_minor'] ?? null) ? $line['unit_price_minor'] / 100 : 0.0,
+                'vatRate' => is_int($line['tax_rate_basis_points'] ?? null) ? $line['tax_rate_basis_points'] / 100 : 0.0,
+                'kind' => is_string($line['kind'] ?? null) ? $line['kind'] : null,
+                'productId' => is_int($line['product_id'] ?? null) ? $line['product_id'] : null,
+            ];
+        }, $rawLines);
+
+        return [
+            'id' => $view->id->value,
+            'number' => $view->number,
+            'status' => $view->status === 'draft' ? 'draft' : ($view->status === 'finalized' ? 'final' : $view->status),
+            'type' => 'invoice',
+            'issue_date' => $view->issueDate->format('Y-m-d'),
+            'due_date' => $view->dueDate->format('Y-m-d'),
+            'currency' => $view->currency,
+            'partner_id' => $view->partnerId,
+            'customer' => $customer,
+            'lines' => $lines,
+            'net' => $this->minorDecimal($view->netMinor),
+            'vat' => $this->minorDecimal($view->vatMinor),
+            'gross' => $this->minorDecimal($view->grossMinor),
+            'version' => $view->version,
+            'created_at' => $view->createdAt->format(DATE_ATOM),
+        ];
+    }
+
+    private function minorDecimal(int $minor): string
+    {
+        $negative = $minor < 0;
+        $digits = str_pad(ltrim((string) abs($minor), '-'), 3, '0', STR_PAD_LEFT);
+        $decimal = substr($digits, 0, -2).'.'.substr($digits, -2);
+
+        return $negative ? '-'.$decimal : $decimal;
     }
 }

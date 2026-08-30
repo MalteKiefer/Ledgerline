@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { useAuthStore } from '@spa/stores/auth';
+import { invoicePaymentRecurringRoutes } from '@spa/modules/finance/routes';
 
 const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: () => import('@spa/views/auth/Login.vue'), meta: { guest: true } },
@@ -20,6 +21,11 @@ const routes: RouteRecordRaw[] = [
       { path: '', name: 'home', component: () => import('@spa/views/Home.vue') },
       // Finance sections drive the in-page tab via the route param (nav submenu).
       { path: 'finance/:section?', name: 'finance', component: () => import('@spa/views/Finance.vue') },
+      // Invoices/payments/recurring invoices are their own module pages (Task
+      // 17 cutover), not a Finance.vue tab -- Vue Router's static-segment
+      // scoring already prefers e.g. 'finance/invoices' over 'finance/:section?'
+      // regardless of registration order.
+      ...invoicePaymentRecurringRoutes,
       {
         path: 'profile',
         component: () => import('@spa/views/Profile.vue'),

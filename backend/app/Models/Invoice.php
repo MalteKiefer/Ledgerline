@@ -18,6 +18,10 @@ use Illuminate\Support\Carbon;
  * pdf_path are server-managed (assigned on finalisation / never mass-assigned).
  *
  * @property int $id
+ * @property string|null $uuid a finance-v2 identity, not a real column: only
+ *                             set on the non-persisted pseudo-Invoice instances
+ *                             `LegacyInvoiceReadProjection::asInvoiceModels()` builds so a report can
+ *                             still link to the right document; always null on a genuine legacy row.
  * @property int $user_id
  * @property string|null $number
  * @property int|null $seq

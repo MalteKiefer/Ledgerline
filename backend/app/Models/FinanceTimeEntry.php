@@ -32,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property bool $billable
  * @property string|null $hourly_rate
  * @property int|null $invoiced_invoice_id
+ * @property int|null $invoiced_finance_invoice_id
  * @property int $version
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -51,6 +52,7 @@ class FinanceTimeEntry extends Model
         'finance_project_id' => 'integer',
         'finance_project_task_id' => 'integer',
         'invoiced_invoice_id' => 'integer',
+        'invoiced_finance_invoice_id' => 'integer',
         'date' => 'date',
         'hours' => 'decimal:2',
         'hourly_rate' => 'decimal:2',
@@ -73,6 +75,12 @@ class FinanceTimeEntry extends Model
     /** Whether this hour is still waiting to go on an invoice. */
     public function isBillable(): bool
     {
-        return $this->billable && $this->invoiced_invoice_id === null;
+        return $this->billable && ! $this->isInvoiced();
+    }
+
+    /** Whether this hour has already been billed, on either the legacy or the finance-v2 invoice. */
+    public function isInvoiced(): bool
+    {
+        return $this->invoiced_invoice_id !== null || $this->invoiced_finance_invoice_id !== null;
     }
 }

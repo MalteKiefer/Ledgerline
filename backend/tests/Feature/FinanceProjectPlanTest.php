@@ -12,6 +12,7 @@ use App\Models\FinanceTimeEntry;
 use App\Models\Invoice;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class FinanceProjectPlanTest extends TestCase
@@ -133,14 +134,15 @@ class FinanceProjectPlanTest extends TestCase
         $this->assertSame('1040.00', (string) $res->json('invoice.net'));
 
         $invoiceId = (int) $res->json('invoice.id');
-        $this->assertSame(3, FinanceTimeEntry::query()->where('invoiced_invoice_id', $invoiceId)->count());
-        $this->assertNull(FinanceTimeEntry::query()->findOrFail($kept)->invoiced_invoice_id);
+        $this->assertSame(3, FinanceTimeEntry::query()->where('invoiced_finance_invoice_id', $invoiceId)->count());
+        $this->assertNull(FinanceTimeEntry::query()->findOrFail($kept)->invoiced_finance_invoice_id);
 
         // Nothing left to bill: the same hour must not go out twice.
         $this->postJson(route('api.finance.projects.invoice-time', $project))
             ->assertStatus(422)
             ->assertJsonPath('error', 'nothing_to_invoice');
-        $this->assertSame(1, Invoice::query()->count());
+        $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame(1, DB::table('finance_invoices')->where('source_type', 'project_time_batch')->count());
     }
 
     public function test_an_invoiced_hour_can_no_longer_be_edited_or_deleted(): void
@@ -173,7 +175,7 @@ class FinanceProjectPlanTest extends TestCase
             ->assertJsonPath('entries', 1);
 
         // The August hours are still waiting.
-        $this->assertSame(1, FinanceTimeEntry::query()->whereNull('invoiced_invoice_id')->count());
+        $this->assertSame(1, FinanceTimeEntry::query()->whereNull('invoiced_invoice_id')->whereNull('invoiced_finance_invoice_id')->count());
     }
 
     public function test_deleting_a_task_keeps_the_hours_that_were_worked_on_it(): void

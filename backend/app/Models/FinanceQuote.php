@@ -45,6 +45,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $accepted_at
  * @property Carbon|null $declined_at
  * @property int|null $converted_invoice_id
+ * @property int|null $converted_finance_invoice_id
  * @property int|null $converted_project_id
  * @property string|null $pdf_path
  * @property int $version
@@ -82,6 +83,7 @@ class FinanceQuote extends Model
         'seq' => 'integer',
         'year' => 'integer',
         'converted_invoice_id' => 'integer',
+        'converted_finance_invoice_id' => 'integer',
         'converted_project_id' => 'integer',
         'version' => 'integer',
     ];

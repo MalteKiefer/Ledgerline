@@ -33,7 +33,7 @@
 - Consumes: existing quote, invoice, project, recurring, PDF, and mail routes.
 - Produces: deterministic Laravel encryption bootstrap and a compact regression contract for later cutover plans.
 
-- [ ] **Step 1: Write a failing bootstrap assertion**
+- [x] **Step 1: Write a failing bootstrap assertion**
 
 Create `LegacyFinanceBaselineTest` using `RefreshDatabase`. Assert
 `config('app.key')` is a valid non-empty test key and exercise one encrypted
@@ -50,13 +50,13 @@ public function test_finance_tests_have_a_deterministic_application_key(): void
 }
 ```
 
-- [ ] **Step 2: Run the test without a shell-provided key**
+- [x] **Step 2: Run the test without a shell-provided key**
 
 Run: `cd backend && php artisan test tests/Feature/FinanceModule/LegacyFinanceBaselineTest.php`
 
 Expected: FAIL with invalid key length before `phpunit.xml` is changed.
 
-- [ ] **Step 3: Add a test-only application key**
+- [x] **Step 3: Add a test-only application key**
 
 Add this exact entry inside the existing `<php>` block in `phpunit.xml`:
 
@@ -66,7 +66,7 @@ Add this exact entry inside the existing `<php>` block in `phpunit.xml`:
 
 Do not change `.env`, `.env.example`, or runtime secrets.
 
-- [ ] **Step 4: Add baseline workflow assertions**
+- [x] **Step 4: Add baseline workflow assertions**
 
 In the same test class, cover these existing contracts with minimal fixtures:
 
@@ -78,7 +78,7 @@ In the same test class, cover these existing contracts with minimal fixtures:
 
 Use named API routes and assert both response and persisted row counts.
 
-- [ ] **Step 5: Run focused legacy suites**
+- [x] **Step 5: Run focused legacy suites**
 
 Run:
 
@@ -89,7 +89,7 @@ php artisan test tests/Feature/FinanceModule/LegacyFinanceBaselineTest.php tests
 
 Expected: PASS with no shell-provided `APP_KEY`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/phpunit.xml backend/tests/Feature/FinanceModule/LegacyFinanceBaselineTest.php
@@ -111,7 +111,7 @@ git commit -m "test(finance): establish deterministic legacy baseline"
 - Consumes: Laravel service-provider registration and authenticated `module:finance` middleware.
 - Produces: `FinanceServiceProvider`, route name `api.finance-v2.health`, and version constant `FinanceModule::SCHEMA_VERSION = 1`.
 
-- [ ] **Step 1: Write failing module-boundary tests**
+- [x] **Step 1: Write failing module-boundary tests**
 
 Assert the provider is registered, the authenticated endpoint
 `GET /api/v1/finance-v2/health` returns `{module:"finance", schemaVersion:1}`
@@ -125,20 +125,20 @@ $this->actingAs(User::factory()->create())
     ->assertExactJson(['module' => 'finance', 'schemaVersion' => 1]);
 ```
 
-- [ ] **Step 2: Verify failure**
+- [x] **Step 2: Verify failure**
 
 Run: `cd backend && php artisan test tests/Feature/FinanceModule/FinanceModuleBootstrapTest.php`
 
 Expected: FAIL because the provider and route do not exist.
 
-- [ ] **Step 3: Implement provider and route loading**
+- [x] **Step 3: Implement provider and route loading**
 
 `FinanceServiceProvider::boot()` loads the module route file. The route file
 uses prefix `/api/v1/finance-v2`, names `api.finance-v2.*`, and applies the same
 authentication, device-ability, throttle, and `module:finance` middleware as the
 existing Finance API group. `HealthController` returns only the Resource.
 
-- [ ] **Step 4: Enforce dependency direction mechanically**
+- [x] **Step 4: Enforce dependency direction mechanically**
 
 Add a test that scans PHP files below `Domain/` and fails if their source contains
 any of these namespaces:
@@ -152,7 +152,7 @@ Symfony\Component\HttpFoundation
 
 Laravel-independent PHP standard-library imports remain allowed.
 
-- [ ] **Step 5: Run tests and formatter**
+- [x] **Step 5: Run tests and formatter**
 
 Run:
 
@@ -164,7 +164,7 @@ vendor/bin/pint --test app/Modules/Finance tests/Feature/FinanceModule
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/Modules/Finance backend/bootstrap/providers.php backend/tests/Feature/FinanceModule/FinanceModuleBootstrapTest.php
@@ -186,7 +186,7 @@ git commit -m "feat(finance): bootstrap isolated finance module"
 - Consumes: canonical decimal strings from requests and persistence.
 - Produces: `Money::fromDecimal(string,string)`, `Money::fromMinor(int,string)`, `Money::minor()`, `Money::currency()`, `Money::add(Money)`, `Money::subtract(Money)`, and `DecimalQuantity::fromString(string)` with scale 4.
 
-- [ ] **Step 1: Write failing Money tests**
+- [x] **Step 1: Write failing Money tests**
 
 Test exact parsing of `0`, `0.01`, `119.00`, `-0.01`, and the largest supported
 14,2 database value. Reject comma decimals, exponent notation, three fraction
@@ -197,19 +197,19 @@ $this->assertSame(11900, Money::fromDecimal('119.00', 'eur')->minor());
 $this->assertSame('EUR', Money::fromDecimal('119.00', 'eur')->currency());
 ```
 
-- [ ] **Step 2: Write failing quantity tests**
+- [x] **Step 2: Write failing quantity tests**
 
 Accept signed values with at most four decimals and expose the scaled integer.
 Test `1 -> 10000`, `1.5 -> 15000`, `0.0001 -> 1`; reject exponent notation,
 comma decimals, and five fraction digits.
 
-- [ ] **Step 3: Verify failure**
+- [x] **Step 3: Verify failure**
 
 Run: `cd backend && php artisan test tests/Unit/Modules/Finance/Domain/Shared`
 
 Expected: FAIL because the value objects do not exist.
 
-- [ ] **Step 4: Implement without floats**
+- [x] **Step 4: Implement without floats**
 
 Parse with anchored regular expressions, split sign/whole/fraction, right-pad to
 the required scale, and use checked integer multiplication/addition. Normalize
@@ -229,7 +229,7 @@ final readonly class Money
 }
 ```
 
-- [ ] **Step 5: Run tests and quality checks**
+- [x] **Step 5: Run tests and quality checks**
 
 Run:
 
@@ -241,7 +241,7 @@ vendor/bin/pint --test app/Modules/Finance/Domain/Shared tests/Unit/Modules/Fina
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/Modules/Finance/Domain/Shared backend/tests/Unit/Modules/Finance/Domain/Shared
@@ -263,7 +263,7 @@ git commit -m "feat(finance): add exact money value objects"
 - Consumes: `list<DocumentLine>`, currency, and `Discount::none|percentBasisPoints|fixed(Money)`.
 - Produces: `DocumentCalculator::calculate(array $lines, Discount $discount): DocumentTotals` with exact net, VAT, gross, discount, and VAT-by-rate minor units.
 
-- [ ] **Step 1: Write failing line-calculation tests**
+- [x] **Step 1: Write failing line-calculation tests**
 
 Cover quantity times unit price, negative credit lines, zero VAT, 7 percent,
 19 percent, mixed rates, and empty documents. Use exact expected minor units.
@@ -277,20 +277,20 @@ $this->assertSame(4750, $totals->vat->minor());
 $this->assertSame(29750, $totals->gross->minor());
 ```
 
-- [ ] **Step 2: Write failing discount-distribution tests**
+- [x] **Step 2: Write failing discount-distribution tests**
 
 Cover a 10-percent discount, a fixed discount across 7/19-percent groups,
 remainder-cent assignment, discount equal to total net, discount exceeding net,
 and negative discounts. Require deterministic distribution ordered by tax rate
 then original line position.
 
-- [ ] **Step 3: Verify failure**
+- [x] **Step 3: Verify failure**
 
 Run: `cd backend && php artisan test tests/Unit/Modules/Finance/Domain/Shared/DocumentCalculatorTest.php`
 
 Expected: FAIL because the calculator does not exist.
 
-- [ ] **Step 4: Implement integer-only calculation**
+- [x] **Step 4: Implement integer-only calculation**
 
 Calculate line net with scaled integer multiplication and
 `Rounding::halfAwayFromZero`. Distribute fixed discounts proportionally by raw
@@ -298,7 +298,7 @@ net weight; assign remaining cents deterministically. Calculate VAT per rate fro
 discounted taxable bases. Reject empty lines, mixed currencies, negative tax
 rates, rates above 10000 basis points, and discounts outside `[0, net]`.
 
-- [ ] **Step 5: Add client-control-sum comparison**
+- [x] **Step 5: Add client-control-sum comparison**
 
 Implement:
 
@@ -309,7 +309,7 @@ public function matchesControlTotals(?Money $net, ?Money $vat, ?Money $gross): b
 Null controls mean no comparison. Every supplied value must equal the computed
 value exactly.
 
-- [ ] **Step 6: Run tests and formatter**
+- [x] **Step 6: Run tests and formatter**
 
 Run:
 
@@ -321,7 +321,7 @@ vendor/bin/pint --test app/Modules/Finance/Domain/Shared tests/Unit/Modules/Fina
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/app/Modules/Finance/Domain/Shared backend/tests/Unit/Modules/Finance/Domain/Shared/DocumentCalculatorTest.php
@@ -340,32 +340,32 @@ git commit -m "feat(finance): add authoritative document calculator"
 - Consumes: a map of current states to allowed named target states.
 - Produces: `StateMachine::assertCan(string $from, string $to): void` and `StateMachine::can(string $from, string $to): bool`.
 
-- [ ] **Step 1: Write failing transition tests**
+- [x] **Step 1: Write failing transition tests**
 
 Instantiate a state machine with `draft -> sent`, `sent -> accepted|declined`,
 and `accepted -> converted`. Assert allowed transitions, rejected reverse and
 self transitions, unknown states, and stable exception properties `from` and
 `to`.
 
-- [ ] **Step 2: Verify failure**
+- [x] **Step 2: Verify failure**
 
 Run: `cd backend && php artisan test tests/Unit/Modules/Finance/Domain/Shared/Workflow/StateMachineTest.php`
 
 Expected: FAIL because the workflow classes do not exist.
 
-- [ ] **Step 3: Implement immutable transition map**
+- [x] **Step 3: Implement immutable transition map**
 
 Normalize and validate the map in the constructor, preserve exact state names,
 and make `assertCan` throw `InvalidTransition` with code `invalid_transition`.
 Do not include quote- or invoice-specific states in this shared class.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cd backend && php artisan test tests/Unit/Modules/Finance/Domain/Shared/Workflow/StateMachineTest.php`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/Modules/Finance/Domain/Shared/Workflow backend/tests/Unit/Modules/Finance/Domain/Shared/Workflow
@@ -382,7 +382,7 @@ git commit -m "feat(finance): add workflow state machine"
 - Consumes: existing `users` table and PostgreSQL/SQLite-compatible Laravel schema APIs.
 - Produces: `finance_document_series`, `finance_document_revisions`, `finance_document_activities`, and `finance_document_notes`.
 
-- [ ] **Step 1: Write failing schema tests**
+- [x] **Step 1: Write failing schema tests**
 
 Assert required tables and columns. Verify unique `(user_id, uuid)`, unique
 `(document_series_id, revision_number)`, revision self-reference, indexes for
@@ -396,13 +396,13 @@ snapshot, net_minor, vat_minor, gross_minor, currency, change_reason,
 pdf_path, pdf_sha256, published_at, created_by, created_at
 ```
 
-- [ ] **Step 2: Verify failure**
+- [x] **Step 2: Verify failure**
 
 Run: `cd backend && php artisan test tests/Feature/FinanceModule/DocumentCoreSchemaTest.php`
 
 Expected: FAIL because the tables do not exist.
 
-- [ ] **Step 3: Implement additive schema**
+- [x] **Step 3: Implement additive schema**
 
 Use bigint minor-unit columns, three-character currency, JSON snapshot, nullable
 server-owned PDF metadata, and `restrictOnDelete` from revisions to series.
@@ -410,7 +410,7 @@ Activities and notes cascade with their series. Notes use visibility enum values
 `internal` and `customer`. Add `source_type`/`source_id` to series for migration
 idempotency with a unique owner/source key.
 
-- [ ] **Step 4: Run migration cycle and schema tests**
+- [x] **Step 4: Run migration cycle and schema tests**
 
 Run:
 
@@ -422,7 +422,7 @@ php artisan migrate:fresh --env=testing --force
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/database/migrations/2026_08_28_100000_create_finance_document_core.php backend/tests/Feature/FinanceModule/DocumentCoreSchemaTest.php
@@ -443,25 +443,25 @@ git commit -m "feat(finance): add document core schema"
 - Consumes: schema from Task 6 and existing owner-assignment behavior.
 - Produces: typed relations plus a hard mutation/delete guard for published revisions.
 
-- [ ] **Step 1: Write failing owner-isolation tests**
+- [x] **Step 1: Write failing owner-isolation tests**
 
 Create series for two users, authenticate as each user, and assert repository
 queries never expose the other user's series, revisions, activities, or notes.
 Verify a child ID from another owner cannot be resolved through an owned series.
 
-- [ ] **Step 2: Write failing immutability tests**
+- [x] **Step 2: Write failing immutability tests**
 
 Assert a draft revision can be updated. After `published_at` is set, attempts to
 update, delete, replace `pdf_path`, or alter `snapshot` throw
 `PublishedRevisionMutation`. Assert activities cannot be updated or deleted.
 
-- [ ] **Step 3: Verify failure**
+- [x] **Step 3: Verify failure**
 
 Run: `cd backend && php artisan test tests/Feature/FinanceModule/DocumentPersistenceTest.php`
 
 Expected: FAIL because models do not exist.
 
-- [ ] **Step 4: Implement records and guards**
+- [x] **Step 4: Implement records and guards**
 
 Keep `user_id`, hashes, publication fields, source identity, and revision number
 out of `$fillable`. Use explicit casts for snapshot, integer minor units, and
@@ -469,7 +469,7 @@ timestamps. Register Eloquent model-event guards before write/delete. Resolve
 child ownership through a required owner-scoped series query rather than trusting
 the child's numeric ID.
 
-- [ ] **Step 5: Run tests and formatter**
+- [x] **Step 5: Run tests and formatter**
 
 Run:
 
@@ -481,7 +481,7 @@ vendor/bin/pint --test app/Modules/Finance/Infrastructure/Persistence tests/Feat
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/Modules/Finance/Infrastructure/Persistence backend/tests/Feature/FinanceModule/DocumentPersistenceTest.php
@@ -508,27 +508,27 @@ git commit -m "feat(finance): persist immutable document revisions"
 - Consumes: calculated `DocumentTotals`, canonical snapshot arrays, repository port, and renderer port.
 - Produces: `CreateDocumentRevision::handle(CreateRevisionData): DocumentRevisionId`, `PublishDocumentRevision::handle(DocumentRevisionId): PublishedRevision`, and storage methods `putPdf(string $seriesUuid, string $bytes): StoredDocument` / `delete(string $path): void`.
 
-- [ ] **Step 1: Write failing revision-creation tests**
+- [x] **Step 1: Write failing revision-creation tests**
 
 Assert first revision is number 1, the next references revision 1, concurrent
 creation cannot duplicate a number, control totals are persisted from
 `DocumentCalculator`, canonical JSON produces a stable SHA-256, and another
 owner's series is rejected.
 
-- [ ] **Step 2: Write failing publication tests with a fake renderer**
+- [x] **Step 2: Write failing publication tests with a fake renderer**
 
 The fake renderer returns deterministic `%PDF-test` bytes. Assert publication
 stores a server-generated safe path, byte SHA-256, and timestamp atomically;
 retry returns the same published revision without a second render. Renderer
 failure leaves the revision unpublished and records no false success activity.
 
-- [ ] **Step 3: Verify failure**
+- [x] **Step 3: Verify failure**
 
 Run: `cd backend && php artisan test tests/Feature/FinanceModule/DocumentRevisionApplicationTest.php`
 
 Expected: FAIL because commands and ports do not exist.
 
-- [ ] **Step 4: Implement DTOs, ports, repository, and commands**
+- [x] **Step 4: Implement DTOs, ports, repository, and commands**
 
 Canonicalize snapshot keys recursively before JSON encoding. Execute sequence
 allocation and writes in a DB transaction with row locks and a unique-constraint
@@ -537,13 +537,13 @@ retry. `DocumentRevisionId` is a readonly positive-integer value object.
 `DocumentStorage` port, then stores path/hash and appends `revision.published`.
 On transaction failure, call `DocumentStorage::delete()` for newly written bytes.
 
-- [ ] **Step 5: Register interfaces**
+- [x] **Step 5: Register interfaces**
 
 Bind `DocumentRevisionRepository` to `EloquentDocumentRevisionRepository` in
 `FinanceServiceProvider`. Register the test fake renderer within the test only;
 the production PDF adapter is delivered in the invoice/quote plans.
 
-- [ ] **Step 6: Run focused and foundation tests**
+- [x] **Step 6: Run focused and foundation tests**
 
 Run:
 
@@ -555,7 +555,7 @@ vendor/bin/pint --test app/Modules/Finance tests/Feature/FinanceModule tests/Uni
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/app/Modules/Finance backend/tests/Feature/FinanceModule/DocumentRevisionApplicationTest.php
@@ -572,7 +572,7 @@ git commit -m "feat(finance): add document revision application services"
 - Consumes: Tasks 1–8.
 - Produces: verified module boundary and documented interfaces for downstream plans.
 
-- [ ] **Step 1: Run complete relevant regression suites**
+- [x] **Step 1: Run complete relevant regression suites**
 
 Run:
 
@@ -583,7 +583,7 @@ php artisan test tests/Feature/FinanceModule tests/Unit/Modules/Finance tests/Fe
 
 Expected: PASS.
 
-- [ ] **Step 2: Run project quality gates affected by this plan**
+- [x] **Step 2: Run project quality gates affected by this plan**
 
 Run:
 
@@ -595,7 +595,7 @@ vendor/bin/phpstan analyse app/Modules/Finance --memory-limit=1G
 
 Expected: both commands exit zero.
 
-- [ ] **Step 3: Document stable contracts**
+- [x] **Step 3: Document stable contracts**
 
 Document exact namespace boundaries, Money and DecimalQuantity formats,
 rounding rule, calculator inputs/outputs, workflow API, schema ownership,
@@ -603,7 +603,7 @@ revision immutability, repository and renderer ports, and the commands executed
 for verification. State explicitly that production routes still use the legacy
 Finance implementation until later cutover.
 
-- [ ] **Step 4: Mark completed checklist entries and commit**
+- [x] **Step 4: Mark completed checklist entries and commit**
 
 Only mark a checkbox after its command has succeeded.
 

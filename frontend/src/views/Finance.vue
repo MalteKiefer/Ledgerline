@@ -2305,7 +2305,7 @@ import {
   type PrintInvoice, type PrintCompany, type PrintLine,
   computeTotals as printComputeTotals, vatRatesOf as printVatRatesOf,
   lineNet, fmtMoney as pmoney, fmtQty, hasDiscount, skontoDate,
-  epcQrDataUrl, renderInvoicePdfBlob, ensureInvoiceFonts,
+  epcQrDataUrl, renderInvoicePdfBlob, ensureInvoiceFonts, legacyPrintTerms,
 } from '@spa/shared/invoice-print';
 
 const f = useFinanceStore();
@@ -3496,51 +3496,31 @@ function openInvoiceDocument(i: Invoice) {
   }
   editInvoice(i);
 }
-async function saveInvoice() {
-  if (!draft.value) return;
-  saving.value = true;
-  const body: Record<string, unknown> = {
-    status: draft.value.status, currency: draft.value.currency || 'EUR',
-    issue_date: draft.value.issue_date, due_date: draft.value.due_date,
-    customer: {
-      ...(draft.value.customer ?? {}),
-      name: custName_.value, attn: custAttn_.value, email: custEmail_.value,
-      vatId: custVatId_.value, address: custAddress_.value,
-    },
-    lines: lines.value, note: draft.value.note,
-    net: totals.value.net, vat: totals.value.vat, gross: totals.value.gross,
-    vat_rate: lines.value[0]?.vatRate ?? 19,
-    partner_id: draft.value.partner_id ?? null,
-    discount_type: draft.value.discount_type ?? null,
-    discount_value: draft.value.discount_value ?? null,
-    skonto_percent: draft.value.skonto_percent ?? null,
-    skonto_days: draft.value.skonto_days ?? null,
-  };
-  if (draft.value.id) body.version = draft.value.version;
-  try {
-    if (draft.value.id) await f.updateInvoice(draft.value.id, body);
-    else await f.createInvoice(body);
-    invDialog.value = false; await f.load(); await loadReports(); success(t('common.saved'));
-  } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
+// Invoice create/update/finalize/storno/email/dun all used to happen here,
+// against the legacy FinanceController routes removed in the Task 17
+// cutover. This modal's underlying CRUD is gone; every trigger below sends
+// the owner to the new /finance/invoices pages instead of silently failing.
+// A pre-cutover invoice can still be VIEWED (openInvoiceDocument/its PDF
+// stays streamable) and STORED data displayed -- only mutation moved.
+function saveInvoice() {
+  invDialog.value = false;
+  void router.push({ name: 'finance.invoices.index' });
 }
-async function finalize() {
-  if (!draft.value?.id) return;
-  try { const r = await f.finalizeInvoice(draft.value.id); draft.value = { ...r.invoice }; await f.load(); success(t('common.saved')); }
-  catch { error(t('common.error')); }
+function finalize() {
+  error(t('invoices.pdf_upload_moved'));
 }
-async function delInvoice(i: Invoice) { if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return; await f.deleteInvoice(i.id); await f.load(); await loadReports(); }
-
-async function doStorno(i: Invoice) {
-  try { await f.stornoInvoice(i.id); invDialog.value = false; await f.load(); await loadReports(); success(t('invoices.storno_created')); }
-  catch { error(t('invoices.storno_failed')); }
+async function delInvoice(_i: Invoice) {
+  if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return;
+  error(t('invoices.pdf_upload_moved'));
 }
-async function doEmail(i: Invoice) {
-  try { await f.emailInvoice(i.id); success(t('invoices.email_sent')); }
-  catch { error(t('invoices.email_failed')); }
+function doStorno(_i: Invoice) {
+  error(t('invoices.pdf_upload_moved'));
 }
-async function doDun(i: Invoice) {
-  try { await f.dunInvoice(i.id); success(t('invoices.dun_sent')); }
-  catch { error(t('invoices.dun_failed')); }
+function doEmail(_i: Invoice) {
+  error(t('invoices.pdf_upload_moved'));
+}
+function doDun(_i: Invoice) {
+  error(t('invoices.pdf_upload_moved'));
 }
 
 function resetForm(o: PPForm) {
@@ -4292,62 +4272,21 @@ function onInvoicePick(e: Event) {
 
 /**
  * An outgoing invoice that already exists as a PDF (written elsewhere, or an
- * older one being filed): create the record, attach the document, and prefill
- * from the same OCR recogniser the receipt inbox uses.
+ * older one being filed): used to create the record here, attach the
+ * document, and prefill from the OCR recogniser the receipt inbox still uses.
  *
- * The record is created as a plain DRAFT, not `imported`, on purpose: an
- * imported invoice is read-only in the editor, so the numbers the recogniser
- * missed could never be filled in. The PDF stays the authoritative document —
- * the editor links to it while the owner completes the fields.
+ * The legacy invoice CRUD/PDF-upload routes this relied on are gone (Task 17
+ * cutover) and finance-v2 has no equivalent "drop a PDF, OCR-prefill a draft"
+ * capability of its own -- that would be a new feature, not a like-for-like
+ * carry-over, so it is out of this cutover's scope. This now tells the owner
+ * where invoices live instead of silently failing against a route that no
+ * longer exists.
  */
 async function uploadInvoicePdfs(files: File[]) {
-  invUploadBusy.value = true;
   invUploadTotal.value = files.length;
-  invUploadDone.value = 0;
-  let failed = 0;
-  let lastId: number | null = null;
-  for (const file of files) {
-    try {
-      // Best-effort recognition: a failure here must not cost the upload, the
-      // document is worth filing even with every field left blank.
-      let a: ReturnType<typeof analyzeReceiptText> | null = null;
-      try {
-        const fd = new FormData();
-        fd.append('file', file);
-        const res = await api.upload<{ text: string }>('/api/v1/invoices/ocr', fd);
-        a = analyzeReceiptText(res.text, ownNames.value);
-      } catch { /* keep going without a prefill */ }
-
-      const vatRate = a?.vat != null && a.vat !== '' ? Number(a.vat) : 19;
-      const gross = a?.total ?? null;
-      // One synthetic net line so the editor's own totals agree with the gross
-      // read off the document (net = gross / (1 + rate/100)); the owner replaces
-      // it with the real positions if they want them itemised.
-      const net = gross != null ? Math.round((gross / (1 + vatRate / 100)) * 100) / 100 : 0;
-      const created = await f.createInvoice({
-        status: 'draft',
-        issue_date: a?.date || todayYmd(),
-        currency: a?.currency || 'EUR',
-        vat_rate: vatRate,
-        customer: {},
-        lines: gross != null ? [{ desc: file.name.replace(/\.pdf$/i, ''), qty: 1, unitPrice: net, vatRate }] : [],
-        note: null,
-      });
-      const id = created.invoice.id;
-      const pdf = new FormData();
-      pdf.append('file', file);
-      await f.uploadInvoicePdf(id, pdf);
-      lastId = id;
-    } catch { failed++; }
-    invUploadDone.value++;
-  }
-  await f.load();
-  invUploadBusy.value = false;
-  if (failed) error(t('invoices.inbox_some_failed', { failed: String(failed), total: String(files.length) }));
-  else success(t('common.saved'));
-  // Land in the editor of the last upload so the missing fields are right there.
-  const fresh = lastId != null ? f.invoices.find((i) => i.id === lastId) : null;
-  if (fresh) editInvoice(fresh);
+  invUploadDone.value = files.length;
+  error(t('invoices.pdf_upload_moved'));
+  void files;
 }
 
 // file — the Candis-style "drop a batch, review afterwards" flow.
@@ -4610,11 +4549,12 @@ async function applyInvoiceMatches() {
       if (!tx || !inv) continue;
       try {
         await f.updateTransaction(tx.id, { invoice_id: inv.id, invoice_number: inv.number, version: tx.version });
-        if (m.markPaid) {
-          const account = f.paymentMethods.find((p) => p.id === tx.payment_method_id)?.name ?? null;
-          await f.updateInvoice(inv.id, { status: 'paid', paid_at: tx.date, payment_account: account, version: inv.version });
-        }
-        linked++;
+        // Marking the matched invoice paid used to happen here too, against the
+        // legacy FinanceController::updateInvoice route removed in the Task 17
+        // cutover. The transaction link above still applies (that route is
+        // untouched); "paid" now has to be recorded on the new Invoices page.
+        if (m.markPaid) failed++;
+        else linked++;
       } catch { failed++; }
     }
     await f.load();
@@ -5069,7 +5009,8 @@ function buildPrintInvoice(src: Partial<Invoice>, lineRows: (InvoiceLine & { uni
     imported: !!src.imported,
     gross: src.gross ?? null,
     vatRate: src.vat_rate ?? null,
-    discountType: null, discountValue: null, skontoPercent: null, skontoDays: null,
+    ...legacyPrintTerms(src),
+    skontoPercent: null, skontoDays: null,
   };
 }
 

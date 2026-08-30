@@ -29,11 +29,15 @@ export class ApiError extends Error {
   }
 }
 
-export class VersionConflict extends Error {
+export class VersionConflict<T = unknown> extends Error {
   version: number | null;
-  constructor(version: number | null) {
+  current: T | null;
+  etag: string | null;
+  constructor(version: number | null, current: T | null = null, etag: string | null = null) {
     super('version_conflict');
     this.version = version;
+    this.current = current;
+    this.etag = etag;
   }
 }
 
@@ -43,6 +47,13 @@ export interface RequestOptions {
   json?: unknown;
   form?: FormData;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  status: number;
+  etag: string | null;
 }
 
 // Called on any 401 so the app can drop the token + route to login.
@@ -55,7 +66,7 @@ function apiUrl(path: string): string {
   return `${BASE}/api/v1/${path}`;
 }
 
-async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
+async function requestResponse<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<ApiResponse<T>> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...(opts.headers ?? {}),
@@ -71,34 +82,48 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
     body = JSON.stringify(opts.json);
   }
 
-  const res = await fetch(apiUrl(path), { method, headers, body });
+  const res = await fetch(apiUrl(path), { method, headers, body, signal: opts.signal });
 
   if (res.status === 401) {
     setToken(null);
     if (onUnauthorized) onUnauthorized();
     throw new ApiError(401, null);
   }
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) return { data: undefined as T, status: res.status, etag: res.headers.get('ETag') };
 
   let parsed: unknown = null;
   const text = await res.text();
   if (text) {
     try { parsed = JSON.parse(text); } catch { parsed = text; }
   }
-  if (res.ok) return parsed as T;
+  if (res.ok) return { data: parsed as T, status: res.status, etag: res.headers.get('ETag') };
 
   if (res.status === 409 && parsed && typeof parsed === 'object' && (parsed as { error?: string }).error === 'version_conflict') {
-    throw new VersionConflict((parsed as { version?: number }).version ?? null);
+    const body = parsed as { version?: unknown; current?: unknown };
+    const current = body.current ?? null;
+    const currentVersion = current && typeof current === 'object' && 'version' in current
+      ? (current as { version?: unknown }).version
+      : null;
+    const version = typeof body.version === 'number'
+      ? body.version
+      : typeof currentVersion === 'number' ? currentVersion : null;
+    throw new VersionConflict(version, current, res.headers.get('ETag'));
   }
   throw new ApiError(res.status, parsed);
 }
 
+async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
+  return (await requestResponse<T>(method, path, opts)).data;
+}
+
 export const api = {
-  get: <T>(path: string, headers?: Record<string, string>) => request<T>('GET', path, { headers }),
-  post: <T>(path: string, json?: unknown, headers?: Record<string, string>) => request<T>('POST', path, { json, headers }),
-  put: <T>(path: string, json?: unknown) => request<T>('PUT', path, { json }),
-  patch: <T>(path: string, json?: unknown) => request<T>('PATCH', path, { json }),
-  delete: <T>(path: string, json?: unknown) => request<T>('DELETE', path, { json }),
+  get: <T>(path: string, headers?: Record<string, string>, signal?: AbortSignal) => request<T>('GET', path, { headers, signal }),
+  getResponse: <T>(path: string, headers?: Record<string, string>, signal?: AbortSignal) => requestResponse<T>('GET', path, { headers, signal }),
+  post: <T>(path: string, json?: unknown, headers?: Record<string, string>, signal?: AbortSignal) => request<T>('POST', path, { json, headers, signal }),
+  put: <T>(path: string, json?: unknown, headers?: Record<string, string>, signal?: AbortSignal) => request<T>('PUT', path, { json, headers, signal }),
+  patch: <T>(path: string, json?: unknown, headers?: Record<string, string>, signal?: AbortSignal) => request<T>('PATCH', path, { json, headers, signal }),
+  delete: <T>(path: string, json?: unknown, headers?: Record<string, string>, signal?: AbortSignal) => request<T>('DELETE', path, { json, headers, signal }),
+  postResponse: <T>(path: string, json?: unknown, headers?: Record<string, string>, signal?: AbortSignal) => requestResponse<T>('POST', path, { json, headers, signal }),
   upload: <T>(path: string, form: FormData, headers?: Record<string, string>) => request<T>('POST', path, { form, headers }),
   // Absolute, base-prefixed URL for a path — use for raw fetch() calls (blob
   // downloads/streams) so they respect VITE_API_URL just like the JSON client.
@@ -145,11 +170,21 @@ export function uploadWithProgress<T>(path: string, form: FormData, onProgress?:
       const body = xhr.response as unknown;
       if (xhr.status >= 200 && xhr.status < 300) { resolve(body as T); return; }
       if (xhr.status === 401) { setToken(null); onUnauthorized?.(); }
-      if (xhr.status === 409) { reject(new VersionConflict((body as { version?: number } | null)?.version ?? null)); return; }
+      if (xhr.status === 409) {
+        const conflict = body as { version?: unknown; current?: unknown } | null;
+        const current = conflict?.current ?? null;
+        const currentVersion = current && typeof current === 'object' && 'version' in current
+          ? (current as { version?: unknown }).version
+          : null;
+        const version = typeof conflict?.version === 'number'
+          ? conflict.version
+          : typeof currentVersion === 'number' ? currentVersion : null;
+        reject(new VersionConflict(version, current, xhr.getResponseHeader('ETag')));
+        return;
+      }
       reject(new ApiError(xhr.status, body));
     };
     xhr.onerror = () => reject(new ApiError(0, null));
     xhr.send(form);
   });
 }
-
