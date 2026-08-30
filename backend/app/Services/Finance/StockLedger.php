@@ -6,8 +6,11 @@ namespace App\Services\Finance;
 
 use App\Models\FinanceProduct;
 use App\Models\FinanceStockMovement;
+use App\Modules\Finance\Domain\Shared\DecimalQuantity;
+use DomainException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use JsonException;
 
 /**
  * The one place stock changes.
@@ -22,6 +25,8 @@ use Illuminate\Support\Facades\DB;
  */
 class StockLedger
 {
+    private const int MAX_SCALED = 9_999_999_999_999_999;
+
     /**
      * Record a movement and carry the article's figure with it.
      *
@@ -32,14 +37,19 @@ class StockLedger
      */
     public static function move(
         FinanceProduct $product,
-        float $qty,
+        int|float|string $qty,
         string $reason,
         ?string $refType = null,
         ?string $refId = null,
         ?string $note = null,
         ?Carbon $at = null,
     ): FinanceStockMovement {
-        return DB::transaction(function () use ($product, $qty, $reason, $refType, $refId, $note, $at): FinanceStockMovement {
+        $quantityScaled = self::parseQuantity($qty);
+        if ($quantityScaled === 0) {
+            throw new DomainException('stock_quantity_zero');
+        }
+
+        return DB::transaction(function () use ($product, $quantityScaled, $reason, $refType, $refId, $note, $at): FinanceStockMovement {
             // Lock the article, not the ledger: two movements on the same
             // article must serialise, two on different articles need not.
             $fresh = FinanceProduct::query()->lockForUpdate()->find($product->getKey());
@@ -50,11 +60,19 @@ class StockLedger
                 throw new \RuntimeException('The article no longer exists.');
             }
 
+            $nextStock = null;
+            if ($fresh->track_stock) {
+                $nextStock = self::checkedAdd(
+                    self::parseQuantity((string) $fresh->stock_qty),
+                    $quantityScaled,
+                );
+            }
+
             $movement = new FinanceStockMovement;
             $movement->forceFill([
                 'user_id' => $fresh->user_id,
                 'finance_product_id' => $fresh->getKey(),
-                'qty' => $qty,
+                'qty' => self::formatQuantity($quantityScaled),
                 'reason' => in_array($reason, FinanceStockMovement::REASONS, true) ? $reason : 'correction',
                 'ref_type' => $refType,
                 'ref_id' => $refId,
@@ -62,8 +80,8 @@ class StockLedger
                 'occurred_at' => $at ?? Carbon::now(),
             ])->save();
 
-            if ($fresh->track_stock) {
-                $fresh->forceFill(['stock_qty' => (float) $fresh->stock_qty + $qty])->save();
+            if ($nextStock !== null) {
+                $fresh->forceFill(['stock_qty' => self::formatQuantity($nextStock)])->save();
             }
 
             return $movement;
@@ -77,21 +95,75 @@ class StockLedger
      * ledger, the ledger wins, because it is the part that cannot be edited.
      * Returns the figure it wrote.
      */
-    public static function recompute(FinanceProduct $product): float
+    public static function recompute(FinanceProduct $product): string
     {
-        return (float) DB::transaction(function () use ($product): float {
+        return DB::transaction(function () use ($product): string {
             $fresh = FinanceProduct::query()->lockForUpdate()->find($product->getKey());
             if (! $fresh instanceof FinanceProduct) {
-                return 0.0;
+                return '0.0000';
             }
 
-            $sum = (float) FinanceStockMovement::query()
+            $sum = 0;
+            $movements = DB::table('finance_stock_movements')
                 ->where('finance_product_id', $fresh->getKey())
-                ->sum('qty');
+                ->orderBy('id')
+                ->selectRaw('CAST(qty AS TEXT) AS qty_exact')
+                ->cursor();
+            foreach ($movements as $movement) {
+                if (! is_string($movement->qty_exact ?? null)) {
+                    throw new DomainException('stock_quantity_invalid');
+                }
+                $sum = self::checkedAdd($sum, self::parseQuantity($movement->qty_exact));
+            }
 
-            $fresh->forceFill(['stock_qty' => $sum])->save();
+            $quantity = self::formatQuantity($sum);
+            $fresh->forceFill(['stock_qty' => $quantity])->save();
 
-            return $sum;
+            return $quantity;
         });
+    }
+
+    private static function parseQuantity(int|float|string $quantity): int
+    {
+        if (is_float($quantity)) {
+            if (! is_finite($quantity)) {
+                throw new DomainException('stock_quantity_invalid');
+            }
+            try {
+                $encoded = json_encode($quantity, JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR);
+            } catch (JsonException $exception) {
+                throw new DomainException('stock_quantity_invalid', previous: $exception);
+            }
+            if (! is_string($encoded)) {
+                throw new DomainException('stock_quantity_invalid');
+            }
+            $quantity = $encoded;
+        }
+
+        $scaled = DecimalQuantity::fromString(is_int($quantity) ? (string) $quantity : trim($quantity))->scaled();
+        if ($scaled > self::MAX_SCALED || $scaled < -self::MAX_SCALED) {
+            throw new DomainException('stock_quantity_overflow');
+        }
+
+        return $scaled;
+    }
+
+    private static function checkedAdd(int $current, int $change): int
+    {
+        if (($change > 0 && $current > self::MAX_SCALED - $change)
+            || ($change < 0 && $current < -self::MAX_SCALED - $change)) {
+            throw new DomainException('stock_quantity_overflow');
+        }
+
+        return $current + $change;
+    }
+
+    private static function formatQuantity(int $scaled): string
+    {
+        $negative = $scaled < 0;
+        $digits = str_pad(ltrim((string) $scaled, '-'), 5, '0', STR_PAD_LEFT);
+        $quantity = substr($digits, 0, -4).'.'.substr($digits, -4);
+
+        return $negative ? '-'.$quantity : $quantity;
     }
 }

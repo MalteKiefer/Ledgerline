@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
+use App\Modules\Finance\Domain\Shared\DecimalQuantity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -57,8 +58,8 @@ class FinanceProduct extends Model
         'price_net' => 'decimal:2',
         'purchase_price' => 'decimal:2',
         'vat_rate' => 'decimal:2',
-        'stock_qty' => 'decimal:3',
-        'stock_min' => 'decimal:3',
+        'stock_qty' => 'decimal:4',
+        'stock_min' => 'decimal:4',
         'active' => 'boolean',
         'track_stock' => 'boolean',
         'supplier_id' => 'integer',
@@ -89,6 +90,7 @@ class FinanceProduct extends Model
             return false;
         }
 
-        return (float) $this->stock_qty <= (float) $this->stock_min;
+        return DecimalQuantity::fromString($this->stock_qty)->scaled()
+            <= DecimalQuantity::fromString($this->stock_min)->scaled();
     }
 }

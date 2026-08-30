@@ -20,6 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -195,12 +196,17 @@ class FinanceRelationalTest extends TestCase
             'type' => 'bank', 'name' => 'Main', 'iban' => 'DE00SECRETIBAN0001',
         ])->json('payment_method.id');
 
-        $inv = $this->postJson(route('finance.invoices.store'), [
-            'issue_date' => '2026-03-01',
+        // Invoice creation itself now happens exclusively through the finance-v2
+        // module (Task 17 cutover); this test's concern -- that the legacy
+        // `invoices` table stores its columns plaintext, not encrypted -- is
+        // about the historical table itself, independent of which writer
+        // populated a row, so it stays provable with a direct row insert.
+        $inv = Invoice::create([
+            'issue_date' => '2026-03-01', 'status' => 'draft', 'currency' => 'EUR',
             'customer' => ['name' => 'Secret Customer AG', 'email' => 'c@example.com'],
             'lines' => [['desc' => 'Consulting', 'amount' => 100]],
             'gross' => 119, 'net' => 100, 'vat' => 19, 'vat_rate' => 19,
-        ])->assertCreated()->json('invoice.id');
+        ])->id;
 
         $tx = $this->postJson(route('finance.transactions.store'), [
             'payment_method_id' => $pm, 'date' => '2026-03-02', 'amount' => -50,
@@ -228,33 +234,11 @@ class FinanceRelationalTest extends TestCase
         $this->assertSame('Secret Customer AG', Invoice::findOrFail($inv)->customer['name'] ?? null);
     }
 
-    public function test_gobd_gapless_per_year_numbering(): void
-    {
-        $user = User::factory()->create();
-        $this->actingAs($user);
-        UserSetting::for((int) $user->id)->update(['invoice_number_format' => 'YYYY-NNNN', 'invoice_next_number' => 1]);
-
-        $a = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2026-05-01'])->json('invoice.id');
-        $b = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2026-05-02'])->json('invoice.id');
-
-        $na = $this->postJson(route('finance.invoices.finalize', $a))->assertOk()->json('invoice.number');
-        $nb = $this->postJson(route('finance.invoices.finalize', $b))->assertOk()->json('invoice.number');
-
-        $this->assertSame('2026-0001', $na);
-        $this->assertSame('2026-0002', $nb);
-
-        // Re-finalising an already-numbered invoice is idempotent (no new number).
-        $this->postJson(route('finance.invoices.finalize', $a))->assertOk()->assertJsonPath('invoice.number', '2026-0001');
-
-        // Numbers are unique and gapless.
-        $numbers = Invoice::query()->whereNotNull('number')->pluck('number')->all();
-        $this->assertSame($numbers, array_unique($numbers));
-        $this->assertEqualsCanonicalizing(['2026-0001', '2026-0002'], $numbers);
-
-        // A new year restarts the sequence.
-        $c = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2027-01-01'])->json('invoice.id');
-        $this->postJson(route('finance.invoices.finalize', $c))->assertOk()->assertJsonPath('invoice.number', '2027-0001');
-    }
+    // GoBD gapless per-year numbering used to be tested here against the legacy
+    // FinanceController::storeInvoice/finalizeInvoice routes, now deleted (Task
+    // 17 cutover). It is covered equivalently for finance-v2's own allocator by
+    // tests/Feature/FinanceModule/InvoiceFinalizationTest.php::
+    // test_committed_number_allocations_are_never_reused_and_are_owner_year_scoped().
 
     public function test_bulk_transaction_dedup_by_signature(): void
     {
@@ -276,25 +260,45 @@ class FinanceRelationalTest extends TestCase
         $this->assertSame(2, BankTransaction::query()->count());
     }
 
-    public function test_invoice_pdf_upload_download_and_owner_scope(): void
+    // Client-uploaded, per-invoice PDF storage used to be tested here against
+    // the legacy FinanceController::uploadInvoicePdf route, now deleted (Task
+    // 17 cutover). finance-v2 has no client-writable PDF path at all -- every
+    // invoice PDF is server-rendered and stored by CreateInvoiceDraftFromSource's
+    // finalize pipeline, eliminating this entire mechanism (and the IDOR
+    // surface it carried) by design; its owner-scoped streaming is covered by
+    // tests/Feature/FinanceModule/InvoicePdfTest.php. Streaming a PRE-CUTOVER
+    // invoice's own already-stored PDF is still possible (GoBD requires it
+    // stay reachable) -- see test_legacy_invoice_pdf_is_readable_but_never_writable().
+
+    public function test_legacy_invoice_pdf_is_readable_but_never_writable(): void
     {
         $owner = User::factory()->create();
         $this->actingAs($owner);
 
-        $inv = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2026-07-01'])->json('invoice.id');
+        $path = 'invoices/'.Str::uuid()->toString();
+        Storage::disk(config('files.disk'))->put($path, '%PDF-1.4 pre-cutover bytes');
+        $inv = Invoice::create([
+            'status' => 'sent', 'issue_date' => '2026-02-01', 'currency' => 'EUR', 'imported' => false,
+            'customer' => ['name' => 'ACME'], 'lines' => [['qty' => 1, 'unitPrice' => 100, 'vatRate' => 19]],
+        ]);
+        // pdf_path is server-managed, never mass-assignable (see Invoice's own
+        // docblock) -- set it the same way the deleted uploadInvoicePdf() did.
+        $inv->forceFill(['pdf_path' => $path])->save();
 
-        $path = $this->postJson(route('finance.invoices.pdf.upload', $inv), [
-            'file' => UploadedFile::fake()->createWithContent('invoice.pdf', '%PDF-1.4 bytes'),
-        ])->assertOk()->json('invoice.pdf_path');
+        $this->get(route('finance.invoices.pdf', $inv->id))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox");
 
-        $this->assertIsString($path);
-        $this->assertStringStartsWith('invoices/', $path);
-        Storage::disk(config('files.disk'))->assertExists($path);
-        $this->get(route('finance.invoices.pdf', $inv))->assertOk();
-
-        // Another user cannot download this invoice's PDF (owner-scoped binding → 404).
+        // Owner-scoped: another user gets 404, not the bytes.
         $this->actingAs(User::factory()->create());
-        $this->get(route('finance.invoices.pdf', $inv))->assertNotFound();
+        $this->get(route('finance.invoices.pdf', $inv->id))->assertNotFound();
+
+        // No write route exists for it any more -- only GET is registered.
+        $this->assertFalse(Route::has('finance.invoices.pdf.upload'));
+        $this->assertFalse(Route::has('api.finance.invoices.pdf.upload'));
+        $this->assertFalse(Route::has('api.finance.invoices.store'));
     }
 
     public function test_receipt_attach_stream_and_delete(): void
@@ -364,97 +368,34 @@ class FinanceRelationalTest extends TestCase
         $this->actingAs($b)->deleteJson(route('finance.partners.destroy', $id))->assertNotFound();
     }
 
-    public function test_finalize_issues_to_open_not_sent(): void
-    {
-        $user = User::factory()->create();
-        $this->actingAs($user);
-        UserSetting::for((int) $user->id)->update(['invoice_number_format' => 'YYYY-NNNN', 'invoice_next_number' => 1]);
-
-        $id = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2026-05-01'])->json('invoice.id');
-        // Finalising issues the invoice → status 'final' (Open), NOT 'sent'.
-        $this->postJson(route('finance.invoices.finalize', $id))
-            ->assertOk()
-            ->assertJsonPath('invoice.status', 'final');
-        $this->assertSame('final', Invoice::find($id)->status);
-    }
-
-    public function test_numbered_invoice_cannot_revert_to_draft(): void
-    {
-        $user = User::factory()->create();
-        $this->actingAs($user);
-        UserSetting::for((int) $user->id)->update(['invoice_number_format' => 'YYYY-NNNN', 'invoice_next_number' => 1]);
-
-        $id = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2026-05-01'])->json('invoice.id');
-        $this->postJson(route('finance.invoices.finalize', $id))->assertOk(); // now numbered + final
-
-        // GoBD: a numbered (issued) invoice can never go back to draft.
-        $this->putJson(route('finance.invoices.update', $id), ['status' => 'draft'])
-            ->assertStatus(422)
-            ->assertJsonPath('error', 'status_draft_blocked');
-        $this->assertSame('final', Invoice::find($id)->status);
-
-        // A forward status change on a numbered invoice IS allowed.
-        $this->putJson(route('finance.invoices.update', $id), ['status' => 'paid', 'paid_at' => '2026-05-10'])
-            ->assertOk();
-        $this->assertSame('paid', Invoice::find($id)->status);
-    }
-
-    public function test_a_paid_invoice_cannot_revert_to_an_earlier_status(): void
-    {
-        $user = User::factory()->create();
-        $this->actingAs($user);
-        UserSetting::for((int) $user->id)->update(['invoice_number_format' => 'YYYY-NNNN', 'invoice_next_number' => 1]);
-
-        $id = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2026-05-01'])->json('invoice.id');
-        $this->postJson(route('finance.invoices.finalize', $id))->assertOk();
-        $this->putJson(route('finance.invoices.update', $id), ['status' => 'paid'])->assertOk();
-
-        // GoBD: once paid, the status is terminal — no silent revert to open/sent.
-        // A correction must go through Storno (credit note), never a status edit.
-        $this->putJson(route('finance.invoices.update', $id), ['status' => 'final'])
-            ->assertStatus(422)
-            ->assertJsonPath('error', 'status_paid_locked');
-        $this->putJson(route('finance.invoices.update', $id), ['status' => 'sent'])
-            ->assertStatus(422)
-            ->assertJsonPath('error', 'status_paid_locked');
-        $this->assertSame('paid', Invoice::find($id)->status);
-
-        // Re-sending the SAME status (e.g. patching an unrelated field alongside it)
-        // is not a "revert" and must keep working.
-        $this->putJson(route('finance.invoices.update', $id), ['status' => 'paid', 'note' => 'settled by wire'])
-            ->assertOk();
-        $this->assertSame('paid', Invoice::find($id)->status);
-    }
-
-    public function test_invoice_stores_partner_discount_skonto_and_customer_details(): void
-    {
-        $user = User::factory()->create();
-        $this->actingAs($user);
-
-        $partnerId = $this->postJson(route('finance.partners.store'), ['name' => 'Acme'])
-            ->assertCreated()->json('partner.id');
-
-        $id = $this->postJson(route('finance.invoices.store'), [
-            'status' => 'draft',
-            'currency' => 'EUR',
-            'issue_date' => '2026-01-10',
-            'partner_id' => $partnerId,
-            'discount_type' => 'percent',
-            'discount_value' => 5,
-            'skonto_percent' => 2,
-            'skonto_days' => 14,
-            'customer' => ['name' => 'Acme', 'attn' => 'Jane', 'vatId' => 'DE123', 'address' => "Street 1\nCity"],
-            'lines' => [['desc' => 'Work', 'qty' => 1, 'unitPrice' => 100, 'vatRate' => 19]],
-        ])->assertCreated()->json('invoice.id');
-
-        $inv = Invoice::find($id);
-        $this->assertSame($partnerId, $inv->partner_id);
-        $this->assertSame('percent', $inv->discount_type);
-        $this->assertEquals(2, (float) $inv->skonto_percent);
-        $this->assertSame(14, $inv->skonto_days);
-        $this->assertSame('Jane', $inv->customer['attn']);
-        $this->assertSame('DE123', $inv->customer['vatId']);
-    }
+    // The legacy status vocabulary (final/sent/paid; a numbered invoice can never
+    // revert to draft; once paid, status is terminal except via Storno) used to
+    // be tested here against the now-deleted legacy FinanceController::
+    // storeInvoice/finalizeInvoice/updateInvoice routes.
+    //
+    // finance-v2 does not carry the same risk forward, and not because an
+    // equivalent guard was added: it never exposes a route that lets a client
+    // set an invoice's status directly at all (Task 14 deliberately did not add
+    // one -- see .superpowers/sdd/invoice-task-14-report.md). Status only ever
+    // moves through specific, narrow actions (finalize/deliver/cancel/allocate
+    // a payment), each already tested where it lives:
+    // tests/Feature/FinanceModule/InvoiceApiTest.php::
+    // test_finalize_deliver_and_cancel_use_idempotency_and_expose_no_storage_internals()
+    // and every test in InvoiceCancellationTest.php. A client-supplied "set
+    // status to draft/final/sent/paid" is not blocked by a check; it is simply
+    // not a request finance-v2 understands.
+    //
+    // The same three tests also covered partner_id, discount_type, and
+    // customer.attn/vatId on invoice creation -- covered for finance-v2 by
+    // InvoiceApiTest's draft-creation assertions and this file's remaining
+    // test_partner_stores_hourly_rate_and_currency() for the partner side. One
+    // field genuinely has no finance-v2 equivalent: Skonto (an early-payment
+    // cash discount, skonto_percent/skonto_days). That is a pre-existing gap in
+    // the finance-v2 invoice module predating this cutover (it was never added
+    // in the module's original build, Tasks 1-11) -- not something this task
+    // introduces or is positioned to add; LegacyInvoiceReadProjection reports it
+    // as always null for a finance-v2-sourced row, honestly rather than
+    // fabricating a value.
 
     public function test_partner_stores_hourly_rate_and_currency(): void
     {

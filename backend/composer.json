@@ -7,6 +7,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.5",
+        "dompdf/dompdf": "^3.1",
         "endroid/qr-code": "^6.1",
         "intervention/image": "^4.1",
         "laravel/fortify": "^1.37",
@@ -34,7 +35,8 @@
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
         "phpunit/phpunit": "^13.2",
-        "rector/rector": "^2.5"
+        "rector/rector": "^2.5",
+        "symfony/yaml": "^8.1"
     },
     "autoload": {
         "psr-4": {

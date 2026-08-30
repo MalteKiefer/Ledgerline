@@ -47,7 +47,7 @@ class FinanceStockMovement extends Model
 
     protected $casts = [
         'finance_product_id' => 'integer',
-        'qty' => 'decimal:3',
+        'qty' => 'decimal:4',
         'occurred_at' => 'datetime',
     ];
 

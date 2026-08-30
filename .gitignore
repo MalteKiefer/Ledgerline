@@ -53,6 +53,7 @@ docs/superpowers/
 
 # Subagent git worktrees (transient)
 .claude/
+.worktrees/
 
 # laravel-vue-i18n build artifacts (generated from lang/*.php)
 /lang/php_*.json
@@ -71,6 +72,7 @@ docs/superpowers/
 /backend/storage/pail
 /backend/storage/phpstan
 /backend/storage/app/imgtmp
+/backend/storage/framework/finance-document-locks
 /backend/database/*.sqlite
 /backend/database/*.sqlite-journal
 /backend/bootstrap/cache/*.php

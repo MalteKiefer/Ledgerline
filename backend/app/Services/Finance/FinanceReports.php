@@ -8,6 +8,7 @@ use App\Models\BankTransaction;
 use App\Models\FinanceProject;
 use App\Models\Invoice;
 use App\Models\UserSetting;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceReadProjection;
 use App\Support\FinanceScope;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -22,6 +23,14 @@ use Illuminate\Support\Facades\Auth;
  * Read-only: computes from the existing owner-scoped rows, never mutates or
  * migrates anything. Invoice queries rely on the SoftDeletes global scope
  * (trashed rows already excluded) + the OwnsUserData owner scope.
+ *
+ * Since the Task 17 cutover, every NEW invoice lives in finance-v2, not the
+ * legacy `invoices` table — but historical, pre-cutover legacy rows must
+ * stay in every report exactly as before (GoBD forbids quietly dropping
+ * them from a VAT return). `LegacyInvoiceReadProjection::asInvoiceModels()`
+ * materializes finance-v2 invoices as the SAME `Invoice` model shape, so
+ * every method below runs its one, already-proven computation over the
+ * union of both sources instead of adding a second, parallel one.
  */
 class FinanceReports
 {
@@ -34,12 +43,28 @@ class FinanceReports
      */
     private const REPORTING_CURRENCY = 'EUR';
 
+    public function __construct(private readonly LegacyInvoiceReadProjection $financeV2 = new LegacyInvoiceReadProjection) {}
+
     /**
      * Memoised per-request realized-invoice set (reports() calls it ~6× / request).
      *
      * @var Collection<int, Invoice>|null
      */
     private ?Collection $realizedCache = null;
+
+    /**
+     * Every finance-v2 invoice of the current owner, projected into the
+     * legacy `Invoice` model shape. Empty when unauthenticated (a report
+     * method called outside a request never had legacy rows either).
+     *
+     * @return Collection<int, Invoice>
+     */
+    private function financeV2Invoices(): Collection
+    {
+        $ownerId = Auth::id();
+
+        return is_int($ownerId) ? $this->financeV2->asInvoiceModels($ownerId) : collect();
+    }
 
     /** round2 mirror of the JS `Math.round((n + EPSILON) * 100) / 100` for the currency domain. */
     private function r2(float $n): float
@@ -155,9 +180,13 @@ class FinanceReports
      */
     public function realizedInvoices(): Collection
     {
-        return $this->realizedCache ??= Invoice::query()
-            ->whereIn('status', ['final', 'sent', 'paid'])
-            ->get()
+        if ($this->realizedCache !== null) {
+            return $this->realizedCache;
+        }
+        $realized = fn (Invoice $i): bool => in_array($i->status, ['final', 'sent', 'paid'], true);
+        $legacy = Invoice::query()->whereIn('status', ['final', 'sent', 'paid'])->get();
+
+        return $this->realizedCache = $legacy->concat($this->financeV2Invoices()->filter($realized))
             ->filter(fn (Invoice $i): bool => $this->isReportingCurrency($i))
             ->values();
     }
@@ -318,7 +347,11 @@ class FinanceReports
         $openCount = 0;
         $openGross = 0.0;
 
-        foreach (Invoice::query()->where('status', 'sent')->get()->filter(fn (Invoice $i): bool => $this->isReportingCurrency($i)) as $inv) {
+        $legacy = Invoice::query()->where('status', 'sent')->get();
+        $open = $legacy->concat($this->financeV2Invoices()->filter(fn (Invoice $i): bool => $i->status === 'sent'))
+            ->filter(fn (Invoice $i): bool => $this->isReportingCurrency($i));
+
+        foreach ($open as $inv) {
             $gross = $this->invoiceTotals($inv)['gross'];
             $due = $inv->due_date;
             if (! $due instanceof Carbon) {
@@ -335,6 +368,7 @@ class FinanceReports
             $buckets[$key]['gross'] = $this->r2($buckets[$key]['gross'] + $gross);
             $buckets[$key]['invoices'][] = [
                 'id' => $inv->id,
+                'uuid' => $inv->uuid,
                 'number' => $inv->number,
                 'customer' => $name,
                 'gross' => $gross,
@@ -450,7 +484,10 @@ class FinanceReports
         // VAT scheme: Ist (cash-basis) → only PAID invoices, booked to the payment date;
         // Soll (accrual) → every issued (final/sent/paid) invoice, booked to the issue date.
         $outputList = $ist
-            ? Invoice::query()->where('status', 'paid')->get()->filter(fn (Invoice $i): bool => $this->isReportingCurrency($i))->values()
+            ? Invoice::query()->where('status', 'paid')->get()
+                ->concat($this->financeV2Invoices()->filter(fn (Invoice $i): bool => $i->status === 'paid'))
+                ->filter(fn (Invoice $i): bool => $this->isReportingCurrency($i))
+                ->values()
             : $this->realizedInvoices();
         $taxDate = function (Invoice $i) use ($ist): ?Carbon {
             $d = $ist ? ($i->paid_at ?? $i->issue_date) : $i->issue_date;

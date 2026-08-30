@@ -353,18 +353,14 @@ Route::middleware('auth')->group(function (): void {
         Route::put('/finance/categories/{category}', [FinanceController::class, 'updateCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('finance.categories.update');
         Route::delete('/finance/categories/{category}', [FinanceController::class, 'destroyCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('finance.categories.destroy');
 
-        // Invoices
-        Route::post('/finance/invoices', [FinanceController::class, 'storeInvoice'])->middleware('throttle:600,1')->name('finance.invoices.store');
-        Route::put('/finance/invoices/{invoice}', [FinanceController::class, 'updateInvoice'])->whereNumber('invoice')->middleware('throttle:600,1')->name('finance.invoices.update');
-        Route::post('/finance/invoices/{invoice}/finalize', [FinanceController::class, 'finalizeInvoice'])->whereNumber('invoice')->middleware('throttle:600,1')->name('finance.invoices.finalize');
-        Route::post('/finance/invoices/{invoice}/email', [FinanceController::class, 'emailInvoice'])->whereNumber('invoice')->middleware('throttle:10,1')->name('finance.invoices.email');
-        Route::post('/finance/invoices/{invoice}/storno', [FinanceController::class, 'stornoInvoice'])->whereNumber('invoice')->middleware('throttle:30,1')->name('finance.invoices.storno');
-        Route::post('/finance/invoices/{invoice}/dun', [FinanceController::class, 'dunInvoice'])->whereNumber('invoice')->middleware('throttle:10,1')->name('finance.invoices.dun');
-        Route::delete('/finance/invoices/{invoice}', [FinanceController::class, 'destroyInvoice'])->whereNumber('invoice')->middleware('throttle:600,1')->name('finance.invoices.destroy');
-        Route::post('/finance/invoices/{id}/restore', [FinanceController::class, 'restoreInvoice'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.invoices.restore');
-        Route::delete('/finance/invoices/{id}/force', [FinanceController::class, 'forceDeleteInvoice'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.invoices.force');
-        Route::post('/finance/invoices/{invoice}/pdf', [FinanceController::class, 'uploadInvoicePdf'])->whereNumber('invoice')->middleware('throttle:1200,1')->name('finance.invoices.pdf.upload');
-        Route::get('/finance/invoices/{invoice}/pdf', [FinanceController::class, 'invoicePdf'])->whereNumber('invoice')->middleware('throttle:3000,1')->name('finance.invoices.pdf');
+        // Invoice CRUD/finalize/storno/email/dun/upload routes used to live
+        // here, calling legacy FinanceController methods removed in the Task
+        // 17 cutover. Only the read-only PDF stream survives (GoBD requires a
+        // pre-cutover invoice's document stay reachable) -- mirrors the
+        // (also GET-only) api.finance.invoices.legacy-pdf route in
+        // routes/api.php, kept under both prefixes exactly like the upload
+        // route it replaces used to be, for the SPA's own session auth here.
+        Route::get('/finance/invoices/{invoice}/pdf', [FinanceController::class, 'legacyInvoicePdf'])->whereNumber('invoice')->middleware('throttle:3000,1')->name('finance.invoices.pdf');
 
         // Bank transactions
         Route::post('/finance/transactions', [FinanceController::class, 'storeTransaction'])->middleware('throttle:600,1')->name('finance.transactions.store');

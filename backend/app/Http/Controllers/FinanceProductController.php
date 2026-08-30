@@ -157,17 +157,21 @@ class FinanceProductController extends Controller
     public function stock(Request $request, FinanceProduct $product): JsonResponse
     {
         $request->validate([
-            'qty' => ['required', 'numeric', 'not_in:0', 'min:-1000000', 'max:1000000'],
+            'qty' => ['required', 'numeric', 'decimal:0,4', 'not_in:0', 'min:-1000000', 'max:1000000'],
             'reason' => ['nullable', Rule::in(FinanceStockMovement::REASONS)],
             'note' => ['nullable', 'string', 'max:1000'],
             'occurred_at' => ['nullable', 'date'],
         ]);
 
+        $quantity = $request->input('qty');
+        if (! is_int($quantity) && ! is_float($quantity) && ! is_string($quantity)) {
+            throw new \LogicException('Validated stock quantity is unavailable.');
+        }
         $at = $request->input('occurred_at');
         $reason = $request->input('reason');
         $movement = StockLedger::move(
             $product,
-            (float) $request->float('qty'),
+            is_string($quantity) ? $quantity : (string) $quantity,
             is_string($reason) && $reason !== '' ? $reason : 'correction',
             'manual',
             null,

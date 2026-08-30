@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    computeTotals, discountAmount, hasDiscount, lineNet, skontoDate, vatRatesOf,
+    computeTotals, discountAmount, hasDiscount, legacyPrintTerms, lineNet, skontoDate, vatRatesOf,
 } from '../invoice-print';
 import type { PrintInvoice } from '../invoice-print';
 
@@ -64,6 +64,24 @@ describe('computeTotals', () => {
 });
 
 describe('discount', () => {
+    it('maps a persisted fixed discount into both invoice print paths', () => {
+        const printable = invoice({
+            ...legacyPrintTerms({ discount_type: 'amount', discount_value: '25.00' }),
+        });
+
+        expect(printable).toMatchObject({ discountType: 'amount', discountValue: 25 });
+        expect(computeTotals(printable)).toMatchObject({ discount: 25, net: 75 });
+    });
+
+    it('maps a persisted percentage discount into both invoice print paths', () => {
+        const printable = invoice({
+            ...legacyPrintTerms({ discount_type: 'percent', discount_value: '10.00' }),
+        });
+
+        expect(printable).toMatchObject({ discountType: 'percent', discountValue: 10 });
+        expect(computeTotals(printable)).toMatchObject({ discount: 10, net: 90 });
+    });
+
     it('applies a percentage to the taxable base', () => {
         const t = computeTotals(invoice({ discountType: 'percent', discountValue: 10 }));
         expect(t.discount).toBe(10);
