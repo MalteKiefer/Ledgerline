@@ -22,7 +22,7 @@ use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
-use Symfony\Component\Process\Process;
+use Symfony\Component\Yaml\Yaml;
 use Tests\TestCase;
 
 final class QuoteApiTest extends TestCase
@@ -574,21 +574,8 @@ final class QuoteApiTest extends TestCase
 
     public function test_openapi_is_strict_yaml_and_quote_schemas_require_every_emitted_nullable_key(): void
     {
-        $script = <<<'JS'
-const fs = require('fs');
-const YAML = require(process.argv[1]);
-const document = YAML.parse(fs.readFileSync(process.argv[2], 'utf8'));
-process.stdout.write(JSON.stringify(document));
-JS;
-        $process = new Process([
-            'node',
-            '-e',
-            $script,
-            base_path('../frontend/node_modules/yaml'),
-            base_path('../openapi.yaml'),
-        ]);
-        $process->mustRun();
-        $document = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+        $document = Yaml::parseFile(base_path('../openapi.yaml'), Yaml::PARSE_EXCEPTION_ON_INVALID_TYPE);
+        $this->assertIsArray($document);
         $schemas = $document['components']['schemas'];
 
         $expectedRequired = [
