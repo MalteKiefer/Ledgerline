@@ -415,15 +415,19 @@ final class EloquentRecurringInvoiceRepository implements RecurringInvoiceReposi
                     ->get()
                     ->all();
 
-            foreach ($templates as $template) {
+            foreach ($templates as $templateRow) {
                 if (count($claimed) >= $globalCap) {
                     break;
+                }
+
+                if (! is_object($templateRow)) {
+                    throw new LogicException('Recurring template row is invalid.');
                 }
 
                 $claimed = [
                     ...$claimed,
                     ...$this->claimTemplateOccurrences(
-                        $template,
+                        $this->rowArray($templateRow),
                         $asOf,
                         min($perTemplateCap, $globalCap - count($claimed)),
                     ),
@@ -440,18 +444,22 @@ final class EloquentRecurringInvoiceRepository implements RecurringInvoiceReposi
             throw new InvalidArgumentException('Recurring in-flight run limit must be positive.');
         }
 
-        return DB::table('finance_recurring_invoice_runs')
+        return array_values(DB::table('finance_recurring_invoice_runs')
             ->whereIn('status', ['pending', 'creating_draft', 'draft_created', 'finalizing', 'finalized', 'sending'])
             ->orderBy('updated_at')
             ->orderBy('id')
             ->limit($limit)
             ->get(['id', 'user_id', 'uuid'])
-            ->map(static fn (object $row): array => [
-                'run_id' => (int) $row->id,
-                'owner_id' => (int) $row->user_id,
-                'uuid' => (string) $row->uuid,
-            ])
-            ->all();
+            ->map(function (object $row): array {
+                $row = $this->rowArray($row);
+
+                return [
+                    'run_id' => $this->rowInt($row, 'id'),
+                    'owner_id' => $this->rowInt($row, 'user_id'),
+                    'uuid' => $this->rowString($row, 'uuid'),
+                ];
+            })
+            ->all());
     }
 
     public function transitionRun(
@@ -520,33 +528,37 @@ final class EloquentRecurringInvoiceRepository implements RecurringInvoiceReposi
         }, 1);
     }
 
-    /** @return list<array{run_id: int, owner_id: int, uuid: string}> */
-    private function claimTemplateOccurrences(object $template, DateTimeImmutable $asOf, int $cap): array
+    /**
+     * @param  array<string, mixed>  $template
+     * @return list<array{run_id: int, owner_id: int, uuid: string}>
+     */
+    private function claimTemplateOccurrences(array $template, DateTimeImmutable $asOf, int $cap): array
     {
         if ($cap < 1) {
             return [];
         }
 
-        $ownerId = (int) $template->user_id;
+        $templateId = $this->rowInt($template, 'id');
+        $ownerId = $this->rowInt($template, 'user_id');
         $schedule = $this->scheduleFromTemplateRow($template);
-        $cursor = $this->parseTimestamp((string) $template->next_run_at);
+        $cursor = $this->parseTimestamp($this->rowString($template, 'next_run_at'));
         $claimed = [];
         $completed = false;
 
         while (count($claimed) < $cap && $cursor <= $asOf) {
-            $version = $this->versionForOccurrenceRow((int) $template->id, $ownerId, $cursor);
+            $version = $this->versionForOccurrenceRow($templateId, $ownerId, $cursor);
             $uuid = strtolower((string) Str::uuid());
             $timestamp = $this->timestamp($this->clock->now());
             $runId = (int) DB::table('finance_recurring_invoice_runs')->insertGetId([
                 'user_id' => $ownerId,
                 'uuid' => $uuid,
-                'template_id' => (int) $template->id,
+                'template_id' => $templateId,
                 'template_version_id' => $version['id'],
                 'scheduled_for' => $this->timestamp($cursor),
                 'scheduled_local_date' => $cursor->setTimezone($schedule->start()->getTimezone())->format('Y-m-d'),
                 'status' => 'pending',
                 'attempts' => 0,
-                'idempotency_key_hash' => hash('sha256', 'recurring.run.claim:'.$template->id.':'.$cursor->format(DATE_ATOM)),
+                'idempotency_key_hash' => hash('sha256', 'recurring.run.claim:'.$templateId.':'.$cursor->format(DATE_ATOM)),
                 'created_at' => $timestamp,
                 'updated_at' => $timestamp,
             ]);
@@ -567,7 +579,7 @@ final class EloquentRecurringInvoiceRepository implements RecurringInvoiceReposi
         $timestamp = $this->timestamp($this->clock->now());
         DB::table('finance_recurring_invoice_templates')
             ->where('user_id', $ownerId)
-            ->where('id', $template->id)
+            ->where('id', $templateId)
             ->update($completed
                 ? ['status' => 'completed', 'paused_at' => null, 'next_run_at' => null, 'updated_at' => $timestamp]
                 : ['next_run_at' => $this->timestamp($cursor), 'updated_at' => $timestamp]);
@@ -590,14 +602,17 @@ final class EloquentRecurringInvoiceRepository implements RecurringInvoiceReposi
         return ['id' => (int) $version->id, 'effective_from' => $this->dateValue($version->getAttribute('effective_from'))];
     }
 
-    private function scheduleFromTemplateRow(object $template): RecurrenceSchedule
+    /** @param array<string, mixed> $template */
+    private function scheduleFromTemplateRow(array $template): RecurrenceSchedule
     {
+        $endDate = $template['end_date'] ?? null;
+
         return RecurrenceSchedule::fromLocal(
-            RecurrenceInterval::from((string) $template->interval),
-            $this->dateValue($template->start_date),
-            (string) $template->run_time,
-            (string) $template->timezone,
-            $template->end_date === null ? null : $this->dateValue($template->end_date),
+            RecurrenceInterval::from($this->rowString($template, 'interval')),
+            $this->dateValue($template['start_date'] ?? null),
+            $this->rowString($template, 'run_time'),
+            $this->rowString($template, 'timezone'),
+            $endDate === null ? null : $this->dateValue($endDate),
         );
     }
 
@@ -880,6 +895,42 @@ final class EloquentRecurringInvoiceRepository implements RecurringInvoiceReposi
         }
 
         return $object;
+    }
+
+    /** @return array<string, mixed> */
+    private function rowArray(object $row): array
+    {
+        $result = [];
+        foreach (get_object_vars($row) as $key => $value) {
+            $result[(string) $key] = $value;
+        }
+
+        return $result;
+    }
+
+    /** @param array<string, mixed> $row */
+    private function rowInt(array $row, string $key): int
+    {
+        $value = $row[$key] ?? null;
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_string($value) && preg_match('/\A-?\d+\z/D', $value) === 1) {
+            return (int) $value;
+        }
+
+        throw new LogicException("Recurring template row field \"{$key}\" is invalid.");
+    }
+
+    /** @param array<string, mixed> $row */
+    private function rowString(array $row, string $key): string
+    {
+        $value = $row[$key] ?? null;
+        if (! is_string($value)) {
+            throw new LogicException("Recurring template row field \"{$key}\" is invalid.");
+        }
+
+        return $value;
     }
 
     private function assertPagination(int $page, int $perPage): void

@@ -49,7 +49,7 @@ final readonly class ProcessRecurringInvoiceRun
     {
         while (true) {
             $run = $this->templates->run($id);
-            $status = (string) $run['status'];
+            $status = $this->runStatus($run);
 
             if (in_array($status, ['sent', 'failed'], true)) {
                 return $status;
@@ -60,7 +60,11 @@ final readonly class ProcessRecurringInvoiceRun
                 throw new LogicException('Recurring run template reference is invalid.');
             }
             $template = $this->templates->template(new RecurringTemplateId($templateId));
-            $mode = (string) $template['mode'];
+            $modeValue = $template['mode'];
+            if (! is_string($modeValue)) {
+                throw new LogicException('Recurring template mode is invalid.');
+            }
+            $mode = $modeValue;
 
             if ($status === 'draft_created' && $mode === 'draft') {
                 return $status;
@@ -75,8 +79,11 @@ final readonly class ProcessRecurringInvoiceRun
             // must resume exactly where it left off (never redo a completed step,
             // never create a second invoice, never re-finalize a finalized
             // revision), and only `last_completed_step` still says where that is.
-            $step = $run['last_completed_step'];
-            $step = $step === null ? null : (string) $step;
+            $stepValue = $run['last_completed_step'];
+            if ($stepValue !== null && ! is_string($stepValue)) {
+                throw new LogicException('Recurring run progress step is invalid.');
+            }
+            $step = $stepValue;
 
             if ($step === null) {
                 $this->driveDraft($id, $run);
@@ -113,7 +120,7 @@ final readonly class ProcessRecurringInvoiceRun
     /** @param array<string, mixed> $run */
     private function driveDraft(RecurringRunId $id, array $run): void
     {
-        if ((string) $run['status'] !== 'creating_draft') {
+        if ($this->runStatus($run) !== 'creating_draft') {
             $this->templates->transitionRun($id, 'creating_draft', null, null, null, null, null);
         }
 
@@ -123,7 +130,7 @@ final readonly class ProcessRecurringInvoiceRun
         }
         $version = $this->templates->versionForOccurrence(new RecurringTemplateId($templateId), $this->localDate($run));
         $source = $this->buildSource($run, $version);
-        $key = new IdempotencyKey('recurring-run:'.$run['uuid'].':draft');
+        $key = new IdempotencyKey('recurring-run:'.$this->runUuid($run).':draft');
 
         try {
             $invoice = $this->createDraft->handle($source, $key);
@@ -139,7 +146,7 @@ final readonly class ProcessRecurringInvoiceRun
     /** @param array<string, mixed> $run */
     private function driveFinalize(RecurringRunId $id, array $run): void
     {
-        if ((string) $run['status'] !== 'finalizing') {
+        if ($this->runStatus($run) !== 'finalizing') {
             $this->templates->transitionRun($id, 'finalizing', null, null, null, null, null);
         }
 
@@ -147,7 +154,7 @@ final readonly class ProcessRecurringInvoiceRun
         if (! is_int($invoiceId)) {
             throw new LogicException('Recurring run has no draft invoice to finalize.');
         }
-        $key = new IdempotencyKey('recurring-run:'.$run['uuid'].':finalize');
+        $key = new IdempotencyKey('recurring-run:'.$this->runUuid($run).':finalize');
 
         try {
             $this->finalize->handle(new InvoiceId($invoiceId), $key);
@@ -167,7 +174,7 @@ final readonly class ProcessRecurringInvoiceRun
         if (! is_int($invoiceId)) {
             throw new LogicException('Recurring run has no finalized invoice to deliver.');
         }
-        $key = new IdempotencyKey('recurring-run:'.$run['uuid'].':delivery');
+        $key = new IdempotencyKey('recurring-run:'.$this->runUuid($run).':delivery');
 
         try {
             $deliveryId = $this->queueDelivery->handle(new InvoiceId($invoiceId), null, $key);
@@ -191,20 +198,51 @@ final readonly class ProcessRecurringInvoiceRun
         }
 
         $status = $this->invoices->deliveryStatus(new DeliveryId($deliveryId));
+        $deliveryStatus = $status['status'];
+        if (! is_string($deliveryStatus)) {
+            throw new LogicException('Invoice delivery status is invalid.');
+        }
 
-        return match ($status['status']) {
-            'sent' => $this->templates->transitionRun($id, 'sent', 'sent', null, null, null, null)['status'],
-            'failed' => $this->templates->transitionRun(
+        $errorCode = $status['last_error_code'] ?? 'invoice_delivery_failed';
+        if (! is_string($errorCode)) {
+            $errorCode = 'invoice_delivery_failed';
+        }
+
+        return match ($deliveryStatus) {
+            'sent' => $this->runStatus($this->templates->transitionRun($id, 'sent', 'sent', null, null, null, null)),
+            'failed' => $this->runStatus($this->templates->transitionRun(
                 $id,
                 'failed',
                 null,
                 null,
                 null,
-                $status['last_error_code'] ?? 'invoice_delivery_failed',
+                $errorCode,
                 'The staged invoice delivery failed permanently.',
-            )['status'],
+            )),
             default => 'sending',
         };
+    }
+
+    /** @param array<string, mixed> $run */
+    private function runStatus(array $run): string
+    {
+        $status = $run['status'];
+        if (! is_string($status)) {
+            throw new LogicException('Recurring run status is invalid.');
+        }
+
+        return $status;
+    }
+
+    /** @param array<string, mixed> $run */
+    private function runUuid(array $run): string
+    {
+        $uuid = $run['uuid'];
+        if (! is_string($uuid)) {
+            throw new LogicException('Recurring run identity is invalid.');
+        }
+
+        return $uuid;
     }
 
     private function fail(RecurringRunId $id, Throwable $exception): void
@@ -237,7 +275,15 @@ final readonly class ProcessRecurringInvoiceRun
     {
         $value = $run['scheduled_local_date'];
 
-        return $value instanceof DateTimeImmutable ? $value : new DateTimeImmutable((string) $value);
+        if ($value instanceof DateTimeImmutable) {
+            return $value;
+        }
+
+        if (! is_string($value)) {
+            throw new LogicException('Recurring run scheduled date is invalid.');
+        }
+
+        return new DateTimeImmutable($value);
     }
 
     /**
@@ -247,60 +293,124 @@ final readonly class ProcessRecurringInvoiceRun
     private function buildSource(array $run, array $version): InvoiceDraftSource
     {
         $snapshot = $version['draft_snapshot'];
-        $issueDateSource = new DateTimeImmutable((string) $snapshot['issue_date']);
-        $dueDateSource = new DateTimeImmutable((string) $snapshot['due_date']);
+        $issueDateSource = new DateTimeImmutable($this->snapshotString($snapshot, 'issue_date'));
+        $dueDateSource = new DateTimeImmutable($this->snapshotString($snapshot, 'due_date'));
         $termDays = (int) $issueDateSource->diff($dueDateSource)->days;
 
         $issueDate = $this->localDate($run);
         $dueDate = $issueDate->modify(sprintf('+%d days', $termDays));
 
-        $currency = (string) $snapshot['currency'];
-        $discountData = $snapshot['discount'];
+        $currency = $this->snapshotString($snapshot, 'currency');
+        $discountData = $this->snapshotArray($snapshot, 'discount');
+        $discountBasisPoints = $this->snapshotInt($discountData, 'basis_points');
+        $discountFixedMinor = $this->snapshotInt($discountData, 'fixed_minor');
         $discount = match (true) {
-            (int) $discountData['basis_points'] !== 0 => Discount::percentBasisPoints((int) $discountData['basis_points'], $currency),
-            (int) $discountData['fixed_minor'] !== 0 => Discount::fixed(Money::fromMinor((int) $discountData['fixed_minor'], $currency)),
+            $discountBasisPoints !== 0 => Discount::percentBasisPoints($discountBasisPoints, $currency),
+            $discountFixedMinor !== 0 => Discount::fixed(Money::fromMinor($discountFixedMinor, $currency)),
             default => Discount::none($currency),
         };
 
-        $lines = array_map(static function (mixed $line): InvoiceLineData {
-            if (! is_array($line)) {
-                throw new LogicException('Recurring template snapshot line is invalid.');
-            }
+        $rawLines = $snapshot['lines'] ?? null;
+        if (! is_array($rawLines)) {
+            throw new LogicException('Recurring template snapshot lines are invalid.');
+        }
+
+        $lines = array_values(array_map(function (mixed $line): InvoiceLineData {
+            $line = $this->stringKeyedArray($line);
+            $productId = $line['product_id'] ?? null;
+            $kind = $line['kind'] ?? null;
 
             return new InvoiceLineData(
-                (string) $line['description'],
-                (string) $line['quantity'],
-                (int) $line['unit_price_minor'],
-                (int) $line['tax_rate_basis_points'],
-                (string) $line['unit'],
-                $line['product_id'] === null ? null : (int) $line['product_id'],
-                $line['kind'] === null ? null : (string) $line['kind'],
+                $this->snapshotString($line, 'description'),
+                $this->snapshotString($line, 'quantity'),
+                $this->snapshotInt($line, 'unit_price_minor'),
+                $this->snapshotInt($line, 'tax_rate_basis_points'),
+                $this->snapshotString($line, 'unit'),
+                $productId === null ? null : $this->snapshotInt($line, 'product_id'),
+                $kind === null ? null : $this->snapshotString($line, 'kind'),
             );
-        }, $snapshot['lines']);
+        }, $rawLines));
 
-        $totals = $snapshot['totals'];
-        $customer = $snapshot['customer'];
+        $totals = $this->snapshotArray($snapshot, 'totals');
+        $partnerId = $snapshot['partner_id'] ?? null;
+        $projectId = $snapshot['project_id'] ?? null;
 
         $draft = new InvoiceDraftData(
             issueDate: $issueDate,
             dueDate: $dueDate,
             currency: $currency,
-            customer: is_array($customer) ? $customer : [],
+            customer: $this->stringKeyedArrayOrEmpty($snapshot['customer'] ?? null),
             lines: $lines,
             discount: $discount,
-            controlNetMinor: (int) $totals['net_minor'],
-            controlVatMinor: (int) $totals['vat_minor'],
-            controlGrossMinor: (int) $totals['gross_minor'],
-            partnerId: $snapshot['partner_id'] === null ? null : (int) $snapshot['partner_id'],
-            projectId: $snapshot['project_id'] === null ? null : (int) $snapshot['project_id'],
+            controlNetMinor: $this->snapshotInt($totals, 'net_minor'),
+            controlVatMinor: $this->snapshotInt($totals, 'vat_minor'),
+            controlGrossMinor: $this->snapshotInt($totals, 'gross_minor'),
+            partnerId: $partnerId === null ? null : $this->snapshotInt($snapshot, 'partner_id'),
+            projectId: $projectId === null ? null : $this->snapshotInt($snapshot, 'project_id'),
         );
 
         return new InvoiceDraftSource(
             sourceType: 'recurring_run',
-            sourceKey: 'recurring-run:'.$run['uuid'],
+            sourceKey: 'recurring-run:'.$this->runUuid($run),
             sourceRevisionId: $version['id'],
             sourceSnapshotSha256: $version['snapshot_sha256'],
             draft: $draft,
         );
+    }
+
+    /** @param array<string, mixed> $data */
+    private function snapshotString(array $data, string $key): string
+    {
+        $value = $data[$key] ?? null;
+        if (! is_string($value)) {
+            throw new LogicException("Recurring template snapshot field \"{$key}\" is invalid.");
+        }
+
+        return $value;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function snapshotInt(array $data, string $key): int
+    {
+        $value = $data[$key] ?? null;
+        if (! is_int($value)) {
+            throw new LogicException("Recurring template snapshot field \"{$key}\" is invalid.");
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function snapshotArray(array $data, string $key): array
+    {
+        return $this->stringKeyedArray($data[$key] ?? null);
+    }
+
+    /** @return array<string, mixed> */
+    private function stringKeyedArray(mixed $value): array
+    {
+        if (! is_array($value)) {
+            throw new LogicException('Recurring template snapshot field is invalid.');
+        }
+
+        return $this->stringKeyedArrayOrEmpty($value);
+    }
+
+    /** @return array<string, mixed> */
+    private function stringKeyedArrayOrEmpty(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($value as $key => $item) {
+            $result[(string) $key] = $item;
+        }
+
+        return $result;
     }
 }
