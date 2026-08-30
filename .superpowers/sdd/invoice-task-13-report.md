@@ -107,12 +107,15 @@ zurückgeführt und danach erneut grün ausgeführt.
   `InvoiceProviderBindingsTest` (Regressionsschutz für den neuen
   `deliveryStatus()`-Port und die Scheduler-Bindungen): `42 tests`,
   `40 passed`, `212 assertions`, `2 skips`.
-- Vollständiges `tests/Feature/FinanceModule`: siehe Abschnitt „Scope und
-  Betrieb“ — ein vorbestehender, von dieser Task unabhängiger
-  Speicherlimit-Fehler in `InvoicePdfTest` (dompdf-Font-Rendering benötigt
-  mehr als das Standard-CLI-`memory_limit=128M`) wurde mit
-  `-d memory_limit=1G` umgangen; das Gesamtergebnis dieses Laufs ist unten
-  dokumentiert.
+- Vollständiges `tests/Feature/FinanceModule` (mit `-d memory_limit=1G`, weil
+  ein vorbestehender, von dieser Task unabhängiger Fehler in `InvoicePdfTest`
+  echtes dompdf-Font-Rendering über dem Standard-CLI-`memory_limit=128M`
+  auslöst): `686 tests`, `4863 assertions`, `3 failures`, `19 skips`. Alle
+  drei Failures (`QuoteApiTest` zweimal, `LegacyProjectCompatibilityTest`
+  einmal) sind derselbe vorbestehende, umgebungsbedingte Fehler — ein fehlender
+  S3-Bucket-Konfigurationswert lässt `Storage::disk('files')` beim Aufbau des
+  `files`-Adapters scheitern — und betreffen keinen von dieser Task berührten
+  Pfad; keiner der Recurring-Tests ist unter den Failures.
 - Fokussiertes Pint (`Application/Commands/Recurring`,
   `Infrastructure/Scheduling`, betroffene Ports/Repositories,
   `routes/console.php`, `bootstrap/app.php`,
