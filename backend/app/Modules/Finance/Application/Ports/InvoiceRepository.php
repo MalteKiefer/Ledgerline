@@ -13,6 +13,7 @@ use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftSource;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoicePage;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceView;
+use App\Modules\Finance\Application\DTOs\Invoices\LegacyInvoiceFinalization;
 use App\Modules\Finance\Application\DTOs\StoredDocument;
 use Closure;
 use DateTimeImmutable;
@@ -73,6 +74,25 @@ interface InvoiceRepository
         Closure $allocateNumber,
         Closure $storePdf,
         Closure $recordInventory,
+    ): FinalizedInvoice;
+
+    /**
+     * Publishes a draft (created via createDraftFromSource with
+     * source_type='legacy_invoice') as an ALREADY-finalized historical
+     * invoice: the exact legacy number/year/sequence and PDF bytes are
+     * reproduced verbatim, no new number is allocated, no PDF is rendered,
+     * and no inventory movement is recorded (the legacy sale was already
+     * accounted for by the legacy stock ledger; recording it again here
+     * would double-count it). Idempotent via the same IdempotencyKey
+     * mechanism as finalizeAtomically.
+     *
+     * @param  Closure(string, array<array-key, mixed>): StoredDocument  $storePdf
+     */
+    public function importFinalized(
+        InvoiceId $id,
+        IdempotencyKey $key,
+        LegacyInvoiceFinalization $finalization,
+        Closure $storePdf,
     ): FinalizedInvoice;
 
     public function markDeliverySent(DeliveryId $deliveryId, DateTimeImmutable $at): InvoiceView;

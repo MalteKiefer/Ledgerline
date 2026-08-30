@@ -18,6 +18,7 @@ use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceLineData;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoicePage;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceView;
+use App\Modules\Finance\Application\DTOs\Invoices\LegacyInvoiceFinalization;
 use App\Modules\Finance\Application\DTOs\StoredDocument;
 use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\IdempotencyStore;
@@ -643,6 +644,165 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             'invoice.cancel.finalize',
             $requestHash,
         );
+    }
+
+    public function importFinalized(
+        InvoiceId $id,
+        IdempotencyKey $key,
+        LegacyInvoiceFinalization $finalization,
+        Closure $storePdf,
+    ): FinalizedInvoice {
+        $requestHash = hash('sha256', json_encode([
+            'invoice_id' => $id->value,
+            'number' => $finalization->number,
+            'year' => $finalization->year,
+            'sequence' => $finalization->sequence,
+        ], JSON_THROW_ON_ERROR));
+
+        return DB::transaction(function () use ($id, $key, $finalization, $storePdf, $requestHash): FinalizedInvoice {
+            $reservation = $this->idempotency->reserve('invoice.import.finalize', $key, $requestHash);
+            if ($reservation['status'] === 'replay') {
+                return $this->replayedFinalization($id, $reservation['response_payload']);
+            }
+            if ($reservation['status'] !== 'new') {
+                throw new DomainException('idempotency_'.$reservation['status']);
+            }
+
+            $ownerId = $this->ownerId();
+            $locator = $this->ownedInvoice($id);
+            $series = DocumentSeriesRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_type', 'invoice')
+                ->whereKey($locator->document_series_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $invoice = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($id->value)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $revision = DocumentRevisionRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($invoice->current_revision_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((string) $series->status !== 'draft'
+                || (string) $invoice->workflow_status !== 'draft'
+                || $invoice->number !== null
+                || (string) $revision->status !== 'draft'
+                || $revision->published_at !== null) {
+                throw new DomainException('invoice_not_finalizable');
+            }
+            if ($finalization->cancelsInvoiceId !== null && ! InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($finalization->cancelsInvoiceId)
+                ->exists()) {
+                throw new DomainException('invoice_cancellation_finalization_invalid');
+            }
+
+            $prepared = $this->preparedFinalization($ownerId, $series, $invoice, $revision);
+            $snapshot = $prepared['snapshot'];
+            $snapshot['document_number'] = $finalization->number;
+            $snapshot = $this->canonicalize($snapshot);
+            $revision->forceFill([
+                'snapshot' => $snapshot,
+                'net_minor' => $prepared['net'],
+                'vat_minor' => $prepared['vat'],
+                'gross_minor' => $prepared['gross'],
+                'currency' => $prepared['currency'],
+            ])->save();
+
+            $stored = $storePdf((string) $series->uuid, $snapshot);
+            if (! $stored instanceof StoredDocument) {
+                throw new LogicException('Invoice PDF storage returned an invalid result.');
+            }
+            $published = DB::table('finance_document_revisions')
+                ->where('id', $revision->id)
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('status', 'draft')
+                ->whereNull('published_at')
+                ->update([
+                    'status' => 'published',
+                    'pdf_path' => $stored->path,
+                    'pdf_sha256' => $stored->sha256,
+                    'published_at' => $finalization->finalizedAt,
+                ]);
+            if ($published !== 1) {
+                throw new DomainException('invoice_revision_publish_conflict');
+            }
+
+            $workflowStatus = $finalization->sentAt !== null ? 'sent' : 'finalized';
+            $seriesUpdated = DB::table('finance_document_series')
+                ->where('id', $series->id)
+                ->where('user_id', $ownerId)
+                ->where('document_type', 'invoice')
+                ->where('status', 'draft')
+                ->update(['status' => 'finalized', 'updated_at' => $finalization->finalizedAt]);
+            $invoiceUpdated = DB::table('finance_invoices')
+                ->where('id', $invoice->id)
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('current_revision_id', $revision->id)
+                ->where('workflow_status', 'draft')
+                ->whereNull('number')
+                ->where('version', (int) $invoice->version)
+                ->update([
+                    'number' => $finalization->number,
+                    'year' => $finalization->year,
+                    'sequence' => $finalization->sequence,
+                    'workflow_status' => $workflowStatus,
+                    'finalized_at' => $finalization->finalizedAt,
+                    'sent_at' => $finalization->sentAt,
+                    'cancels_invoice_id' => $finalization->cancelsInvoiceId,
+                    'open_minor' => $prepared['gross'],
+                    'version' => (int) $invoice->version + 1,
+                    'updated_at' => $finalization->finalizedAt,
+                ]);
+            if ($seriesUpdated !== 1 || $invoiceUpdated !== 1) {
+                throw new DomainException('invoice_finalization_conflict');
+            }
+
+            $publishedActivity = new DocumentActivityRecord;
+            $publishedActivity->forceFill([
+                'user_id' => $ownerId,
+                'document_series_id' => $series->id,
+                'document_revision_id' => $revision->id,
+                'type' => 'revision.published',
+                'payload' => ['path' => $stored->path, 'pdf_sha256' => $stored->sha256],
+                'created_by' => $ownerId,
+                'created_at' => $finalization->finalizedAt,
+            ])->save();
+            $this->appendActivity(
+                $ownerId,
+                (int) $series->id,
+                (int) $revision->id,
+                'invoice.imported',
+                (int) $invoice->version + 1,
+            );
+
+            $this->idempotency->complete($reservation['record_id'], 200, [
+                'revision_id' => (int) $revision->id,
+                'pdf_path' => $stored->path,
+                'pdf_sha256' => $stored->sha256,
+                'finalized_at' => $finalization->finalizedAt->format(DATE_ATOM),
+            ]);
+
+            return new FinalizedInvoice(
+                $this->view($invoice->refresh()),
+                (int) $revision->id,
+                $stored->path,
+                $stored->sha256,
+                $finalization->finalizedAt,
+            );
+        }, 1);
     }
 
     /**
