@@ -7,10 +7,13 @@ namespace App\Modules\Finance\Application\Ports;
 use App\Modules\Finance\Application\DTOs\IdempotencyKey;
 use App\Modules\Finance\Application\DTOs\Invoices\DeliveryId;
 use App\Modules\Finance\Application\DTOs\Invoices\FinalizedInvoice;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDeliveryView;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftData;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftSource;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoicePage;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceView;
+use App\Modules\Finance\Application\DTOs\Invoices\LegacyInvoiceFinalization;
 use App\Modules\Finance\Application\DTOs\StoredDocument;
 use Closure;
 use DateTimeImmutable;
@@ -18,6 +21,15 @@ use DateTimeImmutable;
 interface InvoiceRepository
 {
     public function get(InvoiceId $id): InvoiceView;
+
+    /**
+     * Resolves the owner-scoped internal ID for a public invoice UUID.
+     * Throws (not-found) when the UUID does not belong to the current owner.
+     */
+    public function idForUuid(string $uuid): InvoiceId;
+
+    /** @param array<string, mixed> $filters */
+    public function page(array $filters, int $page, int $perPage): InvoicePage;
 
     public function createDraft(InvoiceDraftData $data): InvoiceId;
 
@@ -64,6 +76,25 @@ interface InvoiceRepository
         Closure $recordInventory,
     ): FinalizedInvoice;
 
+    /**
+     * Publishes a draft (created via createDraftFromSource with
+     * source_type='legacy_invoice') as an ALREADY-finalized historical
+     * invoice: the exact legacy number/year/sequence and PDF bytes are
+     * reproduced verbatim, no new number is allocated, no PDF is rendered,
+     * and no inventory movement is recorded (the legacy sale was already
+     * accounted for by the legacy stock ledger; recording it again here
+     * would double-count it). Idempotent via the same IdempotencyKey
+     * mechanism as finalizeAtomically.
+     *
+     * @param  Closure(string, array<array-key, mixed>): StoredDocument  $storePdf
+     */
+    public function importFinalized(
+        InvoiceId $id,
+        IdempotencyKey $key,
+        LegacyInvoiceFinalization $finalization,
+        Closure $storePdf,
+    ): FinalizedInvoice;
+
     public function markDeliverySent(DeliveryId $deliveryId, DateTimeImmutable $at): InvoiceView;
 
     /** @return array{recipient:string, pdf_path:string, pdf_sha256:string} */
@@ -100,4 +131,16 @@ interface InvoiceRepository
     public function replayDeliveryRetry(DeliveryId $failedDelivery, IdempotencyKey $key): ?DeliveryId;
 
     public function deliveryNeedsDispatch(DeliveryId $delivery): bool;
+
+    /**
+     * Reads the current, owner-scoped delivery outcome without mutating it,
+     * so a caller (e.g. recurring run processing) can decide whether to keep
+     * waiting on the async mail step or treat it as resolved.
+     *
+     * @return array{status: string, last_error_code: ?string}
+     */
+    public function deliveryStatus(DeliveryId $id): array;
+
+    /** Owner-scoped read of a delivery's full state for API responses. */
+    public function deliveryView(DeliveryId $id): InvoiceDeliveryView;
 }

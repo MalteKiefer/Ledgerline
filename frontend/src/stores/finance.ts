@@ -338,18 +338,17 @@ export const useFinanceStore = defineStore('finance', () => {
     return api.get<Record<string, unknown>>(`/api/v1/finance/reports/account-vat${qs ? `?${qs}` : ''}`);
   };
 
-  // ---- Invoices ----
-  const createInvoice = (body: Record<string, unknown>) => api.post<{ invoice: Invoice }>('/api/v1/finance/invoices', body);
-  const updateInvoice = (id: number, body: Record<string, unknown>) => api.put<{ invoice: Invoice }>(`/api/v1/finance/invoices/${id}`, body);
-  const deleteInvoice = (id: number) => api.delete(`/api/v1/finance/invoices/${id}`);
-  const finalizeInvoice = (id: number) => api.post<{ invoice: Invoice }>(`/api/v1/finance/invoices/${id}/finalize`);
-  const stornoInvoice = (id: number) => api.post<{ invoice: Invoice }>(`/api/v1/finance/invoices/${id}/storno`);
-  const emailInvoice = (id: number) => api.post<{ ok: boolean }>(`/api/v1/finance/invoices/${id}/email`);
-  const dunInvoice = (id: number) => api.post<{ ok: boolean }>(`/api/v1/finance/invoices/${id}/dun`);
+  // Invoice CRUD/finalize/storno/email/dun/PDF actions used to live here,
+  // calling the legacy FinanceController routes removed in the Task 17
+  // cutover. Invoice creation and lifecycle management now happen exclusively
+  // through the finance-v2 module pages (src/modules/finance/invoices/*,
+  // src/modules/finance/stores/invoices.ts), reachable at /finance/invoices/*.
+  // `invoices` below stays: it is still real, correct read-only data (legacy
+  // history plus every finance-v2 invoice, via LegacyInvoiceReadProjection) —
+  // only the dead write actions were removed. One read survives: a
+  // pre-cutover invoice's own PDF stays streamable (GoBD retention), served
+  // by the same route this always called.
   const invoicePdfUrl = (id: number) => api.streamUrl(`/api/v1/finance/invoices/${id}/pdf`);
-  // Attach the outgoing invoice document itself (PDF). Optional version_seq pins
-  // it to one entry of the GoBD correction trail instead of the shared slot.
-  const uploadInvoicePdf = (id: number, form: FormData) => api.upload<{ invoice: Invoice }>(`/api/v1/finance/invoices/${id}/pdf`, form);
 
   // ---- Partners / payment methods ----
   const savePartner = (p: Partial<Partner>) => (p.id ? api.put(`/api/v1/finance/partners/${p.id}`, p) : api.post('/api/v1/finance/partners', p));
@@ -390,7 +389,7 @@ export const useFinanceStore = defineStore('finance', () => {
     createCategory, updateCategory, deleteCategory,
     products, createProduct, updateProduct, deleteProduct, restoreProduct, forceProduct, adjustStock, stockMovements,
     quotes, createQuote, updateQuote, sendQuote, decideQuote, convertQuote, duplicateQuote, deleteQuote, restoreQuote, forceQuote, productLine, quotePdfUrl, uploadQuotePdf, emailQuote,
-    createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl, uploadInvoicePdf,
+    invoicePdfUrl,
     savePartner, deletePartner, savePayment, deletePayment,
     archivePartner, partnerNotes, addPartnerNote, deletePartnerNote,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,

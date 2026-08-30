@@ -13,6 +13,7 @@ use App\Modules\Finance\Application\DTOs\Payments\AllocationId;
 use App\Modules\Finance\Application\DTOs\Payments\AllocationLineData;
 use App\Modules\Finance\Application\DTOs\Payments\AllocationResult;
 use App\Modules\Finance\Application\DTOs\Payments\PaymentId;
+use App\Modules\Finance\Application\DTOs\Payments\PaymentPage;
 use App\Modules\Finance\Application\DTOs\Payments\PaymentView;
 use App\Modules\Finance\Application\DTOs\Payments\RecordPaymentData;
 use App\Modules\Finance\Application\Ports\Clock;
@@ -38,6 +39,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use LogicException;
 
 final class EloquentPaymentRepository implements PaymentRepository
@@ -51,6 +53,68 @@ final class EloquentPaymentRepository implements PaymentRepository
     public function get(PaymentId $id): PaymentView
     {
         return $this->view($this->ownedPayment($id));
+    }
+
+    public function idForUuid(string $uuid): PaymentId
+    {
+        $payment = PaymentRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->where('uuid', $uuid)
+            ->firstOrFail(['id']);
+
+        return new PaymentId((int) $payment->id);
+    }
+
+    public function page(array $filters, int $page, int $perPage): PaymentPage
+    {
+        if ($page < 1 || $perPage < 1 || $perPage > 100) {
+            throw new InvalidArgumentException('Payment pagination must use page >= 1 and perPage between 1 and 100.');
+        }
+
+        $ownerId = $this->ownerId();
+        $query = PaymentRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $ownerId);
+
+        $search = $filters['q'] ?? null;
+        if (is_string($search) && trim($search) !== '') {
+            $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], strtolower(trim($search)));
+            $needle = '%'.$escaped.'%';
+            $query->where(static function ($sub) use ($needle): void {
+                $sub->whereRaw("LOWER(COALESCE(reference, '')) LIKE ? ESCAPE '!'", [$needle])
+                    ->orWhereRaw("LOWER(COALESCE(counterparty, '')) LIKE ? ESCAPE '!'", [$needle])
+                    ->orWhereRaw("LOWER(CAST(uuid AS TEXT)) LIKE ? ESCAPE '!'", [$needle]);
+            });
+        }
+
+        $from = $filters['from'] ?? null;
+        if (is_string($from) && $from !== '') {
+            $query->whereDate('received_at', '>=', $from);
+        }
+        $to = $filters['to'] ?? null;
+        if (is_string($to) && $to !== '') {
+            $query->whereDate('received_at', '<=', $to);
+        }
+
+        if (($filters['unallocated'] ?? null) === true) {
+            $query->whereRaw(
+                'amount_minor <> COALESCE((
+                    SELECT SUM(amount_minor) FROM finance_payment_allocations
+                    WHERE finance_payment_allocations.payment_id = finance_payments.id
+                ), 0)',
+            );
+        }
+
+        $total = (clone $query)->count();
+        $items = array_values($query
+            ->orderByDesc('id')
+            ->forPage($page, $perPage)
+            ->get()
+            ->map(fn (PaymentRecord $record): PaymentView => $this->view($record))
+            ->all());
+
+        return new PaymentPage($items, $page, $perPage, $total);
     }
 
     public function record(RecordPaymentData $data, IdempotencyKey $key): PaymentView

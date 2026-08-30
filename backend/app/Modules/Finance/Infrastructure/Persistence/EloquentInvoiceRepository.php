@@ -11,11 +11,14 @@ use App\Models\UserSetting;
 use App\Modules\Finance\Application\DTOs\IdempotencyKey;
 use App\Modules\Finance\Application\DTOs\Invoices\DeliveryId;
 use App\Modules\Finance\Application\DTOs\Invoices\FinalizedInvoice;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDeliveryView;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftData;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceDraftSource;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceLineData;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoicePage;
 use App\Modules\Finance\Application\DTOs\Invoices\InvoiceView;
+use App\Modules\Finance\Application\DTOs\Invoices\LegacyInvoiceFinalization;
 use App\Modules\Finance\Application\DTOs\StoredDocument;
 use App\Modules\Finance\Application\Ports\Clock;
 use App\Modules\Finance\Application\Ports\IdempotencyStore;
@@ -36,11 +39,16 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use DomainException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use LogicException;
+use Throwable;
 
 final class EloquentInvoiceRepository implements InvoiceRepository
 {
@@ -52,6 +60,126 @@ final class EloquentInvoiceRepository implements InvoiceRepository
     public function get(InvoiceId $id): InvoiceView
     {
         return $this->view($this->ownedInvoice($id));
+    }
+
+    public function idForUuid(string $uuid): InvoiceId
+    {
+        $invoice = InvoiceRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->where('uuid', $uuid)
+            ->firstOrFail(['id']);
+
+        return new InvoiceId((int) $invoice->id);
+    }
+
+    public function page(array $filters, int $page, int $perPage): InvoicePage
+    {
+        if ($page < 1 || $perPage < 1 || $perPage > 100) {
+            throw new InvalidArgumentException('Invoice pagination must use page >= 1 and perPage between 1 and 100.');
+        }
+
+        $ownerId = $this->ownerId();
+        $query = InvoiceRecord::query()
+            ->withoutGlobalScopes()
+            ->select('finance_invoices.*')
+            ->where('finance_invoices.user_id', $ownerId)
+            ->join('finance_document_revisions as invoice_current_revision', function (JoinClause $join) use ($ownerId): void {
+                $join->on('invoice_current_revision.id', '=', 'finance_invoices.current_revision_id')
+                    ->where('invoice_current_revision.user_id', '=', $ownerId);
+            });
+
+        $search = $filters['q'] ?? null;
+        if (is_string($search) && trim($search) !== '') {
+            $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], strtolower(trim($search)));
+            $needle = '%'.$escaped.'%';
+            $query->where(static function ($sub) use ($needle): void {
+                $sub->whereRaw("LOWER(COALESCE(finance_invoices.number, '')) LIKE ? ESCAPE '!'", [$needle])
+                    ->orWhereRaw("LOWER(CAST(finance_invoices.uuid AS TEXT)) LIKE ? ESCAPE '!'", [$needle])
+                    ->orWhereRaw("LOWER(CAST(invoice_current_revision.snapshot AS TEXT)) LIKE ? ESCAPE '!'", [$needle]);
+            });
+        }
+
+        $kind = $filters['kind'] ?? null;
+        if (is_string($kind) && $kind !== '') {
+            $query->where('finance_invoices.kind', $kind);
+        }
+
+        $from = $filters['from'] ?? null;
+        if (is_string($from) && $from !== '') {
+            $query->whereDate('finance_invoices.issue_date', '>=', $from);
+        }
+        $to = $filters['to'] ?? null;
+        if (is_string($to) && $to !== '') {
+            $query->whereDate('finance_invoices.issue_date', '<=', $to);
+        }
+
+        $overdue = $filters['overdue'] ?? null;
+        if ($overdue === true) {
+            $today = (new DateTimeImmutable('now', $this->ownerTimezone($ownerId)))->format('Y-m-d');
+            $query->where('finance_invoices.workflow_status', 'sent')
+                ->where('finance_invoices.open_minor', '>', 0)
+                ->whereDate('finance_invoices.due_date', '<', $today);
+        }
+
+        $status = $filters['status'] ?? null;
+        if (is_string($status) && $status !== '') {
+            $this->applyStatusFilter($query, $ownerId, $status);
+        }
+
+        $total = (clone $query)->count('finance_invoices.id');
+        $items = array_values($query
+            ->orderByDesc('finance_invoices.id')
+            ->forPage($page, $perPage)
+            ->get()
+            ->map(fn (InvoiceRecord $invoice): InvoiceView => $this->view($invoice))
+            ->all());
+
+        return new InvoicePage($items, $page, $perPage, $total);
+    }
+
+    /** @param Builder<InvoiceRecord> $query */
+    private function applyStatusFilter(Builder $query, int $ownerId, string $status): void
+    {
+        $cancelledExists = static function (QueryBuilder $sub) use ($ownerId): void {
+            $sub->select(DB::raw(1))
+                ->from('finance_invoices as cancelling')
+                ->where('cancelling.user_id', $ownerId)
+                ->where('cancelling.workflow_status', '!=', 'draft')
+                ->whereColumn('cancelling.cancels_invoice_id', 'finance_invoices.id');
+        };
+
+        match ($status) {
+            'draft' => $query->where('finance_invoices.workflow_status', 'draft'),
+            'finalized' => $query->where('finance_invoices.workflow_status', 'finalized')
+                ->whereNotExists($cancelledExists),
+            'cancelled' => $query->whereExists($cancelledExists),
+            'sent' => $query->where('finance_invoices.workflow_status', 'sent')
+                ->where('finance_invoices.allocated_minor', '<=', 0)
+                ->whereNotExists($cancelledExists),
+            'partially_paid' => $query->where('finance_invoices.workflow_status', 'sent')
+                ->where('finance_invoices.allocated_minor', '>', 0)
+                ->where('finance_invoices.open_minor', '>', 0)
+                ->whereNotExists($cancelledExists),
+            'paid' => $query->where('finance_invoices.workflow_status', 'sent')
+                ->where('finance_invoices.open_minor', '<=', 0)
+                ->whereNotExists($cancelledExists),
+            default => throw new InvalidArgumentException('Unsupported invoice status filter.'),
+        };
+    }
+
+    private function ownerTimezone(int $ownerId): DateTimeZone
+    {
+        $configured = UserSetting::query()->find($ownerId)?->getAttribute('timezone');
+        $fallback = config('app.timezone', 'UTC');
+        $name = is_string($configured) && trim($configured) !== ''
+            ? trim($configured)
+            : (is_string($fallback) ? $fallback : 'UTC');
+        try {
+            return new DateTimeZone($name);
+        } catch (Throwable) {
+            return new DateTimeZone(is_string($fallback) ? $fallback : 'UTC');
+        }
     }
 
     public function createDraft(InvoiceDraftData $data): InvoiceId
@@ -264,7 +392,7 @@ final class EloquentInvoiceRepository implements InvoiceRepository
     public function updateDraft(InvoiceId $id, InvoiceDraftData $data, int $expectedVersion): InvoiceView
     {
         if ($expectedVersion < 0) {
-            throw new \InvalidArgumentException('Expected invoice version must not be negative.');
+            throw new InvalidArgumentException('Expected invoice version must not be negative.');
         }
         $ownerId = $this->ownerId();
 
@@ -346,7 +474,7 @@ final class EloquentInvoiceRepository implements InvoiceRepository
     public function deleteDraft(InvoiceId $id, int $expectedVersion): void
     {
         if ($expectedVersion < 0) {
-            throw new \InvalidArgumentException('Expected invoice version must not be negative.');
+            throw new InvalidArgumentException('Expected invoice version must not be negative.');
         }
         $ownerId = $this->ownerId();
 
@@ -516,6 +644,165 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             'invoice.cancel.finalize',
             $requestHash,
         );
+    }
+
+    public function importFinalized(
+        InvoiceId $id,
+        IdempotencyKey $key,
+        LegacyInvoiceFinalization $finalization,
+        Closure $storePdf,
+    ): FinalizedInvoice {
+        $requestHash = hash('sha256', json_encode([
+            'invoice_id' => $id->value,
+            'number' => $finalization->number,
+            'year' => $finalization->year,
+            'sequence' => $finalization->sequence,
+        ], JSON_THROW_ON_ERROR));
+
+        return DB::transaction(function () use ($id, $key, $finalization, $storePdf, $requestHash): FinalizedInvoice {
+            $reservation = $this->idempotency->reserve('invoice.import.finalize', $key, $requestHash);
+            if ($reservation['status'] === 'replay') {
+                return $this->replayedFinalization($id, $reservation['response_payload']);
+            }
+            if ($reservation['status'] !== 'new') {
+                throw new DomainException('idempotency_'.$reservation['status']);
+            }
+
+            $ownerId = $this->ownerId();
+            $locator = $this->ownedInvoice($id);
+            $series = DocumentSeriesRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_type', 'invoice')
+                ->whereKey($locator->document_series_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $invoice = InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($id->value)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $revision = DocumentRevisionRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->whereKey($invoice->current_revision_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((string) $series->status !== 'draft'
+                || (string) $invoice->workflow_status !== 'draft'
+                || $invoice->number !== null
+                || (string) $revision->status !== 'draft'
+                || $revision->published_at !== null) {
+                throw new DomainException('invoice_not_finalizable');
+            }
+            if ($finalization->cancelsInvoiceId !== null && ! InvoiceRecord::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $ownerId)
+                ->whereKey($finalization->cancelsInvoiceId)
+                ->exists()) {
+                throw new DomainException('invoice_cancellation_finalization_invalid');
+            }
+
+            $prepared = $this->preparedFinalization($ownerId, $series, $invoice, $revision);
+            $snapshot = $prepared['snapshot'];
+            $snapshot['document_number'] = $finalization->number;
+            $snapshot = $this->canonicalize($snapshot);
+            $revision->forceFill([
+                'snapshot' => $snapshot,
+                'net_minor' => $prepared['net'],
+                'vat_minor' => $prepared['vat'],
+                'gross_minor' => $prepared['gross'],
+                'currency' => $prepared['currency'],
+            ])->save();
+
+            $stored = $storePdf((string) $series->uuid, $snapshot);
+            if (! $stored instanceof StoredDocument) {
+                throw new LogicException('Invoice PDF storage returned an invalid result.');
+            }
+            $published = DB::table('finance_document_revisions')
+                ->where('id', $revision->id)
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('status', 'draft')
+                ->whereNull('published_at')
+                ->update([
+                    'status' => 'published',
+                    'pdf_path' => $stored->path,
+                    'pdf_sha256' => $stored->sha256,
+                    'published_at' => $finalization->finalizedAt,
+                ]);
+            if ($published !== 1) {
+                throw new DomainException('invoice_revision_publish_conflict');
+            }
+
+            $workflowStatus = $finalization->sentAt !== null ? 'sent' : 'finalized';
+            $seriesUpdated = DB::table('finance_document_series')
+                ->where('id', $series->id)
+                ->where('user_id', $ownerId)
+                ->where('document_type', 'invoice')
+                ->where('status', 'draft')
+                ->update(['status' => 'finalized', 'updated_at' => $finalization->finalizedAt]);
+            $invoiceUpdated = DB::table('finance_invoices')
+                ->where('id', $invoice->id)
+                ->where('user_id', $ownerId)
+                ->where('document_series_id', $series->id)
+                ->where('current_revision_id', $revision->id)
+                ->where('workflow_status', 'draft')
+                ->whereNull('number')
+                ->where('version', (int) $invoice->version)
+                ->update([
+                    'number' => $finalization->number,
+                    'year' => $finalization->year,
+                    'sequence' => $finalization->sequence,
+                    'workflow_status' => $workflowStatus,
+                    'finalized_at' => $finalization->finalizedAt,
+                    'sent_at' => $finalization->sentAt,
+                    'cancels_invoice_id' => $finalization->cancelsInvoiceId,
+                    'open_minor' => $prepared['gross'],
+                    'version' => (int) $invoice->version + 1,
+                    'updated_at' => $finalization->finalizedAt,
+                ]);
+            if ($seriesUpdated !== 1 || $invoiceUpdated !== 1) {
+                throw new DomainException('invoice_finalization_conflict');
+            }
+
+            $publishedActivity = new DocumentActivityRecord;
+            $publishedActivity->forceFill([
+                'user_id' => $ownerId,
+                'document_series_id' => $series->id,
+                'document_revision_id' => $revision->id,
+                'type' => 'revision.published',
+                'payload' => ['path' => $stored->path, 'pdf_sha256' => $stored->sha256],
+                'created_by' => $ownerId,
+                'created_at' => $finalization->finalizedAt,
+            ])->save();
+            $this->appendActivity(
+                $ownerId,
+                (int) $series->id,
+                (int) $revision->id,
+                'invoice.imported',
+                (int) $invoice->version + 1,
+            );
+
+            $this->idempotency->complete($reservation['record_id'], 200, [
+                'revision_id' => (int) $revision->id,
+                'pdf_path' => $stored->path,
+                'pdf_sha256' => $stored->sha256,
+                'finalized_at' => $finalization->finalizedAt->format(DATE_ATOM),
+            ]);
+
+            return new FinalizedInvoice(
+                $this->view($invoice->refresh()),
+                (int) $revision->id,
+                $stored->path,
+                $stored->sha256,
+                $finalization->finalizedAt,
+            );
+        }, 1);
     }
 
     /**
@@ -825,7 +1112,14 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             $customer = is_array($snapshot) && is_array($snapshot['customer'] ?? null)
                 ? $snapshot['customer']
                 : [];
-            $recipient = is_string($customer['email'] ?? null) ? $customer['email'] : null;
+            // A dedicated Rechnungs-E-Mail (billing contact) takes precedence over
+            // the customer's general address, matching the legacy behaviour this
+            // module's cutover carries forward — a customer who set one expects
+            // invoices to reach that inbox specifically, not whoever reads the
+            // general one.
+            $recipient = is_string($customer['invoiceEmail'] ?? null) && trim($customer['invoiceEmail']) !== ''
+                ? $customer['invoiceEmail']
+                : (is_string($customer['email'] ?? null) ? $customer['email'] : null);
         }
         $recipient = is_string($recipient) ? trim($recipient) : '';
         if ($recipient === '' || filter_var($recipient, FILTER_VALIDATE_EMAIL) === false) {
@@ -1169,6 +1463,53 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             ->exists();
     }
 
+    public function deliveryStatus(DeliveryId $id): array
+    {
+        $delivery = InvoiceDeliveryRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->findOrFail($id->value, ['status', 'last_error_code']);
+
+        return [
+            'status' => (string) $delivery->status,
+            'last_error_code' => $delivery->last_error_code === null ? null : (string) $delivery->last_error_code,
+        ];
+    }
+
+    public function deliveryView(DeliveryId $id): InvoiceDeliveryView
+    {
+        $delivery = InvoiceDeliveryRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->findOrFail($id->value);
+
+        $createdAt = $delivery->getAttribute('created_at');
+        $updatedAt = $delivery->getAttribute('updated_at');
+        if (! $createdAt instanceof DateTimeInterface || ! $updatedAt instanceof DateTimeInterface) {
+            throw new LogicException('Invoice delivery timestamp metadata is incomplete.');
+        }
+
+        return new InvoiceDeliveryView(
+            new DeliveryId((int) $delivery->id, (string) $delivery->uuid),
+            (int) $delivery->invoice_id,
+            (string) $delivery->kind,
+            (string) $delivery->recipient,
+            (string) $delivery->status,
+            (int) $delivery->attempts,
+            $this->nullableInterfaceDate($delivery->getAttribute('last_attempt_at')),
+            $this->nullableInterfaceDate($delivery->getAttribute('sent_at')),
+            $this->nullableInterfaceDate($delivery->getAttribute('next_retry_at')),
+            is_string($delivery->last_error_code) ? $delivery->last_error_code : null,
+            DateTimeImmutable::createFromInterface($createdAt),
+            DateTimeImmutable::createFromInterface($updatedAt),
+        );
+    }
+
+    private function nullableInterfaceDate(mixed $value): ?DateTimeImmutable
+    {
+        return $value instanceof DateTimeInterface ? DateTimeImmutable::createFromInterface($value) : null;
+    }
+
     /** @param array<string, int|string|bool|null> $context */
     private function deliveryRequestHash(
         int $invoiceId,
@@ -1230,7 +1571,7 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             : (is_string($fallback) ? $fallback : 'UTC');
         try {
             $zone = new DateTimeZone($name);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             $zone = new DateTimeZone(is_string($fallback) ? $fallback : 'UTC');
         }
         $dueDate = new DateTimeImmutable(

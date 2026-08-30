@@ -90,8 +90,8 @@ class LegacyFinanceBaselineTest extends TestCase
             ->assertJsonPath('already', true)
             ->assertJsonPath('invoice.id', $invoiceId);
 
-        $this->assertSame(1, Invoice::query()->count());
-        $this->assertSame($invoiceId, (int) $quote->fresh()?->converted_invoice_id);
+        $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame($invoiceId, (int) $quote->fresh()?->converted_finance_invoice_id);
     }
 
     public function test_project_time_can_only_be_invoiced_once(): void
@@ -114,51 +114,17 @@ class LegacyFinanceBaselineTest extends TestCase
             ->assertJsonPath('error', 'nothing_to_invoice');
 
         $invoiceId = (int) $first->json('invoice.id');
-        $this->assertSame(1, Invoice::query()->count());
-        $this->assertSame(1, FinanceTimeEntry::query()->where('invoiced_invoice_id', $invoiceId)->count());
+        $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame(1, FinanceTimeEntry::query()->where('invoiced_finance_invoice_id', $invoiceId)->count());
     }
 
-    public function test_invoice_finalization_allocates_one_number_on_retry(): void
-    {
-        $user = $this->signIn();
-        UserSetting::for((int) $user->id)->forceFill([
-            'invoice_number_format' => 'YYYY-NNNN',
-            'invoice_next_number' => 1,
-        ])->save();
-        $invoice = $this->invoice();
-
-        $first = $this->postJson(route('api.finance.invoices.finalize', $invoice))
-            ->assertOk()
-            ->json('invoice.number');
-        $second = $this->postJson(route('api.finance.invoices.finalize', $invoice))
-            ->assertOk()
-            ->json('invoice.number');
-
-        $this->assertSame($first, $second);
-        $this->assertSame(1, Invoice::query()->count());
-        $this->assertSame(1, Invoice::query()->whereNotNull('number')->count());
-    }
-
-    public function test_a_finalized_invoice_can_only_be_cancelled_once(): void
-    {
-        $user = $this->signIn();
-        UserSetting::for((int) $user->id)->forceFill([
-            'invoice_number_format' => 'YYYY-NNNN',
-            'invoice_next_number' => 1,
-        ])->save();
-        $invoice = $this->invoice();
-        $this->postJson(route('api.finance.invoices.finalize', $invoice))->assertOk();
-
-        $this->postJson(route('api.finance.invoices.storno', $invoice))
-            ->assertCreated()
-            ->assertJsonPath('invoice.cancels_invoice_id', $invoice->id);
-        $this->postJson(route('api.finance.invoices.storno', $invoice))
-            ->assertStatus(422)
-            ->assertJsonPath('error', 'already_cancelled');
-
-        $this->assertSame(2, Invoice::query()->count());
-        $this->assertSame(1, Invoice::query()->where('cancels_invoice_id', $invoice->id)->count());
-    }
+    // Idempotent finalize-number-allocation and single-cancellation-per-invoice
+    // used to be tested here against the now-deleted legacy FinanceController::
+    // finalizeInvoice/stornoInvoice routes. They are covered equivalently against
+    // the finance-v2 invoice module -- the only invoice writer left -- by
+    // tests/Feature/FinanceModule/InvoiceFinalizationTest.php::
+    // test_finalization_is_atomic_exact_and_idempotent() and every test in
+    // tests/Feature/FinanceModule/InvoiceCancellationTest.php.
 
     /** @param array<string, mixed> $attrs */
     private function quote(array $attrs = []): FinanceQuote
@@ -176,23 +142,5 @@ class LegacyFinanceBaselineTest extends TestCase
         $quote->save();
 
         return $quote;
-    }
-
-    private function invoice(): Invoice
-    {
-        $invoice = new Invoice;
-        $invoice->fill([
-            'status' => 'draft',
-            'issue_date' => '2026-05-04',
-            'currency' => 'EUR',
-            'customer' => ['name' => 'Customer'],
-            'lines' => [['desc' => 'Service', 'qty' => 1, 'unit' => 'hour', 'unitPrice' => 100, 'vatRate' => 19, 'kind' => 'service', 'productId' => null]],
-            'net' => 100,
-            'vat' => 19,
-            'gross' => 119,
-        ]);
-        $invoice->save();
-
-        return $invoice;
     }
 }

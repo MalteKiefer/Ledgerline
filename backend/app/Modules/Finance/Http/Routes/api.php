@@ -6,7 +6,13 @@ use App\Http\Middleware\EnsureTwoFactorEnrolled;
 use App\Http\Middleware\UpdateTokenIp;
 use App\Modules\Finance\Http\Controllers\Documents\DocumentNoteController;
 use App\Modules\Finance\Http\Controllers\HealthController;
+use App\Modules\Finance\Http\Controllers\Invoices\InvoiceController;
+use App\Modules\Finance\Http\Controllers\Invoices\InvoiceDeliveryController;
 use App\Modules\Finance\Http\Controllers\Invoices\InvoiceRevisionController;
+use App\Modules\Finance\Http\Controllers\Invoices\InvoiceWorkflowController;
+use App\Modules\Finance\Http\Controllers\Payments\PaymentAllocationController;
+use App\Modules\Finance\Http\Controllers\Payments\PaymentController;
+use App\Modules\Finance\Http\Controllers\Payments\PaymentSuggestionController;
 use App\Modules\Finance\Http\Controllers\Projects\ProjectActivityController;
 use App\Modules\Finance\Http\Controllers\Projects\ProjectArchiveController;
 use App\Modules\Finance\Http\Controllers\Projects\ProjectController;
@@ -26,6 +32,8 @@ use App\Modules\Finance\Http\Controllers\Quotes\QuoteDuplicationController;
 use App\Modules\Finance\Http\Controllers\Quotes\QuoteInvoiceConversionController;
 use App\Modules\Finance\Http\Controllers\Quotes\QuotePublicationController;
 use App\Modules\Finance\Http\Controllers\Quotes\QuoteRevisionPdfController;
+use App\Modules\Finance\Http\Controllers\Recurring\RecurringInvoiceRunController;
+use App\Modules\Finance\Http\Controllers\Recurring\RecurringInvoiceTemplateController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('api/v1/finance-v2')
@@ -94,6 +102,42 @@ Route::prefix('api/v1/finance-v2')
             ->whereUuid('quote')
             ->whereNumber('revision')
             ->name('quotes.revisions.pdf');
+    });
+
+/**
+ * Canonical finance-v2 invoice/payment/recurring-invoice surface (Task 17
+ * cutover). Distinct route group from finance-v2 above so these move to
+ * their permanent `/api/v1/finance/*` home without disturbing the still-
+ * preview `projects`/`quotes` paths above, which stay on `finance-v2` until
+ * their own later cutover. Route *names* intentionally keep the
+ * `api.finance-v2.` prefix — `FinanceSeriesDocumentSource` and every test in
+ * `tests/Feature/FinanceModule/{Invoice,Payment,RecurringInvoice}ApiTest.php`
+ * already address these controllers by name; renaming would touch dozens of
+ * call sites for no behavioural gain, since the *path* is what a client
+ * actually depends on.
+ */
+Route::prefix('api/v1/finance')
+    ->name('api.finance-v2.')
+    ->middleware([
+        'api',
+        'auth:sanctum',
+        'abilities:device',
+        UpdateTokenIp::class,
+        EnsureTwoFactorEnrolled::class,
+        'module:finance',
+        'throttle:120,1',
+    ])
+    ->group(function (): void {
+        Route::get('/invoices', [InvoiceController::class, 'index'])->name('invoices.index');
+        Route::post('/invoices', [InvoiceController::class, 'store'])->name('invoices.store');
+        Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->whereUuid('invoice')->name('invoices.show');
+        Route::patch('/invoices/{invoice}', [InvoiceController::class, 'update'])->whereUuid('invoice')->name('invoices.update');
+        Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])->whereUuid('invoice')->name('invoices.destroy');
+        Route::post('/invoices/{invoice}/finalize', [InvoiceWorkflowController::class, 'finalize'])->whereUuid('invoice')->name('invoices.finalize');
+        Route::post('/invoices/{invoice}/deliveries', [InvoiceDeliveryController::class, 'send'])->whereUuid('invoice')->name('invoices.deliveries.store');
+        Route::post('/invoices/{invoice}/reminders', [InvoiceDeliveryController::class, 'remind'])->whereUuid('invoice')->name('invoices.reminders.store');
+        Route::post('/invoices/{invoice}/cancel', [InvoiceWorkflowController::class, 'cancel'])->whereUuid('invoice')->name('invoices.cancel');
+        Route::get('/invoices/{invoice}/revisions', [InvoiceRevisionController::class, 'index'])->whereUuid('invoice')->name('invoices.revisions.index');
         Route::get(
             '/invoices/{invoice}/revisions/{revision}/pdf',
             InvoiceRevisionController::class,
@@ -101,4 +145,18 @@ Route::prefix('api/v1/finance-v2')
             ->whereUuid('invoice')
             ->whereNumber('revision')
             ->name('invoices.revisions.pdf');
+        Route::get('/payments', [PaymentController::class, 'index'])->name('payments.index');
+        Route::post('/payments', [PaymentController::class, 'store'])->name('payments.store');
+        Route::get('/payments/{payment}', [PaymentController::class, 'show'])->whereUuid('payment')->name('payments.show');
+        Route::get('/payments/{payment}/suggestions', PaymentSuggestionController::class)->whereUuid('payment')->name('payments.suggestions.show');
+        Route::post('/payments/{payment}/allocations', [PaymentAllocationController::class, 'allocate'])->whereUuid('payment')->name('payments.allocations.store');
+        Route::post('/payment-allocations/{allocation}/reverse', [PaymentAllocationController::class, 'reverse'])->whereNumber('allocation')->name('payment-allocations.reverse');
+        Route::get('/recurring-invoice-templates', [RecurringInvoiceTemplateController::class, 'index'])->name('recurring-invoice-templates.index');
+        Route::post('/recurring-invoice-templates', [RecurringInvoiceTemplateController::class, 'store'])->name('recurring-invoice-templates.store');
+        Route::get('/recurring-invoice-templates/{template}', [RecurringInvoiceTemplateController::class, 'show'])->whereUuid('template')->name('recurring-invoice-templates.show');
+        Route::post('/recurring-invoice-templates/{template}/versions', [RecurringInvoiceTemplateController::class, 'addVersion'])->whereUuid('template')->name('recurring-invoice-templates.versions.store');
+        Route::post('/recurring-invoice-templates/{template}/pause', [RecurringInvoiceTemplateController::class, 'pause'])->whereUuid('template')->name('recurring-invoice-templates.pause');
+        Route::post('/recurring-invoice-templates/{template}/resume', [RecurringInvoiceTemplateController::class, 'resume'])->whereUuid('template')->name('recurring-invoice-templates.resume');
+        Route::get('/recurring-invoice-templates/{template}/runs', [RecurringInvoiceRunController::class, 'index'])->whereUuid('template')->name('recurring-invoice-templates.runs.index');
+        Route::post('/recurring-invoice-runs/{run}/retry', [RecurringInvoiceRunController::class, 'retry'])->whereUuid('run')->name('recurring-invoice-runs.retry');
     });

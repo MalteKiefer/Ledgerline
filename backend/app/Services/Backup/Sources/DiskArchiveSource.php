@@ -35,6 +35,22 @@ abstract class DiskArchiveSource implements BackupSource
     private const TAR_TIMEOUT = 7200;
 
     /**
+     * Extra disk prefixes archived alongside prefix() by build(), for a
+     * source whose objects now live under more than one root (e.g. legacy
+     * invoice blobs plus the new immutable finance-v2 revision PDFs). Empty
+     * by default — every other source is unaffected by this extension
+     * point. NOT covered by diskPrefix()/mirrorSource(), which still mirror
+     * only the primary prefix; a multi-prefix source's incremental mirror
+     * path stays a known limitation until that destination type needs it.
+     *
+     * @return list<string>
+     */
+    protected function additionalPrefixes(): array
+    {
+        return [];
+    }
+
+    /**
      * The files-disk prefix this source covers (e.g. "files", "gallery"). Public so
      * the manager can mirror the source object-by-object to the destination instead
      * of building a giant tar — memory-flat, delta-only, and never chain-dependent.
@@ -50,8 +66,10 @@ abstract class DiskArchiveSource implements BackupSource
         $gzPath = $workDir.'/'.$this->name().'.tar.gz';
 
         $keys = [];
-        foreach ($disk->allFiles($this->prefix()) as $file) {
-            $keys[] = $file;
+        foreach ([$this->prefix(), ...$this->additionalPrefixes()] as $prefix) {
+            foreach ($disk->allFiles($prefix) as $file) {
+                $keys[] = $file;
+            }
         }
 
         $localRoot = $this->localRoot();

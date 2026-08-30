@@ -8,9 +8,13 @@ use App\Http\Controllers\Concerns\HandlesFinanceBlobs;
 use App\Http\Controllers\Concerns\OptimisticUpdates;
 use App\Models\FinanceProduct;
 use App\Models\FinanceQuote;
-use App\Models\Invoice;
 use App\Models\UserSetting;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoiceId;
+use App\Modules\Finance\Application\DTOs\Invoices\InvoiceView;
+use App\Modules\Finance\Application\Ports\InvoiceRepository;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyQuoteInvoiceSource;
 use App\Support\DocumentNumber;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -307,12 +311,12 @@ class FinanceQuoteController extends Controller
      */
     public function convertToInvoice(Request $request, FinanceQuote $quote): JsonResponse
     {
-        if ($quote->converted_invoice_id !== null) {
-            $existing = Invoice::query()->find($quote->converted_invoice_id);
-            if ($existing instanceof Invoice) {
+        if ($quote->converted_finance_invoice_id !== null) {
+            $existing = $this->findFinanceInvoice((int) $quote->converted_finance_invoice_id);
+            if ($existing !== null) {
                 // Idempotent: a second click reopens the invoice it already made
                 // rather than billing the same work twice.
-                return response()->json(['invoice' => $existing, 'quote' => $quote, 'already' => true]);
+                return response()->json(['invoice' => $this->invoiceJson($existing), 'quote' => $quote, 'already' => true]);
             }
         }
         if ($quote->number === null || $quote->number === '') {
@@ -323,41 +327,98 @@ class FinanceQuoteController extends Controller
         $termsRaw = $userSettings->invoice_payment_terms_days;
         $terms = is_numeric($termsRaw) && (int) $termsRaw > 0 ? (int) $termsRaw : 14;
 
-        $invoice = DB::transaction(function () use ($quote, $terms): Invoice {
-            $invoice = new Invoice;
-            $invoice->fill([
-                'status' => 'draft',
-                'type' => 'invoice',
-                'issue_date' => Carbon::today(),
-                'due_date' => Carbon::today()->addDays($terms),
-                'currency' => $quote->currency,
-                'partner_id' => $quote->partner_id,
-                'customer' => $quote->customer,
-                'lines' => $quote->lines,
-                'discount_type' => $quote->discount_type,
-                'discount_value' => $quote->discount_value,
-                'net' => $quote->net,
-                'vat' => $quote->vat,
-                'gross' => $quote->gross,
-                // Where it came from, in words, because a reader of the invoice
-                // will ask and the link alone is invisible on paper.
-                'note' => trim(($quote->note ?? '')."\n".__('invoices.from_quote', ['number' => (string) $quote->number])),
-            ]);
-            $invoice->save();
+        $view = DB::transaction(function () use ($quote, $terms): InvoiceView {
+            $locked = FinanceQuote::query()->whereKey($quote->id)->lockForUpdate()->firstOrFail();
+            if ($locked->converted_finance_invoice_id !== null) {
+                $quote->forceFill($locked->getAttributes());
 
-            $quote->forceFill([
-                'converted_invoice_id' => $invoice->getKey(),
+                return app(InvoiceRepository::class)->get(new InvoiceId((int) $locked->converted_finance_invoice_id));
+            }
+
+            $view = app(LegacyQuoteInvoiceSource::class)->convert((int) $locked->user_id, $locked, $terms);
+
+            $locked->forceFill([
+                'converted_finance_invoice_id' => $view->id->value,
                 // Accepting is implied by billing it; recording it makes the
                 // quote list honest without a second click.
                 'status' => 'accepted',
-                'accepted_at' => $quote->accepted_at ?? Carbon::now(),
-                'version' => (int) $quote->version + 1,
+                'accepted_at' => $locked->accepted_at ?? Carbon::now(),
+                'version' => (int) $locked->version + 1,
             ])->save();
+            $quote->forceFill($locked->getAttributes());
 
-            return $invoice;
+            return $view;
         });
 
-        return response()->json(['invoice' => $invoice->fresh(), 'quote' => $quote->fresh()], 201);
+        return response()->json(['invoice' => $this->invoiceJson($view), 'quote' => $quote->fresh()], 201);
+    }
+
+    private function findFinanceInvoice(int $invoiceId): ?InvoiceView
+    {
+        try {
+            return app(InvoiceRepository::class)->get(new InvoiceId($invoiceId));
+        } catch (ModelNotFoundException) {
+            return null;
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function invoiceJson(InvoiceView $view): array
+    {
+        $snapshot = $view->snapshot;
+        $customer = is_array($snapshot['customer'] ?? null) ? $snapshot['customer'] : [];
+        $rawLines = is_array($snapshot['lines'] ?? null) ? $snapshot['lines'] : [];
+        $lines = array_map(static function (mixed $line): array {
+            $line = is_array($line) ? $line : [];
+
+            return [
+                'desc' => is_string($line['description'] ?? null) ? $line['description'] : '',
+                'qty' => is_numeric($line['quantity'] ?? null) ? (float) $line['quantity'] : 0.0,
+                'unitPrice' => is_int($line['unit_price_minor'] ?? null) ? $line['unit_price_minor'] / 100 : 0.0,
+                'vatRate' => is_int($line['tax_rate_basis_points'] ?? null) ? $line['tax_rate_basis_points'] / 100 : 0.0,
+                'unit' => is_string($line['unit'] ?? null) ? $line['unit'] : null,
+                'kind' => is_string($line['kind'] ?? null) ? $line['kind'] : null,
+                'productId' => is_int($line['product_id'] ?? null) ? $line['product_id'] : null,
+            ];
+        }, $rawLines);
+
+        return [
+            'id' => $view->id->value,
+            'number' => $view->number,
+            'year' => (int) $view->issueDate->format('Y'),
+            'status' => $view->status === 'draft' ? 'draft' : ($view->status === 'finalized' ? 'final' : $view->status),
+            'type' => 'invoice',
+            'issue_date' => $view->issueDate->format('Y-m-d'),
+            'due_date' => $view->dueDate->format('Y-m-d'),
+            'currency' => $view->currency,
+            'vat_rate' => null,
+            'gross' => $this->minorDecimal($view->grossMinor),
+            'net' => $this->minorDecimal($view->netMinor),
+            'vat' => $this->minorDecimal($view->vatMinor),
+            'imported' => false,
+            'partner_id' => $view->partnerId,
+            'customer' => $customer,
+            'lines' => $lines,
+            'note' => null,
+            'paid_at' => null,
+            'payment_account' => null,
+            'version' => $view->version,
+            'discount_type' => null,
+            'discount_value' => null,
+            'skonto_percent' => null,
+            'skonto_days' => null,
+            'pdf_path' => null,
+            'created_at' => $view->createdAt->format(DATE_ATOM),
+        ];
+    }
+
+    private function minorDecimal(int $minor): string
+    {
+        $negative = $minor < 0;
+        $digits = str_pad(ltrim((string) abs($minor), '-'), 3, '0', STR_PAD_LEFT);
+        $decimal = substr($digits, 0, -2).'.'.substr($digits, -2);
+
+        return $negative ? '-'.$decimal : $decimal;
     }
 
     /**

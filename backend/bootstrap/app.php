@@ -26,6 +26,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    // Finance module Artisan commands (e.g. `finance:run-recurring-invoices`)
+    // live beside the rest of the module under Infrastructure/Scheduling,
+    // not app/Console/Commands, so they need an explicit discovery path.
+    ->withCommands([app_path('Modules/Finance/Infrastructure/Scheduling')])
     ->withMiddleware(function (Middleware $middleware): void {
         // BlockGuard (early, before controllers) refuses blocked IPs/users on
         // every request; LogRequest (terminable) records the full request trail

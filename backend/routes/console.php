@@ -24,6 +24,16 @@ Schedule::command('finance:fetch-fx')->dailyAt('03:15')->withoutOverlapping();
 // Remind the owner about unpaid, overdue invoices (throttled per invoice).
 Schedule::command('invoices:remind')->dailyAt('08:00')->withoutOverlapping();
 
+// Recurring invoice templates: claim every due occurrence (bounded, so one
+// huge backlog cannot starve other owners) and sweep every in-flight run so
+// a crash or a still-pending async mail step keeps making progress. Runs
+// every minute; `withoutOverlapping` plus `onOneServer` keep a slow tick from
+// double-claiming across app instances.
+Schedule::command('finance:run-recurring-invoices')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Ask each finance user for a current bank-statement CSV no more than once every
 // seven days; a newly imported transaction batch automatically suppresses it.
 Schedule::command('finance:remind-bank-csv')->dailyAt('08:10')->withoutOverlapping();
