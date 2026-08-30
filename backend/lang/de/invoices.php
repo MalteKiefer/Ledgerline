@@ -519,6 +519,9 @@ Mit freundlichen Grüßen
     'quote_mail_failed' => 'Versand fehlgeschlagen — Firmen-SMTP und Empfänger prüfen.',
     'print_title_quote' => 'Angebot',
     'valid_until' => 'Gültig bis',
+    'quote_number' => 'Angebots-Nr.',
+    'quote_thanks_line' => 'Vielen Dank für Ihr Interesse.',
+    'quote_valid_note' => 'Dieses Angebot ist gültig bis zum :date.',
 
     // Rechnungs-/Zahlungs-/Wiederholungsmodul (finance-v2-Vorschau).
     'payments_title' => 'Zahlungen',

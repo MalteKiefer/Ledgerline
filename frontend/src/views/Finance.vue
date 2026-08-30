@@ -1999,7 +1999,7 @@
           </div>
           <div style="text-align:right; white-space:nowrap;">
             <div style="font-size:26px; font-weight:800; letter-spacing:.02em; line-height:1; text-transform:uppercase;">{{ docTitle(printInv) }}</div>
-            <div style="opacity:.9; margin-top:4px;" class="tabular-nums">{{ pl('invoice_number') + ' ' + (printInv.number || '—') }}</div>
+            <div style="opacity:.9; margin-top:4px;" class="tabular-nums">{{ docNumberLabel(printInv) + ' ' + (printInv.number || '—') }}</div>
           </div>
         </div>
         <div style="padding:22px 16mm 24px;">
@@ -2075,7 +2075,7 @@
             <div v-show="printInv.customer?.vatId" style="color:#555;">{{ pl('vat_id_label') + ' ' + printInv.customer?.vatId }}</div>
           </div>
           <table style="font-size:10px; border-collapse:collapse; height:fit-content;">
-            <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ pl('invoice_number') }}</td><td style="text-align:right; font-weight:700;" class="tabular-nums">{{ printInv.number || '—' }}</td></tr>
+            <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ docNumberLabel(printInv) }}</td><td style="text-align:right; font-weight:700;" class="tabular-nums">{{ printInv.number || '—' }}</td></tr>
             <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ pl('invoice_date') }}</td><td style="text-align:right;" class="tabular-nums">{{ printInv.issueDate }}</td></tr>
             <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ docDateLabel(printInv) }}</td><td style="text-align:right;" class="tabular-nums">{{ printInv.dueDate }}</td></tr>
           </table>
@@ -2203,7 +2203,7 @@
             <div style="width:270px;">
               <div style="font-size:15px; font-weight:700; border-bottom:1px solid #222; padding-bottom:3px; margin-bottom:5px;">{{ docTitle(printInv) }}</div>
               <table style="width:100%; border-collapse:collapse; font-size:10px;">
-                <tr><td style="padding:1px 0; color:#333;">{{ pl('invoice_number') + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.number || '—' }}</td></tr>
+                <tr><td style="padding:1px 0; color:#333;">{{ docNumberLabel(printInv) + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.number || '—' }}</td></tr>
                 <tr v-show="printInv.customer?.vatId"><td style="padding:1px 0; color:#333;">{{ pl('vat_id_label') + ':' }}</td><td style="padding:1px 0; text-align:right;">{{ printInv.customer?.vatId }}</td></tr>
                 <tr><td style="padding:1px 0; color:#333;">{{ pl('invoice_date') + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.issueDate }}</td></tr>
                 <tr><td style="padding:1px 0; color:#333;">{{ docDateLabel(printInv) + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.dueDate }}</td></tr>
@@ -2235,12 +2235,16 @@
               <div style="display:flex; justify-content:space-between; padding:2px 0; color:#333;"><span>{{ pl('subtotal') }}</span><span class="tabular-nums">{{ pmoney(printTotals.subtotal, printInv.currency, printInv.lang) }}</span></div>
               <div v-show="printTotals.discountAmount > 0" style="display:flex; justify-content:space-between; padding:2px 0; color:#333;"><span>{{ pl('discount') }}</span><span class="tabular-nums">{{ '−' + pmoney(printTotals.discountAmount, printInv.currency, printInv.lang) }}</span></div>
               <div v-for="rate in printVatRates" :key="rate" style="display:flex; justify-content:space-between; padding:2px 0; color:#333;"><span>{{ pl('vat_at').replace(':rate', String(rate)) }}</span><span class="tabular-nums">{{ pmoney(printTotals.vatByRate[rate], printInv.currency, printInv.lang) }}</span></div>
-              <div style="display:flex; justify-content:space-between; padding:6px 0 2px; margin-top:2px; font-weight:700; font-size:12.5px;"><span>{{ pl('payable') }}</span><span class="tabular-nums">{{ pmoney(printTotals.gross, printInv.currency, printInv.lang) }}</span></div>
+              <div style="display:flex; justify-content:space-between; padding:6px 0 2px; margin-top:2px; font-weight:700; font-size:12.5px;"><span>{{ docTotalLabel(printInv) }}</span><span class="tabular-nums">{{ pmoney(printTotals.gross, printInv.currency, printInv.lang) }}</span></div>
             </div>
           </div>
 
           <div style="margin-top:30px; color:#333; line-height:1.55;">
             <div v-if="printInv.note" style="white-space:pre-line;">{{ printInv.note }}</div>
+            <div v-else-if="printInv.type === 'quote'">
+              <div>{{ pl('quote_thanks_line') }}</div>
+              <div>{{ pl('quote_valid_note').replace(':date', printInv.dueDate || '') }}</div>
+            </div>
             <div v-else>
               <div>{{ pl('thanks_line') }}</div>
               <div>{{ pl('pay_until_line').replace(':date', printInv.dueDate || '') }}</div>
@@ -4980,6 +4984,19 @@ function docTitle(inv: PrintInvoice | null): string {
  */
 function docDateLabel(inv: PrintInvoice | null): string {
   return inv?.type === 'quote' ? pl('valid_until') : pl('due');
+}
+/** The document number label — "Quote no." must not read "Invoice no." on an offer nobody accepted yet. */
+function docNumberLabel(inv: PrintInvoice | null): string {
+  return inv?.type === 'quote' ? pl('quote_number') : pl('invoice_number');
+}
+/**
+ * The grand-total label on the "klassisch" template, which — unlike the other
+ * three templates (always "Total") — normally says "Amount due". Nothing is
+ * due on a quote, so it falls back to the same neutral "Total" the other
+ * templates already use.
+ */
+function docTotalLabel(inv: PrintInvoice | null): string {
+  return inv?.type === 'quote' ? pl('gross') : pl('payable');
 }
 function statusLabelP(s: string): string { return t('invoices.status_' + s); }
 
