@@ -75,4 +75,72 @@ describe('projects store', () => {
     expect(fetchMock.mock.calls.map(([, init]) => ((init as RequestInit).headers as Record<string, string>)['Idempotency-Key']))
       .toEqual(['attach-key', 'attach-key', 'detach-key', 'detach-key']);
   });
+
+  it('lets only the newest concurrent mutation own scoped state and its retry key', async () => {
+    let resolveOlder!: (value: Response) => void;
+    let resolveNewer!: (value: Response) => void;
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValueOnce('older-key').mockReturnValueOnce('newer-key') });
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveOlder = resolve; }))
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveNewer = resolve; }))
+      .mockResolvedValueOnce(response(201, { target_reference: 'invoice:newer', source: { source_type: 'finance_series', source_reference: 'newer', pinned_revision_id: null }, navigation_url: '/invoice/newer' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const store = useProjectsStore();
+
+    const older = store.createInvoiceDraft(id, ['older']);
+    const newer = store.createInvoiceDraft(id, ['newer']);
+    resolveNewer(response(500, { error: 'temporary' }));
+    await expect(newer).rejects.toBeTruthy();
+    resolveOlder(response(201, { target_reference: 'invoice:older', source: { source_type: 'finance_series', source_reference: 'older', pinned_revision_id: null }, navigation_url: '/invoice/older' }));
+    await older;
+
+    expect(store.actionError).toBe('request_failed');
+    expect(store.actionState('invoice', id)).toEqual({ loading: false, error: 'request_failed' });
+    await store.createInvoiceDraft(id, ['newer']);
+    expect(fetchMock.mock.calls.map(([, init]) => ((init as RequestInit).headers as Record<string, string>)['Idempotency-Key']))
+      .toEqual(['older-key', 'newer-key', 'newer-key']);
+  });
+
+  it('does not let an older failed mutation overwrite a newer success', async () => {
+    let rejectOlder!: (reason: unknown) => void;
+    let resolveNewer!: (value: Response) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => { rejectOlder = reject; }))
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveNewer = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+    const store = useProjectsStore();
+
+    const older = store.update(id, { name: 'older', kind: 'business', currency: 'EUR', version: 0 });
+    const newer = store.update(id, { name: 'newer', kind: 'business', currency: 'EUR', version: 0 });
+    resolveNewer(response(200, project(1, 'newer'), '"1"'));
+    await newer;
+    rejectOlder(new Error('older failed'));
+    await expect(older).rejects.toBeTruthy();
+
+    expect(store.current?.name).toBe('newer');
+    expect(store.actionError).toBeNull();
+    expect(store.actionState('update', id)).toEqual({ loading: false, error: null });
+  });
+
+  it('clears a previous project immediately on an id switch but preserves it during same-id refresh failure', async () => {
+    const otherId = '018f4ca3-224d-7d8d-9f00-858585858585';
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(200, project(4, 'loaded'), '"4"'))
+      .mockResolvedValueOnce(response(500, { error: 'temporary' }))
+      .mockResolvedValueOnce(response(500, { error: 'temporary' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const store = useProjectsStore();
+
+    await store.loadProject(id);
+    await expect(store.loadProject(id)).rejects.toBeTruthy();
+    expect(store.current?.id).toBe(id);
+    expect(store.currentEtag).toBe('"4"');
+
+    const switched = store.loadProject(otherId);
+    expect(store.current).toBeNull();
+    expect(store.currentEtag).toBeNull();
+    await expect(switched).rejects.toBeTruthy();
+    expect(store.current).toBeNull();
+    expect(store.currentEtag).toBeNull();
+  });
 });

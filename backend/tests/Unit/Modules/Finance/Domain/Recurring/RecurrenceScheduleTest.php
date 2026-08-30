@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Modules\Finance\Domain\Recurring;
 
+use App\Modules\Finance\Domain\Recurring\RecurrenceInterval;
 use App\Modules\Finance\Domain\Recurring\RecurrenceSchedule;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -11,6 +12,38 @@ use PHPUnit\Framework\TestCase;
 
 final class RecurrenceScheduleTest extends TestCase
 {
+    public function test_local_factory_resolves_nonexistent_first_occurrence_by_the_dst_gap(): void
+    {
+        $schedule = RecurrenceSchedule::fromLocal(
+            RecurrenceInterval::Monthly,
+            '2026-03-29',
+            '02:30:00',
+            'Europe/Berlin',
+        );
+
+        $this->assertSame('2026-03-29T03:30:00+02:00', $schedule->start()->format(DATE_ATOM));
+        $this->assertSame(
+            '2026-03-29T01:30:00+00:00',
+            $schedule->start()->setTimezone(new DateTimeZone('UTC'))->format(DATE_ATOM),
+        );
+    }
+
+    public function test_local_factory_uses_the_earlier_instant_for_ambiguous_first_occurrence(): void
+    {
+        $schedule = RecurrenceSchedule::fromLocal(
+            RecurrenceInterval::Monthly,
+            '2026-10-25',
+            '02:30:00',
+            'Europe/Berlin',
+        );
+
+        $this->assertSame('2026-10-25T02:30:00+02:00', $schedule->start()->format(DATE_ATOM));
+        $this->assertSame(
+            '2026-10-25T00:30:00+00:00',
+            $schedule->start()->setTimezone(new DateTimeZone('UTC'))->format(DATE_ATOM),
+        );
+    }
+
     public function test_month_end_anchor_survives_shorter_and_longer_months(): void
     {
         $schedule = RecurrenceSchedule::monthly($this->berlin('2026-01-31 08:00:00'));

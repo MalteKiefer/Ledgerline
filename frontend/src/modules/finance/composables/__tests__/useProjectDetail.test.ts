@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { projectApi } from '@spa/modules/finance/api/projectApi';
 import { useProjectDetail } from '@spa/modules/finance/composables/useProjectDetail';
+import type { Project } from '@spa/modules/finance/models/project';
+import { useProjectsStore } from '@spa/modules/finance/stores/projects';
 
 vi.mock('@spa/modules/finance/api/projectApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@spa/modules/finance/api/projectApi')>();
@@ -9,6 +11,11 @@ vi.mock('@spa/modules/finance/api/projectApi', async (importOriginal) => {
 });
 
 beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks(); });
+
+const projectView = (id: string, version: number): Project => ({
+  id, parent_id: null, parent_available: true, name: id, kind: 'business', status: 'active', partner_reference: null,
+  starts_on: null, due_on: null, budget_minor: null, currency: 'EUR', version, archived: false, created_at: 'now', updated_at: 'now',
+});
 
 describe('project detail loader', () => {
   it('isolates panel failures and keeps unrelated cursors and errors during a targeted refresh', async () => {
@@ -58,5 +65,35 @@ describe('project detail loader', () => {
     expect(projectApi.listWorkItems).not.toHaveBeenCalled();
     expect(detail.work.query.page).toBe(2);
     expect(detail.notes.query.page).toBe(6);
+  });
+
+  it('retains the project ETag and keeps detail and store representations synchronized and id-gated', async () => {
+    const oldId = '018f4ca3-224d-7d8d-9f00-848484848484';
+    const newId = '018f4ca3-224d-7d8d-9f00-858585858585';
+    vi.mocked(projectApi.showResponse)
+      .mockResolvedValueOnce({ data: projectView(oldId, 4), status: 200, etag: '"4"' })
+      .mockRejectedValueOnce(new Error('same refresh failed'))
+      .mockRejectedValueOnce(new Error('new project failed'));
+    const detail = useProjectDetail();
+    const store = useProjectsStore();
+
+    await detail.loadProject(oldId);
+    expect(detail.project.data).toEqual(store.current);
+    expect(detail.project.etag).toBe('"4"');
+    expect(store.currentEtag).toBe('"4"');
+
+    await expect(detail.loadProject(oldId)).rejects.toBeTruthy();
+    expect(detail.project.data?.id).toBe(oldId);
+    expect(detail.project.etag).toBe('"4"');
+    expect(store.current?.id).toBe(oldId);
+
+    const switched = detail.loadProject(newId);
+    expect(detail.project.data).toBeNull();
+    expect(detail.project.etag).toBeNull();
+    expect(store.current).toBeNull();
+    expect(store.currentEtag).toBeNull();
+    await expect(switched).rejects.toBeTruthy();
+    expect(detail.project.data).toBeNull();
+    expect(store.current).toBeNull();
   });
 });
