@@ -43,9 +43,9 @@ use App\Modules\Finance\Application\Queries\Projects\ListProjectWork;
 use App\Modules\Finance\Domain\Projects\Exception\InvalidProjectAction;
 use App\Modules\Finance\Domain\Projects\WorkItemStatus;
 use App\Modules\Finance\Domain\Shared\Money;
-use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftFromTimeAdapter;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectFinancialSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectRateSource;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectTimeInvoiceSource;
 use App\Modules\Finance\Infrastructure\Persistence\EloquentProjectWorkRepository;
 use DateTimeImmutable;
 use DomainException;
@@ -66,7 +66,7 @@ final class ProjectWorkApplicationTest extends TestCase
         $this->assertInstanceOf(EloquentProjectWorkRepository::class, app(ProjectWorkRepository::class));
         $this->assertInstanceOf(LegacyProjectRateSource::class, app(ProjectRateSource::class));
         $this->assertInstanceOf(LegacyProjectFinancialSource::class, app(ProjectFinancialSource::class));
-        $this->assertInstanceOf(LegacyInvoiceDraftFromTimeAdapter::class, app(ProjectToInvoicePort::class));
+        $this->assertInstanceOf(LegacyProjectTimeInvoiceSource::class, app(ProjectToInvoicePort::class));
     }
 
     public function test_work_items_enforce_exact_values_owner_workflow_and_explicit_cas(): void
@@ -358,6 +358,47 @@ final class ProjectWorkApplicationTest extends TestCase
         $this->assertSame(1, DB::table('finance_project_activities')->where('type', 'time_entries.invoiced')->count());
     }
 
+    public function test_invoice_time_creates_a_real_finance_v2_invoice_draft_and_replay_does_not_duplicate(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $project = $this->storedProject($owner);
+        $at = new DateTimeImmutable('2026-08-28 15:00:00');
+        $this->app->instance(ProjectRateSource::class, new ProjectRateStub(Money::fromMinor(10001, 'EUR')));
+        $first = app(LogProjectTime::class)->handle(new LogTimeData($project['id'], null, new DateTimeImmutable('2026-08-28'), '1.0000', (int) $owner->id, $at));
+        $second = app(LogProjectTime::class)->handle(new LogTimeData($project['id'], null, new DateTimeImmutable('2026-08-28'), '0.5000', (int) $owner->id, $at));
+        $data = new InvoiceTimeData($project['id'], [$first->uuid, $second->uuid], 'real-invoice-key', (int) $owner->id, $at);
+
+        $target = app(CreateInvoiceDraftFromTime::class)->handle($data);
+        $replayed = app(CreateInvoiceDraftFromTime::class)->handle($data);
+
+        $this->assertSame($target->targetReference, $replayed->targetReference);
+        $this->assertStringStartsWith('finance-invoice:', $target->targetReference);
+        $this->assertSame('finance_series', $target->source->sourceType);
+        $this->assertStringStartsWith('/finance/invoices/', (string) $target->navigationCapability);
+
+        $uuid = substr($target->targetReference, strlen('finance-invoice:'));
+        $this->assertSame(
+            1,
+            DB::table('finance_invoices')->where('user_id', $owner->id)->where('uuid', $uuid)
+                ->where('source_type', 'project_time_batch')->count(),
+        );
+        $invoice = DB::table('finance_invoices')->where('uuid', $uuid)->first();
+        $this->assertSame('draft', $invoice->workflow_status);
+        $this->assertNull($invoice->number);
+
+        $revision = DB::table('finance_document_revisions')->where('id', $invoice->current_revision_id)->first();
+        $snapshot = json_decode((string) $revision->snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('1.5000', $snapshot['lines'][0]['quantity']);
+        $this->assertSame(10001, $snapshot['lines'][0]['unit_price_minor']);
+        $this->assertSame(0, $snapshot['lines'][0]['tax_rate_basis_points']);
+        $this->assertSame('h', $snapshot['lines'][0]['unit']);
+        $this->assertSame('Work project', $snapshot['customer']['name']);
+
+        $this->assertSame([$target->targetReference], DB::table('finance_project_time_entries')->distinct()->pluck('invoice_target_reference')->all());
+        $this->assertSame(1, DB::table('finance_project_activities')->where('type', 'time_entries.invoiced')->count());
+    }
+
     public function test_invoice_claim_blocks_a_different_key_before_the_external_port_and_recovers_same_key_after_error(): void
     {
         $owner = User::factory()->create();
@@ -539,13 +580,15 @@ final class ProjectWorkApplicationTest extends TestCase
         $owner = User::factory()->create();
         $project = $this->storedProject($owner);
         $view = app(ProjectRepository::class)->get($project['id']);
+        $this->actingAs($owner);
         try {
-            app(LegacyInvoiceDraftFromTimeAdapter::class)->createDraft((int) $owner->id, $view, [new InvoiceTimeLine(10000, 10000, 10000, 'EUR', 'A'), new InvoiceTimeLine(10000, 10000, 10000, 'USD', 'B')], ['a', 'b'], 'key');
+            app(LegacyProjectTimeInvoiceSource::class)->createDraft((int) $owner->id, $view, [new InvoiceTimeLine(10000, 10000, 10000, 'EUR', 'A'), new InvoiceTimeLine(10000, 10000, 10000, 'USD', 'B')], ['a', 'b'], 'key');
             $this->fail('Mixed currencies were mislabeled.');
         } catch (InvalidProjectAction $e) {
             $this->assertSame('invoice_time_currency_mismatch', $e->errorCode);
         }
         $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame(0, DB::table('finance_invoices')->count());
     }
 
     /**

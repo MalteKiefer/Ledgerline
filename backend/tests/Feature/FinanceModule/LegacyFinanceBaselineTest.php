@@ -90,8 +90,8 @@ class LegacyFinanceBaselineTest extends TestCase
             ->assertJsonPath('already', true)
             ->assertJsonPath('invoice.id', $invoiceId);
 
-        $this->assertSame(1, Invoice::query()->count());
-        $this->assertSame($invoiceId, (int) $quote->fresh()?->converted_invoice_id);
+        $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame($invoiceId, (int) $quote->fresh()?->converted_finance_invoice_id);
     }
 
     public function test_project_time_can_only_be_invoiced_once(): void
@@ -114,8 +114,8 @@ class LegacyFinanceBaselineTest extends TestCase
             ->assertJsonPath('error', 'nothing_to_invoice');
 
         $invoiceId = (int) $first->json('invoice.id');
-        $this->assertSame(1, Invoice::query()->count());
-        $this->assertSame(1, FinanceTimeEntry::query()->where('invoiced_invoice_id', $invoiceId)->count());
+        $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame(1, FinanceTimeEntry::query()->where('invoiced_finance_invoice_id', $invoiceId)->count());
     }
 
     public function test_invoice_finalization_allocates_one_number_on_retry(): void

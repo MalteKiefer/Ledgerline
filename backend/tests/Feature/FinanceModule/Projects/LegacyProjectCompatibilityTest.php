@@ -167,15 +167,16 @@ final class LegacyProjectCompatibilityTest extends TestCase
         $this->assertCount(2, $lines);
         $this->assertSame(4.0, (float) $lines['95']['qty']);
         $this->assertSame(5.5, (float) $lines['120']['qty']);
-        $this->assertSame(3, FinanceTimeEntry::query()->where('invoiced_invoice_id', $invoiceId)->count());
-        $this->assertNull(FinanceTimeEntry::query()->findOrFail($keptId)->invoiced_invoice_id);
+        $this->assertSame(3, FinanceTimeEntry::query()->where('invoiced_finance_invoice_id', $invoiceId)->count());
+        $this->assertNull(FinanceTimeEntry::query()->findOrFail($keptId)->invoiced_finance_invoice_id);
 
-        $locked = FinanceTimeEntry::query()->where('invoiced_invoice_id', $invoiceId)->firstOrFail();
+        $locked = FinanceTimeEntry::query()->where('invoiced_finance_invoice_id', $invoiceId)->firstOrFail();
         $this->putJson(route('api.finance.time-entries.update', $locked), ['hours' => 9])
             ->assertUnprocessable()->assertJsonPath('error', 'time_invoiced');
         $this->deleteJson(route('api.finance.time-entries.destroy', $locked))
             ->assertUnprocessable()->assertJsonPath('error', 'time_invoiced');
-        $this->assertSame(1, Invoice::query()->count());
+        $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame(1, DB::table('finance_invoices')->where('id', $invoiceId)->count());
     }
 
     public function test_generic_project_update_can_rewrite_status_note_and_the_whole_json_ledger(): void

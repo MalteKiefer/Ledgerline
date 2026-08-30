@@ -43,10 +43,10 @@ use App\Modules\Finance\Infrastructure\Compatibility\LegacyFinanceReceiptDocumen
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyGalleryPhotoDocumentSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDocumentSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftAdapter;
-use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftFromTimeAdapter;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectFinancialSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectRateSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectReferenceResolver;
+use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectTimeInvoiceSource;
 use App\Modules\Finance\Infrastructure\Integrations\Quotes\FinanceQuoteProjectTarget;
 use App\Modules\Finance\Infrastructure\Inventory\LegacyStockLedgerAdapter;
 use App\Modules\Finance\Infrastructure\Mail\CompanyInvoiceMailer;
@@ -193,7 +193,7 @@ final class FinanceServiceProvider extends ServiceProvider
         $this->app->bind(ProjectWorkRepository::class, EloquentProjectWorkRepository::class);
         $this->app->bind(ProjectRateSource::class, LegacyProjectRateSource::class);
         $this->app->bind(ProjectFinancialSource::class, LegacyProjectFinancialSource::class);
-        $this->app->bind(ProjectToInvoicePort::class, LegacyInvoiceDraftFromTimeAdapter::class);
+        $this->app->bind(ProjectToInvoicePort::class, LegacyProjectTimeInvoiceSource::class);
         $this->app->bind(ProjectFromQuoteTarget::class, FinanceQuoteProjectTarget::class);
     }
 

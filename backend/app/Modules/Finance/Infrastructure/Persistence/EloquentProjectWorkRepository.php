@@ -447,7 +447,14 @@ final class EloquentProjectWorkRepository implements ProjectWorkRepository
             }
             $exists = DB::table('finance_project_document_links')->where('user_id', $projectId->ownerId)->where('project_id', $project->id)->where('source_type', $target->source->sourceType)->where('source_reference', $target->source->sourceReference)->where('role', 'invoice')->whereNull('detached_at')->exists();
             if (! $exists) {
-                DB::table('finance_project_document_links')->insert(['user_id' => $projectId->ownerId, 'project_id' => $project->id, 'source_type' => $target->source->sourceType, 'source_reference' => $target->source->sourceReference, 'document_series_id' => null, 'pinned_revision_id' => $target->source->pinnedRevisionId, 'role' => 'invoice', 'metadata_snapshot' => json_encode(['target_reference' => $target->targetReference], JSON_THROW_ON_ERROR), 'attached_by' => $actorId, 'attached_at' => $this->timestamp($occurredAt), 'detached_by' => null, 'detached_at' => null]);
+                $documentSeriesId = null;
+                if ($target->source->sourceType === 'finance_series') {
+                    $documentSeriesId = DB::table('finance_document_series')->where('user_id', $projectId->ownerId)->where('uuid', $target->source->sourceReference)->value('id');
+                    if (! is_int($documentSeriesId)) {
+                        throw new LogicException('Invoiced document series could not be resolved.');
+                    }
+                }
+                DB::table('finance_project_document_links')->insert(['user_id' => $projectId->ownerId, 'project_id' => $project->id, 'source_type' => $target->source->sourceType, 'source_reference' => $target->source->sourceReference, 'document_series_id' => $documentSeriesId, 'pinned_revision_id' => $target->source->pinnedRevisionId, 'role' => 'invoice', 'metadata_snapshot' => json_encode(['target_reference' => $target->targetReference], JSON_THROW_ON_ERROR), 'attached_by' => $actorId, 'attached_at' => $this->timestamp($occurredAt), 'detached_by' => null, 'detached_at' => null]);
             }
             if ($stamped) {
                 $this->activity($projectId->ownerId, (int) $project->id, 'time_entries.invoiced', ['target_reference' => $target->targetReference, 'time_entry_uuids' => $uuids], $actorId, $occurredAt);

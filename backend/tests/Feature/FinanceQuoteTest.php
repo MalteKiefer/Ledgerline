@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -136,7 +137,10 @@ class FinanceQuoteTest extends TestCase
             ->assertOk()
             ->assertJsonPath('already', true)
             ->assertJsonPath('invoice.id', $invoiceId);
-        $this->assertSame(1, Invoice::query()->count());
+
+        // Conversion now creates a finance-v2 invoice, not a legacy one.
+        $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame(1, DB::table('finance_invoices')->where('source_type', 'legacy_quote_snapshot')->count());
     }
 
     public function test_goods_leave_the_shelf_when_the_invoice_is_finalised_once(): void
