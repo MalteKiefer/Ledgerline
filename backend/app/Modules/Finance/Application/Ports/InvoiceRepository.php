@@ -100,4 +100,13 @@ interface InvoiceRepository
     public function replayDeliveryRetry(DeliveryId $failedDelivery, IdempotencyKey $key): ?DeliveryId;
 
     public function deliveryNeedsDispatch(DeliveryId $delivery): bool;
+
+    /**
+     * Reads the current, owner-scoped delivery outcome without mutating it,
+     * so a caller (e.g. recurring run processing) can decide whether to keep
+     * waiting on the async mail step or treat it as resolved.
+     *
+     * @return array{status: string, last_error_code: ?string}
+     */
+    public function deliveryStatus(DeliveryId $id): array;
 }

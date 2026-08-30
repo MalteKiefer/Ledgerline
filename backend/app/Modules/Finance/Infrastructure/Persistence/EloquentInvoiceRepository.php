@@ -1169,6 +1169,19 @@ final class EloquentInvoiceRepository implements InvoiceRepository
             ->exists();
     }
 
+    public function deliveryStatus(DeliveryId $id): array
+    {
+        $delivery = InvoiceDeliveryRecord::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $this->ownerId())
+            ->findOrFail($id->value, ['status', 'last_error_code']);
+
+        return [
+            'status' => (string) $delivery->status,
+            'last_error_code' => $delivery->last_error_code === null ? null : (string) $delivery->last_error_code,
+        ];
+    }
+
     /** @param array<string, int|string|bool|null> $context */
     private function deliveryRequestHash(
         int $invoiceId,
