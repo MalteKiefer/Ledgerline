@@ -248,7 +248,7 @@ final class ProjectSchemaTest extends TestCase
             'document_series_id' => $foreignSeriesId, 'pinned_revision_id' => $foreignRevisionId,
         ]));
         $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, [
-            'source_type' => 'file', 'source_reference' => 'file:41', 'document_series_id' => $seriesId,
+            'source_type' => 'finance_receipt', 'source_reference' => 'finance-receipt:41', 'document_series_id' => $seriesId,
         ]));
         $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, ['source_type' => 'unknown']));
         $this->expectConstraint(fn () => $this->insertDocumentLink((int) $owner->id, $projectId, ['role' => 'attachment']));
@@ -761,9 +761,14 @@ final class ProjectSchemaTest extends TestCase
     /** @param array<string, mixed> $overrides */
     private function insertDocumentLink(int $userId, int $projectId, array $overrides = []): int
     {
+        // source_type default swapped from the retired 'file' to the surviving
+        // 'finance_receipt'; 'role' is a separate DB enum with no schema-level
+        // coupling to source_type here (EloquentProjectDocumentRepository's
+        // role/source compatibility check is an application-layer rule that this
+        // raw-insert schema test never goes through), so it is left as 'file'.
         return (int) DB::table('finance_project_document_links')->insertGetId(array_merge([
-            'user_id' => $userId, 'project_id' => $projectId, 'source_type' => 'file',
-            'source_reference' => 'file:'.random_int(1_000, 999_999_999),
+            'user_id' => $userId, 'project_id' => $projectId, 'source_type' => 'finance_receipt',
+            'source_reference' => 'finance-receipt:'.random_int(1_000, 999_999_999),
             'document_series_id' => null, 'pinned_revision_id' => null, 'role' => 'file',
             'metadata_snapshot' => '{}', 'attached_by' => $userId, 'attached_at' => now(),
             'detached_by' => null, 'detached_at' => null,

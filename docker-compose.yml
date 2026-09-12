@@ -74,9 +74,8 @@ x-app-image: &app-image
     - internal
   volumes:
     - app-storage:/var/www/html/storage/app
-    # A size-capped RAM tmpfs for /tmp (legacy: the removed ZK gallery decrypted
-    # originals here so plaintext never hit disk). Heavy image scratch now goes to
-    # the storage volume via TMPDIR/MAGICK_TMPDIR above — this stays small for any
+    # A size-capped RAM tmpfs for /tmp. Heavy image scratch goes to the storage
+    # volume via TMPDIR/MAGICK_TMPDIR above — this stays small for any
     # remaining incidental temp use.
     - type: tmpfs
       target: /tmp
@@ -114,9 +113,10 @@ services:
     deploy:
       resources:
         limits:
-          # Hard ceiling for the web app (nginx + php-fpm children). CPU is a
-          # throttle (never OOM-kills) — a high, env-overridable default so it
-          # only bites a runaway, keeping one service from starving the host.
+          # Hard ceiling for the web app (FrankenPHP + its worker processes).
+          # CPU is a throttle (never OOM-kills) — a high, env-overridable
+          # default so it only bites a runaway, keeping one service from
+          # starving the host.
           cpus: "${APP_CPU_LIMIT:-4}"
           memory: ${APP_MEMORY_LIMIT:-8g}
     healthcheck:
@@ -297,156 +297,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Machine-learning sidecar for image recognition: object/scene tagging + smart
-  # search (CLIP) and facial recognition — the same engine Immich uses. The app
-  # reaches it over the internal network at http://ml:3003 (ML_URL). Models are
-  # downloaded on first use into the ml-cache volume. Enable with:
-  #   docker compose --profile ml up -d
-  ml:
-    # Plain digest-pinned (no ${VAR:-default} wrapper) so Dependabot's docker
-    # ecosystem can parse and bump it like the other services; tag + digest move
-    # together on every bump.
-    image: ghcr.io/immich-app/immich-machine-learning:v3.1.0@sha256:5a0839dc5303cd7215bcd2180a26aed3af41675aefb3e75e5157e9f10ad16e6e
-    profiles: ["ml"]
-    environment:
-      MACHINE_LEARNING_WORKERS: "1"
-      MACHINE_LEARNING_MODEL_TTL: "300"
-    volumes:
-      - ml-cache:/cache
-    networks:
-      - internal
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - NET_RAW
-    deploy:
-      resources:
-        limits:
-          cpus: "${ML_CPU_LIMIT:-4}"
-          memory: ${ML_MEMORY_LIMIT:-8g}
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://localhost:3003/ping')\" || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-  # Optional self-hosted Photon reverse-geocoder, so photo coordinates for the
-  # imported regions never leave the host. Enable with:
-  #   docker compose --profile geocode up -d
-  # then set PHOTON_URL=http://photon:2322 in .env (and, for automatic on-upload
-  # geocoding, GALLERY_GEOCODE_ON_UPLOAD=true). PHOTON_REGION picks the coverage;
-  # the default "germany" pulls a PREBUILT index (db mode: a light ~few-GB
-  # download into photon-data, ~2 GB heap, no heavy build) to fit a modest box.
-  # Points OUTSIDE the imported region
-  # fall back to the public GEOCODER_URL (OSM) — the app queries Photon first and
-  # Nominatim only on a miss. Reverse endpoint: /reverse (GeoJSON).
-  photon:
-    image: ghcr.io/rtuszik/photon-docker:2.3.1@sha256:729f883612bde3215c156111b421d8e0a27b1eb411b92ef4a24bd587b8259b04
-    profiles: ["geocode"]
-    environment:
-      # db mode = prebuilt single-region index (light, ~2 GB heap, no build).
-      # For wider coverage on a bigger box, set PHOTON_IMPORT_MODE=jsonl and
-      # PHOTON_REGION to a comma list (e.g. europe,north-america).
-      IMPORT_MODE: ${PHOTON_IMPORT_MODE:-db}
-      REGION: ${PHOTON_REGION:-germany}
-      UPDATE_STRATEGY: DISABLED
-    volumes:
-      - photon-data:/photon/data
-    networks:
-      - internal
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETUID
-      - SETGID
-      - DAC_OVERRIDE
-    deploy:
-      resources:
-        limits:
-          cpus: "${PHOTON_CPU_LIMIT:-2}"
-          memory: ${PHOTON_MEMORY_LIMIT:-4g}
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS 'http://localhost:2322/status' >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 180s
-
-  # Optional self-hosted GraphHopper router for Explore tour auto-routing, so the
-  # planned-route geometry never leaves the host AND you get elevation + OSM
-  # surface data (which OSRM does not provide). Opt-in; the default deploy stays
-  # on OSRM/straight-line. Enable with:
-  #   1. Drop an OSM region extract at ./data/graphhopper/region.osm.pbf
-  #      (e.g. from https://download.geofabrik.de/, matching PHOTON_REGION), and a
-  #      ./data/graphhopper/config.yml enabling the "foot"/"hike" profile with
-  #      graph.elevation.provider: srtm (elevation) — see .env.docker.example.
-  #   2. In .env:  MAPS_ROUTE_ENGINE=graphhopper
-  #                MAPS_ROUTE_UPSTREAM=http://graphhopper:8989
-  #                MAPS_ROUTE_PROFILE=hike   # (or foot — must match config.yml)
-  #   3. docker compose --profile maps up -d
-  # FIRST RUN imports the .pbf into a routing graph — this is slow (minutes for a
-  # regional extract, longer for a country) and one-time; the built graph is cached
-  # in the graphhopper-data volume, so subsequent starts are fast. Watch progress
-  # with `docker compose logs -f graphhopper` and wait for the container to become
-  # healthy before switching the engine. Internal-only (no host port).
-  #
-  # NOTE: this is the community-maintained image the official GraphHopper README
-  # points to (hub.docker.com/r/israelhikingmap/graphhopper); the GraphHopper org
-  # publishes no `graphhopper/graphhopper` image. Tag 11.0 == GraphHopper 11.0.
-  # Plain digest-pinned (no ${VAR:-default} wrapper) so Dependabot's docker
-  # ecosystem can parse and bump it; tag + digest move together on every bump.
-  graphhopper:
-    image: israelhikingmap/graphhopper:11.0@sha256:e77e14e48ea69ea7bb0eb71ddc9d583e5ce85dd295475572371f72ed4880a1ff
-    profiles: ["maps"]
-    # The image's ENTRYPOINT is `./graphhopper.sh -c config-example.yml`. That
-    # wrapper drives graph.location + datareader.file from its OWN CLI flags
-    # (-o / -i) via -D overrides — the config file alone can't set them (a bare
-    # launch defaults the graph to /data/default-gh with no OSM input and dies).
-    # So we append a command: its args are parsed after the entrypoint's, and the
-    # later -c wins. The operator supplies, under ./data/graphhopper (mounted at
-    # /data): region.osm.pbf (the OSM extract) + config-example.yml (profiles,
-    # encoded_values, elevation/surface). The built graph persists in the
-    # graphhopper-data volume (/graphhopper-graph-cache) — see .env.docker.example.
-    command: ["-i", "/data/region.osm.pbf", "-o", "/graphhopper-graph-cache", "-c", "/data/config-example.yml"]
-    environment:
-      # Cap the JVM heap so a regional graph fits a modest box; raise on a bigger
-      # host or for country/continent extracts.
-      JAVA_OPTS: ${GRAPHHOPPER_JAVA_OPTS:--Xmx2g -Xms1g}
-    volumes:
-      # region.osm.pbf + config-example.yml supplied by the operator; graph persists.
-      # Mounted read-only: GraphHopper only READS the .pbf + config here and writes
-      # the built graph to the separate cache volume (-o /graphhopper-graph-cache).
-      - ./data/graphhopper:/data:ro
-      - graphhopper-data:/graphhopper-graph-cache
-    networks:
-      - internal
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    deploy:
-      resources:
-        limits:
-          cpus: "${GRAPHHOPPER_CPU_LIMIT:-2}"
-          memory: ${GRAPHHOPPER_MEMORY_LIMIT:-3g}
-    healthcheck:
-      # GraphHopper (Dropwizard) serves the routing API on 8989; the /info
-      # endpoint returns once the graph is loaded and routing is ready. (The
-      # Dropwizard /healthcheck lives on the separate admin connector, so /info
-      # on the app port is the reliable "routing is up" signal here.)
-      test: ["CMD-SHELL", "curl -fsS 'http://localhost:8989/info' >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 300s
-
   # Bounded Docker control agent (profile-gated, opt-in). Holds the docker
   # socket so the main app never has to; exposes ONLY a fixed allowlist of
   # actions on this project's own compose services, gated by a shared token,
@@ -459,7 +309,7 @@ services:
     environment:
       AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:-}
       AGENT_PROJECT_DIR: /project
-      COMPOSE_PROFILES: ml,agent,geocode,maps,backup
+      COMPOSE_PROFILES: agent,backup
       # The project dir is mounted at /project, so compose would otherwise infer
       # the project name "project" and not see/act on the real "ledgerline-*"
       # containers. Pin it to the host project name.
@@ -493,7 +343,4 @@ volumes:
   pgdata:
   valkey-data:
   app-storage:
-  ml-cache:
-  photon-data:
-  graphhopper-data:
 

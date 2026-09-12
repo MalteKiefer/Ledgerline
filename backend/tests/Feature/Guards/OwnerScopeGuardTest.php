@@ -30,19 +30,11 @@ class OwnerScopeGuardTest extends TestCase
      */
     private const SCOPED_ELSEWHERE = [
         // Append-only operational logs, read through admin-gated endpoints.
-        'AuditLog', 'RequestLog', 'DeviceAccessLog', 'MailLog',
+        'AuditLog', 'RequestLog', 'DeviceAccessLog',
         // Pre-authentication flows: no session exists yet to scope against.
         'DevicePairing', 'InviteLink',
         // Resolved per user explicitly (UserSetting::for($userId)).
         'UserSetting',
-        // Mail archive: scoped through the owning account/message in the
-        // controllers, which is also where the module gate lives.
-        'MailAccount', 'MailMessage', 'MailAttachment', 'MailBlob', 'MailLabel',
-        'MailPgpKey', 'MailRule', 'MailSavedSearch', 'MailSyncState',
-        // Deliberately cross-user: a share recipient acts on the owner's row.
-        // See the sharing entries in the CLAUDE.md security register.
-        'FolderShareMember', 'GalleryPhotoComment', 'GalleryPhotoReaction',
-        'ContactDuplicateDismissal',
         // Reached only through the owning Server, which is owner-scoped; written
         // solely by the collector job.
         'ServerFact', 'ServerCheck',

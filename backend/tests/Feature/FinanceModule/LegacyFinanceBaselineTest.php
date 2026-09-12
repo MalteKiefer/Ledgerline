@@ -25,7 +25,6 @@ class LegacyFinanceBaselineTest extends TestCase
             'api.finance.projects.store' => ['POST', 'api/v1/finance/projects'],
             'api.finance.projects.update' => ['PUT', 'api/v1/finance/projects/{project}'],
             'api.finance.projects.move' => ['POST', 'api/v1/finance/projects/{project}/move'],
-            'api.finance.projects.attachments' => ['GET', 'api/v1/finance/projects/{project}/attachments'],
             'api.finance.projects.destroy' => ['DELETE', 'api/v1/finance/projects/{project}'],
             'api.finance.projects.restore' => ['POST', 'api/v1/finance/projects/{id}/restore'],
             'api.finance.projects.force' => ['DELETE', 'api/v1/finance/projects/{id}/force'],

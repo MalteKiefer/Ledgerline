@@ -15,22 +15,14 @@ import { computed } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { useRoute, RouterView } from 'vue-router';
 import { SectionNav, type SectionNavItem } from '@spa/ui';
-import { useAuthStore } from '@spa/stores/auth';
 
 const route = useRoute();
-const auth = useAuthStore();
 
 const sections = computed(() => [
   { to: 'profile.account', icon: 'account_circle', label: 'account.nav_account' },
   { to: 'profile.appearance', icon: 'palette', label: 'account.nav_appearance' },
   { to: 'profile.security', icon: 'security', label: 'account.nav_security' },
   { to: 'profile.devices', icon: 'smartphone', label: 'account.nav_devices' },
-  // Calendar settings only surface when the calendar module is enabled for the user.
-  ...(auth.can('calendar') ? [{ to: 'profile.calendar', icon: 'calendar_month', label: 'messages.nav.calendar' }] : []),
-  // Encryption keys (own PGP/S-MIME keys, recipients, keyservers) power BOTH
-  // mail decryption and Files encryption — surface it whenever either is on.
-  ...(auth.can('mail') || auth.can('files') ? [{ to: 'profile.mail-keys', icon: 'key', label: 'mail.keys.title' }] : []),
-  ...(auth.can('mail') ? [{ to: 'profile.mail-signatures', icon: 'draw', label: 'account.mail_signatures_title' }] : []),
   { to: 'profile.data', icon: 'database', label: 'account.hub_data_heading' },
 ]);
 const profileNavGroups = computed(() => [{

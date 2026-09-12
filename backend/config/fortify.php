@@ -169,7 +169,6 @@ return [
         Features::registration(),
         Features::resetPasswords(),
         Features::emailVerification(),
-        // Profile info is handled by ProfileController, not Fortify.
         Features::updatePasswords(),
         Features::twoFactorAuthentication([
             'confirm' => true,

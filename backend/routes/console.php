@@ -38,25 +38,6 @@ Schedule::command('finance:run-recurring-invoices')
 // seven days; a newly imported transaction batch automatically suppresses it.
 Schedule::command('finance:remind-bank-csv')->dailyAt('08:10')->withoutOverlapping();
 
-// Notify about tasks due today / overdue (throttled per task per due-date).
-Schedule::command('tasks:remind')->dailyAt('07:00')->withoutOverlapping();
-
-// Deadlines hiding in document text: read them at night (OCR and indexing are
-// worker jobs, so a scan on upload would read an empty column half the time),
-// remind in the morning next to the task reminder.
-Schedule::command('deadlines:scan')->dailyAt('03:40')->withoutOverlapping();
-Schedule::command('deadlines:remind')->dailyAt('07:05')->withoutOverlapping();
-
-// Fire event reminders (VALARM) as their trigger time arrives (short cadence).
-Schedule::command('calendar:remind')->everyFiveMinutes()->withoutOverlapping();
-Schedule::command('tasks:remind-alarms')->everyFiveMinutes()->withoutOverlapping();
-
-// Notify about contacts whose birthday is today (throttled once per contact/year).
-Schedule::command('contacts:birthday-remind')->dailyAt('07:00')->withoutOverlapping();
-// Ledgerline is the contact source of truth; replicas pull, version and then
-// converge to the canonical local cards every five minutes.
-Schedule::command('contacts:sync-sources')->everyFiveMinutes()->withoutOverlapping();
-
 // Poll every monitored server over SSH. Agentless, so this IS the freshness of
 // the data the UI shows; a user can always force a refresh on top. Every five
 // minutes rather than fifteen because each run is also a data point: CPU,
@@ -76,10 +57,6 @@ Schedule::command('servers:prune-facts')->dailyAt('00:35')->withoutOverlapping()
 
 // Reachability history grows continuously; the window is what bounds it.
 Schedule::command('servers:prune-checks')->dailyAt('00:40')->withoutOverlapping();
-
-// Trashed files keep occupying the quota until something removes them.
-// A no-op unless files.trash_retention_days is set.
-Schedule::command('files:prune-trash')->dailyAt('00:45')->withoutOverlapping();
 
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();
@@ -106,16 +83,3 @@ Schedule::command('backups:verify')->dailyAt('04:30')->withoutOverlapping();
 // check next to it, and it answers a different question — not "is the archive
 // readable" but "can this actually be restored".
 Schedule::command('backup:drill')->weeklyOn(0, '05:00')->withoutOverlapping();
-
-// Actually replay the latest backup into a throwaway target and re-hash a random
-// sample of mirrored blobs against the live copies. Weekly rather than daily:
-// unlike the integrity verification above it downloads and rehashes real data,
-// so it costs far more — but it is the only check that proves a restore works
-// instead of proving the archive is readable.
-
-// Mail archive: dispatch a pull-only IMAP sync for every enabled account that is
-// due (each account's own interval decides due-ness); reclaim orphaned mail
-// blobs daily; prune the diagnostic log.
-Schedule::command('mail:sync-accounts')->everyMinute()->withoutOverlapping();
-Schedule::command('mail:sweep-orphans')->daily()->withoutOverlapping();
-Schedule::command('mail-logs:prune')->dailyAt('00:35')->withoutOverlapping();

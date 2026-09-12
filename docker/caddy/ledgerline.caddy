@@ -17,7 +17,7 @@ erp.example.com {
 
 	encode zstd gzip
 
-	# Uploads: files/import + mail attachments. Keep in sync with the app's
+	# Uploads: Finance documents + backup restores. Keep in sync with the app's
 	# FILES_MAX_UPLOAD_MB and the container's PHP post/upload limits.
 	request_body {
 		max_size 550MB

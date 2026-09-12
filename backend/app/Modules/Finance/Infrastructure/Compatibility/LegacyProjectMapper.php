@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Infrastructure\Compatibility;
 
 use App\Models\BankTransaction;
-use App\Models\FileEntry;
 use App\Models\FinanceProject;
 use App\Models\FinanceReceipt;
-use App\Models\GalleryPhoto;
 use App\Modules\Finance\Domain\Projects\ProjectKind;
 use App\Modules\Finance\Domain\Projects\ProjectStatus;
 use App\Modules\Finance\Domain\Projects\WorkItemStatus;
@@ -305,8 +303,6 @@ final class LegacyProjectMapper
         $diagnostics = [];
 
         $sources = [
-            'file' => FileEntry::query()->withoutGlobalScope('owner')->where('finance_project_id', $project->id),
-            'gallery_photo' => GalleryPhoto::query()->withoutGlobalScope('owner')->where('finance_project_id', $project->id),
             'finance_receipt' => FinanceReceipt::query()->withoutGlobalScope('owner')->where('finance_project_id', $project->id),
             'bank_transaction' => BankTransaction::query()->withoutGlobalScope('owner')->where('finance_project_id', $project->id),
         ];
@@ -323,7 +319,6 @@ final class LegacyProjectMapper
                     'source_type' => $kind,
                     'source_reference' => (string) $record->id,
                     'role' => match ($kind) {
-                        'gallery_photo' => 'photo',
                         'finance_receipt' => 'receipt',
                         default => 'file',
                     },

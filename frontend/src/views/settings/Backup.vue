@@ -212,7 +212,7 @@ import { ApiError } from '@spa/api/client';
 const s = useSettingsStore();
 const { success, error } = useToast();
 
-const SOURCES = ['database', 'invoices', 'files', 'gallery', 'mail', 'notes', 'avatars'];
+const SOURCES = ['database', 'invoices', 'avatars'];
 const running = ref<number | null>(null);
 
 const headers = [

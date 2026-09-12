@@ -104,37 +104,14 @@
       </div>
       <div v-if="!p.sessions.length" class="border-t border-[var(--ll-border)] px-5 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('account.sessions_none') }}</div>
     </Card>
-
-    <!-- WebDAV access -->
-    <Card :title="t('account.webdav_title')">
-      <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.webdav_desc') }}</p>
-      <template v-if="webdav.enabled">
-        <TextField class="mb-3" :model-value="webdav.url" :label="t('account.webdav_url')" disabled />
-        <TextField class="mb-3" :model-value="webdav.username" :label="t('account.webdav_user')" disabled />
-      </template>
-      <form @submit.prevent="onSaveWebdav">
-        <TextField
-          v-model="webdavPassword"
-          class="mb-3"
-          :label="t('account.webdav_password')"
-          type="password"
-          autocomplete="new-password"
-          :error="webdavErr && webdavErr.length ? webdavErr[0] : ''"
-        />
-        <div class="flex flex-wrap gap-2">
-          <Btn type="submit" variant="solid" :loading="webdavBusy">{{ t('account.webdav_save') }}</Btn>
-          <Btn v-if="webdav.enabled" variant="ghost" class="text-red-600 hover:bg-red-500/10" :loading="webdavBusy" @click="onClearWebdav">{{ t('account.webdav_disable') }}</Btn>
-        </div>
-      </form>
-    </Card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { Card, Btn, Icon, Badge, TextField } from '@spa/ui';
-import { useProfileStore, type DeviceToken, type Session, type WebDavAccess } from '@spa/stores/profile';
+import { Card, Btn, Icon, Badge } from '@spa/ui';
+import { useProfileStore, type DeviceToken, type Session } from '@spa/stores/profile';
 import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';
 
@@ -155,14 +132,8 @@ const pairing = reactive<{ active: boolean; id: number; qr: string; code: string
 );
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
-// --- WebDAV ----------------------------------------------------------------
-const webdav = reactive<WebDavAccess>({ enabled: false, username: '', url: '' });
-const webdavPassword = ref('');
-const webdavErr = ref<string[] | undefined>(undefined);
-const webdavBusy = ref(false);
-
 onMounted(async () => {
-  await Promise.all([p.loadDevices(), p.loadSessions(), loadWebdav()]);
+  await Promise.all([p.loadDevices(), p.loadSessions()]);
 });
 
 onUnmounted(() => clearTimeout(pollTimer));
@@ -190,43 +161,6 @@ async function onRevokeSession(id: string) {
     success(t('account.session_revoked'));
   } catch {
     error(t('common.error'));
-  }
-}
-
-async function loadWebdav() {
-  try {
-    const w = await p.getWebdav();
-    Object.assign(webdav, w);
-  } catch { /* non-fatal */ }
-}
-
-async function onSaveWebdav() {
-  webdavBusy.value = true;
-  webdavErr.value = undefined;
-  try {
-    const w = await p.setWebdav(webdavPassword.value);
-    Object.assign(webdav, w);
-    webdavPassword.value = '';
-    success(t('account.webdav_set'));
-  } catch (e) {
-    if (e instanceof ApiError && e.fields?.webdav_password?.length) webdavErr.value = e.fields.webdav_password;
-    else error(t('common.error'));
-  } finally {
-    webdavBusy.value = false;
-  }
-}
-
-async function onClearWebdav() {
-  webdavBusy.value = true;
-  try {
-    await p.clearWebdav();
-    Object.assign(webdav, { enabled: false, username: '', url: '' });
-    webdavPassword.value = '';
-    success(t('account.webdav_cleared'));
-  } catch {
-    error(t('common.error'));
-  } finally {
-    webdavBusy.value = false;
   }
 }
 

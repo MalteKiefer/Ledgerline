@@ -169,10 +169,7 @@ class SecurityPortalController extends Controller
         // Never let an admin block themselves out of the portal.
         abort_if($user->id === $this->requireUser($request)->id, 422, 'You cannot block yourself.');
         $at = now();
-        // Also revoke the WebDAV/CardDAV/CalDAV credential — /dav authenticates via
-        // HTTP Basic outside the guard stack, so blocked_at alone would not stop it
-        // (WebDavAuth now checks isBlocked() too; this is defence-in-depth).
-        $user->forceFill(['blocked_at' => $at, 'webdav_password' => null])->save();
+        $user->forceFill(['blocked_at' => $at])->save();
         // Revoke all device tokens. Web sessions are enforced driver-agnostically
         // by the appended BlockGuard on every web request (the DB sessions delete
         // below only helps the database session driver, not Redis).

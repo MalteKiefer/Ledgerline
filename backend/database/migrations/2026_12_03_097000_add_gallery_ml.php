@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Support\Vector;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +28,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $vector = Vector::available();
+        $vector = self::vectorAvailable();
 
         Schema::table('gallery_photos', function (Blueprint $table): void {
             $table->timestamp('embedded_at')->nullable()->after('exif');
@@ -81,7 +80,7 @@ return new class extends Migration
         Schema::dropIfExists('gallery_faces');
         Schema::dropIfExists('gallery_people');
 
-        if (Vector::available() && Schema::hasColumn('gallery_photos', 'embedding')) {
+        if (self::vectorAvailable() && Schema::hasColumn('gallery_photos', 'embedding')) {
             DB::statement('DROP INDEX IF EXISTS gallery_photos_embedding_hnsw');
             DB::statement('ALTER TABLE gallery_photos DROP COLUMN embedding');
         }
@@ -89,5 +88,18 @@ return new class extends Migration
         Schema::table('gallery_photos', function (Blueprint $table): void {
             $table->dropColumn('embedded_at');
         });
+    }
+
+    /** Whether the pgvector extension is usable on the current connection (formerly App\Support\Vector, removed with the Gallery module). */
+    private static function vectorAvailable(): bool
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            return false;
+        }
+        try {
+            return DB::selectOne("SELECT 1 AS ok FROM pg_available_extensions WHERE name = 'vector'") !== null;
+        } catch (Throwable) {
+            return false;
+        }
     }
 };

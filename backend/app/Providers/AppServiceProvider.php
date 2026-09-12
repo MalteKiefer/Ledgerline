@@ -5,12 +5,8 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\AppSettings;
-use App\Models\FileEntry;
-use App\Models\FileFolder;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
-use App\Observers\FileChangeObserver;
-use App\Observers\FileEntryObserver;
 use App\Support\OutboundUrl;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Events\ScheduledTaskFailed;
@@ -70,15 +66,6 @@ class AppServiceProvider extends ServiceProvider
             URL::forceScheme('https');
         }
 
-        // Keep a file's searchable text (search_text/indexed_at) in sync with its bytes.
-        FileEntry::observe(FileEntryObserver::class);
-
-        // Wake a sync client's SSE stream (FilesChangesController) up on any
-        // FileEntry/FileFolder create/update/delete/restore, from any code
-        // path — the REST API, WebDAV, an archive extraction job, ...
-        FileEntry::observe(FileChangeObserver::class);
-        FileFolder::observe(FileChangeObserver::class);
-
         // Only admins may manage the non-personal, workspace-wide settings.
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());
 
@@ -86,7 +73,6 @@ class AppServiceProvider extends ServiceProvider
         // `throttle` alias is a no-op (App\Http\Middleware\NoThrottle); no named
         // limiters are defined. See the Security register (2026-08-08).
         $this->applySettingOverrides();
-        $this->applyMlSettings();
         $this->applyMailSettings();
 
         // Record each scheduled maintenance task's last run + outcome so the
@@ -136,23 +122,12 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Admin-configured global overrides applied over the config/env defaults.
-     * Each entry: db column => [config key, type]. A null column keeps the
-     * built-in default. The Settings saves clear the cache key below.
-     *
-     * @var array<string, array{0: string, 1: string}>
-     */
-    /**
      * DB app_settings column → config key. Both current overrides are integer
-     * settings, so applySettingOverrides() int-casts every value. (The finance-only
-     * app only exposes these two file limits to the admin UI.)
+     * settings, so applySettingOverrides() int-casts every value.
      *
      * @var array<string, string>
      */
     public const SETTING_OVERRIDES = [
-        'files_max_upload_mb' => 'files.max_upload_mb',
-        'files_blob_orphan_grace_hours' => 'files.blob_orphan_grace_hours',
-        'files_quota_mb' => 'files.quota_mb',
         // Session / auth lifetimes.
         'sanctum_expiration_minutes' => 'sanctum.expiration',
         'session_lifetime_minutes' => 'session.lifetime',
@@ -163,8 +138,6 @@ class AppServiceProvider extends ServiceProvider
         'access_log_retention_days' => 'ops.access_log_retention_days',
         'request_log_retention_days' => 'ops.request_log_retention_days',
         'backup_stale_hours' => 'ops.backup_stale_hours',
-        'mail_log_retention_days' => 'mail_archive.log_retention_days',
-        'mail_blob_orphan_grace_hours' => 'mail_archive.blob_orphan_grace_hours',
     ];
 
     public const OVERRIDES_CACHE_KEY = 'app-settings:overrides';
@@ -206,54 +179,6 @@ class AppServiceProvider extends ServiceProvider
      * SAME SMTP the Notifications settings page configures (ChannelNotifier uses a
      * raw transport; config/mail defaults to `log`). Build/no-DB safe.
      */
-    /** Cache key for the admin ML overrides (busted when the settings are saved). */
-    public const ML_CACHE_KEY = 'app.ml_overrides';
-
-    /**
-     * Overlay the admin-editable ML settings (app_settings.ml_*) onto config('ml.*').
-     * NULL columns keep the env/config default. Guarded for build/console where the
-     * table/db may not exist.
-     */
-    private function applyMlSettings(): void
-    {
-        try {
-            $vals = Cache::remember(self::ML_CACHE_KEY, 300, function (): array {
-                if (! Schema::hasTable('app_settings')) {
-                    return [];
-                }
-                $cols = ['ml_enabled', 'ml_face_enabled', 'ml_url', 'ml_clip_model', 'ml_face_model',
-                    'ml_search_distance', 'ml_dup_distance', 'ml_face_min_score', 'ml_face_match_distance'];
-                $row = DB::table('app_settings')->first($cols);
-
-                return $row ? array_filter((array) $row, fn ($v) => $v !== null) : [];
-            });
-        } catch (\Throwable) {
-            return;
-        }
-        $map = [
-            'ml_enabled' => ['ml.enabled', 'bool'],
-            'ml_face_enabled' => ['ml.face_enabled', 'bool'],
-            'ml_url' => ['ml.url', 'str'],
-            'ml_clip_model' => ['ml.clip_model', 'str'],
-            'ml_face_model' => ['ml.face_model', 'str'],
-            'ml_search_distance' => ['ml.search_max_distance', 'float'],
-            'ml_dup_distance' => ['ml.dup_max_distance', 'float'],
-            'ml_face_min_score' => ['ml.face_min_score', 'float'],
-            'ml_face_match_distance' => ['ml.face_match_distance', 'float'],
-        ];
-        foreach ($map as $col => [$key, $type]) {
-            if (! array_key_exists($col, $vals)) {
-                continue;
-            }
-            $v = $vals[$col];
-            config([$key => match ($type) {
-                'bool' => (bool) $v,
-                'float' => is_numeric($v) ? (float) $v : 0.0,
-                default => is_scalar($v) ? (string) $v : '',
-            }]);
-        }
-    }
-
     private function applyMailSettings(): void
     {
         try {

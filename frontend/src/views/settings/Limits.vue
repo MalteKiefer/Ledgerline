@@ -33,8 +33,7 @@ import { Icon, Btn, Card, TextField } from '@spa/ui';
 
 type Key =
   | 'sanctum_expiration_minutes' | 'session_lifetime_minutes' | 'device_wipe_grace_minutes' | 'device_idle_days'
-  | 'audit_retention_days' | 'access_log_retention_days' | 'request_log_retention_days' | 'backup_stale_hours'
-  | 'mail_log_retention_days' | 'mail_blob_orphan_grace_hours' | 'files_quota_mb';
+  | 'audit_retention_days' | 'access_log_retention_days' | 'request_log_retention_days' | 'backup_stale_hours';
 
 const groups: { title: string; icon: string; fields: { key: Key }[] }[] = [
   { title: 'settings.limits_session', icon: 'schedule', fields: [
@@ -42,9 +41,8 @@ const groups: { title: string; icon: string; fields: { key: Key }[] }[] = [
   ] },
   { title: 'settings.limits_retention', icon: 'history', fields: [
     { key: 'audit_retention_days' }, { key: 'access_log_retention_days' }, { key: 'request_log_retention_days' },
-    { key: 'backup_stale_hours' }, { key: 'mail_log_retention_days' }, { key: 'mail_blob_orphan_grace_hours' },
+    { key: 'backup_stale_hours' },
   ] },
-  { title: 'settings.limits_storage', icon: 'folder', fields: [{ key: 'files_quota_mb' }] },
 ];
 
 const { success, error } = useToast();

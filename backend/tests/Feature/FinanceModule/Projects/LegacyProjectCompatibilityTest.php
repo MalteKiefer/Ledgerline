@@ -5,20 +5,17 @@ declare(strict_types=1);
 namespace Tests\Feature\FinanceModule\Projects;
 
 use App\Models\BankTransaction;
-use App\Models\FileEntry;
 use App\Models\FinancePartner;
 use App\Models\FinanceProject;
 use App\Models\FinanceProjectTask;
 use App\Models\FinanceQuote;
 use App\Models\FinanceReceipt;
 use App\Models\FinanceTimeEntry;
-use App\Models\GalleryPhoto;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class LegacyProjectCompatibilityTest extends TestCase
@@ -231,43 +228,6 @@ final class LegacyProjectCompatibilityTest extends TestCase
         $this->assertSame(0.13, $worked);
     }
 
-    public function test_file_and_photo_assignment_mutates_the_owning_rows_without_link_history(): void
-    {
-        $owner = $this->signIn();
-        $first = $this->project(['name' => 'First']);
-        $second = $this->project(['name' => 'Second']);
-        $file = FileEntry::forceCreate([
-            'user_id' => $owner->id, 'name' => 'contract.pdf', 'storage_path' => 'files/'.Str::uuid(),
-            'mime' => 'application/pdf', 'size' => 12, 'sha256' => str_repeat('a', 64), 'version' => 0,
-        ]);
-        $photo = GalleryPhoto::forceCreate([
-            'user_id' => $owner->id, 'name' => 'site.jpg', 'storage_path' => 'gallery/'.Str::uuid(),
-            'mime' => 'image/jpeg', 'size' => 34, 'sha256' => str_repeat('b', 64), 'version' => 0,
-        ]);
-
-        $this->putJson(route('files.rel.update', $file), [
-            'finance_project_id' => $first->id, 'version' => 0,
-        ])->assertOk();
-        $this->putJson(route('gallery.update', $photo), [
-            'finance_project_id' => $first->id, 'version' => 0,
-        ])->assertOk();
-        $this->putJson(route('files.rel.update', $file), [
-            'finance_project_id' => $second->id, 'version' => 1,
-        ])->assertOk();
-        $this->putJson(route('gallery.update', $photo), [
-            'finance_project_id' => $second->id, 'version' => 1,
-        ])->assertOk();
-
-        $this->getJson(route('api.finance.projects.attachments', $first))
-            ->assertOk()->assertJsonCount(0, 'files')->assertJsonCount(0, 'photos');
-        $this->getJson(route('api.finance.projects.attachments', $second))
-            ->assertOk()->assertJsonCount(1, 'files')->assertJsonCount(1, 'photos');
-        $this->assertSame($second->id, FileEntry::query()->findOrFail($file->id)->finance_project_id);
-        $this->assertSame($second->id, GalleryPhoto::query()->findOrFail($photo->id)->finance_project_id);
-        $this->assertSame(1, FileEntry::query()->count());
-        $this->assertSame(1, GalleryPhoto::query()->count());
-    }
-
     public function test_receipt_and_transaction_store_mutable_owner_scoped_project_pointers(): void
     {
         $owner = $this->signIn();
@@ -300,20 +260,10 @@ final class LegacyProjectCompatibilityTest extends TestCase
             ->assertJsonPath('standaloneReceipts.0.finance_project_id', $project->id);
     }
 
-    public function test_file_photo_receipt_and_transaction_reject_a_foreign_project_pointer_without_mutation(): void
+    public function test_receipt_and_transaction_reject_a_foreign_project_pointer_without_mutation(): void
     {
         $owner = $this->signIn();
         $ownProject = $this->project(['name' => 'Owned project']);
-        $file = FileEntry::forceCreate([
-            'user_id' => $owner->id, 'finance_project_id' => $ownProject->id,
-            'name' => 'owned.pdf', 'storage_path' => 'files/'.Str::uuid(),
-            'mime' => 'application/pdf', 'size' => 12, 'sha256' => str_repeat('c', 64), 'version' => 0,
-        ]);
-        $photo = GalleryPhoto::forceCreate([
-            'user_id' => $owner->id, 'finance_project_id' => $ownProject->id,
-            'name' => 'owned.jpg', 'storage_path' => 'gallery/'.Str::uuid(),
-            'mime' => 'image/jpeg', 'size' => 34, 'sha256' => str_repeat('d', 64), 'version' => 0,
-        ]);
         $method = PaymentMethod::create(['type' => 'bank', 'name' => 'Owned method']);
         $transaction = BankTransaction::create([
             'payment_method_id' => $method->id, 'date' => '2026-08-28', 'amount' => -10,
@@ -331,12 +281,6 @@ final class LegacyProjectCompatibilityTest extends TestCase
         app('auth')->forgetGuards();
         $this->signIn($owner);
 
-        $this->putJson(route('files.rel.update', $file), [
-            'finance_project_id' => $foreignProject->id, 'version' => 0,
-        ])->assertInvalid(['finance_project_id']);
-        $this->putJson(route('gallery.update', $photo), [
-            'finance_project_id' => $foreignProject->id, 'version' => 0,
-        ])->assertInvalid(['finance_project_id']);
         $this->putJson(route('api.finance.transactions.update', $transaction), [
             'finance_project_id' => $foreignProject->id, 'version' => 0,
         ])->assertUnprocessable()->assertJsonValidationErrors('finance_project_id');
@@ -344,10 +288,6 @@ final class LegacyProjectCompatibilityTest extends TestCase
             'finance_project_id' => $foreignProject->id, 'version' => 0,
         ])->assertUnprocessable()->assertJsonValidationErrors('finance_project_id');
 
-        $this->assertSame($ownProject->id, FileEntry::query()->findOrFail($file->id)->finance_project_id);
-        $this->assertSame(0, FileEntry::query()->findOrFail($file->id)->version);
-        $this->assertSame($ownProject->id, GalleryPhoto::query()->findOrFail($photo->id)->finance_project_id);
-        $this->assertSame(0, GalleryPhoto::query()->findOrFail($photo->id)->version);
         $this->assertSame($ownProject->id, BankTransaction::query()->findOrFail($transaction->id)->finance_project_id);
         $this->assertSame(0, BankTransaction::query()->findOrFail($transaction->id)->version);
         $this->assertSame($ownProject->id, FinanceReceipt::query()->findOrFail($receipt->id)->finance_project_id);
@@ -379,7 +319,6 @@ final class LegacyProjectCompatibilityTest extends TestCase
         $this->signIn(User::factory()->create());
 
         $this->getJson(route('api.finance.projects.plan', $project))->assertNotFound();
-        $this->getJson(route('api.finance.projects.attachments', $project))->assertNotFound();
         $this->putJson(route('api.finance.projects.update', $project), ['name' => 'stolen'])->assertNotFound();
         $this->putJson(route('api.finance.project-tasks.update', $task), ['title' => 'stolen'])->assertNotFound();
         $this->putJson(route('api.finance.time-entries.update', $entry), ['hours' => 2])->assertNotFound();
@@ -416,7 +355,7 @@ final class LegacyProjectCompatibilityTest extends TestCase
         $this->assertFalse(app('router')->has('api.finance.projects.show'));
     }
 
-    public function test_legacy_project_detail_endpoints_enforce_their_500_and_1000_row_caps(): void
+    public function test_legacy_project_detail_endpoints_enforce_their_1000_row_cap(): void
     {
         $owner = $this->signIn();
         $project = $this->project();
@@ -443,35 +382,10 @@ final class LegacyProjectCompatibilityTest extends TestCase
             DB::table('finance_time_entries')->insert($chunk);
         }
 
-        $fileRows = [];
-        $photoRows = [];
-        for ($i = 1; $i <= 501; $i++) {
-            $fileRows[] = [
-                'user_id' => $owner->id, 'finance_project_id' => $project->id,
-                'name' => "File {$i}", 'storage_path' => "files/cap-{$i}",
-                'size' => 1, 'version' => 0, 'created_at' => $now, 'updated_at' => $now,
-            ];
-            $photoRows[] = [
-                'user_id' => $owner->id, 'finance_project_id' => $project->id,
-                'name' => "Photo {$i}", 'storage_path' => "gallery/cap-{$i}",
-                'size' => 1, 'version' => 0, 'created_at' => $now, 'updated_at' => $now,
-            ];
-        }
-        foreach (array_chunk($fileRows, 250) as $chunk) {
-            DB::table('files')->insert($chunk);
-        }
-        foreach (array_chunk($photoRows, 250) as $chunk) {
-            DB::table('gallery_photos')->insert($chunk);
-        }
-
         $plan = $this->getJson(route('api.finance.projects.plan', $project))->assertOk();
         $this->assertCount(1000, $plan->json('tasks'));
         $this->assertCount(1000, $plan->json('entries'));
         $this->assertSame(1000, $plan->json('totals.tasks'));
-
-        $attachments = $this->getJson(route('api.finance.projects.attachments', $project))->assertOk();
-        $this->assertCount(500, $attachments->json('files'));
-        $this->assertCount(500, $attachments->json('photos'));
     }
 
     /** @param array<string, mixed> $attributes */

@@ -39,5 +39,5 @@ backend/database/*.sqlite-wal
 *.sqlite-shm
 *.sqlite-wal
 
-# Operator-supplied runtime data (bind-mounted at deploy time, e.g. GraphHopper).
+# Operator-supplied runtime data (bind-mounted at deploy time).
 data/

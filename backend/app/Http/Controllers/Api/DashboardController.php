@@ -6,11 +6,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BlockedIp;
-use App\Models\GalleryPhoto;
 use App\Models\User;
 use App\Services\Ops\StorageHistory;
 use App\Services\Ops\SystemStatus;
-use App\Support\FilesUsage;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,8 +27,11 @@ class DashboardController extends Controller
     public function show(Request $request, SystemStatus $status, StorageHistory $history): JsonResponse
     {
         $snap = $status->snapshot();
-        $files = FilesUsage::total();
-        $gallery = (int) GalleryPhoto::withoutGlobalScopes()->sum('size');
+        // Files + Gallery modules were removed (finance-only app); SystemStatus
+        // keeps their storage dimensions at a stable 0 rather than this
+        // controller querying their (now-deleted) models directly.
+        $files = is_int($snap['storage']['files'] ?? null) ? $snap['storage']['files'] : 0;
+        $gallery = is_int($snap['storage']['gallery'] ?? null) ? $snap['storage']['gallery'] : 0;
         $database = is_int($snap['storage']['database'] ?? null) ? $snap['storage']['database'] : 0;
 
         return response()->json([

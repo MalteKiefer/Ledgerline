@@ -21,8 +21,6 @@ export interface Group {
   id: number;
   name: string;
   shareable?: boolean;
-  files_quota_mb: number | null;
-  gallery_quota_mb: number | null;
   max_connected_devices: number | null;
   modules: string[] | null;
   members?: number[];

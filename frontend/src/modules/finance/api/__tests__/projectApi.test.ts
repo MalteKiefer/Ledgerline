@@ -74,7 +74,7 @@ describe('projectApi', () => {
     await projectApi.appendNote(projectId, { type: 'note', visibility: 'internal', body: 'Safe body' });
     await projectApi.appendDocumentNote('series-id', { revision_id: 7, type: 'decision', visibility: 'customer', body: 'Approved' });
     await projectApi.createInvoiceDraft(projectId, { time_entry_ids: ['time-id'] }, 'invoice-key');
-    await projectApi.attachDocument(projectId, { source_type: 'file', source_reference: 'Opaque:Ref', pinned_revision_id: null, role: 'file' }, 'attach-key');
+    await projectApi.attachDocument(projectId, { source_type: 'finance_receipt', source_reference: 'Opaque:Ref', pinned_revision_id: null, role: 'file' }, 'attach-key');
     await projectApi.detachDocument(projectId, 41, 'detach-key');
 
     for (const [url] of fetchMock.mock.calls) expect(String(url)).toMatch(/^\/api\/v1\/finance-v2\//);

@@ -37,7 +37,7 @@ class ApiLimitsTest extends TestCase
     public function test_show_returns_settings_and_effective(): void
     {
         $this->getJson('/api/v1/admin/limits', $this->bearer($this->admin()))->assertOk()
-            ->assertJsonStructure(['settings' => ['audit_retention_days', 'files_quota_mb'], 'effective' => ['audit_retention_days']]);
+            ->assertJsonStructure(['settings' => ['audit_retention_days', 'backup_stale_hours'], 'effective' => ['audit_retention_days']]);
     }
 
     public function test_update_persists_validates_and_overrides_config(): void
@@ -47,7 +47,7 @@ class ApiLimitsTest extends TestCase
         $this->putJson('/api/v1/admin/limits', ['audit_retention_days' => -5], $this->bearer($admin))->assertStatus(422);
 
         $this->putJson('/api/v1/admin/limits', [
-            'audit_retention_days' => 90, 'session_lifetime_minutes' => 240, 'files_quota_mb' => 5000,
+            'audit_retention_days' => 90, 'session_lifetime_minutes' => 240,
         ], $this->bearer($admin))->assertOk();
 
         $s = AppSettings::current();
@@ -58,6 +58,5 @@ class ApiLimitsTest extends TestCase
         (new AppServiceProvider(app()))->boot();
         $this->assertSame(90, (int) config('ops.audit_retention_days'));
         $this->assertSame(240, (int) config('session.lifetime'));
-        $this->assertSame(5000, (int) config('files.quota_mb'));
     }
 }

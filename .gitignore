@@ -26,6 +26,7 @@
 /vendor
 /database/*.sqlite
 /database/*.sqlite-journal
+/ledgerline
 _ide_helper.php
 Homestead.json
 Homestead.yaml

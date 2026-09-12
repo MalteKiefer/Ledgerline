@@ -49,10 +49,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $company_smtp_password
  * @property ?string $company_smtp_from_address
  * @property ?string $company_smtp_from_name
- * @property ?string $mail_signature
- * @property string $mail_avatars off|contacts|domain — where a sender picture may come from.
  * @property array<string, mixed>|null $notification_prefs
- * @property list<string>|null $mail_columns
  */
 #[Fillable([
     'user_id',
@@ -60,30 +57,12 @@ use Illuminate\Database\Eloquent\Model;
     'paperless_url',
     'paperless_token',
     'paperless_synced_at',
-    'file_max_versions',
     'theme',
-    'unit_distance',
-    'unit_elevation',
-    'unit_weight',
-    'unit_temp',
-    'unit_glucose',
     'time_format',
     'timezone',
     'date_format',
-    'calendar_default_view',
-    'calendar_week_start',
-    // Mail archive reader display prefs (both default OFF): load remote content
-    // (tracking-pixel protection) + allow scripts in the sandboxed body iframe.
-    'mail_load_remote',
-    'mail_allow_scripts',
-    // Per-user plaintext mail signature appended to composed/reply/forward
-    // bodies (non-secret presentation, not encrypted/hidden).
-    'mail_signature',
-    'mail_avatars',
     // Per-user, per-category push preferences: {"<category>": {"push": bool}}.
     'notification_prefs',
-    // Which columns the mail list shows, in order: ["from","subject","date"].
-    'mail_columns',
     // Per-user company identity + invoice numbering (formerly workspace-global).
     'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
     'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',
@@ -118,46 +97,25 @@ class UserSetting extends Model
         'paperless_enabled' => false,
         'small_business' => false,
         'invoice_vat_ist' => true,
-        'file_max_versions' => 10,
         'theme' => 'system',
-        'unit_distance' => 'km',
-        'unit_elevation' => 'm',
-        'unit_weight' => 'kg',
-        'unit_temp' => 'c',
-        'unit_glucose' => 'mgdl',
         'time_format' => '24h',
         'date_format' => 'system',
-        'calendar_default_view' => 'month',
-        'calendar_week_start' => 1,
-        'mail_load_remote' => false,
-        'mail_allow_scripts' => false,
     ];
 
     /**
      * The non-secret display preferences as a flat map for injection into the page
      * and the API (window.LLPrefs / GET /me). Presentation only — never data.
      *
-     * @return array{distance:string, elevation:string, weight:string, temp:string, glucose:string, time_format:string, timezone:?string, date_format:string}
+     * @return array{time_format:string, timezone:?string, date_format:string}
      */
     public function displayPrefs(): array
     {
         return [
-            'distance' => (string) ($this->unit_distance ?? 'km'),
-            'elevation' => (string) ($this->unit_elevation ?? 'm'),
-            'weight' => (string) ($this->unit_weight ?? 'kg'),
-            'temp' => (string) ($this->unit_temp ?? 'c'),
-            'glucose' => (string) ($this->unit_glucose ?? 'mgdl'),
             'time_format' => (string) ($this->time_format ?? '24h'),
             // null timezone → the client follows the browser/system zone.
             'timezone' => $this->timezone !== null ? (string) $this->timezone : null,
             'date_format' => (string) ($this->date_format ?? 'system'),
-            'mail_load_remote' => (bool) ($this->mail_load_remote ?? false),
             'notifications' => is_array($this->notification_prefs) ? $this->notification_prefs : [],
-            // null = never chosen; the client uses its own default set rather
-            // than a frozen copy of today's.
-            'mail_columns' => is_array($this->mail_columns) ? array_values(array_filter($this->mail_columns, 'is_string')) : null,
-            'mail_signature' => $this->mail_signature !== null ? (string) $this->mail_signature : null,
-            'mail_avatars' => (string) ($this->mail_avatars ?? 'contacts'),
         ];
     }
 
@@ -188,12 +146,7 @@ class UserSetting extends Model
             'company_smtp_username' => 'encrypted',
             'company_smtp_password' => 'encrypted',
             'company_smtp_from_address' => 'encrypted',
-            'file_max_versions' => 'integer',
-            'calendar_week_start' => 'integer',
-            'mail_load_remote' => 'boolean',
-            'mail_allow_scripts' => 'boolean',
             'notification_prefs' => 'array',
-            'mail_columns' => 'array',
             'invoice_number_padding' => 'integer',
             'invoice_next_number' => 'integer',
             'invoice_payment_terms_days' => 'integer',

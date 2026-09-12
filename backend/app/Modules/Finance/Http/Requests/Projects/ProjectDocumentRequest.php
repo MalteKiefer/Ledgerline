@@ -23,7 +23,7 @@ final class ProjectDocumentRequest extends FormRequest
     {
         if ($this->routeIs('api.finance-v2.projects.documents.store')) {
             return [
-                'source_type' => ['required', 'string', 'in:finance_series,legacy_invoice,file,gallery_photo,finance_receipt,bank_transaction,bank_transaction_receipt'],
+                'source_type' => ['required', 'string', 'in:finance_series,legacy_invoice,finance_receipt,bank_transaction,bank_transaction_receipt'],
                 'source_reference' => ['required', 'string', 'max:255'],
                 'pinned_revision_id' => ['nullable', 'integer', 'min:1'],
                 'role' => ['required', 'string', 'in:source_quote,quote,invoice,payment,receipt,file,photo,other'],
@@ -37,7 +37,7 @@ final class ProjectDocumentRequest extends FormRequest
         $common = [
             'q' => ['nullable', 'string', 'max:255'],
             'source_types' => ['nullable', 'array', 'max:7'],
-            'source_types.*' => ['required', 'string', 'distinct', 'in:finance_series,legacy_invoice,file,gallery_photo,finance_receipt,bank_transaction,bank_transaction_receipt'],
+            'source_types.*' => ['required', 'string', 'distinct', 'in:finance_series,legacy_invoice,finance_receipt,bank_transaction,bank_transaction_receipt'],
             'mime_groups' => ['nullable', 'array', 'max:3'],
             'mime_groups.*' => ['required', 'string', 'distinct', 'in:pdf,image,other'],
             'from' => ['nullable', 'date_format:Y-m-d'],

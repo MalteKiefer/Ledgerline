@@ -24,7 +24,7 @@ final class RateLimitTest extends TestCase
         $this->app->make('cache')->store();
         $limiter = $this->app->make(RateLimiter::class);
 
-        foreach (['login', 'two-factor', 'fortify', 'auth-pair', 'dav', 'share-unlock', 'invite'] as $name) {
+        foreach (['login', 'two-factor', 'fortify', 'auth-pair', 'invite'] as $name) {
             $this->assertNotNull($limiter->limiter($name), "Named rate limiter [{$name}] is not defined");
         }
     }

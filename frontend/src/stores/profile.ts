@@ -9,19 +9,9 @@ import { setDateTimePrefs } from '@spa/lib/datetime';
  * type error instead of a select that silently saves nothing.
  */
 export interface DisplayPreferences {
-  distance: 'km' | 'mi';
-  elevation: 'm' | 'ft';
-  weight: 'kg' | 'lb';
-  temp: 'c' | 'f';
-  glucose: 'mgdl' | 'mmoll';
   time_format: '24h' | '12h';
   timezone: string | null;
   date_format: 'system' | 'dmy' | 'dmy_dot' | 'mdy' | 'ymd';
-  mail_load_remote: boolean;
-  mail_avatars: 'off' | 'contacts' | 'domain';
-  mail_signature: string | null;
-  /** Mail list columns in display order; null = never chosen, use the default set. */
-  mail_columns: string[] | null;
 }
 
 export interface DeviceToken {
@@ -83,12 +73,6 @@ export interface Passkey {
   name: string | null;
   last_used_at: string | null;
   created_at: string | null;
-}
-
-export interface WebDavAccess {
-  enabled: boolean;
-  username: string;
-  url: string;
 }
 
 export const useProfileStore = defineStore('profile', () => {
@@ -261,22 +245,6 @@ export const useProfileStore = defineStore('profile', () => {
     sessions.value = sessions.value.filter((s) => s.id !== id);
   }
 
-  // --- WebDAV access ----------------------------------------------------------
-  /** Read the current WebDAV access state (separate revocable credential). */
-  async function getWebdav(): Promise<WebDavAccess> {
-    return api.get<WebDavAccess>('/api/v1/account/webdav');
-  }
-
-  /** Set/rotate the WebDAV password (min 12 chars). */
-  async function setWebdav(password: string): Promise<WebDavAccess> {
-    return api.put<WebDavAccess>('/api/v1/account/webdav', { webdav_password: password });
-  }
-
-  /** Disable WebDAV access entirely. */
-  async function clearWebdav() {
-    await api.delete('/api/v1/account/webdav');
-  }
-
   // --- Passkeys / hardware keys ---------------------------------------------
 
   async function listPasskeys(): Promise<{ passkeys: Passkey[]; enabled: boolean }> {
@@ -308,7 +276,7 @@ export const useProfileStore = defineStore('profile', () => {
     changePassword, uploadAvatar, removeAvatar, deleteAccount,
     twoFactorState, enable2fa, confirm2fa, recoveryCodes, regenerateRecovery, disable2fa,
     startPairing, startCliPairing, pairingStatus, approvePairing, rejectPairing,
-    loadSessions, revokeSession, getWebdav, setWebdav, clearWebdav,
+    loadSessions, revokeSession,
     listPasskeys, registerPasskey, renamePasskey, deletePasskey,
   };
 });

@@ -6,14 +6,8 @@ namespace App\Services\Backup;
 
 use App\Models\BackupJob;
 use App\Models\BackupRun;
-use App\Models\FileEntry;
-use App\Models\GalleryPhoto;
 use App\Services\Backup\Sources\AvatarSource;
-use App\Services\Backup\Sources\FilesSource;
-use App\Services\Backup\Sources\GallerySource;
 use App\Services\Backup\Sources\InvoiceBlobSource;
-use App\Services\Backup\Sources\MailSource;
-use App\Services\Backup\Sources\NotesSource;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use Illuminate\Support\Str;
@@ -42,11 +36,7 @@ final class RestoreDrill
 {
     /** Blob sources whose mirror can be sampled, mapped to their files-disk prefix. */
     private const BLOB_SOURCES = [
-        'files' => FilesSource::class,
-        'gallery' => GallerySource::class,
         'invoices' => InvoiceBlobSource::class,
-        'mail' => MailSource::class,
-        'notes' => NotesSource::class,
         'avatars' => AvatarSource::class,
     ];
 
@@ -380,19 +370,13 @@ final class RestoreDrill
     }
 
     /**
-     * The authoritative live hash for a blob key. The DB row is preferred where
-     * the module records one (it is what the app itself trusts); otherwise the
-     * live object is hashed directly. Read-only in both cases.
+     * The authoritative live hash for a blob key, read directly off the live
+     * object. Read-only.
      *
      * @return array{hash: string, source: string}|null
      */
     private function liveHash(string $key, \Illuminate\Contracts\Filesystem\Filesystem $disk): ?array
     {
-        $recorded = $this->recordedHash($key);
-        if ($recorded !== null) {
-            return ['hash' => $recorded, 'source' => 'the database row'];
-        }
-
         if (! $disk->exists($key)) {
             return null;
         }
@@ -408,23 +392,6 @@ final class RestoreDrill
         }
 
         return ['hash' => hash_final($ctx), 'source' => 'the live file'];
-    }
-
-    /** The sha256 a module recorded for this storage path, when it keeps one. */
-    private function recordedHash(string $key): ?string
-    {
-        if (str_starts_with($key, 'files/')) {
-            $hash = FileEntry::withoutGlobalScopes()->withTrashed()->where('storage_path', $key)->value('sha256');
-
-            return is_string($hash) && $hash !== '' ? $hash : null;
-        }
-        if (str_starts_with($key, 'gallery/')) {
-            $hash = GalleryPhoto::withoutGlobalScopes()->withTrashed()->where('storage_path', $key)->value('sha256');
-
-            return is_string($hash) && $hash !== '' ? $hash : null;
-        }
-
-        return null;
     }
 
     private function hashFile(string $path): string

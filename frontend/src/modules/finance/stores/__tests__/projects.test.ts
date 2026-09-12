@@ -63,13 +63,13 @@ describe('projects store', () => {
 
   it('binds attach and detach retry keys to their exact action payloads', async () => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValueOnce('attach-key').mockReturnValueOnce('detach-key') });
-    const document = { link_id: 41, project_id: id, source: { source_type: 'file', source_reference: 'Opaque:Ref', pinned_revision_id: null }, role: 'file', snapshot: {}, current: null, availability: 'missing', attached_at: 'now', detached: false, detached_at: null };
+    const document = { link_id: 41, project_id: id, source: { source_type: 'finance_receipt', source_reference: 'Opaque:Ref', pinned_revision_id: null }, role: 'file', snapshot: {}, current: null, availability: 'missing', attached_at: 'now', detached: false, detached_at: null };
     const fetchMock = vi.fn().mockResolvedValueOnce(response(500, {})).mockResolvedValueOnce(response(201, document)).mockResolvedValueOnce(response(500, {})).mockResolvedValueOnce(response(200, { ...document, detached: true, detached_at: 'later' }));
     vi.stubGlobal('fetch', fetchMock);
     const store = useProjectsStore();
-    const input = { source_type: 'file' as const, source_reference: 'Opaque:Ref', pinned_revision_id: null, role: 'file' as const };
+    const input = { source_type: 'finance_receipt' as const, source_reference: 'Opaque:Ref', pinned_revision_id: null, role: 'file' as const };
     await expect(store.attachDocument(id, input)).rejects.toBeTruthy();
-    await store.attachDocument(id, { role: 'file', pinned_revision_id: null, source_reference: 'Opaque:Ref', source_type: 'file' });
+    await store.attachDocument(id, { role: 'file', pinned_revision_id: null, source_reference: 'Opaque:Ref', source_type: 'finance_receipt' });
     await expect(store.detachDocument(id, 41)).rejects.toBeTruthy();
     await store.detachDocument(id, 41);
     expect(fetchMock.mock.calls.map(([, init]) => ((init as RequestInit).headers as Record<string, string>)['Idempotency-Key']))

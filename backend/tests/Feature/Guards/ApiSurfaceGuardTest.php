@@ -29,13 +29,6 @@ class ApiSurfaceGuardTest extends TestCase
         // Authentication itself — these mint or reset the credential.
         'auth/login', 'auth/register', 'auth/forgot-password', 'auth/reset-password',
         'auth/pair', 'auth/pair/collect', 'auth/passkey/options', 'auth/passkey/verify',
-        // Capability-in-the-URL: the token IS the credential (password/expiry gated).
-        'file-share/{token}', 'file-share/{token}/manifest', 'file-share/{token}/unlock',
-        'file-share/{token}/file/{file}/raw',
-        'gallery-share/{token}', 'gallery-share/{token}/manifest', 'gallery-share/{token}/unlock',
-        'gallery-share/{token}/photo/{photo}/raw', 'gallery-share/{token}/photo/{photo}/thumb',
-        'gallery-share/{token}/photo/{photo}/preview',
-        'gallery-upload/{token}', 'upload-link/{token}',
         // Single-use, hashed-at-rest invite link that sets a password.
         'invite/{invite}/{token}',
     ];
@@ -82,10 +75,8 @@ class ApiSurfaceGuardTest extends TestCase
      * user whose admin switched the module off keeps reaching its data — the gate
      * is one forgotten group away from being decorative.
      *
-     * The exceptions are deliberate and named: admin workspace settings, the
-     * crypto keyring (shared by Mail and Files, so gating it on Mail would lock
-     * out Files encryption), and token-addressed endpoints with no session to
-     * gate against.
+     * The only exception is admin workspace settings, which are gated on
+     * `manage-global-settings` instead of a module flag.
      */
     public function test_module_routes_carry_the_module_gate(): void
     {
@@ -93,16 +84,11 @@ class ApiSurfaceGuardTest extends TestCase
         foreach (Route::getRoutes() as $route) {
             $action = (string) ($route->getAction('controller') ?? '');
             $controller = class_basename(strtok($action, '@'));
-            if (! preg_match('/^(Notes|Files|Gallery|Contact|Calendar|Mail|Finance)[A-Za-z]*Controller$/', $controller)) {
+            if (! preg_match('/^Finance[A-Za-z]*Controller$/', $controller)) {
                 continue;
             }
             $uri = $route->uri();
-            if (str_contains($uri, '/admin/')                        // workspace settings, admin-gated
-                || str_starts_with($uri, 'crypto/')                  // keyring shared by Mail + Files
-                || str_starts_with($uri, 'api/v1/crypto/')
-                || str_contains($uri, 'upload-link/')                // token is the credential, no session
-                || str_contains($uri, 'birthdays/')
-                || $uri === 'settings/files') {                      // personal preference, no module data
+            if (str_contains($uri, '/admin/')) {                     // workspace settings, admin-gated
                 continue;
             }
             // The gate lives on the route group, so resolve the way route:list does.

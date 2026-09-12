@@ -28,7 +28,6 @@
     <div class="space-y-4">
       <TextField v-model="nameModel" :label="t('settings.groups_name')" />
       <div class="grid grid-cols-2 gap-3">
-        <TextField v-model="filesQuotaStr" label="Files MB" type="number" inputmode="numeric" />
         <TextField v-model="maxDevicesStr" label="Max devices" type="number" inputmode="numeric" />
       </div>
       <label class="flex items-center justify-between gap-3 py-1">
@@ -62,16 +61,12 @@ const { success, error } = useToast();
 const dialog = ref(false);
 const saving = ref(false);
 const editing = ref<Group | null>(null);
-const form = reactive<Record<string, unknown>>({ name: '', files_quota_mb: null, max_connected_devices: null, shareable: false });
+const form = reactive<Record<string, unknown>>({ name: '', max_connected_devices: null, shareable: false });
 
 // TextField only emits strings — bridge form's loosely-typed fields for the kit's input contract.
 const nameModel = computed<string>({
   get: () => (typeof form.name === 'string' ? form.name : ''),
   set: (v: string) => { form.name = v; },
-});
-const filesQuotaStr = computed<string>({
-  get: () => (form.files_quota_mb == null ? '' : String(form.files_quota_mb)),
-  set: (v: string) => { form.files_quota_mb = v === '' ? null : Number(v); },
 });
 const maxDevicesStr = computed<string>({
   get: () => (form.max_connected_devices == null ? '' : String(form.max_connected_devices)),
@@ -79,9 +74,9 @@ const maxDevicesStr = computed<string>({
 });
 
 onMounted(() => s.loadGroups());
-function sub(g: Group) { return [g.files_quota_mb ? `${g.files_quota_mb} MB` : null, g.max_connected_devices ? `${g.max_connected_devices} dev` : null, g.members?.length ? `${g.members.length} ✕` : null].filter(Boolean).join(' · '); }
-function openNew() { editing.value = null; Object.assign(form, { name: '', files_quota_mb: null, max_connected_devices: null, shareable: false }); dialog.value = true; }
-function openEdit(g: Group) { editing.value = g; Object.assign(form, { name: g.name, files_quota_mb: g.files_quota_mb, max_connected_devices: g.max_connected_devices, shareable: g.shareable ?? false }); dialog.value = true; }
+function sub(g: Group) { return [g.max_connected_devices ? `${g.max_connected_devices} dev` : null, g.members?.length ? `${g.members.length} ✕` : null].filter(Boolean).join(' · '); }
+function openNew() { editing.value = null; Object.assign(form, { name: '', max_connected_devices: null, shareable: false }); dialog.value = true; }
+function openEdit(g: Group) { editing.value = g; Object.assign(form, { name: g.name, max_connected_devices: g.max_connected_devices, shareable: g.shareable ?? false }); dialog.value = true; }
 async function save() {
   saving.value = true;
   try {

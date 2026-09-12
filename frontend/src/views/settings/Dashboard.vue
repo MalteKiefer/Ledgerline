@@ -32,7 +32,6 @@
           <div class="space-y-1.5">
             <div class="text-xs font-medium text-[var(--ll-muted)]">{{ t('dash.storage_by_module') }} · {{ bytes(d?.resources.storage.total) }}</div>
             <StoreRow :label="t('dash.st_files')" :v="d?.resources.storage.files" :total="d?.resources.storage.total" />
-            <StoreRow :label="t('dash.st_gallery')" :v="d?.resources.storage.gallery" :total="d?.resources.storage.total" />
             <StoreRow :label="t('dash.st_database')" :v="d?.resources.storage.database" :total="d?.resources.storage.total" />
           </div>
           <div v-if="d?.resources.trend" class="text-xs text-[var(--ll-muted)]">
@@ -81,7 +80,7 @@ import { Card, Icon } from '@spa/ui';
 interface Dashboard {
   versions: { app: string; php: string; laravel: string };
   health: { database: string; cache: string; queue_driver: string };
-  resources: { disk: { free: number; total: number }; storage: { files: number; gallery: number; database: number; total: number }; trend: { points: { date: string; total: number }[]; deltaBytes: number; deltaDays: number } | null };
+  resources: { disk: { free: number; total: number }; storage: { files: number; database: number; total: number }; trend: { points: { date: string; total: number }[]; deltaBytes: number; deltaDays: number } | null };
   queue: { pending: number; failed: number };
   scheduler: { lastRunAt: string | null; tasks: { name: string; expression: string; lastAt: string | null; lastOk: boolean | null }[] };
   errors: { unresolved: number; total: number; lastAt: string | null };
