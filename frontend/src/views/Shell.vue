@@ -84,10 +84,6 @@
           <template v-if="crumbLeaf"><Icon name="chevron_right" :size="16" class="text-[var(--ll-muted)]" /><span class="font-medium">{{ crumbLeaf }}</span></template>
         </nav>
         <div class="ml-auto flex items-center gap-1">
-          <div class="relative hidden md:block">
-            <Icon name="search" :size="18" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ll-muted)]" />
-            <input v-model="globalSearch" :placeholder="t('common.search')" class="w-56 rounded-lg border border-[var(--ll-border)] bg-transparent py-1.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/40" @keyup.enter="runSearch">
-          </div>
           <button class="grid h-9 w-9 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" @click="toggleTheme"><Icon :name="dark ? 'light_mode' : 'dark_mode'" :size="20" /></button>
 
           <DropdownMenuRoot>
@@ -135,7 +131,6 @@ const drawer = ref(false);
 const dark = ref(document.documentElement.classList.contains('dark'));
 const locales = ['de', 'en', 'ru'] as const;
 const locale = ref(getActiveLanguage() || 'de');
-const globalSearch = ref('');
 const avatarBust = ref(0);
 const open = reactive<Record<string, boolean>>({ finance: true, settings: true });
 
@@ -160,14 +155,6 @@ const menu = computed<NavGroup[]>(() => {
   // Finance + Settings carry their own in-page left submenu (like Profile),
   // so the sidebar shows them as single entries — no expandable children here.
   if (auth.can('finance')) mods.push({ to: '/finance', label: 'messages.nav.finance', icon: 'account_balance_wallet' });
-  if (auth.can('files')) mods.push({ to: '/files', label: 'messages.nav.files', icon: 'folder' });
-  if (auth.can('files')) mods.push({ to: '/shared-with-me', label: 'files.shared_with_me', icon: 'folder_shared' });
-  if (auth.can('contacts')) mods.push({ to: '/contacts', label: 'messages.nav.contacts', icon: 'contacts' });
-  if (auth.can('notes')) mods.push({ to: '/notes', label: 'messages.nav.notes', icon: 'sticky_note_2' });
-  if (auth.can('gallery')) mods.push({ to: '/gallery', label: 'messages.nav.gallery', icon: 'photo_library' });
-  if (auth.can('calendar')) mods.push({ to: '/calendar', label: 'messages.nav.calendar', icon: 'calendar_month' });
-  if (auth.can('calendar')) mods.push({ to: '/tasks', label: 'calendar.todos.title', icon: 'checklist' });
-  if (auth.can('mail')) mods.push({ to: '/mail', label: 'messages.nav.mail', icon: 'mail' });
   if (auth.can('servers')) mods.push({ to: '/servers', label: 'messages.nav.servers', icon: 'dns' });
   groups.push({ key: 'modules', title: 'settings.personal_heading', items: mods });
   if (auth.isAdmin()) groups.push({ key: 'admin', title: 'settings.admin_heading', items: [
@@ -177,7 +164,7 @@ const menu = computed<NavGroup[]>(() => {
   return groups;
 });
 
-const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', 'shared-with-me': 'files.shared_with_me', contacts: 'messages.nav.contacts', notes: 'messages.nav.notes', gallery: 'messages.nav.gallery', calendar: 'messages.nav.calendar', tasks: 'calendar.todos.title', mail: 'messages.nav.mail', servers: 'messages.nav.servers', profile: 'pages.profile.title' };
+const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', servers: 'messages.nav.servers', profile: 'pages.profile.title' };
 const crumbRoot = computed(() => {
   const name = String(route.name ?? '');
   if (name.startsWith('settings')) return t('settings.heading');
@@ -188,7 +175,7 @@ const crumbRoot = computed(() => {
 const leafMap: Record<string, string> = {
   'settings.users': 'settings.users_section', 'settings.groups': 'settings.groups_section', 'settings.company': 'settings.company_section',
   'settings.backup': 'settings.backup_section', 'settings.security-log': 'settings.seclog_title', 'settings.notifications-config': 'settings.notifications_section',
-  'settings.security': 'settings.security_section', 'settings.files-limits': 'settings.files_limits_heading', 'settings.virustotal': 'settings.virustotal_section', 'settings.system': 'settings.system_section', 'settings.paperless': 'settings.paperless_section',
+  'settings.security': 'settings.security_section', 'settings.system': 'settings.system_section', 'settings.paperless': 'settings.paperless_section',
   'profile.account': 'account.nav_account', 'profile.appearance': 'account.nav_appearance', 'profile.security': 'account.nav_security', 'profile.devices': 'account.nav_devices', 'profile.data': 'account.hub_data_heading',
 };
 const crumbLeaf = computed(() => {
@@ -202,7 +189,6 @@ function toggle(k: string) { open[k] = !open[k]; }
 function isActive(to?: string): boolean { if (!to) return false; if (to === '/') return route.path === '/'; return route.path === to || route.path.startsWith(to + '/'); }
 function toggleTheme() { dark.value = !dark.value; document.documentElement.classList.toggle('dark', dark.value); localStorage.setItem('ll_theme', dark.value ? 'dark' : 'light'); }
 async function setLocale(l: string) { await loadLanguageAsync(l); locale.value = l; try { await api.post('/api/v1/locale', { locale: l }); } catch { /* non-fatal */ } }
-function runSearch() { if (globalSearch.value.trim()) router.push({ name: 'search', query: { q: globalSearch.value.trim() } }); }
 async function logout() { await auth.logout(); router.push({ name: 'login' }); }
 
 interface Note { id: string | number; title: string; body: string; read: boolean }

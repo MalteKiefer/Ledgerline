@@ -5,12 +5,6 @@ declare(strict_types=1);
 return [
     'nav' => [
         'finance' => 'Финансы',
-        'files' => 'Файлы',
-        'contacts' => 'Контакты',
-        'notes' => 'Заметки',
-        'gallery' => 'Галерея',
-        'calendar' => 'Календарь',
-        'mail' => 'Почта',
         'servers' => 'Серверы',
     ],
     'menu' => [

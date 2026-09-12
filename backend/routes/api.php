@@ -3,22 +3,16 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
-use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController as ApiBackupController;
-use App\Http\Controllers\Api\CalendarProfileController as ApiCalendarProfileController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
-use App\Http\Controllers\Api\ContactsProfileController as ApiContactsProfileController;
 use App\Http\Controllers\Api\DashboardController as ApiDashboardController;
 use App\Http\Controllers\Api\DevicePushEndpointController;
 use App\Http\Controllers\Api\DockerController as ApiDockerController;
-use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
-use App\Http\Controllers\Api\GalleryAdminController as ApiGalleryAdminController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InviteLinkController as ApiInviteLinkController;
 use App\Http\Controllers\Api\InvoiceOcrController;
 use App\Http\Controllers\Api\LimitsController as ApiLimitsController;
-use App\Http\Controllers\Api\MailAccountController;
 use App\Http\Controllers\Api\NotificationsController as ApiNotificationsController;
 use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
 use App\Http\Controllers\Api\PasskeyController as ApiPasskeyController;
@@ -26,74 +20,21 @@ use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
 use App\Http\Controllers\Api\SecurityController as ApiSecurityController;
 use App\Http\Controllers\Api\SecurityLogController as ApiSecurityLogController;
 use App\Http\Controllers\Api\SecurityPortalController;
-use App\Http\Controllers\Api\SettingsController as ApiSettingsController;
 use App\Http\Controllers\Api\SpaAuthController;
 use App\Http\Controllers\Api\SystemController as ApiSystemController;
 use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
-use App\Http\Controllers\Api\VirusTotalController as ApiVirusTotalController;
-use App\Http\Controllers\Api\WebDavAccessController as ApiWebDavAccessController;
 use App\Http\Controllers\AvatarController;
-use App\Http\Controllers\CalendarBookController;
-use App\Http\Controllers\CalendarController;
-use App\Http\Controllers\CalendarShareController;
-use App\Http\Controllers\CalendarTodoController;
-use App\Http\Controllers\ContactController;
-use App\Http\Controllers\ContactDuplicateController;
-use App\Http\Controllers\ContactGroupController;
-use App\Http\Controllers\ContactShareController;
-use App\Http\Controllers\ContactSyncSourceController;
-use App\Http\Controllers\CryptoController;
-use App\Http\Controllers\DeadlineController;
 use App\Http\Controllers\DevicePairingController;
-use App\Http\Controllers\FilesChangesController;
-use App\Http\Controllers\FilesController;
-use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceProductController;
 use App\Http\Controllers\FinanceProjectPlanController;
 use App\Http\Controllers\FinanceQuoteController;
 use App\Http\Controllers\FinanceReportController;
-use App\Http\Controllers\GalleryCommentController;
-use App\Http\Controllers\GalleryController;
-use App\Http\Controllers\GalleryPeopleController;
-use App\Http\Controllers\GalleryShareController;
-use App\Http\Controllers\GeoController;
-use App\Http\Controllers\GlobalSearchController;
-use App\Http\Controllers\KeyServerController;
 use App\Http\Controllers\LocaleController;
-use App\Http\Controllers\MailAttachmentController;
-use App\Http\Controllers\MailAvatarController;
-use App\Http\Controllers\MailBlobController;
-use App\Http\Controllers\MailDeleteOriginController;
-use App\Http\Controllers\MailDraftController;
-use App\Http\Controllers\MailExportController;
-use App\Http\Controllers\MailFlagController;
-use App\Http\Controllers\MailFolderAdminController;
-use App\Http\Controllers\MailFolderController;
-use App\Http\Controllers\MailKeyController;
-use App\Http\Controllers\MailLabelController;
-use App\Http\Controllers\MailLogController;
-use App\Http\Controllers\MailMessageController;
-use App\Http\Controllers\MailMoveController;
-use App\Http\Controllers\MailPushbackController;
-use App\Http\Controllers\MailRecipientController;
-use App\Http\Controllers\MailRuleController;
-use App\Http\Controllers\MailSavedSearchController;
-use App\Http\Controllers\MailSeenController;
-use App\Http\Controllers\MailSendController;
-use App\Http\Controllers\MailSignatureController;
-use App\Http\Controllers\MailStatsController;
-use App\Http\Controllers\MailTrashController;
-use App\Http\Controllers\MountController;
-use App\Http\Controllers\NotesController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
-use App\Http\Controllers\PublicFileShareController;
-use App\Http\Controllers\PublicGalleryShareController;
-use App\Http\Controllers\PublicGalleryUploadController;
-use App\Http\Controllers\ReindexController;
 use App\Http\Controllers\ServerBanController;
 use App\Http\Controllers\ServerControlController;
 use App\Http\Controllers\ServerController;
@@ -103,9 +44,6 @@ use App\Http\Controllers\ServerLogController;
 use App\Http\Controllers\ServerMaintenanceController;
 use App\Http\Controllers\ServerSecurityController;
 use App\Http\Controllers\ServerTerminalController;
-use App\Http\Controllers\SharedFolderController;
-use App\Http\Controllers\SharedGalleryController;
-use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Middleware\EnsureTwoFactorEnrolled;
 use App\Http\Middleware\UpdateTokenIp;
@@ -141,39 +79,6 @@ Route::prefix('v1')->group(function (): void {
     Route::post('/auth/reset-password', [SpaAuthController::class, 'resetPassword'])->middleware('throttle:6,1')->name('api.auth.reset-password');
     Route::post('/auth/register', [SpaAuthController::class, 'register'])->middleware('throttle:6,1')->name('api.auth.register');
 
-    // Public, unauthenticated file-share consumption — the share token in the path is
-    // the credential (mounts the SAME guard-agnostic PublicFileShareController as the
-    // web routes). A password-gated share issues a stateless HMAC grant on unlock that
-    // the tokenless client carries on manifest/raw (X-Share-Grant header or ?grant=).
-    Route::prefix('file-share/{token}')->name('api.public.file-share.')->group(function (): void {
-        Route::get('/', [PublicFileShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
-        Route::post('/unlock', [PublicFileShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
-        Route::get('/manifest', [PublicFileShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
-        Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
-    });
-
-    // Public, unauthenticated gallery album share consumption (token = credential).
-    Route::prefix('gallery-share/{token}')->name('api.public.gallery-share.')->group(function (): void {
-        Route::get('/', [PublicGalleryShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
-        Route::post('/unlock', [PublicGalleryShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
-        Route::get('/manifest', [PublicGalleryShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
-        Route::get('/photo/{photo}/thumb', [PublicGalleryShareController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('photo.thumb');
-        Route::get('/photo/{photo}/preview', [PublicGalleryShareController::class, 'preview'])->whereNumber('photo')->middleware('throttle:6000,1')->name('photo.preview');
-        Route::get('/photo/{photo}/raw', [PublicGalleryShareController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('photo.raw');
-    });
-
-    // Public, unauthenticated gallery album upload links (guest contributions).
-    Route::prefix('gallery-upload/{token}')->name('api.public.gallery-upload.')->group(function (): void {
-        Route::get('/', [PublicGalleryUploadController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
-        Route::post('/', [PublicGalleryUploadController::class, 'store'])->middleware('throttle:30,1')->name('store');
-    });
-
-    // Public, unauthenticated inbound upload links: the token in the path is the
-    // credential. meta returns the link label + owner; store accepts one file into
-    // the owner's folder (owner quota + size cap, hard-throttled). Write-only.
-    Route::get('/upload-link/{token}', [FilesController::class, 'uploadLinkMeta'])->middleware('throttle:120,1')->name('api.upload-link.meta');
-    Route::post('/upload-link/{token}', [FilesController::class, 'uploadLinkStore'])->middleware('throttle:30,1')->name('api.upload-link.store');
-
     // Public, unauthenticated invite / password-reset link consumption. The admin
     // CREATE side is /api/v1/users/{user}/invite-link; this is the consume side.
     // show reports validity as JSON (never a redirect); store sets the password and
@@ -185,8 +90,6 @@ Route::prefix('v1')->group(function (): void {
     // still pass) so a token's declared scope is actually checked.
     Route::middleware(['auth:sanctum', 'abilities:device', UpdateTokenIp::class, EnsureTwoFactorEnrolled::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me'])->name('api.me');
-        Route::get('/search', [GlobalSearchController::class, 'search'])->middleware('throttle:120,1')->name('api.search');
-        Route::post('/me/reindex', [ReindexController::class, 'me'])->middleware('throttle:6,1')->name('api.me.reindex');
         Route::post('/auth/logout', [SpaAuthController::class, 'logout'])->name('api.auth.logout');
         // Streams the signed-in user's stored avatar (same-origin, non-secret);
         // 404 when none stored. `me.user.has_avatar` tells the app whether to fetch it.
@@ -244,7 +147,6 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/finance/projects', [FinanceController::class, 'storeProject'])->middleware('throttle:600,1')->name('api.finance.projects.store');
             Route::put('/finance/projects/{project}', [FinanceController::class, 'updateProject'])->whereNumber('project')->middleware('throttle:600,1')->name('api.finance.projects.update');
             Route::post('/finance/projects/{project}/move', [FinanceController::class, 'moveProject'])->whereNumber('project')->middleware('throttle:1200,1')->name('api.finance.projects.move');
-            Route::get('/finance/projects/{project}/attachments', [FinanceController::class, 'projectAttachments'])->whereNumber('project')->middleware('throttle:600,1')->name('api.finance.projects.attachments');
             Route::delete('/finance/projects/{project}', [FinanceController::class, 'destroyProject'])->whereNumber('project')->middleware('throttle:600,1')->name('api.finance.projects.destroy');
             Route::post('/finance/projects/{id}/restore', [FinanceController::class, 'restoreProject'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.projects.restore');
             Route::delete('/finance/projects/{id}/force', [FinanceController::class, 'forceDeleteProject'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.projects.force');
@@ -312,67 +214,6 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/finance/receipts/{receipt}/raw', [FinanceController::class, 'receiptFile'])->whereNumber('receipt')->middleware('throttle:3000,1')->name('api.finance.receipts.raw');
         });
 
-        // Deadlines read out of already-indexed document text. Not module-gated:
-        // the findings come from files, mail, gallery and finance alike, so gating
-        // it on one of them would hide the others' deadlines.
-        Route::get('/deadlines', [DeadlineController::class, 'index'])->middleware('throttle:120,1')->name('api.deadlines.index');
-        Route::put('/deadlines/{deadline}', [DeadlineController::class, 'update'])->middleware('throttle:120,1')->whereNumber('deadline')->name('api.deadlines.update');
-        Route::post('/deadlines/scan', [DeadlineController::class, 'scan'])->middleware('throttle:6,1')->name('api.deadlines.scan');
-
-        // Generic address autocomplete (forward geocode). Device-authenticated but
-        // NOT module-gated — both the calendar event editor and the contacts map
-        // preview use it. Server-proxied to Nominatim (SSRF-guarded), no-store.
-        Route::get('/geo/search', [GeoController::class, 'search'])->middleware('throttle:120,1')->name('api.geo.search');
-
-        // Contacts module — mirrors the web routes. The web ContactController
-        // methods already return JSON (store/update/destroy/show/data/suggest/
-        // geocode/favorite/bulkDestroy/import/export/avatar); mount the same
-        // guard-agnostic controllers under /api/v1 so the Vue SPA (and mobile)
-        // consume them via device auth. Blade-only methods (index/create/edit/
-        // view) are intentionally not exposed. Owner-scope is controller-side.
-        Route::middleware('module:contacts')->group(function (): void {
-            Route::get('/contacts/data', [ContactController::class, 'data'])->name('api.contacts.data');
-            Route::get('/contacts/sources', [ContactSyncSourceController::class, 'index'])->name('api.contacts.sources.index');
-            Route::post('/contacts/sources', [ContactSyncSourceController::class, 'store'])->middleware('throttle:30,1')->name('api.contacts.sources.store');
-            Route::post('/contacts/sources/{source}/sync', [ContactSyncSourceController::class, 'sync'])->middleware('throttle:30,1')->name('api.contacts.sources.sync');
-            Route::delete('/contacts/sources/{source}', [ContactSyncSourceController::class, 'destroy'])->middleware('throttle:30,1')->name('api.contacts.sources.destroy');
-            Route::post('/contacts/versions/{version}/restore', [ContactSyncSourceController::class, 'restoreVersion'])->whereNumber('version')->middleware('throttle:30,1')->name('api.contacts.versions.restore');
-            Route::get('/contacts/shares', [ContactShareController::class, 'index'])->name('api.contacts.shares');
-            Route::post('/contacts/shares', [ContactShareController::class, 'store'])->middleware('throttle:60,1')->name('api.contacts.shares.store');
-            Route::delete('/contacts/shares/{share}', [ContactShareController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('api.contacts.shares.destroy');
-            Route::get('/contacts/shared-with-me', [ContactShareController::class, 'sharedWithMe'])->name('api.contacts.shared.index');
-            Route::get('/contacts/shared-with-me/{share}', [ContactShareController::class, 'browse'])->whereNumber('share')->name('api.contacts.shared.browse');
-            Route::get('/contacts/birthday-feed', [ContactShareController::class, 'feed'])->name('api.contacts.feed');
-            Route::post('/contacts/birthday-feed', [ContactShareController::class, 'enableFeed'])->middleware('throttle:30,1')->name('api.contacts.feed.enable');
-            Route::delete('/contacts/birthday-feed', [ContactShareController::class, 'disableFeed'])->middleware('throttle:30,1')->name('api.contacts.feed.disable');
-            Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('api.contacts.suggest');
-            Route::get('/contacts/export', [ContactController::class, 'export'])->name('api.contacts.export');
-            Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:60,1')->name('api.contacts.import');
-            Route::post('/contacts/settings', [ContactController::class, 'settings'])->middleware('throttle:600,1')->name('api.contacts.settings');
-            Route::delete('/contacts/bulk-destroy', [ContactController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('api.contacts.bulk-destroy');
-            Route::post('/contacts', [ContactController::class, 'store'])->middleware('throttle:600,1')->name('api.contacts.store');
-            Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->name('api.contacts.duplicates.data');
-            Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->middleware('throttle:120,1')->name('api.contacts.duplicates.merge');
-            Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->middleware('throttle:120,1')->name('api.contacts.duplicates.dismiss');
-            Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('api.contacts.show');
-            Route::get('/contacts/{contact}/geo', [ContactController::class, 'geocode'])->middleware('throttle:120,1')->name('api.contacts.geo');
-            Route::get('/contacts/{contact}/avatar', [ContactController::class, 'avatarImage'])->middleware('throttle:3000,1')->name('api.contacts.avatar');
-            Route::patch('/contacts/{contact}/favorite', [ContactController::class, 'favorite'])->middleware('throttle:600,1')->name('api.contacts.favorite');
-            Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->middleware('throttle:120,1')->name('api.contacts.avatar.upload');
-            Route::put('/contacts/{contact}', [ContactController::class, 'update'])->middleware('throttle:600,1')->name('api.contacts.update');
-            Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->middleware('throttle:600,1')->name('api.contacts.destroy');
-            Route::post('/address-books', [AddressBookController::class, 'store'])->middleware('throttle:600,1')->name('api.address-books.store');
-            Route::put('/address-books/{addressBook}', [AddressBookController::class, 'update'])->middleware('throttle:600,1')->name('api.address-books.update');
-            Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->middleware('throttle:600,1')->name('api.address-books.destroy');
-            Route::post('/contact-groups', [ContactGroupController::class, 'store'])->middleware('throttle:600,1')->name('api.contact-groups.store');
-            Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->middleware('throttle:600,1')->name('api.contact-groups.destroy');
-            // Downloadable Apple CardDAV enrollment profile (.mobileconfig). Mirrors
-            // the web Settings/ContactsController@profile; carries the username, never
-            // a password (sync uses the app-specific webdav_password, hashed).
-            Route::get('/account/carddav-profile', [ApiContactsProfileController::class, 'carddavProfile'])->middleware('throttle:20,1')->name('api.account.carddav-profile');
-        });
-
-        // Notes module — same guard-agnostic controller as web, under device auth.
         // Server monitoring (SSH, agentless). Same controller as the web twin.
         Route::middleware('module:servers')->group(function (): void {
             Route::get('/servers', [ServerController::class, 'index'])->name('api.servers.index');
@@ -438,310 +279,6 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/servers/{server}/bans', [ServerBanController::class, 'act'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.ban-action');
         });
 
-        Route::middleware('module:notes')->group(function (): void {
-            Route::get('/notes/data', [NotesController::class, 'data'])->name('api.notes.data');
-            Route::get('/notes/trash', [NotesController::class, 'trash'])->name('api.notes.trash');
-            Route::get('/notes/search', [NotesController::class, 'search'])->middleware('throttle:120,1')->name('api.notes.search');
-            Route::post('/notes', [NotesController::class, 'store'])->middleware('throttle:600,1')->name('api.notes.store');
-            Route::post('/notes/folders', [NotesController::class, 'storeFolder'])->middleware('throttle:600,1')->name('api.notes.folders.store');
-            Route::put('/notes/folders/{folder}', [NotesController::class, 'updateFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.notes.folders.update');
-            Route::delete('/notes/folders/{folder}', [NotesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.notes.folders.destroy');
-            Route::post('/notes/folders/{id}/restore', [NotesController::class, 'restoreFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.folders.restore');
-            Route::get('/notes/{note}', [NotesController::class, 'show'])->whereNumber('note')->name('api.notes.show');
-            Route::get('/notes/{note}/backlinks', [NotesController::class, 'backlinks'])->whereNumber('note')->name('api.notes.backlinks');
-            Route::get('/notes/{note}/export', [NotesController::class, 'export'])->whereNumber('note')->name('api.notes.export');
-            Route::post('/notes/{note}/attachments', [NotesController::class, 'attach'])->whereNumber('note')->middleware('throttle:120,1')->name('api.notes.attachments.store');
-            Route::post('/notes/{note}/attachments/from', [NotesController::class, 'attachFrom'])->whereNumber('note')->middleware('throttle:120,1')->name('api.notes.attachments.from');
-            Route::get('/notes/{note}/attachments/{attachment}/raw', [NotesController::class, 'attachmentRaw'])->whereNumber('note')->whereNumber('attachment')->middleware('throttle:3000,1')->name('api.notes.attachments.raw');
-            Route::delete('/notes/{note}/attachments/{attachment}', [NotesController::class, 'destroyAttachment'])->whereNumber('note')->whereNumber('attachment')->middleware('throttle:600,1')->name('api.notes.attachments.destroy');
-            Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.update');
-            Route::patch('/notes/{note}/favorite', [NotesController::class, 'favorite'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.favorite');
-            Route::patch('/notes/{note}/pin', [NotesController::class, 'pin'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.pin');
-            Route::delete('/notes/{note}', [NotesController::class, 'destroy'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.destroy');
-            Route::post('/notes/{id}/restore', [NotesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.restore');
-            Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.force');
-        });
-
-        // Gallery module — same guard-agnostic controller as web, under device auth.
-        Route::middleware('module:gallery')->group(function (): void {
-            Route::get('/gallery/memories', [GalleryController::class, 'memories'])->middleware('throttle:120,1')->name('api.gallery.memories');
-            Route::get('/gallery/data', [GalleryController::class, 'data'])->name('api.gallery.data');
-            Route::get('/gallery/dates', [GalleryController::class, 'dates'])->name('api.gallery.dates');
-            Route::get('/gallery/map', [GalleryController::class, 'map'])->name('api.gallery.map');
-            Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('api.gallery.search');
-            Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->middleware('throttle:60,1')->name('api.gallery.duplicates');
-            Route::get('/gallery/duplicates/formats', [GalleryController::class, 'formatDuplicates'])->middleware('throttle:60,1')->name('api.gallery.duplicates.formats');
-            Route::get('/gallery/people', [GalleryPeopleController::class, 'people'])->name('api.gallery.people');
-            Route::post('/gallery/people/merge', [GalleryPeopleController::class, 'merge'])->middleware('throttle:300,1')->name('api.gallery.people.merge');
-            Route::get('/gallery/people/{person}', [GalleryPeopleController::class, 'person'])->whereNumber('person')->name('api.gallery.people.show');
-            Route::put('/gallery/people/{person}', [GalleryPeopleController::class, 'personUpdate'])->whereNumber('person')->middleware('throttle:600,1')->name('api.gallery.people.update');
-            Route::delete('/gallery/people/{person}', [GalleryPeopleController::class, 'personDestroy'])->whereNumber('person')->middleware('throttle:300,1')->name('api.gallery.people.destroy');
-            Route::get('/gallery/{photo}/faces', [GalleryPeopleController::class, 'photoFaces'])->whereNumber('photo')->withTrashed()->name('api.gallery.photo.faces');
-            Route::get('/gallery/faces/{face}/crop', [GalleryPeopleController::class, 'faceCrop'])->whereNumber('face')->middleware('throttle:6000,1')->name('api.gallery.faces.crop');
-            Route::post('/gallery/faces/{face}/assign', [GalleryPeopleController::class, 'faceAssign'])->whereNumber('face')->middleware('throttle:300,1')->name('api.gallery.faces.assign');
-            Route::post('/gallery/faces/{face}/hide', [GalleryPeopleController::class, 'faceHide'])->whereNumber('face')->middleware('throttle:300,1')->name('api.gallery.faces.hide');
-            Route::get('/gallery/contacts/{contact}/photos', [GalleryPeopleController::class, 'contactPhotos'])->name('api.gallery.contact.photos');
-            Route::post('/gallery/reprocess', [GalleryController::class, 'reprocess'])->middleware('throttle:60,1')->name('api.gallery.reprocess');
-            Route::get('/gallery/ml-status', [GalleryController::class, 'mlStatus'])->name('api.gallery.ml-status');
-            // Sharing — owner side
-            Route::get('/gallery/shares', [GalleryShareController::class, 'index'])->name('api.gallery.shares');
-            Route::post('/gallery/shares/public', [GalleryShareController::class, 'storePublic'])->middleware('throttle:60,1')->name('api.gallery.shares.public.store');
-            Route::put('/gallery/shares/public/{share}', [GalleryShareController::class, 'updatePublic'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.shares.public.update');
-            Route::delete('/gallery/shares/public/{share}', [GalleryShareController::class, 'destroyPublic'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.shares.public.destroy');
-            Route::post('/gallery/shares/internal', [GalleryShareController::class, 'storeInternal'])->middleware('throttle:60,1')->name('api.gallery.shares.internal.store');
-            Route::delete('/gallery/shares/internal/{share}', [GalleryShareController::class, 'destroyInternal'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.shares.internal.destroy');
-            Route::get('/gallery/{photo}/comments', [GalleryCommentController::class, 'index'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.comments.index');
-            Route::post('/gallery/{photo}/comments', [GalleryCommentController::class, 'store'])->whereNumber('photo')->middleware('throttle:120,1')->name('api.gallery.comments.store');
-            Route::delete('/gallery/comments/{comment}', [GalleryCommentController::class, 'destroy'])->whereNumber('comment')->middleware('throttle:120,1')->name('api.gallery.comments.destroy');
-            Route::post('/gallery/{photo}/react', [GalleryCommentController::class, 'react'])->whereNumber('photo')->middleware('throttle:300,1')->name('api.gallery.react');
-            Route::post('/gallery/upload-links', [GalleryShareController::class, 'storeUploadLink'])->middleware('throttle:30,1')->name('api.gallery.upload-links.store');
-            Route::delete('/gallery/upload-links/{link}', [GalleryShareController::class, 'destroyUploadLink'])->whereNumber('link')->middleware('throttle:30,1')->name('api.gallery.upload-links.destroy');
-            // Sharing — recipient side
-            Route::get('/gallery/shared-with-me', [SharedGalleryController::class, 'index'])->name('api.gallery.shared.index');
-            Route::get('/gallery/shared-with-me/{share}', [SharedGalleryController::class, 'browse'])->whereNumber('share')->name('api.gallery.shared.browse');
-            Route::get('/gallery/shared-with-me/{share}/photo/{photo}/thumb', [SharedGalleryController::class, 'thumb'])->whereNumber('share')->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.shared.thumb');
-            Route::get('/gallery/shared-with-me/{share}/photo/{photo}/preview', [SharedGalleryController::class, 'preview'])->whereNumber('share')->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.shared.preview');
-            Route::get('/gallery/shared-with-me/{share}/photo/{photo}/raw', [SharedGalleryController::class, 'raw'])->whereNumber('share')->whereNumber('photo')->middleware('throttle:3000,1')->name('api.gallery.shared.raw');
-            Route::post('/gallery/shared-with-me/{share}/upload', [SharedGalleryController::class, 'upload'])->whereNumber('share')->middleware('throttle:1200,1')->name('api.gallery.shared.upload');
-            Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('api.gallery.trash');
-            Route::post('/gallery', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');
-            Route::post('/gallery/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.chunk.init');
-            Route::post('/gallery/chunk/part', [GalleryController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.gallery.chunk.part');
-            Route::post('/gallery/chunk/complete', [GalleryController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.gallery.chunk.complete');
-            Route::post('/gallery/chunk/abort', [GalleryController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.gallery.chunk.abort');
-            Route::get('/gallery/{photo}/raw', [GalleryController::class, 'raw'])->whereNumber('photo')->withTrashed()->middleware('throttle:3000,1')->name('api.gallery.raw');
-            Route::get('/gallery/{photo}/thumb', [GalleryController::class, 'thumb'])->whereNumber('photo')->withTrashed()->middleware('throttle:6000,1')->name('api.gallery.thumb');
-            Route::get('/gallery/{photo}/preview', [GalleryController::class, 'preview'])->whereNumber('photo')->withTrashed()->middleware('throttle:6000,1')->name('api.gallery.preview');
-            Route::get('/gallery/{photo}/exif', [GalleryController::class, 'exif'])->whereNumber('photo')->middleware('throttle:600,1')->withTrashed()->name('api.gallery.exif');
-            Route::patch('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.favorite');
-            Route::patch('/gallery/{photo}/archive', [GalleryController::class, 'archive'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.archive');
-            Route::post('/gallery/bulk-archive', [GalleryController::class, 'bulkArchive'])->middleware('throttle:600,1')->name('api.gallery.bulk-archive');
-            Route::post('/gallery/pair-live-photos', [GalleryController::class, 'pairLivePhotos'])->middleware('throttle:6,1')->name('api.gallery.pair-live');
-            Route::put('/gallery/{photo}', [GalleryController::class, 'update'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.update');
-            Route::get('/gallery/{photo}/download', [GalleryController::class, 'download'])->whereNumber('photo')->withTrashed()->middleware('throttle:1200,1')->name('api.gallery.download');
-            Route::get('/gallery/{photo}/play', [GalleryController::class, 'play'])->whereNumber('photo')->withTrashed()->middleware('throttle:3000,1')->name('api.gallery.play');
-            Route::get('/gallery/{photo}/motion', [GalleryController::class, 'motion'])->whereNumber('photo')->withTrashed()->middleware('throttle:3000,1')->name('api.gallery.motion');
-            Route::post('/gallery/{photo}/motion', [GalleryController::class, 'attachMotion'])->whereNumber('photo')->middleware('throttle:1200,1')->name('api.gallery.motion.attach');
-            Route::delete('/gallery/{photo}', [GalleryController::class, 'destroy'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.destroy');
-            Route::post('/gallery/{id}/restore', [GalleryController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.restore');
-            Route::delete('/gallery/{id}/force', [GalleryController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.force');
-            Route::post('/gallery/trash/empty', [GalleryController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('api.gallery.empty');
-            Route::post('/gallery/bulk-destroy', [GalleryController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('api.gallery.bulk-destroy');
-            Route::get('/gallery/albums', [GalleryController::class, 'albums'])->name('api.gallery.albums');
-            Route::post('/gallery/albums', [GalleryController::class, 'albumStore'])->middleware('throttle:120,1')->name('api.gallery.albums.store');
-            Route::put('/gallery/albums/{album}', [GalleryController::class, 'albumUpdate'])->whereNumber('album')->middleware('throttle:120,1')->name('api.gallery.albums.update');
-            Route::delete('/gallery/albums/{album}', [GalleryController::class, 'albumDestroy'])->whereNumber('album')->middleware('throttle:120,1')->name('api.gallery.albums.destroy');
-            Route::post('/gallery/albums/{album}/photos', [GalleryController::class, 'albumAttach'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.albums.attach');
-            Route::delete('/gallery/albums/{album}/photos', [GalleryController::class, 'albumDetach'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.albums.detach');
-        });
-
-        // Calendar module — mirrors the web routes (plaintext-relational calendars
-        // + events with recurrence-expanded range query + ICS import/export). The
-        // web CalendarController methods already return JSON; mount the same
-        // guard-agnostic controllers under /api/v1 so the Vue SPA (and mobile)
-        // consume them via device auth. The Blade/SPA entry (index) is not exposed.
-        // Owner-scope is controller-side; 409 on etag mismatch.
-        Route::middleware('module:calendar')->group(function (): void {
-            // Standalone CalDAV enrollment profile (.mobileconfig) — works without the
-            // contacts module (the combined CardDAV+CalDAV profile lives on contacts).
-            Route::get('/account/caldav-profile', [ApiCalendarProfileController::class, 'caldavProfile'])->middleware('throttle:20,1')->name('api.account.caldav-profile');
-            Route::get('/calendar/data', [CalendarController::class, 'data'])->name('api.calendar.data');
-            // OpenHolidays proxies (SSRF-guarded) so the SPA selects load under CSP connect-src 'self'.
-            Route::get('/calendar/holiday-countries', [CalendarController::class, 'holidayCountries'])->middleware('throttle:60,1')->name('api.calendar.holiday-countries');
-            Route::get('/calendar/holiday-subdivisions', [CalendarController::class, 'holidaySubdivisions'])->middleware('throttle:60,1')->name('api.calendar.holiday-subdivisions');
-            Route::get('/calendar/events', [CalendarController::class, 'events'])->name('api.calendar.events');
-            Route::get('/calendar/export', [CalendarController::class, 'export'])->name('api.calendar.export');
-            Route::post('/calendar/import', [CalendarController::class, 'import'])->middleware('throttle:60,1')->name('api.calendar.import');
-            Route::post('/calendar/settings', [CalendarController::class, 'settings'])->middleware('throttle:600,1')->name('api.calendar.settings');
-            Route::post('/calendar/events/{event}/rsvp', [CalendarController::class, 'rsvp'])->whereUuid('event')->middleware('throttle:120,1')->name('api.calendar.rsvp');
-            Route::post('/calendar/imip', [CalendarController::class, 'imipIngest'])->middleware('throttle:60,1')->name('api.calendar.imip');
-            Route::get('/calendar/free-busy', [CalendarController::class, 'freeBusy'])->middleware('throttle:600,1')->name('api.calendar.free-busy');
-            Route::post('/calendar/slots', [CalendarController::class, 'slots'])->middleware('throttle:120,1')->name('api.calendar.slots');
-            Route::get('/calendar/shares', [CalendarShareController::class, 'index'])->middleware('throttle:600,1')->name('api.calendar.shares.index');
-            Route::post('/calendar/shares', [CalendarShareController::class, 'store'])->middleware('throttle:60,1')->name('api.calendar.shares.store');
-            Route::delete('/calendar/shares/{share}', [CalendarShareController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('api.calendar.shares.destroy');
-            Route::post('/calendar/events', [CalendarController::class, 'store'])->middleware('throttle:600,1')->name('api.calendar.events.store');
-            Route::get('/calendar/events/{event}', [CalendarController::class, 'show'])->name('api.calendar.events.show');
-            Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('api.calendar.events.update');
-            Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendar.events.destroy');
-            Route::get('/calendar/events/{event}/photos', [CalendarController::class, 'photos'])->middleware('throttle:120,1')->name('api.calendar.events.photos');
-            Route::post('/calendar/events/{event}/exclude', [CalendarController::class, 'excludeOccurrence'])->middleware('throttle:600,1')->name('api.calendar.events.exclude');
-            Route::put('/calendar/events/{event}/occurrence', [CalendarController::class, 'overrideOccurrence'])->middleware('throttle:600,1')->name('api.calendar.events.occurrence');
-            // Tasks (VTODO). Static routes before /calendar/todos/{todo} model binding.
-            Route::get('/calendar/todos', [CalendarTodoController::class, 'index'])->name('api.calendar.todos');
-            Route::get('/calendar/todos/export', [CalendarTodoController::class, 'export'])->name('api.calendar.todos.export');
-            Route::post('/calendar/todos/import', [CalendarTodoController::class, 'import'])->middleware('throttle:60,1')->name('api.calendar.todos.import');
-            Route::post('/calendar/todos/reorder', [CalendarTodoController::class, 'reorder'])->middleware('throttle:600,1')->name('api.calendar.todos.reorder');
-            Route::post('/calendar/todos', [CalendarTodoController::class, 'store'])->middleware('throttle:600,1')->name('api.calendar.todos.store');
-            Route::get('/calendar/todos/{todo}', [CalendarTodoController::class, 'show'])->name('api.calendar.todos.show');
-            Route::put('/calendar/todos/{todo}', [CalendarTodoController::class, 'update'])->middleware('throttle:600,1')->name('api.calendar.todos.update');
-            Route::delete('/calendar/todos/{todo}', [CalendarTodoController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendar.todos.destroy');
-            Route::post('/calendar/todos/{todo}/complete', [CalendarTodoController::class, 'complete'])->middleware('throttle:600,1')->name('api.calendar.todos.complete');
-            Route::post('/calendar/todos/{todo}/uncomplete', [CalendarTodoController::class, 'uncomplete'])->middleware('throttle:600,1')->name('api.calendar.todos.uncomplete');
-            Route::post('/calendars', [CalendarBookController::class, 'store'])->middleware('throttle:600,1')->name('api.calendars.store');
-            // Special (generated, read-only) calendars: create + (re)generate holidays/birthdays.
-            Route::post('/calendars/special', [CalendarController::class, 'storeSpecial'])->middleware('throttle:60,1')->name('api.calendars.special');
-            Route::post('/calendars/{calendar}/regenerate', [CalendarController::class, 'regenerate'])->middleware('throttle:60,1')->name('api.calendars.regenerate');
-            Route::put('/calendars/{calendar}', [CalendarBookController::class, 'update'])->middleware('throttle:600,1')->name('api.calendars.update');
-            Route::delete('/calendars/{calendar}', [CalendarBookController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendars.destroy');
-        });
-
-        // Files module — mirrors the web routes (plaintext-relational folders +
-        // files + version history). Gated by module:files on top of device auth.
-        Route::middleware('module:files')->group(function (): void {
-            Route::get('/files/data', [FilesController::class, 'index'])->name('api.files.index');
-            // Long-lived SSE stream, wakes a sync client up on a remote change
-            // instead of it only ever finding out on its own poll interval — see
-            // App\Http\Controllers\FilesChangesController's doc comment.
-            Route::get('/files/changes-stream', [FilesChangesController::class, 'stream'])->middleware('throttle:30,1')->name('api.files.changes-stream');
-            Route::get('/files/trash', [FilesController::class, 'trashed'])->name('api.files.trash');
-            Route::get('/files/activity', [FilesController::class, 'activity'])->middleware('throttle:600,1')->name('api.files.activity');
-            Route::get('/files/entries/{file}/activity', [FilesController::class, 'fileActivity'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.activity');
-            Route::get('/files/folders/{folder}/info', [FilesController::class, 'folderInfo'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.folders.info');
-            Route::get('/files/entries/{file}/info', [FilesController::class, 'info'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.info');
-            Route::post('/files/entries/{file}/virustotal', [ApiVirusTotalController::class, 'lookup'])->whereNumber('file')->middleware('throttle:30,1')->name('api.files.entries.virustotal');
-            Route::get('/files/entries/{file}/show', [FilesController::class, 'showEntry'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.show');
-            Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('api.files.search');
-            Route::get('/files/labels', [FilesController::class, 'labels'])->name('api.files.labels');
-            Route::post('/files/labels', [FilesController::class, 'storeLabel'])->middleware('throttle:600,1')->name('api.files.labels.store');
-            Route::put('/files/labels/{label}', [FilesController::class, 'updateLabel'])->whereNumber('label')->middleware('throttle:600,1')->name('api.files.labels.update');
-            Route::delete('/files/labels/{label}', [FilesController::class, 'destroyLabel'])->whereNumber('label')->middleware('throttle:600,1')->name('api.files.labels.destroy');
-            Route::post('/files/entries/{file}/labels', [FilesController::class, 'setFileLabels'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entry.labels');
-            Route::post('/files/entries', [FilesController::class, 'upload'])->middleware('throttle:1200,1')->name('api.files.upload');
-            Route::post('/files/entries/trash/empty', [FilesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('api.files.empty');
-            Route::post('/files/zip', [FilesController::class, 'downloadZip'])->middleware('throttle:120,1')->name('api.files.zip');
-            Route::post('/files/archive', [FilesController::class, 'createArchive'])->middleware('throttle:60,1')->name('api.files.archive');
-            Route::post('/files/entries/{file}/extract', [FilesController::class, 'extractArchive'])->whereNumber('file')->middleware('throttle:60,1')->name('api.files.extract');
-            Route::post('/files/entries/{file}/encrypt', [FilesController::class, 'encryptEntry'])->whereNumber('file')->middleware('throttle:60,1')->name('api.files.encrypt');
-            Route::post('/files/entries/{file}/decrypt', [FilesController::class, 'decryptEntry'])->whereNumber('file')->middleware('throttle:60,1')->name('api.files.decrypt');
-            Route::post('/files/folders/{folder}/encrypt', [FilesController::class, 'encryptFolder'])->whereNumber('folder')->middleware('throttle:30,1')->name('api.files.folders.encrypt');
-            Route::get('/files/stats', [FilesController::class, 'stats'])->middleware('throttle:120,1')->name('api.files.stats');
-            Route::get('/mounts', [MountController::class, 'index'])->name('api.mounts.index');
-            Route::post('/mounts', [MountController::class, 'store'])->middleware('throttle:30,1')->name('api.mounts.store');
-            Route::post('/mounts/test', [MountController::class, 'test'])->middleware('throttle:30,1')->name('api.mounts.test');
-            Route::put('/mounts/{mount}', [MountController::class, 'update'])->whereNumber('mount')->middleware('throttle:30,1')->name('api.mounts.update');
-            Route::delete('/mounts/{mount}', [MountController::class, 'destroy'])->whereNumber('mount')->middleware('throttle:30,1')->name('api.mounts.destroy');
-            Route::get('/mounts/{mount}/list', [MountController::class, 'list'])->whereNumber('mount')->middleware('throttle:600,1')->name('api.mounts.list');
-            Route::get('/mounts/{mount}/file', [MountController::class, 'download'])->whereNumber('mount')->middleware('throttle:600,1')->name('api.mounts.download');
-            Route::post('/mounts/{mount}/upload', [MountController::class, 'upload'])->whereNumber('mount')->middleware('throttle:600,1')->name('api.mounts.upload');
-            Route::post('/mounts/{mount}/mkdir', [MountController::class, 'mkdir'])->whereNumber('mount')->middleware('throttle:120,1')->name('api.mounts.mkdir');
-            Route::post('/mounts/{mount}/delete', [MountController::class, 'deletePath'])->whereNumber('mount')->middleware('throttle:120,1')->name('api.mounts.delete-path');
-            Route::put('/files/entries/{file}', [FilesController::class, 'update'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.update');
-            Route::delete('/files/entries/{file}', [FilesController::class, 'destroy'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.destroy');
-            Route::get('/files/entries/{file}/raw', [FilesController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('api.files.raw');
-            Route::get('/files/entries/{file}/thumb', [FilesController::class, 'thumb'])->whereNumber('file')->middleware('throttle:3000,1')->name('api.files.thumb');
-            Route::post('/files/entries/{file}/content', [FilesController::class, 'replaceContent'])->whereNumber('file')->middleware('throttle:1200,1')->name('api.files.content');
-            Route::post('/files/entries/{file}/toggle', [FilesController::class, 'toggle'])->whereNumber('file')->middleware('throttle:1200,1')->name('api.files.toggle');
-            Route::post('/files/entries/{file}/copy', [FilesController::class, 'copy'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.copy');
-            Route::get('/files/entries/{file}/versions', [FilesController::class, 'versions'])->whereNumber('file')->name('api.files.versions');
-            Route::get('/files/entries/{file}/versions/{version}/raw', [FilesController::class, 'versionRaw'])->whereNumber(['file', 'version'])->middleware('throttle:3000,1')->name('api.files.version.raw');
-            Route::post('/files/entries/{file}/versions/{version}/restore', [FilesController::class, 'restoreVersion'])->whereNumber(['file', 'version'])->middleware('throttle:600,1')->name('api.files.version.restore');
-            Route::post('/files/entries/{id}/restore', [FilesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.files.restore');
-            Route::delete('/files/entries/{id}/force', [FilesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.files.force');
-            Route::get('/files/folders', [FilesController::class, 'folders'])->name('api.files.folders');
-            Route::post('/files/folders', [FilesController::class, 'storeFolder'])->middleware('throttle:600,1')->name('api.files.folders.store');
-            Route::put('/files/folders/{folder}', [FilesController::class, 'renameFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.folders.update');
-            Route::post('/files/folders/{folder}/copy', [FilesController::class, 'copyFolder'])->whereNumber('folder')->middleware('throttle:120,1')->name('api.files.folders.copy');
-            Route::post('/files/folders/{folder}/move', [FilesController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('api.files.folders.move');
-            Route::delete('/files/folders/{folder}', [FilesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.folders.destroy');
-            Route::post('/files/folders/{id}/restore', [FilesController::class, 'restoreFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('api.files.folders.restore');
-            Route::delete('/files/folders/{id}/force', [FilesController::class, 'forceDeleteFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('api.files.folders.force');
-            Route::post('/files/upload/chunk/init', [FilesController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.files.chunk.init');
-            Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.files.chunk.part');
-            Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.files.chunk.complete');
-            Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.chunk.abort');
-
-            // Sharing: public-link owner side + cross-user folder shares + shared-with-me.
-            Route::get('/files/upload-links', [FilesController::class, 'uploadLinks'])->name('api.files.upload-links.index');
-            Route::post('/files/upload-links', [FilesController::class, 'storeUploadLink'])->middleware('throttle:60,1')->name('api.files.upload-links.store');
-            Route::delete('/files/upload-links/{link}', [FilesController::class, 'destroyUploadLink'])->whereNumber('link')->middleware('throttle:60,1')->name('api.files.upload-links.destroy');
-            Route::get('/files/rel-shares', [FilesController::class, 'shares'])->name('api.files.shares.index');
-            Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('api.files.shares.store');
-            Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.shares.update');
-            Route::delete('/files/rel-shares/{share}', [FilesController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.shares.destroy');
-            Route::get('/files/folder-shares', [SharedFolderController::class, 'index'])->name('api.files.folder-shares.index');
-            Route::post('/files/folder-shares', [SharedFolderController::class, 'store'])->middleware('throttle:60,1')->name('api.files.folder-shares.store');
-            Route::put('/files/folder-shares/{share}/members', [SharedFolderController::class, 'updateMember'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.folder-shares.members.update');
-            Route::delete('/files/folder-shares/{share}/members', [SharedFolderController::class, 'removeMember'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.folder-shares.members.remove');
-            Route::delete('/files/folder-shares/{share}', [SharedFolderController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.folder-shares.destroy');
-            Route::get('/shared-with-me', [SharedWithMeController::class, 'index'])->name('api.shared-with-me.index');
-            Route::get('/shared-with-me/{share}', [SharedWithMeController::class, 'browse'])->whereNumber('share')->name('api.shared-with-me.browse');
-            Route::get('/shared-with-me/{share}/files/{file}/raw', [SharedWithMeController::class, 'raw'])->whereNumber(['share', 'file'])->middleware('throttle:3000,1')->name('api.shared-with-me.raw');
-            Route::post('/shared-with-me/{share}/upload', [SharedWithMeController::class, 'upload'])->whereNumber('share')->middleware('throttle:1200,1')->name('api.shared-with-me.upload');
-            Route::put('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'rename'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.rename');
-            Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.destroy');
-        });
-
-        // Mail archive (Phase 1) — plaintext-relational IMAP account config + banned-token-ok: pre-existing mail milestone label, unrelated to this change
-        // pull-only sync + the archived-message ledger/reader. Owner-scoped;
-        // gated by module:mail on top of device auth. Immutable archive: only
-        // seen/trash toggles mutate; raw .eml served sandboxed.
-        Route::middleware('module:mail')->group(function (): void {
-            Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('api.mail.accounts.index');
-            Route::post('/mail/accounts/autoconfig', [MailAccountController::class, 'autoconfig'])->middleware('throttle:10,1')->name('api.mail.accounts.autoconfig');
-            Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.accounts.store');
-            Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.update');
-            Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.destroy');
-            Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.sync');
-            Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.sync-cancel');
-            Route::post('/mail/accounts/{account}/test', [MailAccountController::class, 'test'])->whereNumber('account')->middleware('throttle:6,1')->name('api.mail.accounts.test');
-            Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->whereNumber('account')->name('api.mail.accounts.status');
-            Route::get('/mail/accounts/{account}/logs', [MailLogController::class, 'index'])->whereNumber('account')->middleware('throttle:600,1')->name('api.mail.accounts.logs');
-            Route::get('/mail/folders', [MailFolderController::class, 'index'])->middleware('throttle:600,1')->name('api.mail.folders.index');
-            Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware('throttle:1200,1')->name('api.mail.messages.index');
-            Route::get('/mail/messages/{message}', [MailMessageController::class, 'show'])->whereUuid('message')->middleware('throttle:1200,1')->name('api.mail.messages.show');
-            Route::get('/mail/messages/{message}/body', [MailMessageController::class, 'body'])->whereUuid('message')->middleware('throttle:3000,1')->name('api.mail.messages.body');
-            Route::post('/mail/messages/seen', [MailSeenController::class, 'update'])->middleware('throttle:120,1')->name('api.mail.messages.seen');
-            Route::post('/mail/messages/flag', [MailFlagController::class, 'update'])->middleware('throttle:120,1')->name('api.mail.messages.flag');
-            Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware('throttle:60,1')->name('api.mail.messages.trash');
-            Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('api.mail.messages.restore');
-            Route::post('/mail/messages/move', MailMoveController::class)->middleware('throttle:60,1')->name('api.mail.messages.move');
-            Route::get('/mail/recipients', MailRecipientController::class)->middleware('throttle:600,1')->name('api.mail.recipients');
-            Route::post('/mail/avatars', MailAvatarController::class)->middleware('throttle:600,1')->name('api.mail.avatars');
-            Route::get('/mail/server-folders', [MailFolderAdminController::class, 'index'])->middleware('throttle:30,1')->name('api.mail.server-folders.index');
-            Route::post('/mail/server-folders', [MailFolderAdminController::class, 'store'])->middleware('throttle:30,1')->name('api.mail.server-folders.store');
-            Route::post('/mail/server-folders/rename', [MailFolderAdminController::class, 'rename'])->middleware('throttle:30,1')->name('api.mail.server-folders.rename');
-            Route::post('/mail/server-folders/delete', [MailFolderAdminController::class, 'destroy'])->middleware('throttle:30,1')->name('api.mail.server-folders.destroy');
-            Route::post('/mail/messages/labels', [MailLabelController::class, 'apply'])->middleware('throttle:120,1')->name('api.mail.messages.labels');
-            Route::get('/mail/labels', [MailLabelController::class, 'index'])->name('api.mail.labels.index');
-            Route::post('/mail/labels', [MailLabelController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.labels.store');
-            Route::put('/mail/labels/{label}', [MailLabelController::class, 'update'])->whereNumber('label')->middleware('throttle:60,1')->name('api.mail.labels.update');
-            Route::delete('/mail/labels/{label}', [MailLabelController::class, 'destroy'])->whereNumber('label')->middleware('throttle:60,1')->name('api.mail.labels.destroy');
-            Route::get('/mail/rules', [MailRuleController::class, 'index'])->name('api.mail.rules.index');
-            Route::post('/mail/rules', [MailRuleController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.rules.store');
-            Route::put('/mail/rules/{rule}', [MailRuleController::class, 'update'])->whereNumber('rule')->middleware('throttle:60,1')->name('api.mail.rules.update');
-            Route::delete('/mail/rules/{rule}', [MailRuleController::class, 'destroy'])->whereNumber('rule')->middleware('throttle:60,1')->name('api.mail.rules.destroy');
-            Route::post('/mail/rules/apply', [MailRuleController::class, 'apply'])->middleware('throttle:6,1')->name('api.mail.rules.apply-all');
-            Route::post('/mail/rules/{rule}/apply', [MailRuleController::class, 'apply'])->whereNumber('rule')->middleware('throttle:6,1')->name('api.mail.rules.apply');
-            Route::get('/mail/saved-searches', [MailSavedSearchController::class, 'index'])->name('api.mail.saved-searches.index');
-            Route::post('/mail/saved-searches', [MailSavedSearchController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.saved-searches.store');
-            Route::delete('/mail/saved-searches/{search}', [MailSavedSearchController::class, 'destroy'])->whereNumber('search')->middleware('throttle:60,1')->name('api.mail.saved-searches.destroy');
-            Route::post('/mail/export', [MailExportController::class, 'export'])->middleware('throttle:30,1')->name('api.mail.export');
-            Route::get('/mail/stats', [MailStatsController::class, 'index'])->middleware('throttle:120,1')->name('api.mail.stats');
-            Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.pushback');
-            Route::post('/mail/messages/{message}/delete-origin', MailDeleteOriginController::class)->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.delete-origin');
-            Route::post('/mail/messages/compose', [MailSendController::class, 'compose'])->middleware('throttle:30,1')->name('api.mail.messages.compose');
-            Route::get('/mail/drafts', [MailDraftController::class, 'index'])->middleware('throttle:120,1')->name('api.mail.drafts.index');
-            Route::post('/mail/drafts', [MailDraftController::class, 'store'])->middleware('throttle:120,1')->name('api.mail.drafts.store');
-            Route::put('/mail/drafts/{draft}', [MailDraftController::class, 'update'])->whereUuid('draft')->middleware('throttle:120,1')->name('api.mail.drafts.update');
-            Route::delete('/mail/drafts/{draft}', [MailDraftController::class, 'destroy'])->whereUuid('draft')->middleware('throttle:120,1')->name('api.mail.drafts.destroy');
-            Route::post('/mail/messages/{message}/reply', [MailSendController::class, 'reply'])->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.reply');
-            Route::post('/mail/messages/{message}/forward', [MailSendController::class, 'forward'])->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.forward');
-            Route::get('/mail/attachments', [MailAttachmentController::class, 'index'])->middleware('throttle:600,1')->name('api.mail.attachments.index');
-            Route::get('/mail/attachments/{attachment}/raw', [MailAttachmentController::class, 'raw'])->whereUuid('attachment')->middleware('throttle:3000,1')->name('api.mail.attachments.raw');
-            Route::post('/mail/attachments/{attachment}/save', [MailAttachmentController::class, 'save'])->whereUuid('attachment')->middleware('throttle:60,1')->name('api.mail.attachments.save');
-            Route::post('/mail/attachments/{attachment}/virustotal', [ApiVirusTotalController::class, 'lookupAttachment'])->whereUuid('attachment')->middleware('throttle:30,1')->name('api.mail.attachments.virustotal');
-            Route::get('/mail/signatures', [MailSignatureController::class, 'index'])->name('api.mail.signatures.index');
-            Route::post('/mail/signatures', [MailSignatureController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.signatures.store');
-            Route::put('/mail/signatures/{signature}', [MailSignatureController::class, 'update'])->whereNumber('signature')->middleware('throttle:60,1')->name('api.mail.signatures.update');
-            Route::delete('/mail/signatures/{signature}', [MailSignatureController::class, 'destroy'])->whereNumber('signature')->middleware('throttle:60,1')->name('api.mail.signatures.destroy');
-            Route::get('/mail/keys', [MailKeyController::class, 'index'])->name('api.mail.keys.index');
-            Route::post('/mail/keys', [MailKeyController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.keys.store');
-            Route::post('/mail/keys/generate', [MailKeyController::class, 'generate'])->middleware('throttle:30,1')->name('api.mail.keys.generate');
-            Route::delete('/mail/keys/{key}', [MailKeyController::class, 'destroy'])->whereNumber('key')->middleware('throttle:60,1')->name('api.mail.keys.destroy');
-            Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->whereUuid('blob')->middleware('throttle:600,1')->name('api.mail.raw');
-        });
-
         // Per-user Paperless-ngx integration: cached term quick-picks, live term
         // creation, document forwarding, and cache sync. The /documents endpoint is
         // a transient-cleartext boundary (client posts bytes; server forwards to the
@@ -794,42 +331,9 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/account/sessions', [AccountController::class, 'sessions'])->name('api.account.sessions.index');
         Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->middleware('throttle:20,1')->name('api.account.sessions.revoke');
 
-        // App-specific WebDAV mount password (set/clear); the password is stored
-        // hashed and never returned — GET reports enabled + username + mount URL.
-        Route::get('/account/webdav', [ApiWebDavAccessController::class, 'show'])->name('api.account.webdav.show');
-        Route::put('/account/webdav', [ApiWebDavAccessController::class, 'update'])->middleware('throttle:20,1')->name('api.account.webdav.update');
-        Route::delete('/account/webdav', [ApiWebDavAccessController::class, 'destroy'])->middleware('throttle:20,1')->name('api.account.webdav.destroy');
-
         Route::post('/locale', [LocaleController::class, 'update'])->name('api.locale.update');
         Route::post('/theme', [ThemeController::class, 'update'])->name('api.theme.update');
         Route::post('/preferences', [PreferencesController::class, 'update'])->name('api.preferences.update');
-
-        // Shared encryption keyring (profile-level): own keys via the mail key
-        // controller mounted here, plus recipients + the encrypt-to picker.
-        Route::get('/crypto/keys', [MailKeyController::class, 'index'])->name('api.crypto.keys.index');
-        Route::post('/crypto/keys', [MailKeyController::class, 'store'])->middleware('throttle:60,1')->name('api.crypto.keys.store');
-        Route::post('/crypto/keys/generate', [MailKeyController::class, 'generate'])->middleware('throttle:30,1')->name('api.crypto.keys.generate');
-        Route::delete('/crypto/keys/{key}', [MailKeyController::class, 'destroy'])->whereNumber('key')->middleware('throttle:60,1')->name('api.crypto.keys.destroy');
-        // Own-key private-material export (current_password step-up + audit) —
-        // see App\Http\Controllers\MailKeyController::export.
-        Route::post('/crypto/keys/{key}/export', [MailKeyController::class, 'export'])->whereNumber('key')->middleware('throttle:60,1')->name('api.crypto.keys.export');
-        Route::get('/crypto/keyring', [CryptoController::class, 'keyring'])->name('api.crypto.keyring');
-        Route::post('/crypto/recipients', [CryptoController::class, 'storeRecipient'])->middleware('throttle:60,1')->name('api.crypto.recipients.store');
-        Route::delete('/crypto/recipients/{recipient}', [CryptoController::class, 'destroyRecipient'])->whereNumber('recipient')->middleware('throttle:60,1')->name('api.crypto.recipients.destroy');
-        // PGP public keyservers (HKP): configure servers, search/import a
-        // recipient, refresh one, publish/check-presence for an own key.
-        Route::get('/crypto/key-servers', [KeyServerController::class, 'index'])->name('api.crypto.key-servers.index');
-        Route::post('/crypto/key-servers', [KeyServerController::class, 'store'])->middleware('throttle:30,1')->name('api.crypto.key-servers.store');
-        Route::put('/crypto/key-servers/{keyServer}', [KeyServerController::class, 'update'])->whereNumber('keyServer')->middleware('throttle:30,1')->name('api.crypto.key-servers.update');
-        Route::delete('/crypto/key-servers/{keyServer}', [KeyServerController::class, 'destroy'])->whereNumber('keyServer')->middleware('throttle:30,1')->name('api.crypto.key-servers.destroy');
-        Route::post('/crypto/key-servers/search', [KeyServerController::class, 'search'])->middleware('throttle:30,1')->name('api.crypto.key-servers.search');
-        Route::post('/crypto/key-servers/{keyServer}/import', [KeyServerController::class, 'import'])->whereNumber('keyServer')->middleware('throttle:30,1')->name('api.crypto.key-servers.import');
-        Route::post('/crypto/recipients/{recipient}/refresh', [KeyServerController::class, 'refreshRecipient'])->whereNumber('recipient')->middleware('throttle:30,1')->name('api.crypto.recipients.refresh');
-        Route::post('/crypto/keys/{key}/publish', [KeyServerController::class, 'publish'])->whereNumber('key')->middleware('throttle:30,1')->name('api.crypto.keys.publish');
-        Route::post('/crypto/keys/{key}/check-presence', [KeyServerController::class, 'checkPresence'])->whereNumber('key')->middleware('throttle:30,1')->name('api.crypto.keys.check-presence');
-        // Per-user non-display settings (contact notify channels + file version cap).
-        Route::get('/settings', [ApiSettingsController::class, 'show'])->name('api.settings.show');
-        Route::put('/settings', [ApiSettingsController::class, 'update'])->middleware('throttle:60,1')->name('api.settings.update');
 
         // 2FA management: enable, QR/secret, confirm, recovery codes, regenerate, disable.
         // Mirrors Fortify's web routes (/user/two-factor-*) for Sanctum bearer clients.
@@ -864,8 +368,6 @@ Route::prefix('v1')->group(function (): void {
         // Gated by the admin role on top of the device token. Secret values
         // (SMTP/ntfy/webhook creds, Paperless token) are never serialised.
         Route::middleware('can:manage-global-settings')->prefix('admin')->name('api.admin.')->group(function (): void {
-            // Content reindex for ALL users (file text/OCR + gallery photo OCR), queued.
-            Route::post('/reindex', [ReindexController::class, 'all'])->middleware('throttle:3,1')->name('reindex');
             // Admin overview dashboard (server status, resources, health, counts).
             Route::get('/dashboard', [ApiDashboardController::class, 'show'])->name('dashboard.show');
 
@@ -878,26 +380,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/security', [ApiSecurityController::class, 'show'])->name('security.show');
             Route::put('/security', [ApiSecurityController::class, 'update'])->middleware('throttle:60,1')->name('security.update');
 
-            // Workspace Files limits (max upload MB + orphan-blob grace hours).
-            Route::get('/files-limits', [ApiFilesLimitsController::class, 'show'])->name('files-limits.show');
-            Route::put('/files-limits', [ApiFilesLimitsController::class, 'update'])->middleware('throttle:60,1')->name('files-limits.update');
-
-            // VirusTotal key management. The key is encrypted and never returned;
-            // Files are looked up by SHA-256 only, never uploaded.
-            Route::get('/virustotal', [ApiVirusTotalController::class, 'settings'])->name('virustotal.show');
-            Route::put('/virustotal', [ApiVirusTotalController::class, 'updateSettings'])->middleware('throttle:20,1')->name('virustotal.update');
-
-            // Session/auth lifetimes, retention windows, Files quota.
+            // Session/auth lifetimes, retention windows.
             Route::get('/limits', [ApiLimitsController::class, 'show'])->name('limits.show');
             Route::put('/limits', [ApiLimitsController::class, 'update'])->middleware('throttle:60,1')->name('limits.update');
-
-            // Gallery & ML: feature flags, models, thresholds, worker queue + rescan.
-            Route::get('/gallery', [ApiGalleryAdminController::class, 'show'])->name('gallery.show');
-            Route::put('/gallery', [ApiGalleryAdminController::class, 'update'])->middleware('throttle:60,1')->name('gallery.update');
-            Route::post('/gallery/queue/clear', [ApiGalleryAdminController::class, 'clearQueue'])->middleware('throttle:20,1')->name('gallery.queue.clear');
-            Route::post('/gallery/queue/retry', [ApiGalleryAdminController::class, 'retryFailed'])->middleware('throttle:20,1')->name('gallery.queue.retry');
-            Route::post('/gallery/queue/flush', [ApiGalleryAdminController::class, 'flushFailed'])->middleware('throttle:20,1')->name('gallery.queue.flush');
-            Route::post('/gallery/reprocess', [ApiGalleryAdminController::class, 'reprocess'])->middleware('throttle:60,1')->name('gallery.reprocess');
 
             // Container control (bounded agent). List services + run an allowlisted action.
             Route::get('/docker/containers', [ApiDockerController::class, 'containers'])->name('docker.containers');

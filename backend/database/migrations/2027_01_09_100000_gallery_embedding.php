@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Support\Vector;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -11,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Gallery: CLIP embeddings for semantic search ("Baum" → tree photos) and, later,
  * near-duplicate detection. The 512-dim vector column + HNSW cosine index are
- * pgvector-only (guarded by Vector::available()); a plain Postgres/sqlite dev/
+ * pgvector-only (guarded by vectorAvailable() below); a plain Postgres/sqlite dev/
  * test DB just keeps embedded_at and skips the vector column + vector queries.
  */
 return new class extends Migration
@@ -22,7 +21,7 @@ return new class extends Migration
             $table->timestamp('embedded_at')->nullable()->after('duration');
         });
 
-        if (Vector::available()) {
+        if (self::vectorAvailable()) {
             DB::statement('ALTER TABLE gallery_photos ADD COLUMN IF NOT EXISTS embedding vector(512)');
             DB::statement('CREATE INDEX IF NOT EXISTS gallery_photos_embedding_idx ON gallery_photos USING hnsw (embedding vector_cosine_ops)');
         }
@@ -30,12 +29,25 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (Vector::available()) {
+        if (self::vectorAvailable()) {
             DB::statement('DROP INDEX IF EXISTS gallery_photos_embedding_idx');
             DB::statement('ALTER TABLE gallery_photos DROP COLUMN IF EXISTS embedding');
         }
         Schema::table('gallery_photos', function (Blueprint $table): void {
             $table->dropColumn('embedded_at');
         });
+    }
+
+    /** Whether the pgvector extension is usable on the current connection (formerly App\Support\Vector, removed with the Gallery module). */
+    private static function vectorAvailable(): bool
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            return false;
+        }
+        try {
+            return DB::selectOne("SELECT 1 AS ok FROM pg_available_extensions WHERE name = 'vector'") !== null;
+        } catch (Throwable) {
+            return false;
+        }
     }
 };

@@ -1,6 +1,6 @@
 import type { OffsetPage, PageQuery } from '@spa/modules/finance/models/project';
 
-export type ProjectDocumentSourceType = 'finance_series' | 'legacy_invoice' | 'file' | 'gallery_photo' | 'finance_receipt' | 'bank_transaction' | 'bank_transaction_receipt';
+export type ProjectDocumentSourceType = 'finance_series' | 'legacy_invoice' | 'finance_receipt' | 'bank_transaction' | 'bank_transaction_receipt';
 export type ProjectDocumentRole = 'source_quote' | 'quote' | 'invoice' | 'payment' | 'receipt' | 'file' | 'photo' | 'other';
 export type ProjectDocumentAvailability = 'available' | 'deleted' | 'missing';
 export type ProjectDocumentState = 'active' | 'detached' | 'all';

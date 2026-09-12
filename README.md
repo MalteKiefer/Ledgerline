@@ -2,8 +2,8 @@
 
 # Ledgerline
 
-**A self-hosted, plaintext-relational personal cloud.**
-Invoicing, files, contacts, calendar, gallery and a full mail archive — one app you run on your own box.
+**A self-hosted, plaintext-relational finance & server-monitoring app.**
+GoBD-grade invoicing/accounting plus agentless SSH server monitoring — one app you run on your own box.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
 [![PHP 8.5](https://img.shields.io/badge/PHP-8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net/)
@@ -34,19 +34,17 @@ owner-scope on every endpoint, and encrypted-at-rest **operational secrets** onl
 
 | Module | What it does |
 |---|---|
-| **Finance** | Invoices (GoBD numbering, ZUGFeRD/Factur-X e-invoice, PDF + email), payment methods, bank-statement import (MT940/CSV) with receipt matching, standalone receipts, projects, business partners, VAT-return / EÜR reports, duplicate detection, category suggestions. |
-| **Files** | Nested folders + files, whole & chunked upload, streamed download, version history, trash, tags/labels/notes/favorites, server thumbnails, full-text + OCR search, ZIP/bulk, sharing (cross-user + public links), external S3/SFTP mounts, WebDAV. |
-| **Contacts** | vCard 4.0 address books, Ledgerline-first CardDAV replicas (Google OAuth, iCloud and generic servers) with immutable recovery versions and delete protection, VCF import/export, photo crop, duplicate detection + merge, birthday feed, sharing. |
-| **Calendar** | Events with recurrence, timezones + reminders, CalDAV sync, ICS import/export, holiday calendars, free/busy + slot finder, iMIP invitations/RSVP. |
-| **Gallery** | Photos + videos, EXIF timeline + map, albums, live/motion photos, server thumbnails, optional CLIP semantic search + face recognition, sharing. |
-| **Notes** | Markdown notes, folders + tags, wikilinks/backlinks, attachments, full-text search. |
-| **Mail archive** | Pull-only IMAP archival to plaintext `.eml`, full-text search, sandboxed HTML reader, attachments, threading/labels/rules, `.eml`/`.mbox`/ZIP export, server-side PGP/S-MIME reading and signing/encryption, SMTP send/reply/forward with a rich, autosaved composer, account signatures, delivery controls and attachments from device, Files or Gallery. Outbound crypto uses owner-scoped key IDs only, resolves private material exclusively on the server and never falls back to plaintext on errors. |
+| **Finance** | Invoices (GoBD numbering, ZUGFeRD/Factur-X e-invoice, PDF + email), quotes, product/stock ledger, project planning (tasks + time tracking → invoicing), payment methods, bank-statement import (MT940/CSV) with receipt matching, standalone receipts, business partners, VAT-return / EÜR reports, duplicate detection, category suggestions, dunning. |
+| **Servers** | Agentless monitoring of your own servers over SSH: pinned host keys, scheduled snapshots (OS/kernel/load/RAM/filesystems/disks/RAID/temperatures/open ports/containers/failed services/pending updates/reboot-required), history charts and state-change notifications, plus an SSH terminal, an SFTP file browser, Docker container control, service/process control, security audit, and control-panel (Plesk/cPanel/…) detection. |
 
 Plus infrastructure (not a "module"): first-party auth (Laravel Fortify — email +
 password + TOTP 2FA + WebAuthn/passkeys), multi-user admin & groups, an admin security
 portal (request log + IP/user blocking), backups (S3/B2/SFTP/WebDAV, GFS rotation,
-restore), Paperless integration, notifications (SMTP/ntfy/webhook + per-device push),
-device pairing for mobile, and a company/invoice profile.
+restore), Paperless integration (for Finance receipts), notifications (SMTP/ntfy/webhook
++ per-device push), device pairing for mobile, and a company/invoice profile.
+
+Mail, Notes, Tasks, Calendar, Contacts, Gallery and Files were removed (the app is
+finance-and-server-monitoring only now).
 
 ## Architecture — frontend and backend are separate
 
@@ -121,10 +119,10 @@ The production image is built by CI and pulled onto the box (no on-box builds).
 
 1. **assets stage (Node):** builds `frontend/` → `frontend/dist` (and self-hosts the
    tesseract OCR worker), stamping the version from the `APP_VERSION` build-arg.
-2. **runtime stage (PHP + nginx, serversideup base):** installs the backend, then copies
-   `frontend/dist` into `public/`. nginx serves the SPA statically; unknown routes fall
-   through to Laravel, which streams the same `index.html`. `/api/v1`, `/dav`, `/up` and
-   the byte-stream endpoints are served by PHP-FPM.
+2. **runtime stage (FrankenPHP):** installs the backend, then copies `frontend/dist` into
+   `public/`. FrankenPHP serves the SPA's static assets directly and streams `index.html`
+   for unknown routes; `/api/v1`, `/up` and the byte-stream endpoints are served by
+   Laravel Octane in the same process.
 
 ```bash
 # On the box (pulls the CI-built GHCR image, recreates app/worker/scheduler):
@@ -134,8 +132,9 @@ git fetch --tags && git reset --hard vX.Y.Z
 
 `docker-compose.yml`, the deploy `.env` (compose env-file with the image tag, DB, app
 config) and `scripts/` stay at the repo root; migrations run on app start. The `db`
-(PostgreSQL 18 + pgvector), `valkey` (cache/queues) and optional `ml`/`maps`/`agent`
-profiles are defined in compose.
+(PostgreSQL 18 + pgvector — a leftover from the removed Gallery module, kept for now),
+`valkey` (cache/queues) and the optional `agent` (Servers module Docker control sidecar)
+/ `backup` profiles are defined in compose.
 
 ### Standalone frontend (different origin)
 
@@ -149,7 +148,7 @@ VITE_API_URL=https://api.example.com VITE_APP_VERSION=vX.Y.Z npm run build   # �
 
 Serve `dist/` with an SPA history fallback (`try_files $uri /index.html`) and set
 `CORS_ALLOWED_ORIGINS=https://app.example.com` on the backend. The backend then only ever
-serves `/api/v1`, `/dav`, `/up` and the byte streams.
+serves `/api/v1`, `/up` and the byte streams.
 
 ## Development
 

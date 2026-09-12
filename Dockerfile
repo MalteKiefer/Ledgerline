@@ -37,22 +37,19 @@ RUN cd frontend \
 FROM ${PHP_BASE} AS runtime
 
 USER root
-# System deps: image/video/OCR/geo toolchain (imagick+heif, ffmpeg, exiftool,
-# tesseract+poppler), the PG18 client for pg_dump backups, the OpenSSH client
-# (agentless server monitoring: a pure-PHP SSH client cannot negotiate the
-# post-quantum key exchange a hardened sshd may be the only thing offering),
-# gnupg (PGP mail),
-# isync/mbsync (IMAP mail import), and curl for the healthcheck. Then the PHP
-# extensions the app needs, plus pcntl + opcache for the Octane worker.
+# System deps: image/OCR toolchain (imagick+heif for receipt/avatar image
+# processing, tesseract+poppler for the Finance receipt/invoice OCR pipeline),
+# the PG18 client for pg_dump backups, the OpenSSH client (agentless server
+# monitoring: a pure-PHP SSH client cannot negotiate the post-quantum key
+# exchange a hardened sshd may be the only thing offering), and curl for the
+# healthcheck. Then the PHP extensions the app needs, plus pcntl + opcache for
+# the Octane worker.
 RUN apk add --no-cache \
-      bind-tools curl ca-certificates gnupg gzip isync libcap \
+      bind-tools curl ca-certificates gzip libcap \
       libheif libde265 x265-libs aom-libs imagemagick imagemagick-heic \
-      ffmpeg \
-      exiftool \
       openssh-client \
       postgresql18-client \
       tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu poppler-utils \
- && command -v mbsync \
  && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip pcntl opcache \
  # The dunglas image sets cap_net_bind_service+ep on the frankenphp binary so it
  # can bind :80/:443 as non-root. We bind :8080 (>1024) and run under
@@ -61,11 +58,14 @@ RUN apk add --no-cache \
  # the binary needs no privileged port.
  && setcap -r /usr/local/bin/frankenphp 2>/dev/null || true
 
-# Archive tools for the Files archiver/unarchiver — a SEPARATE apk layer so these
-# packages never interfere with install-php-extensions' build-dep cleanup (mixing
-# them into the RUN above silently left pdo_pgsql/pgsql/zip uninstalled). No unrar
-# (not in Alpine's repos) — p7zip handles RAR4 fully and RAR5 best-effort.
-RUN apk add --no-cache tar p7zip unzip xz zstd bzip2
+# GNU tar for Backup's gzipped blob-archive tarballs (App\Services\Backup\
+# Sources\DiskArchiveSource, which needs `tar -T <listfile>` support that
+# busybox's built-in tar does not reliably offer) — kept in its own apk layer so
+# it never interferes with install-php-extensions' build-dep cleanup (mixing
+# archive tools into the RUN above previously left pdo_pgsql/pgsql/zip silently
+# uninstalled). p7zip/unzip/xz/zstd/bzip2 are gone: they only backed the
+# now-removed Files module's local archiver/unarchiver feature.
+RUN apk add --no-cache tar
 
 COPY --from=composer /usr/bin/composer /usr/bin/composer
 

@@ -57,13 +57,8 @@ final class RateLimiters
         // credential, so cap it hard (a real user pairs a handful of devices).
         RateLimiter::for('auth-pair', fn (Request $request): Limit => Limit::perMinute(30)->by((string) $request->ip()));
 
-        // Unauthenticated credential-guess gates (public link / invite): each
-        // guesses an Argon2id-hashed secret, so keep them tight per IP.
-        RateLimiter::for('share-unlock', fn (Request $request): Limit => Limit::perMinute(10)->by((string) $request->ip()));
+        // Unauthenticated credential-guess gate (invite link consumption): guesses
+        // an Argon2id-hashed secret, so keep it tight per IP.
         RateLimiter::for('invite', fn (Request $request): Limit => Limit::perMinute(10)->by((string) $request->ip()));
-
-        // WebDAV: every failed HTTP-Basic attempt runs an Argon2id verify and
-        // clients resend on each request — cap per IP to bound brute-force + CPU DoS.
-        RateLimiter::for('dav', fn (Request $request): Limit => Limit::perMinute(120)->by((string) $request->ip()));
     }
 }

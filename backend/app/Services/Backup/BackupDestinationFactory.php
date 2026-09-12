@@ -29,22 +29,17 @@ class BackupDestinationFactory
 
     /**
      * Build a filesystem from a raw driver + config (used to test a destination
-     * before it is saved, and by MountController to browse an external S3/SFTP
-     * mount live).
+     * before it is saved).
      *
      * @param  array<string, mixed>  $c
      * @param  bool  $interactive  True when the CALLER is a live web request a
-     *                             user is synchronously waiting on (Files
-     *                             "external storage" browsing, a connection
+     *                             user is synchronously waiting on (a connection
      *                             test) rather than a queued backup run/restore
      *                             — uses a short, UI-appropriate connect/total
      *                             timeout instead of the generous one tuned for
      *                             a large background backup transfer, so a
      *                             slow/unreachable host can't tie up an Octane
-     *                             worker for minutes (this factory was
-     *                             originally built backup-only, where waiting
-     *                             is fine; MountController reuses it for a very
-     *                             different, latency-sensitive access pattern).
+     *                             worker for minutes.
      */
     public function makeFromParts(string $driver, array $c, bool $interactive = false): Filesystem
     {

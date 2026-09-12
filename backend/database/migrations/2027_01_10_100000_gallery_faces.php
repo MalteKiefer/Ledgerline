@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Support\Vector;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -41,7 +40,7 @@ return new class extends Migration
             $table->index('gallery_photo_id');
         });
 
-        if (Vector::available()) {
+        if (self::vectorAvailable()) {
             DB::statement('ALTER TABLE gallery_faces ADD COLUMN IF NOT EXISTS embedding vector(512)');
             DB::statement('CREATE INDEX IF NOT EXISTS gallery_faces_embedding_idx ON gallery_faces USING hnsw (embedding vector_cosine_ops)');
         }
@@ -49,10 +48,23 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (Vector::available()) {
+        if (self::vectorAvailable()) {
             DB::statement('DROP INDEX IF EXISTS gallery_faces_embedding_idx');
         }
         Schema::dropIfExists('gallery_faces');
         Schema::dropIfExists('gallery_people');
+    }
+
+    /** Whether the pgvector extension is usable on the current connection (formerly App\Support\Vector, removed with the Gallery module). */
+    private static function vectorAvailable(): bool
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            return false;
+        }
+        try {
+            return DB::selectOne("SELECT 1 AS ok FROM pg_available_extensions WHERE name = 'vector'") !== null;
+        } catch (Throwable) {
+            return false;
+        }
     }
 };

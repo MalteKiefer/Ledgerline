@@ -38,9 +38,7 @@ use App\Modules\Finance\Infrastructure\Catalog\CompositeProjectDocumentCatalog;
 use App\Modules\Finance\Infrastructure\Compatibility\FinanceSeriesDocumentSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyBankReceiptDocumentSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyBankTransactionDocumentSource;
-use App\Modules\Finance\Infrastructure\Compatibility\LegacyFileDocumentSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyFinanceReceiptDocumentSource;
-use App\Modules\Finance\Infrastructure\Compatibility\LegacyGalleryPhotoDocumentSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDocumentSource;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyInvoiceDraftAdapter;
 use App\Modules\Finance\Infrastructure\Compatibility\LegacyProjectFinancialSource;
@@ -175,8 +173,6 @@ final class FinanceServiceProvider extends ServiceProvider
         $this->app->singleton(ProjectDocumentCatalog::class, static fn (): ProjectDocumentCatalog => new CompositeProjectDocumentCatalog([
             new FinanceSeriesDocumentSource,
             new LegacyInvoiceDocumentSource,
-            new LegacyFileDocumentSource,
-            new LegacyGalleryPhotoDocumentSource,
             new LegacyFinanceReceiptDocumentSource,
             new LegacyBankTransactionDocumentSource,
             new LegacyBankReceiptDocumentSource,

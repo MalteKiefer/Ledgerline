@@ -7,24 +7,12 @@
     <template v-if="p.prefs">
       <div class="my-4 border-t border-[var(--ll-border)]" />
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Select v-model="p.prefs.distance" :label="t('account.pref_distance')" :options="opts(['km', 'mi'])" @update:modelValue="savePref('distance')" />
-        <Select v-model="p.prefs.elevation" :label="t('account.pref_elevation')" :options="opts(['m', 'ft'])" @update:modelValue="savePref('elevation')" />
-        <Select v-model="p.prefs.weight" :label="t('account.pref_weight')" :options="opts(['kg', 'lb'])" @update:modelValue="savePref('weight')" />
-        <Select v-model="p.prefs.temp" :label="t('account.pref_temp')" :options="opts(['c', 'f'])" @update:modelValue="savePref('temp')" />
-        <Select v-model="p.prefs.glucose" :label="t('account.pref_glucose')" :options="opts(['mgdl', 'mmoll'])" @update:modelValue="savePref('glucose')" />
         <Select v-model="p.prefs.time_format" :label="t('account.pref_time')" :options="opts(['24h', '12h'])" @update:modelValue="savePref('time_format')" />
       </div>
       <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Select v-model="tzModel" :label="t('account.pref_timezone')" :options="tzItems" @update:modelValue="onTimezone" />
         <Select v-model="p.prefs.date_format" :label="t('account.pref_date_format')" :options="dateFmtItems" @update:modelValue="savePref('date_format')" />
       </div>
-      <template v-if="auth.can('mail')">
-        <div class="my-4 border-t border-[var(--ll-border)]" />
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Select v-model="p.prefs.mail_avatars" :label="t('account.pref_mail_avatars')" :options="avatarItems" @update:modelValue="savePref('mail_avatars')" />
-        </div>
-        <p class="mt-2 text-xs text-[var(--ll-muted)]">{{ t('account.pref_mail_avatars_hint') }}</p>
-      </template>
     </template>
   </Card>
 </template>
@@ -42,19 +30,6 @@ import { timezoneList, browserTz } from '@spa/lib/datetime';
 const auth = useAuthStore();
 const p = useProfileStore();
 const { success, error } = useToast();
-
-/**
- * Where a sender picture may come from.
- *
- * Ordered by what it costs you, and the default is the one that sends nothing.
- * Gravatar and Libravatar are absent on purpose: they are keyed by a hash of
- * the address, so asking them announces that this mailbox is being read.
- */
-const avatarItems = computed(() => [
-  { title: t('account.mail_avatars_off'), value: 'off' },
-  { title: t('account.mail_avatars_contacts'), value: 'contacts' },
-  { title: t('account.mail_avatars_domain'), value: 'domain' },
-]);
 
 const themeItems = [
   { title: t('messages.menu.theme_light'), value: 'light' },

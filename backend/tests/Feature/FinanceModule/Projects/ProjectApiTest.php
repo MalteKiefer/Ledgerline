@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\FinanceModule\Projects;
 
+use App\Models\FinanceReceipt;
 use App\Models\User;
 use App\Modules\Finance\Application\DTOs\Projects\InvoiceDraftTarget;
 use App\Modules\Finance\Application\DTOs\Projects\ProjectDocumentSourceRef;
@@ -246,45 +247,59 @@ final class ProjectApiTest extends TestCase
         [, $otherToken] = $this->ownerAndToken();
         $project = $this->withToken($token)->postJson('/api/v1/finance-v2/projects', $this->projectPayload())
             ->assertCreated()->json('id');
-        $fileId = (int) DB::table('files')->insertGetId([
+        // Finance's own 'finance_receipt' source stands in for the removed Files
+        // module's 'file' source: it is a real surviving document source with an
+        // internal-only path field (blob_path) and OCR text (ocr) that must never
+        // leak, exactly like the retired 'file' source's storage_path.
+        $receiptId = FinanceReceipt::forceCreate([
             'user_id' => $owner->id,
             'name' => 'Contract.pdf',
             'mime' => 'application/pdf',
             'size' => 123,
-            'storage_path' => 'private/do-not-leak.pdf',
-            'sha256' => str_repeat('a', 64),
-            'favorite' => false,
+            'blob_path' => 'invoices/do-not-leak.pdf',
+            'ocr' => 'do-not-leak ocr text',
+            'sig' => str_repeat('a', 64),
+            'kind' => 'receipt',
             'version' => 0,
             'created_at' => '2026-08-29 08:00:00',
             'updated_at' => '2026-08-29 08:00:00',
-        ]);
+        ])->id;
 
-        $this->withToken($token)->getJson("/api/v1/finance-v2/projects/{$project}/document-sources?source_types[]=file&mime_groups[]=pdf&per_page=1")
+        // finance_receipt has no separate 'path' field distinct from blob_path (the
+        // one storage-location field), so the retired 'file'/'gallery_photo' sources'
+        // 'path' non-leak assertion has no equivalent here and is intentionally dropped.
+        $this->withToken($token)->getJson("/api/v1/finance-v2/projects/{$project}/document-sources?source_types[]=finance_receipt&mime_groups[]=pdf&per_page=1")
             ->assertOk()
-            ->assertJsonPath('data.0.source_type', 'file')
-            ->assertJsonPath('data.0.source_reference', "file:{$fileId}")
+            ->assertJsonPath('data.0.source_type', 'finance_receipt')
+            ->assertJsonPath('data.0.source_reference', "finance-receipt:{$receiptId}")
             ->assertJsonPath('data.0.title', 'Contract.pdf')
             ->assertJsonStructure(['data', 'next_cursor'])
-            ->assertJsonMissingPath('data.0.storage_path')
-            ->assertJsonMissingPath('data.0.path')
+            ->assertJsonMissingPath('data.0.blob_path')
             ->assertJsonMissingPath('data.0.ocr');
 
-        $payload = ['source_type' => 'file', 'source_reference' => "file:{$fileId}", 'pinned_revision_id' => null, 'role' => 'file'];
+        // 'file' is still a valid *role*, but the role/source compatibility check
+        // (EloquentProjectDocumentRepository::assertRole) only ever allowed role
+        // 'file' together with source_type 'file' — which no longer exists. Since
+        // that combination can never succeed anymore, this test now attaches the
+        // finance_receipt source under the 'receipt' role, the role that is
+        // actually compatible with it.
+        $payload = ['source_type' => 'finance_receipt', 'source_reference' => "finance-receipt:{$receiptId}", 'pinned_revision_id' => null, 'role' => 'receipt'];
         $this->withToken($token)->postJson("/api/v1/finance-v2/projects/{$project}/documents", $payload)
             ->assertUnprocessable()->assertJsonValidationErrors(['idempotency_key']);
 
         $attached = $this->withToken($token)->withHeader('Idempotency-Key', 'attach-http-1')
             ->postJson("/api/v1/finance-v2/projects/{$project}/documents", $payload)
             ->assertCreated()
-            ->assertJsonPath('source.source_type', 'file')
-            ->assertJsonPath('source.source_reference', "file:{$fileId}")
+            ->assertJsonPath('source.source_type', 'finance_receipt')
+            ->assertJsonPath('source.source_reference', "finance-receipt:{$receiptId}")
             ->assertJsonPath('availability', 'available')
             ->assertJsonMissingPath('attached_by')
-            ->assertJsonMissingPath('snapshot.storage_path');
+            ->assertJsonMissingPath('snapshot.blob_path')
+            ->assertJsonMissingPath('snapshot.ocr');
         $link = $attached->json('link_id');
         $this->assertIsInt($link);
 
-        $this->withToken($token)->getJson("/api/v1/finance-v2/projects/{$project}/documents?state=active&roles[]=file")
+        $this->withToken($token)->getJson("/api/v1/finance-v2/projects/{$project}/documents?state=active&roles[]=receipt")
             ->assertOk()->assertJsonPath('data.0.link_id', $link)->assertJsonPath('meta.total', 1);
 
         $this->withToken($token)->withoutHeader('Idempotency-Key')->deleteJson("/api/v1/finance-v2/projects/{$project}/documents/{$link}")

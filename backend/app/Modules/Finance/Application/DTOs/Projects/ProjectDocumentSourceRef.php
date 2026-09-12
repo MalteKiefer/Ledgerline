@@ -28,8 +28,6 @@ final readonly class ProjectDocumentSourceRef
         $valid = match ($sourceType) {
             'finance_series' => preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/Di', $sourceReference) === 1,
             'legacy_invoice' => preg_match('/\Alegacy-invoice:[1-9][0-9]*\z/D', $sourceReference) === 1,
-            'file' => preg_match('/\Afile:[1-9][0-9]*\z/D', $sourceReference) === 1,
-            'gallery_photo' => preg_match('/\Agallery-photo:[1-9][0-9]*\z/D', $sourceReference) === 1,
             'finance_receipt' => preg_match('/\Afinance-receipt:[1-9][0-9]*\z/D', $sourceReference) === 1,
             'bank_transaction' => preg_match('/\Abank-transaction:[1-9][0-9]*\z/D', $sourceReference) === 1,
             'bank_transaction_receipt' => preg_match('/\Abank-transaction-receipt:[1-9][0-9]*:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/Di', $sourceReference) === 1,

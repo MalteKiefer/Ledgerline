@@ -184,12 +184,12 @@ class BackupGfsTest extends TestCase
 
     public function test_effective_sources_and_retention_tiers_fall_back_to_legacy(): void
     {
-        $job = new BackupJob(['source' => 'files', 'retention' => 9]);
-        $this->assertSame(['files'], $job->effectiveSources());
+        $job = new BackupJob(['source' => 'invoices', 'retention' => 9]);
+        $this->assertSame(['invoices'], $job->effectiveSources());
         $this->assertSame(['daily' => 9, 'weekly' => 0, 'monthly' => 0], $job->retentionTiers());
 
-        $job2 = new BackupJob(['sources' => ['invoices', 'files', 'invoices'], 'keep_daily' => 3, 'keep_weekly' => 2, 'keep_monthly' => 1]);
-        $this->assertSame(['invoices', 'files'], $job2->effectiveSources());
+        $job2 = new BackupJob(['sources' => ['invoices', 'avatars', 'invoices'], 'keep_daily' => 3, 'keep_weekly' => 2, 'keep_monthly' => 1]);
+        $this->assertSame(['invoices', 'avatars'], $job2->effectiveSources());
         $this->assertSame(['daily' => 3, 'weekly' => 2, 'monthly' => 1], $job2->retentionTiers());
     }
 }

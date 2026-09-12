@@ -715,7 +715,7 @@ final class ProjectPersistenceTest extends TestCase
     {
         $owner = User::factory()->create();
         $project = $this->storedProject($owner);
-        $firstId = $this->storedDocumentLink($owner, $project['record_id'], 'file:first');
+        $firstId = $this->storedDocumentLink($owner, $project['record_id'], 'finance-receipt:1');
         $first = ProjectDocumentLinkRecord::query()->withoutGlobalScopes()->findOrFail($firstId);
 
         $first->forceFill([
@@ -723,11 +723,11 @@ final class ProjectPersistenceTest extends TestCase
             'detached_at' => new DateTimeImmutable('2026-08-28 12:00:00'),
         ]);
         $this->assertTrue($first->saveQuietly());
-        $first->forceFill(['source_reference' => 'file:retargeted']);
+        $first->forceFill(['source_reference' => 'finance-receipt:91']);
         $this->assertAppendOnlyMutation('project_document_link', static fn (): bool => $first->saveQuietly());
         $this->assertAppendOnlyMutation('project_document_link', static fn (): bool => $first->deleteQuietly());
 
-        $secondId = $this->storedDocumentLink($owner, $project['record_id'], 'file:second');
+        $secondId = $this->storedDocumentLink($owner, $project['record_id'], 'finance-receipt:2');
         $updated = ProjectDocumentLinkRecord::query()
             ->withoutGlobalScopes()
             ->whereKey($secondId)
@@ -739,10 +739,10 @@ final class ProjectPersistenceTest extends TestCase
         $this->assertAppendOnlyMutation('project_document_link', static fn (): int => ProjectDocumentLinkRecord::query()
             ->withoutGlobalScopes()->whereKey($secondId)->update(['detached_at' => null]));
 
-        $thirdId = $this->storedDocumentLink($owner, $project['record_id'], 'file:third');
+        $thirdId = $this->storedDocumentLink($owner, $project['record_id'], 'finance-receipt:3');
         $this->assertAppendOnlyMutation('project_document_link', static fn (): int => ProjectDocumentLinkRecord::query()
-            ->withoutGlobalScopes()->whereKey($thirdId)->update(['source_reference' => 'file:changed']));
-        $this->assertSame('file:first', DB::table('finance_project_document_links')->where('id', $firstId)->value('source_reference'));
+            ->withoutGlobalScopes()->whereKey($thirdId)->update(['source_reference' => 'finance-receipt:92']));
+        $this->assertSame('finance-receipt:1', DB::table('finance_project_document_links')->where('id', $firstId)->value('source_reference'));
         $this->assertNotNull(DB::table('finance_project_document_links')->where('id', $firstId)->value('detached_at'));
         $this->assertNotNull(DB::table('finance_project_document_links')->where('id', $secondId)->value('detached_at'));
         $this->assertNull(DB::table('finance_project_document_links')->where('id', $thirdId)->value('detached_at'));
@@ -803,10 +803,15 @@ final class ProjectPersistenceTest extends TestCase
 
     private function storedDocumentLink(User $owner, int $projectId, string $reference): int
     {
+        // source_type swapped from the retired 'file' to the surviving
+        // 'finance_receipt'; this raw insert bypasses AttachProjectDocument /
+        // EloquentProjectDocumentRepository::assertRole entirely (it is read back
+        // only through direct Eloquent/DB queries in this test), so 'role' stays
+        // 'file' (a separate, still-valid enum unrelated to source_type here).
         return (int) DB::table('finance_project_document_links')->insertGetId([
             'user_id' => $owner->id,
             'project_id' => $projectId,
-            'source_type' => 'file',
+            'source_type' => 'finance_receipt',
             'source_reference' => $reference,
             'document_series_id' => null,
             'pinned_revision_id' => null,

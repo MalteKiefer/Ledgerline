@@ -9,7 +9,7 @@ use InvalidArgumentException;
 
 final readonly class ProjectDocumentSourceFilter
 {
-    public const array TYPES = ['finance_series', 'legacy_invoice', 'file', 'gallery_photo', 'finance_receipt', 'bank_transaction', 'bank_transaction_receipt'];
+    public const array TYPES = ['finance_series', 'legacy_invoice', 'finance_receipt', 'bank_transaction', 'bank_transaction_receipt'];
 
     /**
      * @param  list<string>  $sourceTypes

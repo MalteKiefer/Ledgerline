@@ -40,9 +40,6 @@ return Application::configure(basePath: dirname(__DIR__))
         // (Redis-backed, not evicted by a DB sessions delete) is refused 403 on its
         // very next web request, driver-agnostically. The repeat IP check is cached.
         $middleware->web(prepend: [BlockGuard::class], append: [BlockGuard::class, SetLocale::class, SecurityHeaders::class, LogRequest::class]);
-        // WebDAV authenticates via HTTP Basic (Sabre) and uses non-form verbs
-        // (PUT/DELETE/PROPFIND/MKCOL/…) — exempt it from session CSRF.
-        $middleware->validateCsrfTokens(except: ['dav', 'dav/*']);
         // Security headers on the token API too (nosniff / referrer / permissions /
         // HSTS). Sensitive-byte routes set their own sandbox CSP, which the
         // middleware preserves.

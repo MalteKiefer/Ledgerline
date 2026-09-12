@@ -12,8 +12,6 @@ import Badge from '../Badge.vue';
 import Btn from '../Btn.vue';
 import SortLabel from '../SortLabel.vue';
 import Modal from '../Modal.vue';
-import FlagIcon from '@spa/components/FlagIcon.vue';
-import RichTextEditor from '@spa/components/RichTextEditor.vue';
 
 const stubs = { Icon: { props: ['name', 'size'], template: '<i :data-icon="name" />' } };
 
@@ -102,44 +100,3 @@ describe('Modal stacking', () => {
     });
 });
 
-describe('FlagIcon', () => {
-    it('draws a flag for a known country', () => {
-        const w = mount(FlagIcon, { props: { iso: 'DE' } });
-        expect(w.find('svg').exists()).toBe(true);
-        expect(w.find('text').exists()).toBe(false);
-    });
-
-    it('falls back to an ISO chip for a country it cannot draw', () => {
-        const w = mount(FlagIcon, { props: { iso: 'ZZ' } });
-        expect(w.find('text').text()).toBe('ZZ');
-    });
-});
-
-describe('RichTextEditor sanitising', () => {
-    // The signature/compose body is user-authored HTML. It is sent as mail rather
-    // than rendered in the app origin, but the editor still sanitises what it
-    // loads — and it does so relying on DOMPurify's default URI policy rather
-    // than an explicit rule, which is exactly the kind of implicit guarantee
-    // worth pinning.
-    const labels = new Proxy({}, { get: (_t, k) => String(k) }) as Record<string, string>;
-    const editorHtml = (modelValue: string) => mount(RichTextEditor, {
-        props: { modelValue, placeholder: '', labels },
-        global: { stubs },
-    }).find('[contenteditable]').element.innerHTML;
-
-    it('drops a javascript: link', () => {
-        expect(editorHtml('<a href="javascript:alert(1)">x</a>').toLowerCase()).not.toContain('javascript:');
-    });
-
-    it('drops scripts and event handlers', () => {
-        const html = editorHtml('<p onclick="alert(1)">x</p><script>alert(1)<\/script>').toLowerCase();
-        expect(html).not.toContain('onclick');
-        expect(html).not.toContain('<script');
-    });
-
-    it('keeps the formatting the toolbar produces', () => {
-        const html = editorHtml('<p><strong>bold</strong> and <em>italic</em></p>');
-        expect(html).toContain('<strong>');
-        expect(html).toContain('<em>');
-    });
-});

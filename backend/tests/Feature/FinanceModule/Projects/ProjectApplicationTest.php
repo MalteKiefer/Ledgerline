@@ -813,8 +813,13 @@ final class ProjectApplicationTest extends TestCase
         DB::table('finance_project_document_links')->insert([
             'user_id' => $owner->id,
             'project_id' => $projectId,
-            'source_type' => 'file',
-            'source_reference' => 'file:lifecycle',
+            // source_type swapped from the retired 'file' to the surviving
+            // 'finance_receipt'; this row is only ever read back via raw counts
+            // (assertProjectGraphCounts), never through ProjectDocumentSourceRef,
+            // so 'role' stays 'file' (a separate, still-valid enum unrelated to
+            // source_type).
+            'source_type' => 'finance_receipt',
+            'source_reference' => 'finance-receipt:1',
             'document_series_id' => null,
             'pinned_revision_id' => null,
             'role' => 'file',

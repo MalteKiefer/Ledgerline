@@ -8,7 +8,6 @@ use App\Models\BackupJob;
 use App\Models\BackupRun;
 use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
-use App\Services\Backup\Sources\FilesSource;
 use App\Services\Backup\Sources\InvoiceBlobSource;
 use App\Support\BlobStore;
 use App\Support\Bytes;
@@ -258,10 +257,6 @@ final class BackupManager
         return match ($source) {
             'database' => app(DatabaseSource::class),
             'invoices' => app(InvoiceBlobSource::class),
-            'files' => app(FilesSource::class),
-            'gallery' => app(Sources\GallerySource::class),
-            'mail' => app(Sources\MailSource::class),
-            'notes' => app(Sources\NotesSource::class),
             'avatars' => app(Sources\AvatarSource::class),
             default => throw new RuntimeException("Unknown backup source: {$source}"),
         };
@@ -516,7 +511,7 @@ final class BackupManager
         if ($source === 'database') {
             throw new RuntimeException('Database restore is not one-click; use backup:restore-db.');
         }
-        if (! in_array($source, ['files', 'invoices', 'gallery', 'mail', 'notes', 'avatars'], true)) {
+        if (! in_array($source, BackupJob::BLOB_SOURCES, true)) {
             throw new RuntimeException('Unknown blob source: '.$source);
         }
         if ($job->destination === null) {
