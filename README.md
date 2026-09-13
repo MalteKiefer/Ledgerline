@@ -2,8 +2,8 @@
 
 # Ledgerline
 
-**A self-hosted, plaintext-relational finance & server-monitoring app.**
-GoBD-grade invoicing/accounting plus agentless SSH server monitoring — one app you run on your own box.
+**A self-hosted, plaintext-relational finance app.**
+GoBD-grade invoicing/accounting — one app you run on your own box.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
 [![PHP 8.5](https://img.shields.io/badge/PHP-8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net/)
@@ -28,14 +28,13 @@ Confidentiality at rest is an **infrastructure** concern (full-disk encryption +
 encrypted backups), not application paranoia. What the app enforces hard is the
 **access** boundary: TLS/HSTS, mandatory two-factor auth, a strict CSP, per-record
 owner-scope on every endpoint, and encrypted-at-rest **operational secrets** only
-(SMTP/IMAP passwords, backup passphrases, PGP/S-MIME private keys — never in a DB dump).
+(SMTP passwords, backup passphrases — never in a DB dump).
 
 ## Modules
 
 | Module | What it does |
 |---|---|
 | **Finance** | Invoices (GoBD numbering, ZUGFeRD/Factur-X e-invoice, PDF + email), quotes, product/stock ledger, project planning (tasks + time tracking → invoicing), payment methods, bank-statement import (MT940/CSV) with receipt matching, standalone receipts, business partners, VAT-return / EÜR reports, duplicate detection, category suggestions, dunning. |
-| **Servers** | Agentless monitoring of your own servers over SSH: pinned host keys, scheduled snapshots (OS/kernel/load/RAM/filesystems/disks/RAID/temperatures/open ports/containers/failed services/pending updates/reboot-required), history charts and state-change notifications, plus an SSH terminal, an SFTP file browser, Docker container control, service/process control, security audit, and control-panel (Plesk/cPanel/…) detection. |
 
 Plus infrastructure (not a "module"): first-party auth (Laravel Fortify — email +
 password + TOTP 2FA + WebAuthn/passkeys), multi-user admin & groups, an admin security
@@ -43,8 +42,8 @@ portal (request log + IP/user blocking), backups (S3/B2/SFTP/WebDAV, GFS rotatio
 restore), Paperless integration (for Finance receipts), notifications (SMTP/ntfy/webhook
 + per-device push), device pairing for mobile, and a company/invoice profile.
 
-Mail, Notes, Tasks, Calendar, Contacts, Gallery and Files were removed (the app is
-finance-and-server-monitoring only now).
+Mail, Notes, Tasks, Calendar, Contacts, Gallery, Files and Servers were removed (the
+app is finance only now).
 
 ## Architecture — frontend and backend are separate
 
@@ -133,8 +132,8 @@ git fetch --tags && git reset --hard vX.Y.Z
 `docker-compose.yml`, the deploy `.env` (compose env-file with the image tag, DB, app
 config) and `scripts/` stay at the repo root; migrations run on app start. The `db`
 (PostgreSQL 18 + pgvector — a leftover from the removed Gallery module, kept for now),
-`valkey` (cache/queues) and the optional `agent` (Servers module Docker control sidecar)
-/ `backup` profiles are defined in compose.
+`valkey` (cache/queues) and the optional `agent` (bounded Docker-control sidecar for the
+admin System dashboard) / `backup` profiles are defined in compose.
 
 ### Standalone frontend (different origin)
 

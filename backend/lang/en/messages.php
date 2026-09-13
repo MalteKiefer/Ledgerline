@@ -5,7 +5,6 @@ declare(strict_types=1);
 return [
     'nav' => [
         'finance' => 'Finance',
-        'servers' => 'Servers',
     ],
     'menu' => [
         'logout' => 'Log out',

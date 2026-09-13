@@ -226,6 +226,8 @@ return [
     'invoice_template_klassisch_hint' => 'Traditional German business layout: wordmark, info box, ruled table.',
     'invoice_template_schlicht' => 'Plain',
     'invoice_template_schlicht_hint' => 'Minimal, monochrome, compact.',
+    'invoice_template_kompakt' => 'Compact',
+    'invoice_template_kompakt_hint' => 'Boxed table with light-grey column heads and a coloured total bar.',
 
     // Security portal — rail
     'request_log_section' => 'Request log',
@@ -305,7 +307,6 @@ return [
     'limits_section' => 'Limits & retention',
     'limits_session' => 'Session & auth',
     'limits_retention' => 'Retention',
-    'limits_storage' => 'Storage',
     'limits_inherit' => 'Leave a field empty to use the server default (shown as the placeholder).',
     'sanctum_expiration_minutes' => 'Device token lifetime (min)',
     'sanctum_expiration_minutes_hint' => '0 = never expires',

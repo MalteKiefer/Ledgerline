@@ -33,8 +33,8 @@ use Illuminate\Validation\Rule;
  * The submit endpoint is a transient-cleartext boundary: the client uploads the
  * already-decrypted document bytes, which are forwarded directly to the user's
  * own Paperless instance and are NOT persisted or logged by this server — the
- * same accepted ZK boundary as /invoices/ocr and /gallery/process. The Cache-
- * Control: no-store header is set on the response.
+ * same accepted ZK boundary as /invoices/ocr. The Cache-Control: no-store
+ * header is set on the response.
  *
  * All endpoints are Sanctum device-token gated (abilities:device) and
  * owner-scoped through PaperlessClient::forUser + PaperlessTerm's OwnsUserData
@@ -124,8 +124,8 @@ class PaperlessController extends Controller
      * Transient-cleartext boundary: the client POSTs the raw (already-decrypted)
      * document bytes. This server forwards them to the user's own Paperless
      * instance and stores/logs nothing — same accepted ZK window as
-     * /gallery/process and /invoices/ocr. The response carries Cache-Control:
-     * no-store so proxies/clients discard the bytes immediately.
+     * /invoices/ocr. The response carries Cache-Control: no-store so
+     * proxies/clients discard the bytes immediately.
      *
      * POST /api/v1/paperless/documents
      * Body (multipart): file (required, ≤50 MB), title?, created?(date),

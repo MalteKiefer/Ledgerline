@@ -12,9 +12,9 @@ use Illuminate\Validation\Rule;
 
 /**
  * Admin group management over the API (Sanctum device token + manage-global-settings).
- * A group is a reusable limit template (files/gallery quota + device cap) plus a
- * shareable flag; membership is many-to-many. Limits/membership are non-secret
- * metadata — zero-knowledge is unaffected. Mirrors the web Settings/GroupsController.
+ * A group is a reusable limit template (device cap) plus a shareable flag;
+ * membership is many-to-many. Limits/membership are non-secret metadata —
+ * zero-knowledge is unaffected. Mirrors the web Settings/GroupsController.
  */
 class GroupController extends Controller
 {

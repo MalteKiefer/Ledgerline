@@ -27,11 +27,6 @@ class DashboardController extends Controller
     public function show(Request $request, SystemStatus $status, StorageHistory $history): JsonResponse
     {
         $snap = $status->snapshot();
-        // Files + Gallery modules were removed (finance-only app); SystemStatus
-        // keeps their storage dimensions at a stable 0 rather than this
-        // controller querying their (now-deleted) models directly.
-        $files = is_int($snap['storage']['files'] ?? null) ? $snap['storage']['files'] : 0;
-        $gallery = is_int($snap['storage']['gallery'] ?? null) ? $snap['storage']['gallery'] : 0;
         $database = is_int($snap['storage']['database'] ?? null) ? $snap['storage']['database'] : 0;
 
         return response()->json([
@@ -48,10 +43,8 @@ class DashboardController extends Controller
             'resources' => [
                 'disk' => $snap['disk'],
                 'storage' => [
-                    'files' => $files,
-                    'gallery' => $gallery,
                     'database' => $database,
-                    'total' => $files + $gallery + $database,
+                    'total' => $database,
                 ],
                 'trend' => $history->trend(30),
             ],

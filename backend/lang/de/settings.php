@@ -226,6 +226,8 @@ return [
     'invoice_template_klassisch_hint' => 'Klassisches Geschäftslayout: Wortmarke, Infobox, Tabelle mit Linien.',
     'invoice_template_schlicht' => 'Schlicht',
     'invoice_template_schlicht_hint' => 'Minimal, monochrom, kompakt.',
+    'invoice_template_kompakt' => 'Kompakt',
+    'invoice_template_kompakt_hint' => 'Kastentabelle mit hellgrauen Spaltenköpfen und farbiger Summenzeile.',
 
     // Sicherheitsportal — Leiste
     'request_log_section' => 'Anfrageprotokoll',
@@ -305,7 +307,6 @@ return [
     'limits_section' => 'Grenzwerte & Aufbewahrung',
     'limits_session' => 'Sitzung & Auth',
     'limits_retention' => 'Aufbewahrung',
-    'limits_storage' => 'Speicher',
     'limits_inherit' => 'Feld leer lassen = Server-Standard (als Platzhalter gezeigt).',
     'sanctum_expiration_minutes' => 'Geräte-Token-Lebensdauer (Min.)',
     'sanctum_expiration_minutes_hint' => '0 = läuft nie ab',

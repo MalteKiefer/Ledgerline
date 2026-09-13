@@ -24,7 +24,7 @@ class SystemStatus
      * @return array{
      *   version: string,
      *   queue: array{pending: int, failed: int},
-     *   storage: array{files: int, gallery: int, database: int, total: int},
+     *   storage: array{database: int, total: int},
      *   errors: array{unresolved: int, total: int, lastAt: ?string},
      *   backup: array{lastSuccessAt: ?string},
      *   scheduler: array{lastRunAt: ?string},
@@ -33,11 +33,6 @@ class SystemStatus
      */
     public function snapshot(): array
     {
-        // Files + Gallery modules were removed (finance-only app); their storage
-        // dimensions are retained at 0 so the snapshot shape (and the
-        // storage_snapshots columns) stay stable.
-        $files = 0;
-        $gallery = 0;
         $database = $this->databaseBytes();
 
         $lastError = ErrorEvent::whereNull('resolved_at')->max('last_seen_at');
@@ -53,8 +48,6 @@ class SystemStatus
                 'failed' => $this->tableCount('failed_jobs'),
             ],
             'storage' => [
-                'files' => $files,
-                'gallery' => $gallery,
                 'database' => $database,
                 'total' => $database,
             ],
