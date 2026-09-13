@@ -53,18 +53,8 @@ return new class extends Migration
         Schema::dropIfExists('calendars');
         Schema::dropIfExists('dav_changes'); // shared CardDAV/CalDAV sync log
 
-        // --- Contacts ---
-        Schema::dropIfExists('address_book_shares');
-        Schema::dropIfExists('contact_duplicate_dismissals');
-        Schema::dropIfExists('contact_group');
-        Schema::dropIfExists('contact_sync_remote_cards');
-        Schema::dropIfExists('contact_sync_sources');
-        Schema::dropIfExists('contact_versions');
-        Schema::dropIfExists('contacts');
-        Schema::dropIfExists('contact_groups');
-        Schema::dropIfExists('address_books');
-
-        // --- Gallery ---
+        // --- Gallery (dropped before Contacts: gallery_people.contact_id
+        // references contacts) ---
         Schema::dropIfExists('gallery_album_photo');
         Schema::dropIfExists('gallery_photo_comments');
         Schema::dropIfExists('gallery_photo_reactions');
@@ -76,6 +66,18 @@ return new class extends Migration
         Schema::dropIfExists('gallery_albums');
         Schema::dropIfExists('gallery_photos');
 
+        // --- Contacts ---
+        Schema::dropIfExists('address_book_shares');
+        Schema::dropIfExists('contact_duplicate_dismissals');
+        Schema::dropIfExists('contact_group');
+        Schema::dropIfExists('contact_sync_remote_cards');
+        // contact_versions.source_id references contact_sync_sources — child first.
+        Schema::dropIfExists('contact_versions');
+        Schema::dropIfExists('contact_sync_sources');
+        Schema::dropIfExists('contacts');
+        Schema::dropIfExists('contact_groups');
+        Schema::dropIfExists('address_books');
+
         // --- Files (incl. external S3/SFTP mounts) ---
         Schema::dropIfExists('file_activities');
         Schema::dropIfExists('file_label_file');
@@ -85,8 +87,9 @@ return new class extends Migration
         Schema::dropIfExists('file_versions');
         Schema::dropIfExists('folder_share_members');
         Schema::dropIfExists('folder_shares');
-        Schema::dropIfExists('file_folders');
+        // files.file_folder_id references file_folders — child first.
         Schema::dropIfExists('files');
+        Schema::dropIfExists('file_folders');
         Schema::dropIfExists('storage_mounts');
 
         // --- Notes ---
