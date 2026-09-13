@@ -226,6 +226,8 @@ return [
     'invoice_template_klassisch_hint' => 'Традиционный деловой макет: логотип, инфоблок, таблица с линиями.',
     'invoice_template_schlicht' => 'Plain',
     'invoice_template_schlicht_hint' => 'Минималистичный, монохромный, компактный.',
+    'invoice_template_kompakt' => 'Компактный',
+    'invoice_template_kompakt_hint' => 'Таблица в рамке со светло-серыми заголовками столбцов и цветной строкой итога.',
 
     // Портал безопасности — панель
     'request_log_section' => 'Журнал запросов',
@@ -305,7 +307,6 @@ return [
     'limits_section' => 'Лимиты и хранение',
     'limits_session' => 'Сессии и вход',
     'limits_retention' => 'Хранение',
-    'limits_storage' => 'Хранилище',
     'limits_inherit' => 'Оставьте поле пустым — значение по умолчанию (в подсказке).',
     'sanctum_expiration_minutes' => 'Срок токена устройства (мин)',
     'sanctum_expiration_minutes_hint' => '0 = бессрочно',

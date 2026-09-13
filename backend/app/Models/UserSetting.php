@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A user's personal preferences (Paperless, files, theme).
+ * A user's personal preferences (Paperless, theme).
  * One row per user; use for() to fetch (or lazily create) the current user's
  * row. Infra/workspace settings live on AppSettings instead.
  *

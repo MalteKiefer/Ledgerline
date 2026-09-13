@@ -16,8 +16,8 @@ use RuntimeException;
  *
  * The tar is built by the streaming `tar` binary (memory-flat regardless of how
  * many objects or how large they are) — NOT PharData, which buffers the whole
- * archive in memory and OOM-kills the worker on a large set (e.g. a big gallery),
- * leaving the run to be reaped as "Interrupted (no progress)".
+ * archive in memory and OOM-kills the worker on a large set (e.g. a big invoice
+ * blob archive), leaving the run to be reaped as "Interrupted (no progress)".
  *
  * On a LOCAL files disk the tar reads the source directory directly (no staging
  * copy at all). On a remote disk (S3), objects are first streamed one at a time
@@ -25,10 +25,10 @@ use RuntimeException;
  */
 abstract class DiskArchiveSource implements BackupSource
 {
-    /** Disk path prefix to archive (e.g. "files", "gallery"). */
+    /** Disk path prefix to archive (e.g. "invoices", "avatars"). */
     abstract protected function prefix(): string;
 
-    /** Base name for the produced archive (e.g. "files", "gallery"). */
+    /** Base name for the produced archive (e.g. "invoices", "avatars"). */
     abstract protected function name(): string;
 
     /** tar can run for a while on a large first-full archive (gzip is CPU-bound). */
@@ -51,9 +51,10 @@ abstract class DiskArchiveSource implements BackupSource
     }
 
     /**
-     * The files-disk prefix this source covers (e.g. "files", "gallery"). Public so
-     * the manager can mirror the source object-by-object to the destination instead
-     * of building a giant tar — memory-flat, delta-only, and never chain-dependent.
+     * The files-disk prefix this source covers (e.g. "invoices", "avatars"). Public
+     * so the manager can mirror the source object-by-object to the destination
+     * instead of building a giant tar — memory-flat, delta-only, and never
+     * chain-dependent.
      */
     public function diskPrefix(): string
     {

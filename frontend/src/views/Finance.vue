@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-xl font-bold">{{ t('messages.nav.finance') }}</h1>
+      <h1 class="text-xl font-bold">{{ t('invoices.tab_' + tab) }}</h1>
       <!-- Business vs private: one switch for every tab below. Invoices are always
            business, so the private view says so instead of showing an empty list. -->
       <div class="flex items-center gap-1 rounded-lg border border-[var(--ll-border)] p-0.5 text-sm">
@@ -13,10 +13,6 @@
         >{{ opt.title }}</button>
       </div>
     </div>
-    <div class="flex flex-col gap-4 md:flex-row">
-      <SectionNav :groups="financeNavGroups" :active="isFinanceSectionActive" @select="go($event.id)" />
-
-      <div class="min-w-0 flex-1">
     <!-- Dashboard (consolidated: headline KPIs + charts + all statistics, one view) -->
     <div v-show="tab === 'dashboard'" class="space-y-4">
       <div v-if="kpis" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -229,11 +225,9 @@
         <Btn variant="ghost" size="sm" icon="document_scanner" :loading="bulkRescanBusy" @click="runBulkRescan">{{ t('invoices.ocr_rescan_all') }}</Btn>
         <Btn variant="ghost" size="sm" icon="join_inner" :loading="invMatchBusy || matchBusy" @click="runAllDocumentMatching">{{ t('invoices.auto_match') }}</Btn>
         <input ref="inboxInput" type="file" multiple accept="application/pdf,image/*" class="hidden" @change="onInboxPick">
-        <input ref="invUploadInput" type="file" multiple accept="application/pdf" class="hidden" @change="onInvoicePick">
         <Btn variant="soft" size="sm" icon="inbox" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.upload_receipt') }}</Btn>
-        <Btn variant="soft" size="sm" icon="upload_file" :loading="invUploadBusy" @click="invUploadInput?.click()">{{ t('invoices.upload_invoice') }}</Btn>
         <Btn variant="ghost" size="sm" icon="receipt" @click="newReceipt">{{ t('invoices.receipt_standalone') }}</Btn>
-        <Btn variant="solid" size="sm" icon="add" @click="newInvoice">{{ t('invoices.new') }}</Btn>
+        <Btn variant="solid" size="sm" icon="add" @click="router.push({ name: 'finance.invoices.new' })">{{ t('invoices.new') }}</Btn>
       </template>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -1075,31 +1069,24 @@
     </Modal>
 
     <!-- Invoice editor -->
-    <Modal v-model="invDialog" :title="draft?.id ? (draft?.number || t('invoices.new')) : t('invoices.new')" width="820px">
+    <!-- Pre-cutover (legacy) invoice viewer: finance-v2 (Task 17) moved all
+         mutation to /finance/invoices; a legacy invoice's stored data and PDF
+         can still be viewed here, but never edited or re-sent from this
+         dialog. Creating a NEW invoice goes straight to the real /finance/invoices/new
+         page instead of this dialog. -->
+    <Modal v-model="invDialog" :title="draft?.number || t('invoices.new')" width="820px">
       <div v-if="draft">
-        <!-- header actions + status -->
-        <div class="mb-3 flex items-center gap-1">
-          <!-- Paid is terminal: once settled, the status can't be flipped back to
-               open/sent from here (GoBD — a correction goes through Storno, not a
-               silent status edit). Same read-only badge as an imported invoice. -->
-          <Select v-if="draft.id && !draft.imported && draft.status !== 'paid'" v-model="draft.status" :options="statusOptions" class="w-40" />
-          <Badge v-else-if="draft.status" :tone="statusTone(draft.status)">{{ t('invoices.status_' + draft.status) }}</Badge>
-          <div v-if="draft.id && draft.number" class="ml-auto flex items-center gap-0.5">
-            <Btn variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click="doEmail(draft as Invoice)" />
-            <Btn variant="ghost" size="sm" icon="gavel" :title="t('invoices.dun_send')" @click="doDun(draft as Invoice)" />
-            <Btn v-if="draft.type !== 'credit_note'" variant="ghost" size="sm" icon="cancel" :title="t('invoices.storno')" @click="doStorno(draft as Invoice)" />
-          </div>
-        </div>
+        <Badge v-if="draft.status" :tone="statusTone(draft.status)">{{ t('invoices.status_' + draft.status) }}</Badge>
 
         <div v-if="draft.imported" class="mb-3 rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-600 dark:text-blue-400">{{ t('invoices.imported_readonly') }}</div>
+        <div v-else class="mb-3 rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-600 dark:text-blue-400">{{ t('invoices.legacy_readonly') }}</div>
 
-        <fieldset :disabled="isLocked" class="m-0 border-0 p-0">
+        <fieldset disabled class="m-0 border-0 p-0">
           <div class="mb-3">
             <Select
               :label="t('invoices.tab_partners')"
               :model-value="draft.partner_id ?? ''"
               :options="[{ title: '—', value: '' }, ...f.partners.map((p) => ({ title: p.name, value: p.id }))]"
-              @update:model-value="applyPartnerToInvoice($event ? Number($event) : null)"
             />
           </div>
           <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1160,10 +1147,8 @@
       <template #footer>
         <div class="mr-auto flex items-center gap-2">
           <Btn v-if="draft && draft.id" variant="soft" icon="print" :loading="pdfBusy" @click="doPrintDraft">{{ t('invoices.print') }}</Btn>
-          <Btn v-if="draft && draft.id && !draft.number" variant="soft" @click="finalize">{{ t('invoices.finalize') }}</Btn>
         </div>
-        <Btn variant="ghost" @click="invDialog = false">{{ t('common.cancel') }}</Btn>
-        <Btn variant="solid" :loading="saving" @click="saveInvoice">{{ t('common.save') }}</Btn>
+        <Btn variant="solid" @click="invDialog = false">{{ t('common.cancel') }}</Btn>
       </template>
     </Modal>
 
@@ -1857,38 +1842,22 @@
          inside the documents card it grew with the list, so the drop targets and
          the progress text ended up scrolled far below the fold. -->
     <Teleport to="body">
-      <div v-if="tab === 'documents' && (docDrag || inboxBusy || invUploadBusy)" class="fixed inset-0 z-[1900] bg-black/40 p-6 backdrop-blur-sm sm:p-12">
-        <!-- Busy first: while a batch runs, a split target would be a lie. -->
-        <div v-if="inboxBusy || invUploadBusy" class="grid h-full place-items-center">
+      <div v-if="tab === 'documents' && (docDrag || inboxBusy)" class="fixed inset-0 z-[1900] bg-black/40 p-6 backdrop-blur-sm sm:p-12">
+        <div v-if="inboxBusy" class="grid h-full place-items-center">
           <div class="rounded-2xl bg-[var(--ll-elevated)] px-8 py-6 text-center shadow-xl">
             <Icon name="progress_activity" :size="32" class="mx-auto mb-3 animate-spin text-primary-600 dark:text-primary-300" />
-            <div class="text-sm font-medium">
-              {{ inboxBusy
-                ? t('invoices.inbox_processing', { done: String(inboxDone), total: String(inboxTotal) })
-                : t('invoices.inbox_processing', { done: String(invUploadDone), total: String(invUploadTotal) }) }}
-            </div>
+            <div class="text-sm font-medium">{{ t('invoices.inbox_processing', { done: String(inboxDone), total: String(inboxTotal) }) }}</div>
           </div>
         </div>
-        <div v-else class="grid h-full grid-cols-1 gap-4 sm:grid-cols-2">
-          <div
-            class="grid place-items-center rounded-2xl border-2 border-dashed border-primary-400 bg-[var(--ll-elevated)]/95 text-center text-primary-600 dark:text-primary-300"
-            @dragover.prevent @drop.prevent="onDropReceipts"
-          >
-            <div class="pointer-events-none">
-              <Icon name="inbox" :size="36" class="mx-auto mb-2" />
-              <div class="text-base font-semibold">{{ t('invoices.upload_drop_receipt') }}</div>
-              <div class="mt-1 text-xs opacity-80">{{ t('invoices.upload_drop_receipt_hint') }}</div>
-            </div>
-          </div>
-          <div
-            class="grid place-items-center rounded-2xl border-2 border-dashed border-primary-400 bg-[var(--ll-elevated)]/95 text-center text-primary-600 dark:text-primary-300"
-            @dragover.prevent @drop.prevent="onDropInvoices"
-          >
-            <div class="pointer-events-none">
-              <Icon name="receipt_long" :size="36" class="mx-auto mb-2" />
-              <div class="text-base font-semibold">{{ t('invoices.upload_drop_invoice') }}</div>
-              <div class="mt-1 text-xs opacity-80">{{ t('invoices.upload_drop_invoice_hint') }}</div>
-            </div>
+        <div
+          v-else
+          class="grid h-full place-items-center rounded-2xl border-2 border-dashed border-primary-400 bg-[var(--ll-elevated)]/95 text-center text-primary-600 dark:text-primary-300"
+          @dragover.prevent @drop.prevent="onDropReceipts"
+        >
+          <div class="pointer-events-none">
+            <Icon name="inbox" :size="36" class="mx-auto mb-2" />
+            <div class="text-base font-semibold">{{ t('invoices.upload_drop_receipt') }}</div>
+            <div class="mt-1 text-xs opacity-80">{{ t('invoices.upload_drop_receipt_hint') }}</div>
           </div>
         </div>
       </div>
@@ -1909,8 +1878,6 @@
       </div>
       <template #footer><Btn variant="ghost" @click="prjTrashDialog = false">{{ t('common.close') }}</Btn></template>
     </Modal>
-      </div>
-    </div>
 
     <!-- ============ Off-screen invoice print sheet (rasterised to PDF) ============ -->
     <div
@@ -2207,6 +2174,71 @@
           </table>
         </td></tr></tfoot></table>
       </div>
+
+      <!-- ---------- KOMPAKT (boxed table, colored total bar) ---------- -->
+      <div v-else-if="printTpl === 'kompakt'" style="font-family:Arial,'Liberation Sans',sans-serif; font-size:9.5px; line-height:1.45; color:#1c2126; padding:15mm 8mm 20mm;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; min-height:16mm;">
+          <div style="font-size:22px; font-weight:800; line-height:1; padding-top:2px;">{{ docTitle(printInv) }}</div>
+          <img v-if="printCompany.logo" :src="printCompany.logo" alt="" style="max-height:14mm; max-width:60mm; object-fit:contain;">
+          <div v-else style="font-size:14px; font-weight:700; letter-spacing:.04em;">{{ printCompany.name }}</div>
+        </div>
+        <div style="color:#767f8c; font-size:8px; line-height:1.5; margin:2px 0 8mm;">{{ [printCompany.name, printCompany.address ? printCompany.address.replace(/\n/g, ', ') : ''].filter(Boolean).join(', ') }}{{ printCompany.vat_id ? '  ·  ' + pl('vat_id_label') + ': ' + printCompany.vat_id : '' }}</div>
+        <div style="display:flex; justify-content:space-between; gap:5mm; margin-bottom:10mm;">
+          <div style="width:87mm;">
+            <div style="font-size:9px; font-weight:700; margin-bottom:2px;">{{ pl('bill_to') }}</div>
+            <div style="font-size:10.5px;">{{ printInv.customer?.name }}</div>
+            <div v-show="printInv.customer?.attn" style="color:#767f8c;">{{ printInv.customer?.attn }}</div>
+            <div style="color:#767f8c; white-space:pre-line;">{{ printInv.customer?.address }}</div>
+            <div v-show="printInv.customer?.vatId" style="color:#767f8c;">{{ pl('vat_id_label') + ': ' + printInv.customer?.vatId }}</div>
+          </div>
+          <div style="width:62mm; flex-shrink:0; font-size:8.5px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; min-height:5.5mm; padding:0 1mm;"><span style="color:#767f8c;">{{ docNumberLabel(printInv) }}</span><span style="font-weight:700;" class="tabular-nums">{{ printInv.number || '—' }}</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; min-height:5.5mm; padding:0 1mm;"><span style="color:#767f8c;">{{ pl('invoice_date') }}</span><span style="font-weight:700;" class="tabular-nums">{{ printInv.issueDate }}</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; min-height:5.5mm; padding:0 1mm;"><span style="color:#767f8c;">{{ docDateLabel(printInv) }}</span><span style="font-weight:700;" class="tabular-nums">{{ printInv.dueDate }}</span></div>
+            <div v-show="printInv.status" style="display:flex; justify-content:space-between; align-items:center; min-height:5.5mm; padding:0 1mm;">
+              <span style="color:#767f8c;">{{ pl('status_label') }}</span>
+              <span
+                style="font-size:7.5px; padding:1px 3mm; border-radius:2.5mm; background:#f2f4f6; color:#767f8c;"
+                :style="printInv.status === 'paid' ? 'background:#e3f4ea; color:#1a8f52;' : (printInv.status === 'final' ? 'background:#fbe7e7; color:#c8352f;' : '')"
+              >{{ statusLabelP(printInv.status) }}</span>
+            </div>
+          </div>
+        </div>
+        <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
+          <colgroup><col style="width:45%;"><col style="width:14%;"><col style="width:20%;"><col style="width:21%;"></colgroup>
+          <thead><tr style="background:#f2f4f6;">
+            <th style="height:7mm; padding:0 2mm; border-bottom:0.2mm solid #dde2e8; font-size:7.5px; text-align:left; font-weight:700;">{{ pl('line_desc') }}</th>
+            <th style="height:7mm; padding:0 2mm; border-bottom:0.2mm solid #dde2e8; font-size:7.5px; text-align:right; font-weight:700;">{{ pl('line_qty') }}</th>
+            <th style="height:7mm; padding:0 2mm; border-bottom:0.2mm solid #dde2e8; font-size:7.5px; text-align:right; font-weight:700;">{{ pl('line_price') }}</th>
+            <th style="height:7mm; padding:0 2mm; border-bottom:0.2mm solid #dde2e8; font-size:7.5px; text-align:right; font-weight:700;">{{ pl('amount') }}</th>
+          </tr></thead>
+          <tbody>
+            <tr v-for="(l, i) in printInv.lines" :key="i">
+              <td style="padding:2mm; border-bottom:0.15mm solid #dde2e8; vertical-align:top; overflow-wrap:anywhere;">{{ l.desc }}</td>
+              <td style="padding:2mm; border-bottom:0.15mm solid #dde2e8; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ fmtQty(l.qty, printInv.lang) + (l.unit ? ' ' + l.unit : '') }}</td>
+              <td style="padding:2mm; border-bottom:0.15mm solid #dde2e8; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ pmoney(Number(l.unitPrice), printInv.currency, printInv.lang) }}</td>
+              <td style="padding:2mm; border-bottom:0.15mm solid #dde2e8; text-align:right; white-space:nowrap; vertical-align:top; font-weight:700;" class="tabular-nums">{{ pmoney(lineNet(l), printInv.currency, printInv.lang) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="width:78mm; margin:4mm 0 0 auto; border:0.2mm solid #dde2e8;">
+          <div style="display:flex; justify-content:space-between; align-items:center; min-height:7mm; padding:1mm 4mm; font-size:8px; font-weight:700; border-bottom:0.2mm solid #dde2e8;"><span style="color:#767f8c;">{{ pl('subtotal') }}</span><span class="tabular-nums">{{ pmoney(printTotals.subtotal, printInv.currency, printInv.lang) }}</span></div>
+          <div v-show="printTotals.discountAmount > 0" style="display:flex; justify-content:space-between; align-items:center; min-height:7mm; padding:1mm 4mm; font-size:8px; font-weight:700; border-bottom:0.2mm solid #dde2e8;"><span style="color:#767f8c;">{{ pl('discount') }}</span><span class="tabular-nums">{{ '−' + pmoney(printTotals.discountAmount, printInv.currency, printInv.lang) }}</span></div>
+          <div v-for="rate in printVatRates" :key="rate" style="display:flex; justify-content:space-between; align-items:center; min-height:7mm; padding:1mm 4mm; font-size:8px; font-weight:700; border-bottom:0.2mm solid #dde2e8;"><span style="color:#767f8c;">{{ pl('vat_at').replace(':rate', String(rate)) }}</span><span class="tabular-nums">{{ pmoney(printTotals.vatByRate[rate], printInv.currency, printInv.lang) }}</span></div>
+          <div style="display:flex; justify-content:space-between; align-items:center; min-height:8mm; padding:1mm 4mm; font-size:9.5px; color:#fff;" :style="'background:' + printCompany.accent"><span>{{ docTotalLabel(printInv) }}</span><span class="tabular-nums">{{ pmoney(printTotals.gross, printInv.currency, printInv.lang) }}</span></div>
+        </div>
+        <div v-show="printInv.note" style="margin:7mm 1mm 0; white-space:pre-line;">
+          <div style="font-size:7.5px; font-weight:700; color:#a4acb8; margin-bottom:1mm;">{{ pl('notes_heading') }}</div>
+          <div style="font-size:8.5px; color:#767f8c; line-height:1.5;">{{ printInv.note }}</div>
+        </div>
+        <div v-show="printQr" style="margin-top:5mm;"><img :src="printQr" style="width:84px; height:84px;"><div style="font-size:8px; color:#767f8c; margin-top:2px;">{{ pl('giro_hint') }}</div></div>
+        <div style="margin:5mm 1mm 0; font-size:8px; color:#5a5a5a; line-height:1.5;">{{ [printCompany.payment_terms_text, printCompany.payment_methods].filter(Boolean).join('  ') }}</div>
+        <div v-show="printInv.footer || printCompany.footer_text" style="margin-top:4mm; font-size:8px; color:#5a5a5a; white-space:pre-line;">{{ printInv.footer || printCompany.footer_text }}</div>
+        <div style="margin-top:8mm; padding-top:3mm; border-top:0.2mm solid #dde2e8; font-size:7.5px; color:#767f8c; text-align:center;">
+          <div>{{ [printCompany.name, printCompany.address ? printCompany.address.replace(/\n/g, ', ') : '', printCompany.email, printCompany.phone].filter(Boolean).join('  ·  ') }}</div>
+          <div v-show="printCompany.iban || printCompany.bank_name">{{ [printCompany.iban ? 'IBAN: ' + printCompany.iban : '', printCompany.bic ? 'BIC: ' + printCompany.bic : '', printCompany.bank_name].filter(Boolean).join('  ·  ') }}</div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -2218,7 +2250,7 @@ import { fmtMoney, moneyInput, moneyLocale, parseMoney } from '@spa/lib/money';
 import { safeHref } from '@spa/lib/url';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
-import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pager, SectionNav, type SectionNavItem } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, Pager } from '@spa/ui';
 import type { AlignedData, Options } from 'uplot';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate, type TxReceipt, type FinanceScope, type RecurringCharge, type FinanceProduct, type StockMovement, type FinanceQuote, type QuoteLine, type PartnerNote, type ProjectTask, type TimeEntry } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
@@ -2287,18 +2319,6 @@ const tab = computed(() => {
   return VALID.includes(s) ? s : 'dashboard';
 });
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
-
-// In-page left submenu sections (mirrors the Profile/Settings hub layout).
-const sections = ['dashboard', 'quotes', 'documents', 'payments', 'bank', 'products', 'projects', 'partners'] as const;
-const secIcon: Record<string, string> = {
-  dashboard: 'space_dashboard', documents: 'inbox', invoices: 'receipt_long', payments: 'account_balance_wallet',
-  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups', products: 'inventory_2', quotes: 'request_quote',
-};
-const financeNavGroups = computed(() => [{
-  id: 'finance',
-  items: sections.map((id) => ({ id, icon: secIcon[id], label: t('invoices.tab_' + id) })),
-}]);
-function isFinanceSectionActive(item: SectionNavItem): boolean { return tab.value === item.id; }
 
 // ---- Quote PDF ----
 /**
@@ -3005,18 +3025,6 @@ const discountType_ = computed<string>({
     if (!v) draft.value.discount_value = null;
   },
 });
-// Prefill customer + link from a business partner.
-function applyPartnerToInvoice(pid: number | null) {
-  if (!draft.value) return;
-  draft.value.partner_id = pid;
-  if (!pid) return;
-  const p = f.partners.find((x) => x.id === pid);
-  if (!p) return;
-  if (!custName_.value) custName_.value = p.name;
-  if (!custAddress_.value && p.address) custAddress_.value = p.address;
-  if (!custEmail_.value && (p.invoice_email || p.email)) custEmail_.value = p.invoice_email || p.email || '';
-  if (!custVatId_.value && p.vat_id) custVatId_.value = p.vat_id;
-}
 function loadCustomerFields(c: Record<string, unknown> | null | undefined) {
   const o = (c ?? {}) as Record<string, unknown>;
   custName_.value = typeof o.name === 'string' ? o.name : '';
@@ -3155,18 +3163,6 @@ function money(n: number) { return fmtMoney(n); }
 const moneyPlaceholder = computed(() => (moneyLocale().startsWith('en') ? '0.00' : '0,00'));
 function fmtDate(s?: string | null) { return s ? libDate(String(s).slice(0, 10)) : '—'; }
 function statusTone(s: string): 'success' | 'info' | 'warning' | 'gray' { return s === 'paid' ? 'success' : s === 'sent' ? 'info' : s === 'final' ? 'warning' : 'gray'; }
-// A numbered invoice can never revert to draft (GoBD; the server also blocks it).
-const statusOptions = computed(() => {
-  const opts = draft.value?.number
-    ? []
-    : [{ title: t('invoices.status_draft'), value: 'draft' }];
-  return [
-    ...opts,
-    { title: t('invoices.status_final'), value: 'final' },
-    { title: t('invoices.status_sent'), value: 'sent' },
-    { title: t('invoices.status_paid'), value: 'paid' },
-  ];
-});
 function custName(i: Invoice) { const c = i.customer as { name?: string } | null; return c?.name ?? '—'; }
 function agingGross(k: string) { return Number(agingBuckets.value[k]?.gross ?? 0); }
 function monthLabel(m: number) { return new Intl.DateTimeFormat(document.documentElement.lang || 'de', { month: 'short' }).format(new Date(2000, m - 1, 1)); }
@@ -3322,7 +3318,6 @@ async function runAllDocumentMatching() {
   await runAutoMatch();
 }
 
-const isLocked = computed(() => !!(draft.value?.imported || (draft.value?.number && draft.value?.status !== 'draft')));
 const totals = computed(() => {
   let net = 0; let vat = 0;
   for (const l of lines.value) { const ln = (l.qty || 0) * (l.unitPrice || 0); net += ln; vat += ln * ((l.vatRate || 0) / 100); }
@@ -3398,12 +3393,6 @@ const projectSelectOptions = computed(() => [
 
 function conflict() { void f.load(); error(t('common.error')); }
 
-function newInvoice() {
-  draft.value = { status: 'draft', currency: 'EUR', issue_date: todayYmd(), customer: {}, lines: [] };
-  lines.value = [{ desc: '', qty: 1, unitPrice: 0, vatRate: 19 }];
-  loadCustomerFields(null);
-  invDialog.value = true;
-}
 function editInvoice(i: Invoice) {
   // issue_date/due_date come back from the API as full ISO datetimes (Laravel
   // serialises `date`-cast columns the same as `datetime`-cast ones) — a native
@@ -3424,33 +3413,6 @@ function openInvoiceDocument(i: Invoice) {
   }
   editInvoice(i);
 }
-// Invoice create/update/finalize/storno/email/dun all used to happen here,
-// against the legacy FinanceController routes removed in the Task 17
-// cutover. This modal's underlying CRUD is gone; every trigger below sends
-// the owner to the new /finance/invoices pages instead of silently failing.
-// A pre-cutover invoice can still be VIEWED (openInvoiceDocument/its PDF
-// stays streamable) and STORED data displayed -- only mutation moved.
-function saveInvoice() {
-  invDialog.value = false;
-  void router.push({ name: 'finance.invoices.index' });
-}
-function finalize() {
-  error(t('invoices.pdf_upload_moved'));
-}
-async function delInvoice(_i: Invoice) {
-  if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return;
-  error(t('invoices.pdf_upload_moved'));
-}
-function doStorno(_i: Invoice) {
-  error(t('invoices.pdf_upload_moved'));
-}
-function doEmail(_i: Invoice) {
-  error(t('invoices.pdf_upload_moved'));
-}
-function doDun(_i: Invoice) {
-  error(t('invoices.pdf_upload_moved'));
-}
-
 function resetForm(o: PPForm) {
   Object.assign(pForm, {
     id: undefined, version: undefined, name: '', type: 'bank', holder: '', business: false, url: '', note: '',
@@ -4110,15 +4072,9 @@ async function applyBulkRescan() {
 
 // ---- Receipt inbox: drop/pick one or many files, each is captured automatically
 // (OCR'd, recognised, auto-matched/created a partner) without opening a dialog per
-// ---- Uploading a document: incoming receipt OR outgoing invoice ----
-// The two are different records (finance_receipts vs invoices), so which one a
-// dropped PDF becomes cannot be guessed from the file: the drop overlay asks by
-// splitting into two halves, and the toolbar has one button each.
+// file. Outgoing invoices are created at /finance/invoices/new instead (finance-v2
+// has no drop-a-PDF path of its own).
 const docDrag = ref(false);
-const invUploadInput = ref<HTMLInputElement | null>(null);
-const invUploadBusy = ref(false);
-const invUploadDone = ref(0);
-const invUploadTotal = ref(0);
 
 /**
  * Window-level drag tracking, for three reasons the card-local version got
@@ -4173,62 +4129,24 @@ onBeforeUnmount(() => {
   window.removeEventListener('dragleave', onWindowDragLeave);
   window.removeEventListener('drop', onWindowDrop);
 });
-function droppedFiles(e: DragEvent, pdfOnly: boolean): File[] {
+function droppedFiles(e: DragEvent): File[] {
   return Array.from(e.dataTransfer?.files ?? [])
-    .filter((file) => (pdfOnly ? file.type === 'application/pdf' : /^application\/pdf$|^image\//.test(file.type)));
+    .filter((file) => /^application\/pdf$|^image\//.test(file.type));
 }
 function onDropReceipts(e: DragEvent) {
   dragDepth = 0;
   docDrag.value = false;
-  const files = droppedFiles(e, false);
+  const files = droppedFiles(e);
   if (files.length) void processInboxFiles(files);
   else error(t('invoices.upload_no_supported_file'));
 }
-function onDropInvoices(e: DragEvent) {
-  dragDepth = 0;
-  docDrag.value = false;
-  const files = droppedFiles(e, true);
-  if (files.length) void uploadInvoicePdfs(files);
-  else error(t('invoices.upload_pdf_only'));
-}
-function onInvoicePick(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const files = Array.from(input.files ?? []);
-  input.value = '';
-  if (files.length) void uploadInvoicePdfs(files);
-}
-
-/**
- * An outgoing invoice that already exists as a PDF (written elsewhere, or an
- * older one being filed): used to create the record here, attach the
- * document, and prefill from the OCR recogniser the receipt inbox still uses.
- *
- * The legacy invoice CRUD/PDF-upload routes this relied on are gone (Task 17
- * cutover) and finance-v2 has no equivalent "drop a PDF, OCR-prefill a draft"
- * capability of its own -- that would be a new feature, not a like-for-like
- * carry-over, so it is out of this cutover's scope. This now tells the owner
- * where invoices live instead of silently failing against a route that no
- * longer exists.
- */
-async function uploadInvoicePdfs(files: File[]) {
-  invUploadTotal.value = files.length;
-  invUploadDone.value = files.length;
-  error(t('invoices.pdf_upload_moved'));
-  void files;
-}
 
 // file — the Candis-style "drop a batch, review afterwards" flow.
-const inboxDrag = ref(false);
 const inboxBusy = ref(false);
 const inboxDone = ref(0);
 const inboxTotal = ref(0);
 const inboxInput = ref<HTMLInputElement | null>(null);
 
-function onInboxDrop(e: DragEvent) {
-  inboxDrag.value = false;
-  const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /^application\/pdf$|^image\//.test(f.type));
-  if (files.length) void processInboxFiles(files);
-}
 function onInboxPick(e: Event) {
   const input = e.target as HTMLInputElement;
   const files = Array.from(input.files ?? []);

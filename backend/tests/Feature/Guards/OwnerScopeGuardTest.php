@@ -35,9 +35,6 @@ class OwnerScopeGuardTest extends TestCase
         'DevicePairing', 'InviteLink',
         // Resolved per user explicitly (UserSetting::for($userId)).
         'UserSetting',
-        // Reached only through the owning Server, which is owner-scoped; written
-        // solely by the collector job.
-        'ServerFact', 'ServerCheck',
     ];
 
     /**

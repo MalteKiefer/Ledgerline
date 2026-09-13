@@ -149,14 +149,29 @@ interface NavChild { to: string; label: string }
 interface NavItem { key?: string; to?: string; label: string; icon?: string; children?: NavChild[] }
 interface NavGroup { key: string; title?: string; items: NavItem[] }
 
+// Finance is the only module left, so its former in-page submenu (Finance.vue
+// used to render these as its own SectionNav) is now the main sidebar — one
+// top-level link per section instead of a single collapsed "Finance" entry.
+const FINANCE_SECTIONS: { id: string; icon: string }[] = [
+  { id: 'dashboard', icon: 'space_dashboard' },
+  { id: 'quotes', icon: 'request_quote' },
+  { id: 'documents', icon: 'inbox' },
+  { id: 'payments', icon: 'account_balance_wallet' },
+  { id: 'bank', icon: 'account_balance' },
+  { id: 'products', icon: 'inventory_2' },
+  { id: 'projects', icon: 'account_tree' },
+  { id: 'partners', icon: 'groups' },
+];
+
 const menu = computed<NavGroup[]>(() => {
   const groups: NavGroup[] = [{ key: 'main', items: [{ to: '/', label: 'pages.dashboard.title', icon: 'space_dashboard' }] }];
   const mods: NavItem[] = [];
-  // Finance + Settings carry their own in-page left submenu (like Profile),
-  // so the sidebar shows them as single entries — no expandable children here.
-  if (auth.can('finance')) mods.push({ to: '/finance', label: 'messages.nav.finance', icon: 'account_balance_wallet' });
-  if (auth.can('servers')) mods.push({ to: '/servers', label: 'messages.nav.servers', icon: 'dns' });
+  if (auth.can('finance')) {
+    for (const s of FINANCE_SECTIONS) mods.push({ to: `/finance/${s.id}`, label: `invoices.tab_${s.id}`, icon: s.icon });
+  }
   groups.push({ key: 'modules', title: 'settings.personal_heading', items: mods });
+  // Settings carries its own in-page left submenu (like Profile), so the
+  // sidebar shows it as a single entry — no expandable children here.
   if (auth.isAdmin()) groups.push({ key: 'admin', title: 'settings.admin_heading', items: [
     { to: '/settings', label: 'settings.heading', icon: 'settings' },
   ] });
@@ -164,12 +179,12 @@ const menu = computed<NavGroup[]>(() => {
   return groups;
 });
 
-const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', servers: 'messages.nav.servers', profile: 'pages.profile.title' };
+const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', profile: 'pages.profile.title' };
 const crumbRoot = computed(() => {
   const name = String(route.name ?? '');
   if (name.startsWith('settings')) return t('settings.heading');
   if (name.startsWith('profile')) return t('pages.profile.title');
-  if (name === 'finance') return t('messages.nav.finance');
+  if (name === 'finance') return t(`invoices.tab_${String(route.params.section || 'dashboard')}`);
   return t(routeTitles[name] ?? 'pages.dashboard.title');
 });
 const leafMap: Record<string, string> = {
@@ -180,9 +195,7 @@ const leafMap: Record<string, string> = {
 };
 const crumbLeaf = computed(() => {
   const name = String(route.name ?? '');
-  if (leafMap[name]) return t(leafMap[name]);
-  if (name === 'finance' && route.params.section) return t(`invoices.tab_${String(route.params.section)}`);
-  return '';
+  return leafMap[name] ? t(leafMap[name]) : '';
 });
 
 function toggle(k: string) { open[k] = !open[k]; }

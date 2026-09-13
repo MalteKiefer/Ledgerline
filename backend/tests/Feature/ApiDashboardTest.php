@@ -32,7 +32,7 @@ class ApiDashboardTest extends TestCase
         $res->assertJsonStructure([
             'versions' => ['app', 'php', 'laravel'],
             'health' => ['database', 'cache', 'queue_driver'],
-            'resources' => ['disk' => ['free', 'total'], 'storage' => ['files', 'gallery', 'database', 'total']],
+            'resources' => ['disk' => ['free', 'total'], 'storage' => ['database', 'total']],
             'queue' => ['pending', 'failed'],
             'scheduler' => ['tasks'],
             'errors' => ['unresolved', 'total'],

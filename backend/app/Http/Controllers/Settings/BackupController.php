@@ -332,7 +332,7 @@ class BackupController extends Controller
     }
 
     /**
-     * Restore a blob source (files/invoices) from a completed run's batch back
+     * Restore a blob source (invoices/avatars) from a completed run's batch back
      * onto the live disk (additive overwrite). The database is intentionally NOT
      * restorable in one click — download the dump and run `backup:restore-db`.
      */

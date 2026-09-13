@@ -102,8 +102,8 @@ final class BackupManager
             // Blob sources are MIRRORED (upload only new/changed objects, tracked in a
             // remote ledger), never tarred: memory-flat, delta-only after the first
             // sync, resumable if a worker dies, and — unlike an incremental-tar chain —
-            // retention can never orphan them. A 38 GB gallery costs one full first
-            // sync, then near-nothing per run. Only the DB dump is a rotated archive.
+            // retention can never orphan them. A large invoices/avatars set costs one
+            // full first sync, then near-nothing per run. Only the DB dump is a rotated archive.
             $ts = Carbon::now()->format('Y-m-d_His');
             $dbBatch = null;
             // The fail-closed guard above already verified a passphrase exists when
@@ -267,10 +267,10 @@ final class BackupManager
      * files that are new or changed since the last sync (tracked in a remote
      * .ledger-<src>.json). Memory-flat (streams one object at a time), resumable (a
      * killed run re-syncs only the not-yet-uploaded files next run), and free of any
-     * archive or delta chain — so a huge gallery never OOMs a worker and retention
+     * archive or delta chain — so a huge blob source never OOMs a worker and retention
      * can never orphan it. Returns the bytes uploaded THIS run (the delta).
      *
-     * The object key already carries its source prefix (e.g. "gallery/uuid/orig"),
+     * The object key already carries its source prefix (e.g. "invoices/uuid/orig"),
      * so all sources share one mirror/ tree and namespacing is automatic. Deleted
      * local files are intentionally NOT removed from the mirror (a backup keeps
      * copies; a local glitch must never wipe the offsite copy).
@@ -525,7 +525,7 @@ final class BackupManager
         $pass = $job->effectivePassphrase();
 
         $written = 0;
-        // The stored key already carries its source prefix (e.g. "gallery/uuid/orig"),
+        // The stored key already carries its source prefix (e.g. "invoices/uuid/orig"),
         // so it maps straight back onto the disk.
         foreach ($fs->listContents($mirrorRoot.$source, true) as $item) {
             if (method_exists($item, 'isDir') ? $item->isDir() : ! $item->isFile()) {

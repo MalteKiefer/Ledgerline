@@ -300,7 +300,7 @@ const form = reactive<FormState>({
 });
 
 const templateItems = computed(() =>
-  (['editorial', 'modern', 'elegant', 'klassisch', 'schlicht'] as const).map((v) => ({
+  (['editorial', 'modern', 'elegant', 'klassisch', 'schlicht', 'kompakt'] as const).map((v) => ({
     value: v,
     title: t(`settings.invoice_template_${v}`),
   })),

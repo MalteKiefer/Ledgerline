@@ -35,15 +35,6 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
-use App\Http\Controllers\ServerBanController;
-use App\Http\Controllers\ServerControlController;
-use App\Http\Controllers\ServerController;
-use App\Http\Controllers\ServerDockerController;
-use App\Http\Controllers\ServerFileController;
-use App\Http\Controllers\ServerLogController;
-use App\Http\Controllers\ServerMaintenanceController;
-use App\Http\Controllers\ServerSecurityController;
-use App\Http\Controllers\ServerTerminalController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Middleware\EnsureTwoFactorEnrolled;
 use App\Http\Middleware\UpdateTokenIp;
@@ -212,71 +203,6 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/finance/receipts/{id}/restore', [FinanceController::class, 'restoreStandaloneReceipt'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.receipts.restore');
             Route::delete('/finance/receipts/{id}/force', [FinanceController::class, 'forceDeleteStandaloneReceipt'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.receipts.force');
             Route::get('/finance/receipts/{receipt}/raw', [FinanceController::class, 'receiptFile'])->whereNumber('receipt')->middleware('throttle:3000,1')->name('api.finance.receipts.raw');
-        });
-
-        // Server monitoring (SSH, agentless). Same controller as the web twin.
-        Route::middleware('module:servers')->group(function (): void {
-            Route::get('/servers', [ServerController::class, 'index'])->name('api.servers.index');
-            Route::get('/servers/probe-script', [ServerController::class, 'probeScript'])->name('api.servers.probe-script');
-            Route::post('/servers/keypair', [ServerController::class, 'keypair'])->middleware('throttle:20,1')->name('api.servers.keypair');
-            Route::post('/servers', [ServerController::class, 'store'])->middleware('throttle:60,1')->name('api.servers.store');
-            Route::post('/servers/test', [ServerController::class, 'test'])->middleware('throttle:20,1')->name('api.servers.test');
-            Route::post('/servers/refresh', [ServerController::class, 'refreshAll'])->middleware('throttle:20,1')->name('api.servers.refresh-all');
-            Route::get('/servers/{server}', [ServerController::class, 'show'])->whereNumber('server')->name('api.servers.show');
-            Route::put('/servers/{server}', [ServerController::class, 'update'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.update');
-            Route::delete('/servers/{server}', [ServerController::class, 'destroy'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.destroy');
-            Route::post('/servers/{server}/refresh', [ServerController::class, 'refresh'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.refresh');
-            Route::post('/servers/{server}/test', [ServerController::class, 'testStored'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.test-stored');
-            Route::get('/servers/{server}/checks', [ServerController::class, 'checks'])->whereNumber('server')->middleware('throttle:120,1')->name('api.servers.checks');
-            // Inline SSH like the connection test, so both are throttled harder
-            // than the read-only endpoints around them.
-            Route::get('/servers/{server}/log-sources', [ServerLogController::class, 'sources'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.log-sources');
-            Route::post('/servers/{server}/logs', [ServerLogController::class, 'read'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.logs');
-            // Interactive shell. Opening demands the account password every
-            // time and is audited; polling is frequent by design, so its limit
-            // is high while opening one stays deliberately low.
-            Route::post('/servers/{server}/terminal', [ServerTerminalController::class, 'open'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.terminal.open');
-            Route::get('/servers/{server}/terminal/{session}', [ServerTerminalController::class, 'poll'])->whereNumber('server')->whereAlphaNumeric('session')->middleware('throttle:1200,1')->name('api.servers.terminal.poll');
-            Route::post('/servers/{server}/terminal/{session}/input', [ServerTerminalController::class, 'input'])->whereNumber('server')->whereAlphaNumeric('session')->middleware('throttle:1200,1')->name('api.servers.terminal.input');
-            Route::delete('/servers/{server}/terminal/{session}', [ServerTerminalController::class, 'close'])->whereNumber('server')->whereAlphaNumeric('session')->middleware('throttle:60,1')->name('api.servers.terminal.close');
-            // Services and processes. Listing reads; the two action endpoints
-            // change the target and are audited, so they are throttled harder.
-            Route::get('/servers/{server}/services', [ServerControlController::class, 'services'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.services');
-            Route::post('/servers/{server}/services', [ServerControlController::class, 'serviceAction'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.service-action');
-            Route::get('/servers/{server}/disk-usage', [ServerMaintenanceController::class, 'diskUsage'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.disk-usage');
-            Route::get('/servers/{server}/backup', [ServerControlController::class, 'backup'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.backup');
-            Route::get('/servers/{server}/panels', [ServerControlController::class, 'panels'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.panels');
-            Route::post('/servers/{server}/panels/site', [ServerControlController::class, 'siteAction'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.panel-site');
-            Route::get('/servers/{server}/vpn', [ServerControlController::class, 'vpn'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.vpn');
-            Route::post('/servers/{server}/vpn/action', [ServerControlController::class, 'vpnAction'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.vpn-action');
-            Route::get('/servers/{server}/role-details', [ServerMaintenanceController::class, 'roleDetails'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.role-details');
-            Route::get('/servers/{server}/updates', [ServerMaintenanceController::class, 'updates'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.updates');
-            Route::post('/servers/{server}/updates', [ServerMaintenanceController::class, 'applyUpdates'])->whereNumber('server')->middleware('throttle:6,1')->name('api.servers.updates-apply');
-            Route::get('/servers/{server}/docker', [ServerDockerController::class, 'show'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.docker');
-            Route::get('/servers/{server}/docker/storage', [ServerDockerController::class, 'storage'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.docker-storage');
-            Route::post('/servers/{server}/docker/action', [ServerDockerController::class, 'act'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.docker-action');
-            Route::post('/servers/{server}/docker/prune', [ServerDockerController::class, 'prune'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.docker-prune');
-            Route::get('/servers/{server}/security', [ServerSecurityController::class, 'show'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.security');
-            Route::get('/servers/{server}/processes', [ServerControlController::class, 'processes'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.processes');
-            Route::post('/servers/{server}/processes/signal', [ServerControlController::class, 'processSignal'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.process-signal');
-            Route::post('/servers/{server}/power', [ServerControlController::class, 'power'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.power');
-            Route::post('/servers/{server}/sessions/kill', [ServerControlController::class, 'killSession'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.session-kill');
-            Route::post('/servers/{server}/files/unlock', [ServerFileController::class, 'unlock'])->whereNumber('server')->middleware('throttle:10,1')->name('api.servers.files.unlock');
-            Route::post('/servers/{server}/files/lock', [ServerFileController::class, 'lock'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.lock');
-            Route::get('/servers/{server}/files', [ServerFileController::class, 'index'])->whereNumber('server')->middleware('throttle:300,1')->name('api.servers.files.index');
-            Route::get('/servers/{server}/files/read', [ServerFileController::class, 'read'])->whereNumber('server')->middleware('throttle:120,1')->name('api.servers.files.read');
-            Route::get('/servers/{server}/files/download', [ServerFileController::class, 'download'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.download');
-            Route::get('/servers/{server}/files/download-dir', [ServerFileController::class, 'downloadDirectory'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.files.download-dir');
-            Route::post('/servers/{server}/files/write', [ServerFileController::class, 'write'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.write');
-            Route::post('/servers/{server}/files/upload', [ServerFileController::class, 'upload'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.files.upload');
-            Route::get('/servers/{server}/files/archive-tools', [ServerFileController::class, 'archiveTools'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.archive-tools');
-            Route::post('/servers/{server}/files/archive', [ServerFileController::class, 'archive'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.files.archive');
-            Route::post('/servers/{server}/files/extract', [ServerFileController::class, 'extract'])->whereNumber('server')->middleware('throttle:20,1')->name('api.servers.files.extract');
-            Route::get('/servers/{server}/files/permissions', [ServerFileController::class, 'permissions'])->whereNumber('server')->middleware('throttle:120,1')->name('api.servers.files.permissions');
-            Route::post('/servers/{server}/files/permissions', [ServerFileController::class, 'setPermissions'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.set-permissions');
-            Route::post('/servers/{server}/files/mutate', [ServerFileController::class, 'mutate'])->whereNumber('server')->middleware('throttle:60,1')->name('api.servers.files.mutate');
-            Route::get('/servers/{server}/bans', [ServerBanController::class, 'index'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.bans');
-            Route::post('/servers/{server}/bans', [ServerBanController::class, 'act'])->whereNumber('server')->middleware('throttle:30,1')->name('api.servers.ban-action');
         });
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term
